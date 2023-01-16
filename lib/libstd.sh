@@ -282,7 +282,7 @@ bash_args() {
     return 0
 }
 
-est_different() {
+is_different() {
     bash_args --args_p '
             dir_a:Dossier à comparer;
             dir_b:Autre dossier à comparer à dir_a;
@@ -537,8 +537,8 @@ breakpoint() {
 }
 
     ###
-    # check expression
-    #  in: $1=(argc, isnum, env) as (#args, is numeric, variable is defined)
+    # expect expression
+    #  in: $1=(argc, isnum, env, file) as (#args, is numeric, variable is defined, file exists)
 expect() {
     local _ctrl _var
 
@@ -593,8 +593,8 @@ expect() {
     ###
     # get nrows of file
     #
-file_get_rows() {
-    expect argc $0 $# 2    &&
+file_get_nrows() {
+    expect argc $0 $# 2  &&
     expect file "$1"     || return $ERROR_CODE
 
     local -n _nr=$2
@@ -604,9 +604,9 @@ file_get_rows() {
 }
 
     ###
-    # Faire une sauvegarde du fichier demandé (avec extension .backup.#) # étant un incrément unique
+    # backup file (with uniq extension as: .backup.#)
     #
-backupUniq() {
+backup_file_as_uniq() {
     bash_args \
         --args_p 'path:nom complet' \
         --args_o 'path' \

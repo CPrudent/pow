@@ -1,0 +1,106 @@
+#!/bin/bash
+
+source $POW_DIR_ROOT/lib/libenv.sh || exit ${ERROR_CODE:-3}
+
+[ "$USER" != root ] && {
+    echo "Ce script est à exécuter par l'utilisateur root"
+    exit $ERROR_CODE
+}
+
+# import the repository key
+# see: https://wiki.postgresql.org/wiki/Apt (apt-key depreciated)
+curl https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /etc/apt/trusted.gpg.d/apt.postgresql.org.gpg >/dev/null &&
+
+# add postgresql's repository
+echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list &&
+
+# update
+apt update &&
+
+# install
+{
+    _PG_VERSION=$(get_conf PG_VERSION) &&
+    _PG_PORT=$(get_conf PG_PORT) &&
+    _POSTGIS_VERSION=$(get_conf POSTGIS_VERSION) &&
+    _PG_DBNAME=$(get_conf PG_DBNAME) &&
+    _pg_bin_dir=/usr/lib/postgresql/${_PG_VERSION}/bin &&
+    _package_list="postgresql-${_PG_VERSION} postgresql-contrib-${_PG_VERSION}" &&
+    _package_list+=" postgresql-${_PG_VERSION}-postgis-${_POSTGIS_VERSION}" &&
+    _package_list+=" postgresql-${_PG_VERSION}-postgis-${_POSTGIS_VERSION}-scripts" &&
+    _package_list+=" gdal-bin" &&
+    apt install "$_package_list"
+} || {
+    echo "erreur installation du package PostgreSql"
+    exit $ERROR_CODE
+}
+
+# post-install
+if [ -n "$(which pg_lsclusters)" ]; then
+    _nb_clusters=$(($(pg_lsclusters | wc -l) -1))
+    [ $_nb_clusters -gt 1 ] &&
+    log_info 'Plusieurs clusters PostgreSQL sont présents, lister les clusters avec pg_lsclusters, supprimer les clusters en trop avec pg_dropcluster, supprimer les binaires en trop'
+
+    _PG_VERSION_INSTALLEE=$(pg_lsclusters | grep "${_PG_PORT} *online" | grep -o '^[0-9]\+')
+    [ -z "$_PG_VERSION_INSTALLEE" ] &&
+    log_error "Pas de cluster PostgreSQL actif sur le port configuré ($_PG_PORT)" &&
+    exit $ERROR_CODE
+
+    ([ -n "$_PG_VERSION_INSTALLEE" ] && [ "$_PG_VERSION_INSTALLEE" != "${_PG_VERSION}" ]) &&
+    log_error "La version PostgreSQL ($_PG_VERSION_INSTALLEE) du cluster actif sur le port configuré ($_PG_PORT) est différente de la version configurée $($_PG_VERSION)" &&
+    exit $ERROR_CODE
+fi
+
+# custom config
+declare -A _params_postgresql=(
+    [log_min_duration_statement]=5000
+    [listen_addresses]="'*'"
+    [min_wal_size]='500MB'
+    [max_wal_size]='3GB'
+    [join_collapse_limit]=16
+    [tcp_keepalives_idle]=300
+)
+
+_dir_tmp=/tmp/install-SGBD
+mkdir -p $_dir_tmp
+cp /etc/postgresql/${_PG_VERSION}/main/postgresql.conf $_dir_tmp/postgresql.conf
+set_params_conf_file \
+    --conf_file "$_dir_tmp/postgresql.conf" \
+    --param_codes "${!_params_postgresql[*]}" \
+    --param_values "${_params_postgresql[*]}"
+
+if is_different --dir_a "/etc/postgresql/$_PG_VERSION/main" --dir_b "$_dir_tmp" --file_name 'postgresql.conf' ||
+    is_different --dir_a "/etc/postgresql/$_PG_VERSION/main" --dir_b "$POW_DIR_ROOT/etc/postgresql/" --file_name 'pg_hba.conf'; then
+
+	log_info "Mise à jour de la configuration de PostgreSQL et redémarrage du service"
+	#sauvegarde
+	cp /etc/postgresql/$_PG_VERSION/main/postgresql.conf $_dir_tmp/postgresql.conf.backup
+	cp /etc/postgresql/$_PG_VERSION/main/pg_hba.conf $_dir_tmp/pg_hba.conf.backup
+	#nouvelle configuration
+	cat $_dir_tmp/postgresql.conf > /etc/postgresql/$_PG_VERSION/main/postgresql.conf
+    cat $POW_DIR_ROOT/etc/postgresql/pg_hba.conf > /etc/postgresql/$_PG_VERSION/main/pg_hba.conf
+	#redémarrage du service
+	pg_ctlcluster $_PG_VERSION main restart || {
+		log_error "Erreur lors de la mise à jour de la configuration de PostgreSQL : retour arrière"
+        cp $_dir_tmp/postgresql.conf.backup /etc/postgresql/$_PG_VERSION/main/postgresql.conf
+        cp $_dir_tmp/pg_hba.conf.backup /etc/postgresql/$_PG_VERSION/main/pg_hba.conf
+ 		pg_ctlcluster $_PG_VERSION main restart
+		exit $ERROR_CODE
+	}
+else
+	log_info "La configuration de PostgreSQL est déjà à jour"
+fi
+rm -r $_dir_tmp
+
+# create db (if not already exists)
+$_pg_bin_dir/psql -U postgres -d $_PG_DBNAME -p $_PG_PORT -c "SELECT 1" > /dev/null || {
+    log_info "Création du tablespace et de la base de données $_PG_DBNAME"
+    mkdir -p $POW_DIR_DATA/postgresql/data &&
+    chown postgres:postgres $POW_DIR_DATA/postgresql/data &&
+    $_pg_bin_dir/psql -U postgres -p $_PG_PORT -c "CREATE TABLESPACE ${_PG_DBNAME}_tablespace LOCATION "'"'"$POW_DIR_DATA/postgresql/data"'"'"" &&
+    $_pg_bin_dir/psql -U postgres -p $_PG_PORT -c "CREATE DATABASE $_PG_DBNAME TABLESPACE ${_PG_DBNAME}_tablespace" &&
+    su --login postgres --command="$_pg_bin_dir/psql -p $_PG_PORT -c \"ALTER USER postgres WITH ENCRYPTED PASSWORD 'md5c375a6ae9835e94d95d46481b49b6e9a' VALID UNTIL 'infinity';\"" &&
+    su --login postgres --command="$_pg_bin_dir/psql -p $_PG_PORT -c 'GRANT ALL PRIVILEGES ON DATABASE \"${_PG_DBNAME}\" TO postgres;'" &&
+    pg_ctlcluster $_PG_VERSION main restart || exit $ERROR_CODE
+}
+
+exit $SUCCESS_CODE
