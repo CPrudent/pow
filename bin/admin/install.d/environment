@@ -32,7 +32,10 @@ is_user_root &&
     EOC
 
     _dir_home=$(getent passwd $POW_USER | cut --delimiter : --field 6)
+    _group=$(getent passwd $POW_USER | cut --delimiter : --field 4)
     # TODO: field #7=shell
-    [ ! -f "$_dir_home/.bashrc" ] && touch "$_dir_home/.bashrc"
+    [ ! -f "$_dir_home/.bashrc" ] && {
+        touch "$_dir_home/.bashrc" && chown $POW_USER:$_group "$_dir_home/.bashrc"
+    }
     grep '### add POW environment' "$_dir_home/.bashrc" || cat $_tmpfile >> "$_dir_home/.bashrc"
 }
