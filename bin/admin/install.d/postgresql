@@ -1,18 +1,30 @@
 #!/bin/bash
 
+    #--------------------------------------------------------------------------
+    # synopsis
+    #--
+    # install PostgreSQL's package
+
 source $POW_DIR_ROOT/lib/libenv.sh || exit ${ERROR_CODE:-3}
 
-[ "$USER" != root ] && {
-    echo "Ce script est à exécuter par l'utilisateur root"
-    exit $ERROR_CODE
-}
+is_user_root &&
 
 # import the repository key
-# see: https://wiki.postgresql.org/wiki/Apt (apt-key depreciated)
-curl https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo tee /etc/apt/trusted.gpg.d/apt.postgresql.org.gpg >/dev/null &&
+{
+    # see: https://wiki.postgresql.org/wiki/Apt (apt-key depreciated)
+    [ ! -f /etc/apt/trusted.gpg.d/apt.postgresql.org.gpg ] && {
+        curl https://www.postgresql.org/media/keys/ACCC4CF8.asc | tee /etc/apt/trusted.gpg.d/apt.postgresql.org.gpg >/dev/null
+
+        # see: https://askubuntu.com/questions/1176504/how-to-check-if-gpg-key-already-exist-with-bash-then-skip-downloading-adding
+    } || true
+} &&
 
 # add postgresql's repository
-echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list &&
+{
+    [ ! -f /etc/apt/sources.list.d/pgdg.list ] && {
+        echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+    } || true
+} &&
 
 # update
 apt update &&
@@ -30,12 +42,12 @@ apt update &&
     _package_list+=" gdal-bin" &&
     apt install "$_package_list"
 } || {
-    echo "erreur installation du package PostgreSql"
+    log_error "erreur installation du package PostgreSQL"
     exit $ERROR_CODE
 }
 
 # post-install
-if [ -n "$(which pg_lsclusters)" ]; then
+[ -n "$(which pg_lsclusters)" ] && {
     _nb_clusters=$(($(pg_lsclusters | wc -l) -1))
     [ $_nb_clusters -gt 1 ] &&
     log_info 'Plusieurs clusters PostgreSQL sont présents, lister les clusters avec pg_lsclusters, supprimer les clusters en trop avec pg_dropcluster, supprimer les binaires en trop'
@@ -48,7 +60,7 @@ if [ -n "$(which pg_lsclusters)" ]; then
     ([ -n "$_PG_VERSION_INSTALLEE" ] && [ "$_PG_VERSION_INSTALLEE" != "${_PG_VERSION}" ]) &&
     log_error "La version PostgreSQL ($_PG_VERSION_INSTALLEE) du cluster actif sur le port configuré ($_PG_PORT) est différente de la version configurée $($_PG_VERSION)" &&
     exit $ERROR_CODE
-fi
+}
 
 # custom config
 declare -A _params_postgresql=(

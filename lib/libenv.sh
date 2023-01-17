@@ -3,26 +3,17 @@
     #--
     # define ENV
 
-# echo "\$0: $(dirname $0)"
-# echo "realpath \$0: $(dirname $(realpath $0))"
-# echo "BASH_SOURCE: $(dirname ${BASH_SOURCE[0]})"
-_dir_lib=$(dirname ${BASH_SOURCE[0]})
-source $_dir_lib/librun.sh &&
-source $_dir_lib/libstd.sh || exit ${ERROR_CODE:-3}
+    # assume POW is correctly installed (w/ POW_DIR_ROOT defined)
+source $POW_DIR_ROOT/lib/librun.sh  &&
+source $POW_DIR_ROOT/lib/libstd.sh  &&
+source $POW_DIR_ROOT/lib/bashenv.sh || exit ${ERROR_CODE:-3}
 
 # best practices: see https://gist.github.com/outro56/4a2403ae8fefdeb832a5
 set -o pipefail
 
-# global config
-declare -A POW_CONF=(
-    [JAVA_HOME]=/usr/lib/jvm/default-java
-    [PG_DBNAME]=pow
-    [PG_VERSION]=15
-    [POSTGIS_VERSION]=3
-    [PG_PORT]=5432
-)
-
-# get value of config
+    ###
+    # get value of config (associative array POW_CONF defined into bashenv.sh)
+    #
 get_conf() {
     #bash_args \
     #    --args_p 'param:Code du paramètre' \
@@ -71,6 +62,9 @@ get_conf() {
     return $SUCCESS_CODE
 }
 
+    ###
+    # set parameter of config
+    #
 set_param_conf_file() {
     bash_args \
 		--args_p 'conf_file:Chemin complet vers le fichier de configuration;
@@ -147,6 +141,9 @@ set_param_conf_file() {
     echo "$_line_content" >> $conf_file && return $SUCCESS_CODE || return $ERROR_CODE
 }
 
+    ###
+    # set parameters of config
+    #
 set_params_conf_file() {
     bash_args \
 		--args_p 'conf_file:Chemin complet vers le fichier de configuration;
@@ -175,9 +172,25 @@ set_params_conf_file() {
             --param_separator "$param_separator" --param_is_multiple "$param_is_multiple" || return $ERROR_CODE
         ((_index_param_code++))
     done
+
     return $SUCCESS_CODE
 }
 
+    ###
+    # check mandatory root
+    #
+is_user_root() {
+    [ "$USER" != root ] && {
+        log_error "Ce script est à exécuter par l'utilisateur root"
+        return $ERROR_CODE
+    }
+
+    return $SUCCESS_CODE
+}
+
+    ###
+    # custom environment w/ defined schema
+    #
 set_env_dirs() {
     bash_args \
         --args_p 'schema_code:code applicatif du schéma à utiliser' \
@@ -185,22 +198,19 @@ set_env_dirs() {
         --args_d 'schema_code:public' \
         "$@" || return $ERROR_CODE
 
-    expect env POW_DIR_ROOT &&
-    expect env POW_DIR_DATA || return $ERROR_CODE
-
     # define DIRs
     local _dirs _dir
     declare -A _dirs
-    _dirs[dir_batch]="$POW_DIR_ROOT/bin/$get_arg_schema_code"
-    _dirs[dir_batch_admin]="$POW_DIR_ROOT/bin/admin"
-    _dirs[dir_batch_public]="$POW_DIR_ROOT/bin/public"
+    _dirs[POW_DIR_BATCH]="$POW_DIR_ROOT/bin/$get_arg_schema_code"
+    _dirs[POW_DIR_BATCH_ADMIN]="$POW_DIR_ROOT/bin/admin"
+    _dirs[POW_DIR_BATCH_PUBLIC]="$POW_DIR_ROOT/bin/public"
 
-    _dirs[dir_import]="$POW_DIR_DATA/import/$get_arg_schema_code"
-    _dirs[dir_export]="$POW_DIR_DATA/export/$get_arg_schema_code"
-    _dirs[dir_tmp]="$POW_DIR_DATA/tmp/$get_arg_schema_code"
-    _dirs[dir_archive]="$POW_DIR_DATA/archive/$get_arg_schema_code"
-    _dirs[dir_common_global]="$POW_DIR_DATA/common"
-    _dirs[dir_common_global_schema]="$POW_DIR_DATA/common/$get_arg_schema_code"
+    _dirs[POW_DIR_IMPORT]="$POW_DIR_DATA/import/$get_arg_schema_code"
+    _dirs[POW_DIR_EXPORT]="$POW_DIR_DATA/export/$get_arg_schema_code"
+    _dirs[POW_DIR_TMP]="$POW_DIR_DATA/tmp/$get_arg_schema_code"
+    _dirs[POW_DIR_ARCHIVE]="$POW_DIR_DATA/archive/$get_arg_schema_code"
+    _dirs[POW_DIR_COMMON_GLOBAL]="$POW_DIR_DATA/common"
+    _dirs[POW_DIR_COMMON_GLOBAL_SCHEMA]="$POW_DIR_DATA/common/$get_arg_schema_code"
 
     #declare -p _dirs
     for _dir in ${!_dirs[@]}; do

@@ -9,7 +9,7 @@ log() {
     #local status=$3
     local cmd_name="$(realpath $0)"
     local log_entry="$(date --utc +%FT%TZ)|$1|$$|${USER}|$cmd_name|$message"
-    echo $log_entry >> $dir_log/$file_log
+    echo $log_entry >> $POW_DIR_LOG/$POW_FILE_LOG
 
     return $SUCCESS_CODE
 }

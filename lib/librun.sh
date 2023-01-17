@@ -15,5 +15,5 @@ TRUE=1
 FALSE=0
 
 # log
-dir_log=/var/log/pow
-file_log=pow.log
+POW_DIR_LOG=/var/log/pow
+POW_FILE_LOG=pow.log
