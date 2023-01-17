@@ -39,6 +39,12 @@ bash_args \
             echo "manque dossier $POW_DIR_LOG"
             false
         }
+    } &&
+    expect env POW_USER && {
+        user_exists $POW_USER || {
+            echo "manque utilisateur $POW_USER"
+            false
+        }
     } || exit $ERROR_CODE
 }
 

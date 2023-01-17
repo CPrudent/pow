@@ -1,0 +1,20 @@
+#!/bin/bash
+
+    #--------------------------------------------------------------------------
+    # synopsis
+    #--
+    # build POW's environment
+
+source $POW_DIR_ROOT/lib/libenv.sh || exit ${ERROR_CODE:-3}
+
+is_user_root &&
+
+{
+    [ ! -d "$POW_DIR_LOG" ] && {
+        mkdir -p $POW_DIR_LOG || {
+            echo "souci création dossier $POW_DIR_LOG"
+            false
+        }
+    }
+} &&
+

@@ -189,6 +189,14 @@ is_user_root() {
 }
 
     ###
+    # check user exists
+    #
+user_exists() {
+    getent passwd $1 > /dev/null 2&>1
+    return $?
+}
+
+    ###
     # custom environment w/ defined schema
     #
 set_env_dirs() {
