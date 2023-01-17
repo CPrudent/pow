@@ -620,3 +620,32 @@ backup_file_as_uniq() {
     cp ${get_arg_path} ${get_arg_path}.backup.${_suffix}
     return $?
 }
+
+    ###
+    # get temporary file (w/ uniq name)
+    #
+get_tmp_file() {
+    bash_args \
+        --args_p '
+            tmpfile:Nom de la variable dans laquelles est retourné le chemin du fichier temporaire demandé;
+            tmpdir:Dossier temporaire dans lequel le fichier temporaire est demandé;
+            tmpext:Extension du fichier temporaire;
+            chmod:Permissions (rwx) à donner à ce fichier;
+            create:Créer le fichier temporaire' \
+        --args_o '
+            tmpfile' \
+        --args_v '
+            create:no|yes' \
+        --args_d '
+            tmpdir:'$POW_DIR_TMP';
+            tmpext:tmp;
+            chmod:666;
+            create:no' \
+        "$@" || return $ERROR_CODE
+
+    local _tmp_pow=$(mktemp --tmpdir=$get_arg_tmpdir pow_XXXXX.$get_arg_tmpext)
+    typeset -n _tmp_ref=$get_arg_tmpfile
+    [ $get_arg_create = 'no' ] && rm --force $_tmp_pow || chmod $get_arg_chmod $_tmp_pow
+    _tmp_ref=$_tmp_pow
+    return $SUCCESS_CODE
+}
