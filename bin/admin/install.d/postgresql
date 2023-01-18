@@ -88,8 +88,8 @@ if is_different --dir_a "/etc/postgresql/$_PG_VERSION/main" --dir_b "$_dir_tmp" 
 	cp /etc/postgresql/$_PG_VERSION/main/postgresql.conf $_dir_tmp/postgresql.conf.backup
 	cp /etc/postgresql/$_PG_VERSION/main/pg_hba.conf $_dir_tmp/pg_hba.conf.backup
 	#nouvelle configuration
-	cat $_dir_tmp/postgresql.conf > /etc/postgresql/$_PG_VERSION/main/postgresql.conf
-    cat $POW_DIR_ROOT/etc/postgresql/pg_hba.conf > /etc/postgresql/$_PG_VERSION/main/pg_hba.conf
+	cp $_dir_tmp/postgresql.conf /etc/postgresql/$_PG_VERSION/main/postgresql.conf
+    cp $POW_DIR_ROOT/etc/postgresql/pg_hba.conf /etc/postgresql/$_PG_VERSION/main/pg_hba.conf
 	#redémarrage du service
 	pg_ctlcluster $_PG_VERSION main restart || {
 		log_error "Erreur lors de la mise à jour de la configuration de PostgreSQL : retour arrière"
