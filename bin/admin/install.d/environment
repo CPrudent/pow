@@ -9,33 +9,47 @@ source $POW_DIR_ROOT/lib/libenv.sh || exit ${ERROR_CODE:-3}
 
 is_user_root &&
 
-# deal w/ log directory
+# create log directory
 {
     [ ! -d "$POW_DIR_LOG" ] && {
-        mkdir -p $POW_DIR_LOG || {
-            echo "souci création dossier $POW_DIR_LOG"
+        mkdir -p $POW_DIR_LOG &&
+        log_info 'initialisation des journaux de POW' || {
+            echo "souci dossier $POW_DIR_LOG"
             false
         }
     }
 } &&
 
+# get POW's environment (interactive or not)
 {
-    get_tmp_file --tmpfile _tmpfile &&
-    cat <<-EOC > $_tmpfile
+    {
+        get_tmp_file --tmpfile _tmpfile &&
+        # TODO: BASH_ENV already used (concat)
+        cat <<-EOC > $_tmpfile &&
 
-    ### add POW environment
-    set -o allexport &&
-    source $POW_DIR_ROOT/lib/libenv.sh &&
-    export BASH_ENV=$POW_DIR_ROOT/lib/bashenv.sh &&
-    set +o allexport
-    ###
-    EOC
+        ### POW environment (added on $(date '+%F %T'))
+        set -o allexport &&
+        source $POW_DIR_ROOT/lib/libenv.sh &&
+        export BASH_ENV=$POW_DIR_ROOT/lib/bashenv.sh &&
+        set_env_dirs --schema_code public &&
+        set +o allexport
+        ###
+EOC
 
-    _dir_home=$(getent passwd $POW_USER | cut --delimiter : --field 6)
-    _group=$(getent passwd $POW_USER | cut --delimiter : --field 4)
-    # TODO: field #7=shell
-    [ ! -f "$_dir_home/.bashrc" ] && {
-        touch "$_dir_home/.bashrc" && chown $POW_USER:$_group "$_dir_home/.bashrc"
+        _dir_home=$(getent passwd $POW_USER | cut --delimiter : --field 6) &&
+        _group=$(getent passwd $POW_USER | cut --delimiter : --field 4) && {
+            # TODO: take account of shell (field #7)
+            [ ! -f "$_dir_home/.bashrc" ] && {
+                touch "$_dir_home/.bashrc" && chown $POW_USER:$_group "$_dir_home/.bashrc"
+            } || true
+        } && {
+            grep '### POW environment' "$_dir_home/.bashrc" || cat $_tmpfile >> "$_dir_home/.bashrc"
+        } &&
+        rm $_tmpfile
+    } || {
+        log_error "gestion automatique de l'environnement de POW"
+        false
     }
-    grep '### add POW environment' "$_dir_home/.bashrc" || cat $_tmpfile >> "$_dir_home/.bashrc"
-}
+} || exit $ERROR_CODE
+
+exit $SUCCESS_CODE
