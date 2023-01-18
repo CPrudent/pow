@@ -54,7 +54,8 @@ for _script in $POW_DIR_ROOT/bin/admin/install.d/*; do
     [[ ! $_script =~ $get_arg_filter ]] &&
     continue
 
-    echo $_script
+    # execute it
+    $_script
 done
 
 exit $SUCCESS_CODE

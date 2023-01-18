@@ -3,31 +3,39 @@
     #--
     # define STD
 
+set_log_active() {
+    POW_LOG_ACTIVE=$@
+}
+
+set_log_echo() {
+	POW_LOG_ECHO=$@
+}
+
+[ -z "$POW_LOG_ACTIVE" ] && POW_LOG_ACTIVE=yes
+[ -z "$POW_LOG_ECHO" ] && POW_LOG_ECHO=yes
+
 log() {
     local severity=${1:-info}
     local message=$(echo $2 | tr \| \_)
     #local status=$3
     local cmd_name="$(realpath $0)"
     local log_entry="$(date --utc +%FT%TZ)|$1|$$|${USER}|$cmd_name|$message"
-    echo $log_entry >> $POW_DIR_LOG/$POW_FILE_LOG
+    [ "$POW_LOG_ECHO" = yes ] && echo $log_entry
+    [ "$POW_LOG_ACTIVE" = yes ] && echo $log_entry >> $POW_DIR_LOG/$POW_FILE_LOG
 
     return $SUCCESS_CODE
 }
 
 log_info() {
-    # pas de log ?
-    [[ "$log_info_messages" = no ]] && return 0
     log "info" "$1" "$2"
 
-    return $SUCCESS_CODE
+    return $?
 }
 
 log_error() {
-    # pas de log ?
-    [[ "$log_info_messages" = no ]] && return 0
     log "error" "$1" "$2"
 
-    return $SUCCESS_CODE
+    return $?
 }
 
 # getopts improved (w/ list of values, default value, ...)
