@@ -1,0 +1,23 @@
+#!/bin/bash
+
+    #--------------------------------------------------------------------------
+    # synopsis
+    #--
+    # config logrotate
+
+source $POW_DIR_ROOT/lib/libenv.sh || exit ${ERROR_CODE:-3}
+
+is_user_root &&
+
+{
+	log_info "Copie configuration logrotate POW" &&
+	cp $POW_DIR_ROOT/etc/logrotate/pow /etc/logrotate.d/pow &&
+
+	log_info "Changement des horaires des crontab pour éviter les logs tronqués du matin" &&
+	sed -i -- 's/25 6/1 0/' /etc/crontab &&
+	sed -i -- 's/47 6/5 0/' /etc/crontab &&
+	sed -i -- 's/52 6/10 0/' /etc/crontab
+} || exit $ERROR_CODE
+
+exit $SUCCESS_CODE
+

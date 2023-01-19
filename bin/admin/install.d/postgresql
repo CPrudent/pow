@@ -12,10 +12,23 @@ is_user_root &&
 # import the repository key
 {
     # see: https://wiki.postgresql.org/wiki/Apt (apt-key depreciated)
+    # https://askubuntu.com/questions/1176504/how-to-check-if-gpg-key-already-exist-with-bash-then-skip-downloading-adding
     [ ! -f /etc/apt/trusted.gpg.d/apt.postgresql.org.gpg ] && {
-        curl https://www.postgresql.org/media/keys/ACCC4CF8.asc | tee /etc/apt/trusted.gpg.d/apt.postgresql.org.gpg >/dev/null
+        curl https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor | tee /etc/apt/trusted.gpg.d/apt.postgresql.org.gpg >/dev/null
 
-        # see: https://askubuntu.com/questions/1176504/how-to-check-if-gpg-key-already-exist-with-bash-then-skip-downloading-adding
+        # need to be converted !
+        # manually realized (solution 1)
+        # cd /etc/apt/trusted.gpg.d/
+        # gpg --no-default-keyring --keyring ./postgresql.gpg --import ./apt.postgresql.org.gpg
+        # gpg --no-default-keyring --keyring ./postgresql.gpg --export > ./apt.postgresql.org.gpg
+        # rm ./postgresql.gpg*
+        # TODO automatize the converion
+
+        # solution 1
+        # https://stackoverflow.com/questions/51300627/apt-rejects-keyrings-in-etc-apt-trusted-gpg-d-on-ubuntu-18-04
+
+        # solution 2
+        # https://stackoverflow.com/questions/62200848/how-do-i-get-gpg-to-generate-a-gpg-key-public-ring-rather-than-a-keybox
     } || true
 } &&
 
@@ -40,7 +53,8 @@ apt update &&
     _package_list+=" postgresql-${_PG_VERSION}-postgis-${_POSTGIS_VERSION}" &&
     _package_list+=" postgresql-${_PG_VERSION}-postgis-${_POSTGIS_VERSION}-scripts" &&
     _package_list+=" gdal-bin" &&
-    apt install "$_package_list"
+
+    apt install $_package_list
 } || {
     log_error "erreur installation du package PostgreSQL"
     exit $ERROR_CODE
@@ -107,8 +121,9 @@ rm -r $_dir_tmp
 $_pg_bin_dir/psql -U postgres -d $_PG_DBNAME -p $_PG_PORT -c "SELECT 1" > /dev/null || {
     log_info "Création du tablespace et de la base de données $_PG_DBNAME"
     mkdir -p $POW_DIR_DATA/postgresql/data &&
-    chown postgres:postgres $POW_DIR_DATA/postgresql/data &&
-    $_pg_bin_dir/psql -U postgres -p $_PG_PORT -c "CREATE TABLESPACE ${_PG_DBNAME}_tablespace LOCATION "'"'"$POW_DIR_DATA/postgresql/data"'"'"" &&
+    chown -R postgres:postgres $POW_DIR_DATA/postgresql &&
+    chmod go-rx $POW_DIR_DATA/postgresql &&
+    $_pg_bin_dir/psql -U postgres -p $_PG_PORT -c "CREATE TABLESPACE ${_PG_DBNAME}_tablespace LOCATION '$POW_DIR_DATA/postgresql/data'" &&
     $_pg_bin_dir/psql -U postgres -p $_PG_PORT -c "CREATE DATABASE $_PG_DBNAME TABLESPACE ${_PG_DBNAME}_tablespace" &&
     su --login postgres --command="$_pg_bin_dir/psql -p $_PG_PORT -c \"ALTER USER postgres WITH ENCRYPTED PASSWORD 'md5c375a6ae9835e94d95d46481b49b6e9a' VALID UNTIL 'infinity';\"" &&
     su --login postgres --command="$_pg_bin_dir/psql -p $_PG_PORT -c 'GRANT ALL PRIVILEGES ON DATABASE \"${_PG_DBNAME}\" TO postgres;'" &&
