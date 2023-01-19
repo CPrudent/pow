@@ -4,24 +4,25 @@
     # define STD
 
 set_log_active() {
-    POW_LOG_ACTIVE=$@
+    POW_LOG_ACTIVE=$1
 }
 
 set_log_echo() {
-	POW_LOG_ECHO=$@
+	POW_LOG_ECHO=$1
 }
 
-[ -z "$POW_LOG_ACTIVE" ] && POW_LOG_ACTIVE=yes
-[ -z "$POW_LOG_ECHO" ] && POW_LOG_ECHO=yes
+[ ! -f "$POW_DIR_LOG/$POW_LOG_FILE" ] && set_log_active no
+[ -z "$POW_LOG_ACTIVE" ] && set_log_active yes
+[ -z "$POW_LOG_ECHO" ] && set_log_echo yes
 
 log() {
     local severity=${1:-info}
     local message=$(echo $2 | tr \| \_)
-    #local status=$3
+    local status=$3
     local cmd_name="$(realpath $0)"
     local log_entry="$(date --utc +%FT%TZ)|$1|$$|${USER}|$cmd_name|$message"
     [ "$POW_LOG_ECHO" = yes ] && echo $log_entry
-    [ "$POW_LOG_ACTIVE" = yes ] && echo $log_entry >> $POW_DIR_LOG/$POW_FILE_LOG
+    [ "$POW_LOG_ACTIVE" = yes ] && echo $log_entry >> $POW_DIR_LOG/$POW_LOG_FILE
 
     return $SUCCESS_CODE
 }

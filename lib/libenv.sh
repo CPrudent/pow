@@ -209,8 +209,6 @@ set_env_dirs() {
     # define DIRs
     local _dirs _dir
     declare -A _dirs
-    # not export
-    export -n get_arg_schema_code
 
     _dirs[POW_DIR_BATCH]="$POW_DIR_ROOT/bin/$get_arg_schema_code"
     _dirs[POW_DIR_BATCH_ADMIN]="$POW_DIR_ROOT/bin/admin"

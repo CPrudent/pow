@@ -7,7 +7,6 @@
 
 source $POW_DIR_ROOT/lib/libenv.sh || exit ${ERROR_CODE:-3}
 
-set_log_active no
 is_user_root &&
 
 # POW's user
@@ -34,7 +33,6 @@ is_user_root &&
         }
     }
 } &&
-set_log_active yes &&
 # get POW's environment (interactive or not)
 {
     {
@@ -46,8 +44,8 @@ set_log_active yes &&
 set -o allexport &&
 source $POW_DIR_ROOT/lib/libenv.sh &&
 export BASH_ENV=$POW_DIR_ROOT/lib/bashenv.sh &&
-set_env_dirs --schema_code public &&
-set +o allexport
+set +o allexport &&
+set_env_dirs --schema_code public
 ###
 EOC
         {
