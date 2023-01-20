@@ -745,6 +745,6 @@ is_yes() {
 
     local -n _var_ref=$get_arg_var
 
-    [[ $_var_ref =~ ^(yes|YES|y|Y|oui|OUI|o|O|ok|OK|true|TRUE)$ ]] && return $SUCCESS_CODE
+    [[ $_var_ref =~ ^(yes|YES|y|Y|oui|OUI|o|O|ok|OK|t|T|true|TRUE)$ ]] && return $SUCCESS_CODE
     return $ERROR_CODE
 }
