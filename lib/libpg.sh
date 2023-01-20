@@ -51,7 +51,7 @@ execute_query() {
         done
     }
 
-    is_yes --var $get_arg_with_log && log_info "Lancement de l'exécution $_info $_log"
+    is_yes --var get_arg_with_log && log_info "Lancement de l'exécution $_info $_log"
     env PGPASSWORD=$POW_PG_PASSWORD PGOPTIONS='-c client_min_messages=NOTICE' $POW_DIR_PG_BIN/psql \
         --host $POW_PG_HOST \
         --port $POW_PG_PORT \
@@ -63,7 +63,7 @@ execute_query() {
         $_opt "$get_arg_query" \
         --output $_log_tmp_path 2> $_log_notice_tmp_path
     _rc=$?
-    is_yes --var $get_arg_with_log && {
+    is_yes --var get_arg_with_log && {
         grep --extended-regexp --invert-match 'ATTENTION:|NOTICE:|DÉTAIL : |DROP cascade sur ' $_log_notice_tmp_path >> $_log_error_tmp_path
         sed --in-place --expression '/^NOTICE:  la relation « [^ ]* » existe déjà/d' $_log_notice_tmp_path
         archive_file $_log_tmp_path
@@ -74,18 +74,18 @@ execute_query() {
     }
     [ $_rc -ne 0 ] && {
         local _msg="Erreur lors de l'exécution de $_log"
-        is_yes --var $get_arg_with_log && _msg+=", veuillez consulter $_log_error_archive_path"
+        is_yes --var get_arg_with_log && _msg+=", veuillez consulter $_log_error_archive_path"
         log_error "$_msg"
         return $ERROR_CODE
     }
-    is_yes --var $get_arg_with_log && {
+    is_yes --var get_arg_with_log && {
         get_elapsed_time --start $_start --result _last
         log_info "Exécution avec succès de $_log en $_last"
     }
     # requested result of SELECT
     [ -n "$get_arg_return" ] && {
         local -n _select_ref=$get_arg_return
-        _select_ref=$(< "$POW_DIR_ARCHIVE/$_log_tmp_path")
+        _select_ref=$(< "$POW_DIR_ARCHIVE/$_log.log")
     }
 
     return $SUCCESS_CODE
