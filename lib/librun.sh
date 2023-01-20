@@ -16,4 +16,4 @@ FALSE=0
 
 # log
 POW_DIR_LOG=/var/log/pow
-POW_FILE_LOG=pow.log
+POW_LOG_FILE=pow.log

@@ -24,8 +24,8 @@ is_user_root &&
 {
     [ ! -d "$POW_DIR_LOG" ] && {
         mkdir -p $POW_DIR_LOG &&
-        touch $POW_DIR_LOG/$POW_FILE_LOG &&
-        chown $POW_USER:$_group $POW_DIR_LOG/$POW_FILE_LOG &&
+        touch $POW_DIR_LOG/$POW_LOG_FILE &&
+        chown $POW_USER:$_group $POW_DIR_LOG/$POW_LOG_FILE &&
         set_log_active yes &&
         log_info 'initialisation des journaux de POW' || {
             echo "souci dossier $POW_DIR_LOG"
