@@ -5,7 +5,8 @@
 
     ###
     # execute query (from file or command line)
-    #
+    # samples:
+    # execute_query --name GET_VERSION --query 'select version()' --psql_arguments 'tuples-only:pset=format=unaligned' --return _pg_version
 execute_query() {
     bash_args \
         --args_p '
@@ -91,124 +92,58 @@ execute_query() {
     return $SUCCESS_CODE
 }
 
-execute_sql_file() {
-    local startTime=$(date +%s)
-    local file_path=$1
-
-    expect file $file_path || return $ERROR_CODE
-
-    local psql_arguments=$2
-    local file_name=$(basename $file_path)
-    local log_tmp_path=$POW_DIR_TMP/$file_name.log
-    local log_notice_tmp_path=$POW_DIR_TMP/$file_name.notice.log
-    local log_error_tmp_path=$POW_DIR_TMP/$file_name.error.log
-    local log_error_archive_path=$POW_DIR_ARCHIVE/$file_name.error.log
-
-    log_info "Lancement de l'exécution du fichier $file_name"
-    env PGPASSWORD=$pg_password PGOPTIONS='-c client_min_messages=NOTICE' "$pg_bin_dir/psql" --host $pg_final_host --port $pg_final_port --username $pg_username --dbname $pg_dbname --variable ON_ERROR_STOP=1 --variable lco_env=\'$ENV\' --no-password $psql_arguments --file $file_path --output $log_tmp_path 2> $log_notice_tmp_path
-    retour_psql=$?
-    grep -E -v 'ATTENTION:|NOTICE:|DÉTAIL : |DROP cascade sur ' $log_notice_tmp_path >> $log_error_tmp_path
-    sed -e '/^NOTICE:  la relation « [^ ]* » existe déjà/d' $log_notice_tmp_path
-
-    archive_file $log_tmp_path
-    archive_file $log_notice_tmp_path
-    archive_file $log_error_tmp_path
-
-    #if [ -s $log_error_archive_path ]; then
-    if [ $retour_psql -ne 0 ]; then
-        log_error "Erreur lors de l'exécution de $file_name, veuillez consulter $log_error_archive_path"
-        return $ERROR_CODE
-    fi
-
-    local endTime=$(date +%s)
-    local elapsedTime="$((($endTime-$startTime)/3600))h:$((($endTime-$startTime)%3600/60))m:$((($endTime-$startTime)%60))s"
-    log_info "Exécution avec succès de $file_name en $elapsedTime"
-    return $SUCCESS_CODE
-}
-
-    # exécuter une commande SQL
-execute_sql_command() {
-    local startTime=$(date +%s)
-    local sql_command_name=$1
-    local sql_command=$2
-    local psql_arguments=$3
-    local psql_output=$4
-
-    local log_tmp_path=$POW_DIR_TMP"/"$sql_command_name".log"
-    local log_notice_tmp_path=$POW_DIR_TMP"/"$sql_command_name".notice.log"
-    local log_error_tmp_path=$POW_DIR_TMP"/"$sql_command_name".error.log"
-    local log_error_archive_path=$POW_DIR_ARCHIVE"/"$sql_command_name".error.log"
-
-    [ -z "$psql_output" ] && psql_output=$log_tmp_path || touch $log_tmp_path
-
-    log_info "Lancement de l'exécution de la commande SQL $sql_command_name"
-    env PGPASSWORD=$pg_password PGOPTIONS='-c client_min_messages=NOTICE' "$pg_bin_dir/psql" --host $pg_final_host --port $pg_final_port --username $pg_username --dbname $pg_dbname --variable ON_ERROR_STOP=1 --variable lco_env=\'$ENV\' --no-password $psql_arguments --command "$sql_command" --output $psql_output 2> $log_notice_tmp_path
-    retour_psql=$?
-    grep -E -v 'ATTENTION:|NOTICE:|DÉTAIL : |DROP cascade sur ' $log_notice_tmp_path > $log_error_tmp_path
-
-    archive_file $log_tmp_path
-    archive_file $log_notice_tmp_path
-    archive_file $log_error_tmp_path
-
-    #if [ -s $log_error_archive_path ]; then
-    if [ $retour_psql -ne 0 ]; then
-        log_error "Erreur lors de la commande SQL $sql_command_name, veuillez consulter $log_error_archive_path"
-        return $ERROR_CODE
-    fi
-
-    local endTime=$(date +%s)
-    local elapsedTime="$((($endTime-$startTime)/3600))h:$((($endTime-$startTime)%3600/60))m:$((($endTime-$startTime)%60))s"
-    log_info "Exécution avec succès de la commande SQL $sql_command_name en $elapsedTime"
-
-    return $SUCCESS_CODE
-}
-
-# exécuter une commande SQL sans log sql ni temps passé
-# TODO : revoir à faire une seule fonction execute_sql_command avec bash_args ?
-execute_sql_command_basic() {
-    local sql_command_name=$1
-    local sql_command=$2
-    local psql_arguments=$3
-    local _log
-    [ -n "$BCAA_DEBUG" ] && _log=$POW_DIR_TMP/execute_sql_command_basic.log || _log=/dev/null
-
-    env PGPASSWORD=$pg_password PGOPTIONS='-c client_min_messages=NOTICE' $pg_bin_dir/psql --host $pg_final_host --port $pg_final_port --username $pg_username --dbname $pg_dbname --variable ON_ERROR_STOP=1 --variable lco_env=\'$ENV\' --no-password $psql_arguments --command "$sql_command" 2>> $_log || {
-        log_error "Erreur lors de la commande SQL $sql_command_name"
-        return $ERROR_CODE
-    }
-    return $SUCCESS_CODE
-}
-
-execute_sql_select() {
-	get_execute_sql_select=
-	execute_sql_command "$1" "$2" "$3 --tuples-only --pset=format=unaligned" "$POW_DIR_TMP/$1.output" || return $ERROR_CODE
-	get_execute_sql_select=$(< "$POW_DIR_TMP/$1.output")
-	rm $POW_DIR_TMP/$1.output
-	return $SUCCESS_CODE
-}
-
-#version avec appel à execute_sql_command_basic pour éviter la création de log trop importants
-# TODO : revoir à faire une seule fonction execute_sql_select avec bash_args ?
-execute_sql_select_basic() {
-	get_execute_sql_select=
-	get_execute_sql_select=$(execute_sql_command_basic "$1" "$2" "$3 --tuples-only --pset=format=unaligned") || return $ERROR_CODE
-	return $SUCCESS_CODE
-}
-
+    ###
+    # check if table exists
+    #
 table_exists() {
-	execute_sql_select_basic "TABLE_EXISTS_${1}_${2}" "SELECT table_exists('$1','$2') OR view_exists('$1','$2')" || return $ERROR_CODE
-	if [ $get_execute_sql_select = 't' ]; then
-		return $SUCCESS_CODE
-	else
-		return $ERROR_CODE
-	fi
+    bash_args \
+        --args_p '
+            schema:schéma PG;
+            table:nom de la table
+        ' \
+        --args_o '
+            table
+        ' \
+        --args_d '
+            schema:public
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local _exists _rc=$ERROR_CODE
+    execute_query \
+        --name "TABLE_EXISTS_${get_arg_schema}_${get_arg_table}" \
+        --query "SELECT table_exists('${get_arg_schema}', '${get_arg_table}')" \
+        --psql_arguments 'tuples-only:pset=format=unaligned' \
+        --return _exists || return $ERROR_CODE
+    is_yes --var _exists && _rc=$SUCCESS_CODE
+
+    return $_rc
 }
 
+    ###
+    # check if view exists
+    #
 view_exists() {
-	execute_sql_select_basic "VIEW_EXISTS_${1}_${2}" "SELECT view_exists('$1','$2')" || return $ERROR_CODE
-	if [ $get_execute_sql_select = 't' ]; then
-		return $SUCCESS_CODE
-	else
-		return $ERROR_CODE
-	fi
+    bash_args \
+        --args_p '
+            schema:schéma PG;
+            view:nom de la vue
+        ' \
+        --args_o '
+            view
+        ' \
+        --args_d '
+            schema:public
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local _exists _rc=$ERROR_CODE
+    execute_query \
+        --name "VIEW_EXISTS_${get_arg_schema}_${get_arg_table}" \
+        --query "SELECT view_exists('${get_arg_schema}', '${get_arg_table}')" \
+        --psql_arguments 'tuples-only:pset=format=unaligned' \
+        --return _exists || return $ERROR_CODE
+    is_yes --var _exists && _rc=$SUCCESS_CODE
+
+    return $_rc
 }
