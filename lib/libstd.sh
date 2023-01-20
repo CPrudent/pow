@@ -663,14 +663,17 @@ get_tmp_file() {
     # item in array
     # https://stackoverflow.com/questions/8082947/how-to-pass-an-array-to-a-bash-function
     # optional 3rd argument gives ID of searched item, as: in_array ARRAY STR_TO_SEARCH ID
+    #
+    # another solution w/ print
+    # https://stackoverflow.com/questions/3685970/check-if-a-bash-array-contains-a-value
 in_array() {
     local _ref=$1[@]
-        # gestion espace dans l'élément
     local _array=("${!_ref}")
     local _rc=1 _i _return_id=0
     [ $# -eq 3 ] && {
         _return_id=1
         local -n _id_ref=$3
+        [ "$3" = _i ] && log_error "retour indice vers _i (en conflit avec local _i) : changer le nom"
     }
     for ((_i=0; _i < ${#_array[@]}; _i++)); do
         #echo "$_i: ${_array[$_i]}"

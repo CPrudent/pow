@@ -203,7 +203,7 @@ _set_pg_env() {
         --args_d 'schema_code:public' \
         "$@" || return $ERROR_CODE
 
-    local _std=(admin public rao ban) _pg
+    local _std=(admin public rao ban)
     in_array _std "$get_arg_schema_code" && {
         POW_PG_USERNAME=postgres
         POW_PG_PASSWORD=pgpow+123
