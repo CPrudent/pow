@@ -658,3 +658,27 @@ get_tmp_file() {
     _tmp_ref=$_tmp_pow
     return $SUCCESS_CODE
 }
+
+    ###
+    # item in array
+    # https://stackoverflow.com/questions/8082947/how-to-pass-an-array-to-a-bash-function
+    # optional 3rd argument gives ID of searched item, as: in_array ARRAY STR_TO_SEARCH ID
+in_array() {
+    local _ref=$1[@]
+        # gestion espace dans l'élément
+    local _array=("${!_ref}")
+    local _rc=1 _i _return_id=0
+    [ $# -eq 3 ] && {
+        _return_id=1
+        local -n _id_ref=$3
+    }
+    for ((_i=0; _i < ${#_array[@]}; _i++)); do
+        #echo "$_i: ${_array[$_i]}"
+        [ "${_array[$_i]}" = "$2" ] && {
+            _rc=0
+            break
+        }
+    done
+    [ $_return_id -eq 1 ] && [ $_i -lt ${#_array[@]} ] && _id_ref=$_i
+    return $_rc
+}

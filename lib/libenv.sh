@@ -196,13 +196,93 @@ user_exists() {
     return $?
 }
 
+    # initialize PostgreSQL's context (user, passwd, default_schema)
+_set_pg_env() {
+    bash_args \
+        --args_p 'schema_code:code applicatif du schéma à utiliser' \
+        --args_d 'schema_code:public' \
+        "$@" || return $ERROR_CODE
+
+    local _std=(admin public rao ban) _pg
+    in_array _std "$get_arg_schema_code" && {
+        POW_PG_USERNAME=postgres
+        POW_PG_PASSWORD=pgpow+123
+        POW_PG_DEFAULT_SCHEMA=public
+    } || {
+        POW_PG_USERNAME=$get_arg_schema_code
+        POW_PG_PASSWORD=pg${get_arg_schema_code}+123
+        POW_PG_DEFAULT_SCHEMA=$get_arg_schema_code
+    }
+
+    POW_PG_DBNAME=$(get_conf PG_DBNAME)
+    # path outils (psql, pg_dump, pg_restore, ...)
+    POW_DIR_PG_BIN="/usr/lib/postgresql/$(get_conf PG_VERSION)/bin"
+    #PGPASSWORD=$pg_password
+    export POW_PG_DBNAME POW_DIR_PG_BIN POW_PG_USERNAME POW_PG_PASSWORD POW_PG_DEFAULT_SCHEMA
+
+    return $SUCCESS_CODE
+}
+
     ###
-    # custom environment w/ defined schema
+    # custom PostgreSQL's context (w/ given schema)
+    #
+set_env_pg() {
+    bash_args \
+        --args_p '
+            schema_code:code applicatif du schéma à utiliser;
+            host:Hostname du moteur PostgreSQL;
+            port:Port IP du moteur PostgreSQL;
+            reset:Réinitialise les valeurs par défaut;
+            print:Affichage du contexte
+        ' \
+        --args_v '
+            reset:no|yes;
+            print:no|yes
+        ' \
+        --args_d '
+            reset:no;
+            print:no;
+            schema_code:public
+        ' \
+        "$@" || return $ERROR_CODE
+
+    [ "$get_arg_print" = yes ] && {
+        echo "POW's PostgreSQL context"
+        echo -e "\thost:port=(${POW_PG_HOST}:${POW_PG_PORT})"
+        echo -e "\tuser/pass=(${POW_PG_USERNAME}/${POW_PG_PASSWORD})"
+        echo -e "\tdefault_schema=$POW_PG_DEFAULT_SCHEMA"
+
+        return $SUCCESS_CODE
+    }
+
+    [ "$get_arg_reset" = yes ] && {
+        POW_PG_HOST=
+        POW_PG_PORT=
+    }
+
+    # initialize from argument (or default value)
+    [ -n "$get_arg_host" ] && POW_PG_HOST=$get_arg_host || {
+        [ -z "$POW_PG_HOST" ] && POW_PG_HOST=localhost
+    }
+    [ -n "$get_arg_port" ] && POW_PG_PORT=$get_arg_port || {
+        [ -z "$POW_PG_PORT" ] && POW_PG_PORT=$(get_conf PG_PORT)
+    }
+
+    _set_pg_env --schema_code $get_arg_schema_code &&
+    export POW_PG_HOST POW_PG_PORT || {
+        log_error 'contexte PostgreSQL'
+        return $ERROR_CODE
+    }
+
+    return $SUCCESS_CODE
+}
+
+    ###
+    # custom Host's environment (w/ given schema)
     #
 set_env_dirs() {
     bash_args \
         --args_p 'schema_code:code applicatif du schéma à utiliser' \
-        --args_o 'schema_code' \
         --args_d 'schema_code:public' \
         "$@" || return $ERROR_CODE
 
@@ -230,6 +310,24 @@ set_env_dirs() {
 
         export "$_dir=${_dirs[$_dir]}"
     done
+
+    return $SUCCESS_CODE
+}
+
+    ###
+    # custom POW's environment (w/ given schema)
+    #
+set_env() {
+    bash_args \
+        --args_p 'schema_code:code applicatif du schéma à utiliser' \
+        --args_d 'schema_code:public' \
+        "$@" || return $ERROR_CODE
+
+    set_env_dirs --schema_code $get_arg_schema_code &&
+    set_env_pg --schema_code $get_arg_schema_code || {
+        log_error 'contexte POW'
+        return $ERROR_CODE
+    }
 
     return $SUCCESS_CODE
 }
