@@ -6,10 +6,8 @@
     # assume POW is correctly installed (w/ POW_DIR_ROOT defined)
 source $POW_DIR_ROOT/lib/librun.sh  &&
 source $POW_DIR_ROOT/lib/libstd.sh  &&
+source $POW_DIR_ROOT/lib/libpg.sh   &&
 source $POW_DIR_ROOT/lib/bashenv.sh || exit ${ERROR_CODE:-3}
-
-# best practices: see https://gist.github.com/outro56/4a2403ae8fefdeb832a5
-set -o pipefail
 
     ###
     # get value of config (associative array POW_CONF defined into bashenv.sh)
@@ -176,26 +174,6 @@ set_params_conf_file() {
     return $SUCCESS_CODE
 }
 
-    ###
-    # check mandatory root
-    #
-is_user_root() {
-    [ "$USER" != root ] && {
-        log_error "Ce script est à exécuter par l'utilisateur root"
-        return $ERROR_CODE
-    }
-
-    return $SUCCESS_CODE
-}
-
-    ###
-    # check user exists
-    #
-user_exists() {
-    getent passwd $1 > /dev/null 2&>1
-    return $?
-}
-
     # initialize PostgreSQL's context (user, passwd, default_schema)
 _set_pg_env() {
     bash_args \
@@ -297,7 +275,7 @@ set_env_dirs() {
     _dirs[POW_DIR_IMPORT]="$POW_DIR_DATA/import/$get_arg_schema_code"
     _dirs[POW_DIR_EXPORT]="$POW_DIR_DATA/export/$get_arg_schema_code"
     _dirs[POW_DIR_TMP]="$POW_DIR_DATA/tmp/$get_arg_schema_code"
-    _dirs[POW_DIR_ARCHIVE]="$POW_DIR_DATA/archive/$get_arg_schema_code"
+    _dirs[POW_DIR_ARCHIVE]="$POW_DIR_DATA/archive/$get_arg_schema_code/$(date +%Y%m%d-%T)"
     _dirs[POW_DIR_COMMON_GLOBAL]="$POW_DIR_DATA/common"
     _dirs[POW_DIR_COMMON_GLOBAL_SCHEMA]="$POW_DIR_DATA/common/$get_arg_schema_code"
 
@@ -330,4 +308,14 @@ set_env() {
     }
 
     return $SUCCESS_CODE
+}
+
+    ###
+    # archive file (log, ...)
+    #
+archive_file() {
+    expect file "$1" || return $ERROR_CODE
+	[ ! -d $POW_DIR_ARCHIVE ] && mkdir -p $POW_DIR_ARCHIVE
+	mv --force "$1" $POW_DIR_ARCHIVE/$(basename "$1")
+	return $?
 }

@@ -3,6 +3,9 @@
     #--
     # define STD
 
+# best practices: see https://gist.github.com/outro56/4a2403ae8fefdeb832a5
+set -o pipefail
+
 set_log_active() {
     POW_LOG_ACTIVE=$1
 }
@@ -397,17 +400,16 @@ file_is_binary() {
 }
 
     ###
-    # envoi mail
+    # send mail
     #
-    # exemples:
-    #  texte du message contenu dans un fichier
-    #  send_mail --subject 'test MAIL body as file' --body ./test_send_mail.txt --attachment "data.txt.gz,full2part.txt.gz" --to christophe.prudent@laposte.fr
-    #  texte du message en option de la ligne de commande
-    #  send_mail --subject 'test MAIL body as text' --body 'test envoi message' --attachment "data.txt.gz,full2part.txt.gz" --to christophe.prudent@laposte.fr
+    # message from a file
+    #  send_mail --subject 'test MAIL body as file' --body ./test_send_mail.txt --attachment "data.txt.gz,full2part.txt.gz" --to <mail>
+    # message from command line
+    #  send_mail --subject 'test MAIL body as text' --body 'test envoi message' --attachment "data.txt.gz,full2part.txt.gz" --to <mail>
     #
-    #  l'argument d'encodage (--encoding) permet de changer le jeu de caractères (UTF8 vers ?), à priori LATIN1 (Windows)
+    # argument --encoding to convert (UTF8 to LATIN1 (Windows))
     #
-    # liens utiles
+    # see:
     #  https://stackoverflow.com/questions/5395082/how-to-send-html-body-email-with-multiple-text-attachments-using-sendmail
     #
 send_mail() {
@@ -684,4 +686,65 @@ in_array() {
     done
     [ $_return_id -eq 1 ] && [ $_i -lt ${#_array[@]} ] && _id_ref=$_i
     return $_rc
+}
+
+    ###
+    # eval duration of treatment (w/ its beginning)
+    #
+get_elapsed_time() {
+    bash_args \
+        --args_p '
+            start:Horodatage du début de traitement;
+            result:Durée calculée
+        ' \
+        --args_o '
+            start;
+            result
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local -n _result_ref=$get_arg_result
+    local _end=$(date +%s)
+    _result_ref="$((($_end-$get_arg_start)/3600))h:$((($_end-$get_arg_start)%3600/60))m:$((($_end-$get_arg_start)%60))s"
+
+    return $SUCCESS_CODE
+}
+
+    ###
+    # check mandatory root
+    #
+is_user_root() {
+    [ "$USER" != root ] && {
+        log_error "Ce script est à exécuter par l'utilisateur root"
+        return $ERROR_CODE
+    }
+
+    return $SUCCESS_CODE
+}
+
+    ###
+    # check user exists
+    #
+user_exists() {
+    getent passwd $1 > /dev/null 2&>1
+    return $?
+}
+
+    ###
+    # OK if var contains a Yes value
+    #
+is_yes() {
+    bash_args \
+        --args_p '
+            var:Variable à tester
+        ' \
+        --args_o '
+            var
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local -n _var_ref=$get_arg_var
+
+    [[ $_var_ref =~ ^(yes|YES|y|Y|oui|OUI|o|O|ok|OK|true|TRUE)$ ]] && return $SUCCESS_CODE
+    return $ERROR_CODE
 }
