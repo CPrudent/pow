@@ -748,3 +748,50 @@ is_yes() {
     [[ $_var_ref =~ ^(yes|YES|y|Y|oui|OUI|o|O|ok|OK|t|T|true|TRUE)$ ]] && return $SUCCESS_CODE
     return $ERROR_CODE
 }
+
+wait_for_file() {
+    bash_args	\
+        --args_p '
+            file_path:chemin complet vers le fichier attendu;
+            wait_file_minute:combien de temps en minutes faut-il attendre que le fichier soit présent ?;
+            max_age_file_minute:quel age maximum en minutes doit avoir le fichier ?
+        ' \
+        --args_o 'file_path' \
+        --args_d 'wait_file_minute:0;max_age_file_minute:0' \
+        "$@" || return $ERROR_CODE
+
+    local file_path=$get_arg_file_path
+    local wait_file_minute=$get_arg_wait_file_minute
+    local max_age_file_minute=$get_arg_max_age_file_minute
+
+    # waiting delay
+    # AND
+    #   file not available
+    #   OR
+    #   present file is too old
+    while [ $wait_file_minute -gt 0 ] && { [ ! -f $file_path ] || ([ $max_age_file_minute -gt 0 ] && [ $(find $file_path -mmin +$max_age_file_minute) ]) }; do
+        echo "En attente du fichier $file_path (temps restant : $wait_file_minute minutes, age maximum du fichier : $max_age_file_minute minutes, fichier présent mais trop ancien : $([ -f $file_path ] && echo 'oui' || echo 'non'))"
+        sleep 60
+        ((wait_file_minute--))
+    done
+
+    if [ -f $file_path ]; then
+        # older ?
+        [ $max_age_file_minute -gt 0 ] && [ $(find $file_path -mmin +$max_age_file_minute) ] && log_error "Le fichier $file_path est présent mais trop ancien et l'éventuel temps d'attente est dépassé" && return $ERROR_CODE
+
+        # not currently growing?
+        file_size_before=$(stat --printf="%s" $file_path)
+        sleep 5
+        file_size_after=$(stat --printf="%s" $file_path)
+        while [ "$file_size_before" != "$file_size_after" ]; do
+            echo "La taille du fichier $file_path a changée, attente de 5 secondes supplémentaires"
+            file_size_before=$file_size_after
+            sleep 5
+            file_size_after=$(stat --printf="%s" $file_path)
+        done
+    else
+        echo "Le fichier $file_path n'est pas présent et l'éventuel temps d'attente est dépassé" && return $ERROR_CODE
+    fi
+
+    return $SUCCESS_CODE
+}
