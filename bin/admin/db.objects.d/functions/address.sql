@@ -55,7 +55,7 @@ $func$ LANGUAGE plpgsql;
 -- greatest gap between serie of number(s)
 SELECT drop_all_functions_if_exists('public','get_greatest_gap');
 CREATE OR REPLACE FUNCTION public.get_greatest_gap(
-    in_ar_suite_entiers IN INTEGER[]
+    _numbers IN INTEGER[]
     )
 RETURNS INTEGER AS
 $func$
@@ -64,7 +64,7 @@ DECLARE
     _number INTEGER;
     _previous_number INTEGER;
 BEGIN
-    FOREACH _number IN ARRAY in_ar_suite_entiers LOOP
+    FOREACH _number IN ARRAY _numbers LOOP
         -- not the first && not null
         IF _previous_number IS NOT NULL AND _number IS NOT NULL THEN
             IF _max_gap IS NULL OR (_number - _previous_number) > _max_gap THEN

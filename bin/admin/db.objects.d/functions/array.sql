@@ -1,20 +1,20 @@
 /***
- * add functionnalities to array management
+ * add ARRAY facilities
  */
 
-DROP AGGREGATE IF EXISTS public.array_agg_distinct(anyelement) CASCADE;
+DROP AGGREGATE IF EXISTS public.array_agg_distinct(ANYELEMENT) CASCADE;
 
 -- add new item in an array (if not already present)
 SELECT public.drop_all_functions_if_exists('public', 'array_append_if_not_exists');
 CREATE OR REPLACE FUNCTION public.array_append_if_not_exists(
-    array_in IN anyarray
-    , item IN anyelement
+    array_in IN ANYARRAY
+    , item IN ANYELEMENT
     )
-RETURNS anyarray LANGUAGE plpgsql IMMUTABLE STRICT AS
+RETURNS ANYARRAY LANGUAGE plpgsql IMMUTABLE STRICT AS
 $$
 BEGIN
     IF item IS NOT NULL AND NOT ARRAY[item] <@ array_in THEN
-        RETURN array_append(array_in, item);
+        RETURN ARRAY_APPEND(array_in, item);
     ELSE
         RETURN array_in;
     END IF;
@@ -29,7 +29,7 @@ SELECT array_append_if_not_exists(ARRAY[1,2,3,4], 5) -> "{1,2,3,4,5}"
 -- return array w/ distincts values
 SELECT public.drop_all_functions_if_exists('public', 'array_distinct');
 CREATE OR REPLACE FUNCTION public.array_distinct(
-    array_in IN anyarray
+    array_in IN ANYARRAY
     , remove_nulls BOOLEAN DEFAULT TRUE
     )
 RETURNS ANYARRAY AS 
@@ -59,7 +59,7 @@ SELECT array_distinct(ARRAY[1,1,2,3,4]) -> "{1,2,3,4}"
 -- shift(s) array
 SELECT public.drop_all_functions_if_exists('public', 'array_shift');
 CREATE OR REPLACE FUNCTION public.array_shift(
-    array_in IN anyarray
+    array_in IN ANYARRAY
     , nvalues_to_shift IN INTEGER DEFAULT 1
     )
 RETURNS VARCHAR[] AS
@@ -84,17 +84,17 @@ SELECT array_shift(ARRAY[1,2,3,4], 5) --> NULL
 CREATE AGGREGATE public.array_agg_distinct(
     -- the function seems not be called for NULL values
     sfunc    = public.array_append_if_not_exists,
-    basetype = anyelement,
-    stype    = anyarray,
+    basetype = ANYELEMENT,
+    stype    = ANYARRAY,
     initcond = '{}'
 );
 
 /* Alternative : delete multiple at the end
-DROP AGGREGATE IF EXISTS public.array_agg_distinct(anyelement) CASCADE;
+DROP AGGREGATE IF EXISTS public.array_agg_distinct(ANYELEMENT) CASCADE;
 CREATE AGGREGATE public.array_agg_distinct(
-    sfunc    = array_append,
-    basetype = anyelement,
-    stype    = anyarray,
+    sfunc    = ARRAY_APPEND,
+    basetype = ANYELEMENT,
+    stype    = ANYARRAY,
     initcond = '{}',
     finalfunc = array_distinct
 );

@@ -15,9 +15,10 @@ DECLARE
 BEGIN
 	SELECT ARRAY_AGG(column_name)
 	INTO _columns
-	FROM information_schema.columns
-	WHERE table_schema = schema_name
-		AND table_name = table_name;
+	FROM information_schema.columns c
+	WHERE c.table_schema = schema_name
+		AND c.table_name = get_table_columns.table_name;
+
 	RETURN _columns;
 END
 $func$ LANGUAGE plpgsql;
@@ -35,10 +36,11 @@ DECLARE
     _information_schema_column information_schema.columns%ROWTYPE;
 BEGIN
     SELECT * INTO _information_schema_column
-    FROM information_schema.columns
-    WHERE table_schema = schema_name
-        AND table_name = table_name
-        AND column_name = column_name;
+    FROM information_schema.columns c
+    WHERE c.table_schema = schema_name
+        AND c.table_name = get_column_information.table_name
+        AND c.column_name = column_name;
+
     RETURN _information_schema_column;
 END
 $func$ LANGUAGE plpgsql;
@@ -106,7 +108,7 @@ DECLARE
     _vacuum_inprogress BOOLEAN;
     _query TEXT;
     _counter INTEGER := 0;
-    _wait_autovacuum INTEGER := 70; --Temps nécessaire pour que l'autovacuum se lance
+    _wait_autovacuum INTEGER := 70; -- AUTOVACUUM delay
     _pattern TEXT;
 BEGIN
     IF table_names IS NOT NULL THEN
@@ -125,7 +127,7 @@ BEGIN
             LIMIT 1;
         EXCEPTION
             WHEN NO_DATA_FOUND THEN
-                --Tant qu'on a pas dépassé le temps nécessaire pour que l'autovacuum se lance, on continue
+                -- before AUTOVACUUM delay
                 IF (_counter * wait_seconds) > _wait_autovacuum THEN
                     EXIT;
                 END IF;
@@ -172,24 +174,41 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION public.log_table_stat(in_log_name IN TEXT, in_schema_name IN TEXT, in_table_name IN TEXT)
-  RETURNS VOID AS
+CREATE OR REPLACE FUNCTION public.log_table_stat(
+    log_name IN TEXT
+    , schema_name IN TEXT
+    , table_name IN TEXT
+    )
+RETURNS VOID AS
 $func$
 DECLARE
-    v_raise TEXT;
+    _info TEXT;
 BEGIN
-    --Note : si la fonction est appelée par l'utilisateur geopad, la table sera dans le schema geopad
-    CREATE TABLE IF NOT EXISTS log_pg_stat_user_tables AS (SELECT NULL::VARCHAR, NULL::TIMESTAMP, * FROM pg_stat_user_tables LIMIT 0) WITH NO DATA;
-    INSERT INTO log_pg_stat_user_tables (SELECT in_log_name, now(), * FROM pg_stat_user_tables WHERE schemaname = in_schema_name AND relname = in_table_name);
-    CREATE TABLE IF NOT EXISTS log_pg_stat_xact_all_tables AS (SELECT NULL::VARCHAR, NULL::TIMESTAMP, * FROM pg_stat_xact_all_tables LIMIT 0) WITH NO DATA;
-    INSERT INTO log_pg_stat_xact_all_tables (SELECT in_log_name, now(), * FROM pg_stat_xact_all_tables WHERE schemaname = in_schema_name AND relname = in_table_name);
-    /*
-    --Pour test, afin de voir si exploitable
-    IF table_names IS NOT NULL AND ARRAY_LENGTH(table_names,1) = 1 THEN
-        SELECT (pg_stat_user_tables.*)::TEXT INTO v_raise FROM pg_stat_user_tables WHERE schemaname = in_schema_name AND relname = in_table_name;
-        RAISE NOTICE 'pg_stat_user_tables=%',v_test;
-        SELECT (pg_stat_xact_all_tables.*)::TEXT INTO v_raise FROM pg_stat_xact_all_tables WHERE schemaname = in_schema_name AND relname = in_table_name;
-        RAISE NOTICE 'pg_stat_xact_all_tables=%',v_test;
+    -- NOTE tables created in user's schema
+    CREATE TABLE IF NOT EXISTS log_pg_stat_user_tables AS (
+        SELECT NULL::VARCHAR, NULL::TIMESTAMP, * FROM pg_stat_user_tables LIMIT 0
+    ) WITH NO DATA;
+
+    INSERT INTO log_pg_stat_user_tables (
+        SELECT log_name, now(), * FROM pg_stat_user_tables WHERE schemaname = schema_name AND relname = table_name
+    );
+
+    CREATE TABLE IF NOT EXISTS log_pg_stat_xact_all_tables AS (
+        SELECT NULL::VARCHAR, NULL::TIMESTAMP, * FROM pg_stat_xact_all_tables LIMIT 0
+    ) WITH NO DATA;
+
+    INSERT INTO log_pg_stat_xact_all_tables (
+        SELECT log_name, now(), * FROM pg_stat_xact_all_tables WHERE schemaname = schema_name AND relname = table_name
+    );
+
+    /* TEST
+    IF table_names IS NOT NULL AND ARRAY_LENGTH(table_names, 1) = 1 THEN
+        SELECT (pg_stat_user_tables.*)::TEXT INTO _info FROM pg_stat_user_tables WHERE schemaname = schema_name AND relname = table_name;
+
+        RAISE NOTICE 'pg_stat_user_tables=%', _info;
+
+        SELECT (pg_stat_xact_all_tables.*)::TEXT INTO _info FROM pg_stat_xact_all_tables WHERE schemaname = schema_name AND relname = table_name;
+        RAISE NOTICE 'pg_stat_xact_all_tables=%', _info;
     END IF;
     */
 END
@@ -210,7 +229,7 @@ SELECT public.wait_if_vacuum('adresse_ran');
 -- with 30s between each test
 SELECT public.wait_if_vacuum('adresse_ran', 30);
 
-SELECT log_table_stat('TEST','public','adresse_ran');
+SELECT log_table_stat('TEST', 'public', 'adresse_ran');
 SELECT * FROM log_pg_stat_user_tables
 SELECT * FROM log_pg_stat_xact_all_tables
 

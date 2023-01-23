@@ -15,12 +15,12 @@ DECLARE
 	_json_merged JSONB;
 BEGIN
     SELECT
-        jsonb_object_agg(
+        JSONB_OBJECT_AGG(
             COALESCE(ka, kb)
             , CASE
                 WHEN va IS NULL THEN vb
                 WHEN vb IS NULL THEN va
-                WHEN jsonb_typeof(va) = 'object' AND jsonb_typeof(vb) = 'object' THEN jsonb_merge(va, vb)
+                WHEN JSONB_TYPEOF(va) = 'object' AND JSONB_TYPEOF(vb) = 'object' THEN jsonb_merge(va, vb)
                 ELSE
                     CASE on_key_exists
                         WHEN 'CONCAT' THEN va || vb
@@ -30,8 +30,8 @@ BEGIN
             END
         )
     INTO _json_merged
-    FROM jsonb_each(json_a) e1(ka, va)
-        FULL OUTER JOIN jsonb_each(json_b) e2(kb, vb) ON ka = kb;
+    FROM JSONB_EACH(json_a) e1(ka, va)
+        FULL OUTER JOIN JSONB_EACH(json_b) e2(kb, vb) ON ka = kb;
     RETURN _json_merged;
 END
 $func$ LANGUAGE plpgsql;

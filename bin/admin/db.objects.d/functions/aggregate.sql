@@ -6,44 +6,44 @@
 
 -- create a function that always returns the first non-NULL item
 CREATE OR REPLACE FUNCTION public.first_agg(
-    anyelement
-    , anyelement
+    ANYELEMENT
+    , ANYELEMENT
     )
-RETURNS anyelement LANGUAGE SQL IMMUTABLE STRICT AS
+RETURNS ANYELEMENT LANGUAGE SQL IMMUTABLE STRICT AS
 $$
     SELECT $1;
 $$;
  
 -- and then wrap an aggregate around it
-DROP AGGREGATE IF EXISTS public.FIRST(anyelement) CASCADE;
+DROP AGGREGATE IF EXISTS public.FIRST(ANYELEMENT) CASCADE;
 CREATE AGGREGATE public.FIRST(
     sfunc    = public.first_agg,
-    basetype = anyelement,
-    stype    = anyelement
+    basetype = ANYELEMENT,
+    stype    = ANYELEMENT
 );
  
 -- create a function that always returns the last non-NULL item
-CREATE OR REPLACE FUNCTION public.last_agg(anyelement, anyelement)
-RETURNS anyelement LANGUAGE SQL IMMUTABLE STRICT AS
+CREATE OR REPLACE FUNCTION public.last_agg(ANYELEMENT, ANYELEMENT)
+RETURNS ANYELEMENT LANGUAGE SQL IMMUTABLE STRICT AS
 $$
     SELECT $2;
 $$;
  
 -- and then wrap an aggregate around it
-DROP AGGREGATE IF EXISTS public.LAST(anyelement) CASCADE;
+DROP AGGREGATE IF EXISTS public.LAST(ANYELEMENT) CASCADE;
 CREATE AGGREGATE public.LAST(
     sfunc    = public.last_agg,
-    basetype = anyelement,
-    stype    = anyelement
+    basetype = ANYELEMENT,
+    stype    = ANYELEMENT
 );
 
 -- uniq aggregate
 SELECT public.drop_all_functions_if_exists('public', 'null_if_not_equal');
 CREATE OR REPLACE FUNCTION public.null_if_not_equal(
-    val_a IN anyelement
-    , val_b IN anyelement
+    val_a IN ANYELEMENT
+    , val_b IN ANYELEMENT
     )
-RETURNS anyelement LANGUAGE plpgsql IMMUTABLE /*STRICT*/ AS
+RETURNS ANYELEMENT LANGUAGE plpgsql IMMUTABLE /*STRICT*/ AS
 $$
 BEGIN
     --RAISE NOTICE '% = % ?', val_a, val_b;
@@ -59,12 +59,12 @@ BEGIN
 END
 $$;
 
-DROP AGGREGATE IF EXISTS public.unique_agg(anyelement) CASCADE;
+DROP AGGREGATE IF EXISTS public.unique_agg(ANYELEMENT) CASCADE;
 CREATE AGGREGATE public.unique_agg(
     -- force replace NULL before: NULLIF(UNIQUE_AGG(COALESCE(ma_colonne_varchar,'NULL')),'NULL')
     sfunc = public.null_if_not_equal
-    ,basetype = anyelement
-    ,stype = anyelement
+    ,basetype = ANYELEMENT
+    ,stype = ANYELEMENT
     ,initcond = 'INIT_VALUE'
 );
 

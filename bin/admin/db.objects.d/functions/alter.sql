@@ -1,5 +1,5 @@
 /***
- * add facilities to ALTER TABLE
+ * add ALTER TABLE facilities
  */
 
  -- drop NOT NULL if set
