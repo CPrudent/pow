@@ -20,7 +20,7 @@ _schemas[0]=admin
 # NOTE: end with 'public' schema
 _schemas+=(public)
 
-# transform as pipe-delimited (to possible values)
+# transform as pipe-delimited (to possible values 'schema_only' below)
 _schemas_join_pipe=${_schemas[@]}
 _schemas_join_pipe=${_schemas_join_pipe// /|}
 
@@ -38,17 +38,17 @@ bash_args
 log_info "Mise à jour de la structure de la base de données"
 set_env --schema_code admin &&
 execute_query \
-    --query "$POW_DIR_BATCH/db.objects.d/actions/extension_postgis.sql" &&
-execute_query \
-    --query "$POW_DIR_BATCH/db.objects.d/actions/grant.sql" || exit $ERROR_CODE
+    --query "$POW_DIR_BATCH/db.objects.d/actions/extension_postgis.sql" || exit $ERROR_CODE
 
 for _schema in ${_schemas[@]}; do
-    log_info "schéma($_schema)" &&
     set_env --schema_code $_schema &&
-    execute_query \
-        --query "$POW_DIR_BATCH/db.objects.d/db.objects.sql" || {
-        log_error "Echec mise à jour de la structure de $_schema"
-        exit $ERROR_CODE
+    [ -f "$POW_DIR_BATCH/db.objects.d/db.objects.sql" ] && {
+        log_info "schéma($_schema)"
+        execute_query \
+            --query "$POW_DIR_BATCH/db.objects.d/db.objects.sql" || {
+            log_error "Echec mise à jour de la structure de $_schema"
+            exit $ERROR_CODE
+        }
     }
 done
 
