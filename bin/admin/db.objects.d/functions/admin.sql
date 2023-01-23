@@ -174,13 +174,14 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION public.log_table_stat(
+SELECT public.drop_all_functions_if_exists('public', 'log_table_stat');
+CREATE OR REPLACE PROCEDURE public.log_table_stat(
     log_name IN TEXT
     , schema_name IN TEXT
     , table_name IN TEXT
     )
-RETURNS VOID AS
-$func$
+AS
+$proc$
 DECLARE
     _info TEXT;
 BEGIN
@@ -211,8 +212,8 @@ BEGIN
         RAISE NOTICE 'pg_stat_xact_all_tables=%', _info;
     END IF;
     */
-END
-$func$ LANGUAGE plpgsql;
+END;
+$proc$ LANGUAGE plpgsql;
 
 /* TESTS
 
