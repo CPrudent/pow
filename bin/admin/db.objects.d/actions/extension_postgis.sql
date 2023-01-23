@@ -4,7 +4,7 @@
 
 -- need this script to force 2-steps installation, and avoid "type geometry not exists"
 
-\include_relative ./functions/search_path.sql
+\include_relative ../functions/search_path.sql
 
 CREATE SCHEMA IF NOT EXISTS ext_postgis;
 SELECT add_to_search_path('ext_postgis');

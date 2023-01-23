@@ -24,7 +24,7 @@ _schemas+=(public)
 _schemas_join_pipe=${_schemas[@]}
 _schemas_join_pipe=${_schemas_join_pipe// /|}
 
-bash_args
+bash_args \
     --args_p '
         schema_only:Limiter la mise à jour à un schéma
     ' \
@@ -37,10 +37,15 @@ bash_args
 
 log_info "Mise à jour de la structure de la base de données"
 set_env --schema_code admin &&
+# need drop_all_functions_if_exists()
+execute_query \
+    --query "$POW_DIR_BATCH/db.objects.d/functions/drop.sql" &&
+# needed to avoid error "type geometry not exists"
 execute_query \
     --query "$POW_DIR_BATCH/db.objects.d/actions/extension_postgis.sql" || exit $ERROR_CODE
 
 for _schema in ${_schemas[@]}; do
+    # begins w/ admin (core functions)
     set_env --schema_code $_schema &&
     [ -f "$POW_DIR_BATCH/db.objects.d/db.objects.sql" ] && {
         log_info "schéma($_schema)"

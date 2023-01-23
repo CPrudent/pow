@@ -14,10 +14,10 @@ $func$
 BEGIN
     IF NOT temporary_mode THEN
         PERFORM TRUE
-        FROM information_schema.tables
-        WHERE table_schema = schema_name
-            AND table_name = table_name
-            AND table_type = 'BASE TABLE';
+        FROM information_schema.tables t
+        WHERE t.table_schema = schema_name
+            AND t.table_name = table_exists.table_name
+            AND t.table_type = 'BASE TABLE';
     ELSE
         -- see https://stackoverflow.com/questions/11224806/how-can-i-detect-if-a-postgres-temporary-table-already-exists
         PERFORM n.nspname, c.relname
@@ -74,9 +74,9 @@ DECLARE
 	_exists BOOLEAN;
 BEGIN
     SELECT TRUE INTO _exists
-    FROM information_schema.views
-    WHERE table_schema = schema_name
-        AND table_name = view_name;
+    FROM information_schema.views v
+    WHERE v.table_schema = schema_name
+        AND v.table_name = view_name;
     RETURN _exists;
 END
 $func$ LANGUAGE plpgsql;

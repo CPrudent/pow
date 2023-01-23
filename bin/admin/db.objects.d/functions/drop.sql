@@ -3,7 +3,7 @@
  */
 
 -- drop all prototypes of a function
-DROP FUNCTION IF EXISTS public.drop_all_functions_if_exists(TEXT, TEXT, BOOLEAN);
+DROP FUNCTION IF EXISTS public.drop_all_functions_if_exists(TEXT, TEXT, BOOLEAN, BOOLEAN);
 CREATE OR REPLACE FUNCTION public.drop_all_functions_if_exists(
     schema_name TEXT
     , function_name TEXT
