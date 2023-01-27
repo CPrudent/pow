@@ -113,8 +113,8 @@ table_exists() {
 
     local _exists _rc=$ERROR_CODE
     execute_query \
-        --name "TABLE_EXISTS_${get_arg_schema}_${get_arg_table}" \
-        --query "SELECT table_exists('${get_arg_schema}', '${get_arg_table}')" \
+        --name "TABLE_EXISTS_${get_arg_schema_name}_${get_arg_table_name}" \
+        --query "SELECT table_exists('${get_arg_schema_name}', '${get_arg_table_name}')" \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _exists || return $ERROR_CODE
     is_yes --var _exists && _rc=$SUCCESS_CODE
@@ -141,8 +141,8 @@ view_exists() {
 
     local _exists _rc=$ERROR_CODE
     execute_query \
-        --name "VIEW_EXISTS_${get_arg_schema}_${get_arg_table}" \
-        --query "SELECT view_exists('${get_arg_schema}', '${get_arg_table}')" \
+        --name "VIEW_EXISTS_${get_arg_schema_name}_${get_arg_table_name}" \
+        --query "SELECT view_exists('${get_arg_schema_name}', '${get_arg_table_name}')" \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _exists || return $ERROR_CODE
     is_yes --var _exists && _rc=$SUCCESS_CODE
@@ -151,29 +151,23 @@ view_exists() {
 }
 
 vacuum() {
-    local _vacuum_schema=
-    local _vacuum_table=
-    local _vacuum_mode=
-    local OPTIND _opt
-    while getopts :s:t:m: _opt
-    do
-        case $_opt in
-            s)      # schema
-                _vacuum_schema=$OPTARG
-                ;;
-            t)      # table
-                _vacuum_table=$OPTARG
-                ;;
-            m)      # mode
-                _vacuum_mode=$OPTARG
-                ;;
-            ?)
-                # calling error
-                return $ERROR_CODE
-                ;;
-        esac
-    done
+    bash_args \
+        --args_p '
+            schema_name:schéma PG;
+            table_name:nom de la table;
+            mode:Mode VACUUM à appliquer
+        ' \
+        --args_v '
+            mode:ANALYSE|FULL
+        ' \
+        --args_d '
+            mode:ANALYSE
+        ' \
+        "$@" || return $ERROR_CODE
 
+    local _vacuum_schema=$get_arg_schema_name
+    local _vacuum_table=$get_arg_table_name
+    local _vacuum_mode=$get_arg_mode
     if [ -z "$_vacuum_mode" ]; then
         log_error "Veuillez préciser avec le paramètre -m le mode de VACUUM (ANALYSE, FULL). Exemple : -m ANALYSE"
         return $ERROR_CODE
@@ -229,7 +223,7 @@ vacuum() {
             --psql_arguments 'tuples-only:pset=format=unaligned' \
             --return _tables || return $ERROR_CODE
         local _tables_array=($_tables)
-        for _table in "${tables_array[@]}"
+        for _table in "${_tables_array[@]}"
         do
             execute_query \
                 --name "VACUUM_${_vacuum_mode}_${_vacuum_schema}.${_table}" \
@@ -254,7 +248,7 @@ vacuum() {
     if [ "$_vacuum_mode" = FULL ]; then
         df -h >> $_log_tmp_path
     fi
-    archive_file $_log_tmp_path
+    [ -f "$_log_tmp_path" ] && archive_file $_log_tmp_path
 
     return $SUCCESS_CODE
 }
@@ -504,16 +498,16 @@ restore_table() {
         }
     fi
 
+    # with filter AND full call (w/ sections, not one by one)
     if  [ ! -z "$sql_to_filter" ] &&
         [[ " ${restore_sections[@]} " =~ " pre-data " ]] &&
         [[ " ${restore_sections[@]} " =~ " data " ]]; then
-        #si on est en STDIN alors passage en fichier
         if [ "$restore_input" = STDIN ]; then
             log_info "Conversion de STDIN en fichier temporaire"
             cat > $POW_DIR_TMP/stdin_$$.backup || { restore_table_reset; return $ERROR_CODE; }
             restore_input="$POW_DIR_TMP/stdin_$$.backup"
         fi
-        # section by one to prepare filter between DDL and DATA
+        # section one by one to prepare filter between DDL and DATA, NOTE: recursive call (w/ subprocess)
         for _restore_section in ${restore_sections[@]}; do
             restore_table \
                 --schema_name $restore_schema_name \
@@ -529,13 +523,14 @@ restore_table() {
     else
         log_info "Début de restauration de ${restore_libelle} à partir de ${restore_input}, sections ${restore_sections[*]}"
         [ "$restore_input" != STDIN ] && pg_restore_file_arg="$restore_input"
-        #actions préalables et préparation de pg_restore_section_arg
+        # apply prior actions
         for _restore_section in ${restore_sections[@]}; do
+            # prepare cumulative section arguments
             pg_restore_section_arg+="--section $_restore_section "
             if [ "$table_to_restore_exists" = yes ]; then
                 if [ "$_restore_section" = pre-data ]; then
                     if [ "$restore_mode" = DROP ]; then
-                        # drop table if exists and DROP mode
+                        # drop table if (exists and DROP mode), NOTE: COMMIT necessary
                         execute_query \
                             --name "DROP_TABLE_${restore_libelle}" \
                             --query "
@@ -634,6 +629,7 @@ restore_table() {
             return $ERROR_CODE
         }
 
+        # apply post actions
         for _restore_section in ${restore_sections[@]}; do
             if [ "$_restore_section" = data ]; then
                 # delete filter
@@ -650,7 +646,7 @@ restore_table() {
     fi
 
     if [ "$subprocess" = no ]; then
-        vacuum -s $restore_schema_name -t $restore_table_name -m ANALYSE || {
+        vacuum --schema_name $restore_schema_name --table_name $restore_table_name || {
             restore_table_reset;
             return $ERROR_CODE;
         }
