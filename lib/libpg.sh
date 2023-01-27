@@ -211,7 +211,7 @@ vacuum() {
         # --query "\dt $_vacuum_schema."'*' \
         # local _tables_array=($(echo $_all | tr ' ' '\n' | cut --delimiter '|' --field 2))
 
-        local _tables _table
+        local _vacuum_tables _vacuum_table
         execute_query \
             --name "${_vacuum_schema}_ALL_TABLES" \
             --query "
@@ -221,14 +221,14 @@ vacuum() {
                 AND table_type = 'BASE TABLE'
             " \
             --psql_arguments 'tuples-only:pset=format=unaligned' \
-            --return _tables || return $ERROR_CODE
-        local _tables_array=($_tables)
-        for _table in "${_tables_array[@]}"
+            --return _vacuum_tables || return $ERROR_CODE
+        local _tables_array=($_vacuum_tables)
+        for _vacuum_table in "${_tables_array[@]}"
         do
             execute_query \
-                --name "VACUUM_${_vacuum_mode}_${_vacuum_schema}.${_table}" \
-                --query "VACUUM ${_vacuum_options} ${_vacuum_schema}.${_table}" || {
-                log_error "Erreur VACUUM ${_vacuum_mode} sur la table ${_vacuum_schema}.${_table}"
+                --name "VACUUM_${_vacuum_mode}_${_vacuum_schema}.${_vacuum_table}" \
+                --query "VACUUM ${_vacuum_options} ${_vacuum_schema}.${_vacuum_table}" || {
+                log_error "Erreur VACUUM ${_vacuum_mode} sur la table ${_vacuum_schema}.${_vacuum_table}"
                 return $ERROR_CODE
             }
         done
@@ -619,7 +619,7 @@ restore_table() {
             --username $POW_PG_USERNAME \
             --dbname $POW_PG_DBNAME \
             --no-password \
-            --format=custom \
+            --format custom \
             --verbose \
             --exit-on-error \
             $pg_restore_section_arg \
