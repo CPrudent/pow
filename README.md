@@ -17,3 +17,4 @@ log in with $POW_USER,
 run:
 * $POW_DIR_ROOT/bin/admin/install.sh                                -- packages
 * $POW_DIR_ROOT/bin/admin/db.objects.d/db.objects.sh                -- build DB
+* $POW_DIR_ROOT/bin/admin/restore.sh                                -- restore LAPOSTE data (if present)
