@@ -151,21 +151,21 @@ view_exists() {
 }
 
 vacuum() {
-    local pg_vacuum_schema=
-    local pg_vacuum_table=
-    local pg_vacuum_mode=
-    local OPTIND
+    local _vacuum_schema=
+    local _vacuum_table=
+    local _vacuum_mode=
+    local OPTIND _opt
     while getopts :s:t:m: _opt
     do
         case $_opt in
-            s)      # schéma spécifique
-                pg_vacuum_schema=$OPTARG
+            s)      # schema
+                _vacuum_schema=$OPTARG
                 ;;
-            t)      # table spécifique
-                pg_vacuum_table=$OPTARG
+            t)      # table
+                _vacuum_table=$OPTARG
                 ;;
-            m)      # mode spécifique
-                pg_vacuum_mode=$OPTARG
+            m)      # mode
+                _vacuum_mode=$OPTARG
                 ;;
             ?)
                 # calling error
@@ -174,80 +174,87 @@ vacuum() {
         esac
     done
 
-    if [ -z "$pg_vacuum_mode" ]; then
+    if [ -z "$_vacuum_mode" ]; then
         log_error "Veuillez préciser avec le paramètre -m le mode de VACUUM (ANALYSE, FULL). Exemple : -m ANALYSE"
         return $ERROR_CODE
     fi
 
-    local log_tmp_path=$dir_tmp"/vacuum_"$pg_vacuum_mode
-    if [ -n "$pg_vacuum_schema" ]; then
-        log_tmp_path=$log_tmp_path"_"$pg_vacuum_schema
+    local _log_tmp_path=$POW_DIR_TMP/vacuum_$_vacuum_mode
+    if [ -n "$_vacuum_schema" ]; then
+        _log_tmp_path=${_log_tmp_path}_$_vacuum_schema
     fi
-    if [ -n "$pg_vacuum_table" ]; then
-        log_tmp_path=$log_tmp_path"_"$pg_vacuum_table
+    if [ -n "$_vacuum_table" ]; then
+        _log_tmp_path=${_log_tmp_path}_$_vacuum_table
     fi
-    log_tmp_path=$log_tmp_path".log"
+    _log_tmp_path=${_log_tmp_path}.log
 
-    if [ "$pg_vacuum_mode" = 'FULL' ]; then
-        df -m >> $log_tmp_path
-        vacuum_command_options='(FULL, ANALYSE, VERBOSE)'
-    elif [ "$pg_vacuum_mode" = 'ANALYSE' ]; then
-        vacuum_command_options='(ANALYSE, VERBOSE)'
+    if [ "$_vacuum_mode" = FULL ]; then
+        df -h >> $_log_tmp_path
+        _vacuum_options='(FULL, ANALYSE, VERBOSE)'
+    elif [ "$_vacuum_mode" = ANALYSE ]; then
+        _vacuum_options='(ANALYSE, VERBOSE)'
     fi
 
     # with table?
-    if [ -n "$pg_vacuum_table" ]; then
+    if [ -n "$_vacuum_table" ]; then
         # with schema?
-        if [ -n "$pg_vacuum_schema" ]; then
-            pg_vacuum_table=$pg_vacuum_schema"."$pg_vacuum_table
+        if [ -n "$_vacuum_schema" ]; then
+            _vacuum_table=$_vacuum_schema"."$_vacuum_table
         fi
 
         execute_query \
-            --name "VACUUM_${pg_vacuum_mode}_${pg_vacuum_table}" \
-            --query "VACUUM ${vacuum_command_options} ${pg_vacuum_table}" || {
-            log_error "Erreur VACUUM ${pg_vacuum_mode} sur la table ${pg_vacuum_table}"
+            --name "VACUUM_${_vacuum_mode}_${_vacuum_table}" \
+            --query "VACUUM ${_vacuum_options} ${_vacuum_table}" || {
+            log_error "Erreur VACUUM ${_vacuum_mode} sur la table ${_vacuum_table}"
             return $ERROR_CODE
         }
-    elif [ -n "$pg_vacuum_schema" ]; then
-        log_info "Début VACUUM "$pg_vacuum_mode" sur les tables du schéma $pg_vacuum_schema"
+    elif [ -n "$_vacuum_schema" ]; then
+        log_info "Début VACUUM "$_vacuum_mode" sur les tables du schéma $_vacuum_schema"
 
+        # old method (w/ psql command \dt)
         # http://stackoverflow.com/questions/29710618/vacuum-analyze-all-tables-in-a-schema-postgres
-        # vacuum only the tables in the schema named in the variable $pg_vacuum_schema
-        local _dt
-        # extract schema table names from psql output and put them in a bash array
+        # vacuum only the tables in the schema named in the variable $_vacuum_schema
+        # --query "\dt $_vacuum_schema."'*' \
+        # local _tables_array=($(echo $_all | tr ' ' '\n' | cut --delimiter '|' --field 2))
+
+        local _tables _table
         execute_query \
-            --name "${pg_vacuum_schema}_ALL_TABLES" \
-            --query "\dt $pg_vacuum_schema."'*' \
+            --name "${_vacuum_schema}_ALL_TABLES" \
+            --query "
+                SELECT STRING_AGG(table_name, ' ')
+                FROM information_schema.tables
+                WHERE table_schema = '$_vacuum_schema'
+                AND table_type = 'BASE TABLE'
+            " \
             --psql_arguments 'tuples-only:pset=format=unaligned' \
-            --return _dt || return $ERROR_CODE
-        local tables_array=($(echo $_dt | tr ' ' '\n' | cut --delimiter '|' --field 2))
-        # loop through the table names creating and executing a vacuum command for each one
-        for t in "${tables_array[@]}"
+            --return _tables || return $ERROR_CODE
+        local _tables_array=($_tables)
+        for _table in "${tables_array[@]}"
         do
             execute_query \
-                --name "VACUUM_${pg_vacuum_mode}_${pg_vacuum_schema}.${t}" \
-                --query "VACUUM ${vacuum_command_options} ${pg_vacuum_schema}.${t}" || {
-                log_error "Erreur VACUUM ${pg_vacuum_mode} sur la table ${pg_vacuum_schema}.${t}"
+                --name "VACUUM_${_vacuum_mode}_${_vacuum_schema}.${_table}" \
+                --query "VACUUM ${_vacuum_options} ${_vacuum_schema}.${_table}" || {
+                log_error "Erreur VACUUM ${_vacuum_mode} sur la table ${_vacuum_schema}.${_table}"
                 return $ERROR_CODE
             }
         done
 
-        log_info "Fin VACUUM "$pg_vacuum_mode" sur les tables du schéma $pg_vacuum_schema"
+        log_info "Fin VACUUM "$_vacuum_mode" sur les tables du schéma $_vacuum_schema"
     else
-        log_info "Début VACUUM "$pg_vacuum_mode" sur la base de données"
+        log_info "Début VACUUM "$_vacuum_mode" sur la base de données"
         execute_query \
-            --name "VACUUM_${pg_vacuum_mode}_ALL" \
-            --query "VACUUM ${vacuum_command_options}" || {
-            log_error "Erreur VACUUM ${pg_vacuum_mode} sur la base de données"
+            --name "VACUUM_${_vacuum_mode}_ALL" \
+            --query "VACUUM ${_vacuum_options}" || {
+            log_error "Erreur VACUUM ${_vacuum_mode} sur la base de données"
             return $ERROR_CODE
         }
-        log_info "Fin VACUUM "$pg_vacuum_mode" sur la base de données"
+        log_info "Fin VACUUM "$_vacuum_mode" sur la base de données"
     fi
 
-    if [ "$pg_vacuum_mode" = 'FULL' ]; then
-        df -m >> $log_tmp_path
+    if [ "$_vacuum_mode" = FULL ]; then
+        df -h >> $_log_tmp_path
     fi
-    archive_file $log_tmp_path
+    archive_file $_log_tmp_path
 
     return $SUCCESS_CODE
 }
