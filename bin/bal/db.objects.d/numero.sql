@@ -3,17 +3,17 @@
  */
 
 CREATE TABLE IF NOT EXISTS bal.numero (
-  id_bal_numero VARCHAR NOT NULL,
-  numero INTEGER NOT NULL,
-  suffixe VARCHAR,
-  id_bal_voie VARCHAR NOT NULL,
-  libelle_ancienne_commune VARCHAR,
-  parcelles VARCHAR[],
-  coordonnees FLOAT[],
-  co_postal VARCHAR NOT NULL,
-  type_position VARCHAR,
-  dt_derniere_maj TIMESTAMP WITHOUT TIME ZONE NOT NULL
-);
+    id_bal_numero VARCHAR NOT NULL
+    , numero INTEGER NOT NULL
+    , suffixe VARCHAR
+    , id_bal_voie VARCHAR NOT NULL
+    , libelle_ancienne_commune VARCHAR
+    , parcelles VARCHAR[]
+    , coordonnees FLOAT[]
+    , co_postal VARCHAR NOT NULL
+    , type_position VARCHAR
+    , dt_derniere_maj TIMESTAMP WITHOUT TIME ZONE NOT NULL
+, );
 
 CREATE /*UNIQUE*/ INDEX IF NOT EXISTS ix_numero_id_bal_numero ON bal.numero(id_bal_numero);
 
