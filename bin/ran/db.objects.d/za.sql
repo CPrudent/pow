@@ -109,8 +109,10 @@ BEGIN
     END IF;
 
     -- department (not useful)
-    DROP INDEX IF EXISTS ran.idx_za_co_insee_dep;
     --CREATE INDEX IF NOT EXISTS idx_za_co_insee_departement ON ran.za (co_insee_departement);
+    DROP INDEX IF EXISTS ran.idx_za_co_insee_departement;
+    -- co_insee_commune + ?
+    DROP INDEX IF EXISTS ran.idx_za_co_insee_com_arr_com_arr_anc;
 
     -- zip code
     IF index_exists('ran', 'idx_za_co_postal') AND NOT index_exists('ran', 'ix_za_co_postal') THEN

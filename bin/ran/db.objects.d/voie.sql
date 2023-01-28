@@ -93,8 +93,10 @@ BEGIN
 
     --CREATE INDEX IF NOT EXISTS idx_voie_co_insee_commune_lb_md ON ran.voie USING GIST(co_insee_commune, lb_md GIST_TRGM_OPS);
     --CREATE INDEX IF NOT EXISTS idx_voie_co_postal_lb_md ON ran.voie USING GIST(co_postal, lb_md GIST_TRGM_OPS);
+    --CREATE INDEX IF NOT EXISTS idx_voie_co_cea_za_lb_voie ON ran.voie USING GIST(co_cea_za, lb_voie GIST_TRGM_OPS);
     DROP INDEX IF EXISTS ran.idx_voie_co_insee_commune_lb_md;
     DROP INDEX IF EXISTS ran.idx_voie_co_postal_lb_md;
+    DROP INDEX IF EXISTS ran.idx_voie_co_cea_za_lb_voie;
 
     --CREATE INDEX IF NOT EXISTS idx_voie_co_insee_departement ON ran.voie (public.get_department_code_from_district_code(co_insee_commune));
     DROP INDEX IF EXISTS ran.idx_voie_co_insee_departement;
