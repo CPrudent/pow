@@ -18,10 +18,6 @@ CREATE TABLE IF NOT EXISTS bal.numero (
 CREATE /*UNIQUE*/ INDEX IF NOT EXISTS ix_numero_id_bal_numero ON bal.numero(id_bal_numero);
 
 DO $$
-DECLARE
-	_ref VARCHAR;
-	_query VARCHAR;
-	_drop VARCHAR := 'ALTER TABLE bal.numero DROP CONSTRAINT ';
 BEGIN
     -- add integrity constraint on table bal.voie
     IF NOT EXISTS(

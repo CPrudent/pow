@@ -14,3 +14,4 @@ CREATE TABLE IF NOT EXISTS bal.voie (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS iux_voie_lower_id_bal_voie ON bal.voie(LOWER(id_bal_voie));
+CREATE UNIQUE INDEX IF NOT EXISTS iux_voie_id_bal_voie ON bal.voie(id_bal_voie);
