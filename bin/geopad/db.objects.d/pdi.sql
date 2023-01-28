@@ -79,6 +79,7 @@ $proc$
 DECLARE
     _query VARCHAR;
 BEGIN
+    -- link PDI-ID/CEA
     IF index_exists('geopad', 'idx_pdi_adresse_id') AND NOT index_exists('geopad', 'iux_pdi_adresse_id') THEN
         _query := 'ALTER INDEX idx_pdi_adresse_id RENAME TO iux_pdi_adresse_id';
     ELSE
@@ -90,7 +91,7 @@ BEGIN
         RAISE NOTICE '%', _query;
     END IF;
 
-    -- level
+    -- geometry
     IF index_exists('geopad', 'idx_pdi_geom') AND NOT index_exists('geopad', 'ix_pdi_geom') THEN
         _query := 'ALTER INDEX idx_pdi_geom RENAME TO ix_pdi_geom';
     ELSE
@@ -101,7 +102,8 @@ BEGIN
     ELSE
         RAISE NOTICE '%', _query;
     END IF;
-    -- parent
+
+    -- PDI-ID
     IF index_exists('geopad', 'idx_pdi_pdi_id') AND NOT index_exists('geopad', 'iux_pdi_pdi_id') THEN
         _query := 'ALTER INDEX idx_pdi_pdi_id RENAME TO iux_pdi_pdi_id';
     ELSE
@@ -112,11 +114,24 @@ BEGIN
     ELSE
         RAISE NOTICE '%', _query;
     END IF;
-    -- co_cea_l3
+
+    -- link PDI/PDI-parent
     IF index_exists('geopad', 'idx_pdi_pdi_id_rattachement') AND NOT index_exists('geopad', 'ix_pdi_pdi_id_rattachement') THEN
         _query := 'ALTER INDEX idx_pdi_pdi_id_rattachement RENAME TO ix_pdi_pdi_id_rattachement';
     ELSE
         _query := 'CREATE INDEX IF NOT EXISTS ix_pdi_pdi_id_rattachement ON geopad.pdi (pdi_id_rattachement) WHERE pdi_id_rattachement IS NOT NULL';
+    END IF;
+    IF NOT simulation THEN
+        EXECUTE _query;
+    ELSE
+        RAISE NOTICE '%', _query;
+    END IF;
+
+    -- aggregate CEA
+    IF index_exists('geopad', 'idx_pdi_agg_adresse_id') AND NOT index_exists('geopad', 'iux_pdi_agg_adresse_id') THEN
+        _query := 'ALTER INDEX idx_pdi_agg_adresse_id RENAME TO iux_pdi_agg_adresse_id';
+    ELSE
+        _query := 'CREATE UNIQUE INDEX IF NOT EXISTS iux_pdi_agg_adresse_id ON geopad.pdi (agg_adresse_id)';
     END IF;
     IF NOT simulation THEN
         EXECUTE _query;
