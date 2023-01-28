@@ -72,60 +72,94 @@ ALTER TABLE ran.adresse_histo SET (
  */
 
 SELECT drop_all_functions_if_exists('ran', 'setIndexAddress');
-CREATE OR REPLACE PROCEDURE ran.setIndexAddress()
+CREATE OR REPLACE PROCEDURE ran.setIndexAddress(
+    simulation BOOLEAN DEFAULT FALSE
+    )
 AS
 $proc$
+DECLARE
+    _query VARCHAR;
 BEGIN
     -- uniq CEA
     IF index_exists('ran', 'idx_adresse_co_cea_determinant') AND NOT index_exists('ran', 'iux_adresse_co_cea_determinant') THEN
-        ALTER INDEX idx_adresse_co_cea_determinant RENAME TO iux_adresse_co_cea_determinant;
+        _query := 'ALTER INDEX idx_adresse_co_cea_determinant RENAME TO iux_adresse_co_cea_determinant';
     ELSE
-        CREATE UNIQUE INDEX IF NOT EXISTS iux_adresse_co_cea_determinant ON ran.adresse (co_cea_determinant);
+        _query := 'CREATE UNIQUE INDEX IF NOT EXISTS iux_adresse_co_cea_determinant ON ran.adresse (co_cea_determinant)';
+    END IF;
+    IF NOT simulation THEN
+        EXECUTE _query;
+    ELSE
+        RAISE NOTICE '%', _query;
     END IF;
 
     -- level
     IF index_exists('ran', 'idx_adresse_niveau') AND NOT index_exists('ran', 'ix_adresse_niveau') THEN
-        ALTER INDEX idx_adresse_niveau RENAME TO ix_adresse_niveau;
+        _query := 'ALTER INDEX idx_adresse_niveau RENAME TO ix_adresse_niveau';
     ELSE
-        CREATE INDEX IF NOT EXISTS ix_adresse_niveau ON ran.adresse (co_niveau);
+        _query := 'CREATE INDEX IF NOT EXISTS ix_adresse_niveau ON ran.adresse (co_niveau)';
     END IF;
-
+    IF NOT simulation THEN
+        EXECUTE _query;
+    ELSE
+        RAISE NOTICE '%', _query;
+    END IF;
     -- parent
     IF index_exists('ran', 'idx_adresse_co_cea_parent') AND NOT index_exists('ran', 'ix_adresse_co_cea_parent') THEN
-        ALTER INDEX idx_adresse_co_cea_parent RENAME TO ix_adresse_co_cea_parent;
+        _query := 'ALTER INDEX idx_adresse_co_cea_parent RENAME TO ix_adresse_co_cea_parent';
     ELSE
-        CREATE INDEX IF NOT EXISTS ix_adresse_co_cea_parent ON ran.adresse (co_cea_parent);
+        _query := 'CREATE INDEX IF NOT EXISTS ix_adresse_co_cea_parent ON ran.adresse (co_cea_parent)';
     END IF;
-
+    IF NOT simulation THEN
+        EXECUTE _query;
+    ELSE
+        RAISE NOTICE '%', _query;
+    END IF;
     -- co_cea_l3
     IF index_exists('ran', 'idx_adresse_co_cea_l3') AND NOT index_exists('ran', 'iux_adresse_co_cea_l3') THEN
-        ALTER INDEX idx_adresse_co_cea_l3 RENAME TO iux_adresse_co_cea_l3;
+        _query := 'ALTER INDEX idx_adresse_co_cea_l3 RENAME TO iux_adresse_co_cea_l3';
     ELSE
-        CREATE UNIQUE INDEX IF NOT EXISTS iux_adresse_co_cea_l3 ON ran.adresse (co_cea_l3); --WHERE co_cea_l3 IS NOT NULL ?
+        _query := 'CREATE UNIQUE INDEX IF NOT EXISTS iux_adresse_co_cea_l3 ON ran.adresse (co_cea_l3)'; --WHERE co_cea_l3 IS NOT NULL ?
     END IF;
-
+    IF NOT simulation THEN
+        EXECUTE _query;
+    ELSE
+        RAISE NOTICE '%', _query;
+    END IF;
     -- co_cea_numero
     IF index_exists('ran', 'idx_adresse_co_cea_numero') AND NOT index_exists('ran', 'ix_adresse_co_cea_numero') THEN
-        ALTER INDEX idx_adresse_co_cea_numero RENAME TO ix_adresse_co_cea_numero;
+        _query := 'ALTER INDEX idx_adresse_co_cea_numero RENAME TO ix_adresse_co_cea_numero';
     ELSE
-        CREATE INDEX IF NOT EXISTS ix_adresse_co_cea_numero ON ran.adresse (co_cea_numero); --WHERE co_cea_numero IS NOT NULL ?
+        _query := 'CREATE INDEX IF NOT EXISTS ix_adresse_co_cea_numero ON ran.adresse (co_cea_numero)'; --WHERE co_cea_numero IS NOT NULL ?
     END IF;
-
+    IF NOT simulation THEN
+        EXECUTE _query;
+    ELSE
+        RAISE NOTICE '%', _query;
+    END IF;
     -- co_cea_voie
     IF index_exists('ran', 'idx_adresse_co_cea_voie') AND NOT index_exists('ran', 'ix_adresse_co_cea_voie') THEN
-        ALTER INDEX idx_adresse_co_cea_voie RENAME TO ix_adresse_co_cea_voie;
+        _query := 'ALTER INDEX idx_adresse_co_cea_voie RENAME TO ix_adresse_co_cea_voie';
     ELSE
-        CREATE INDEX IF NOT EXISTS ix_adresse_co_cea_voie ON ran.adresse (co_cea_voie);
+        _query := 'CREATE INDEX IF NOT EXISTS ix_adresse_co_cea_voie ON ran.adresse (co_cea_voie)';
     END IF;
-
+    IF NOT simulation THEN
+        EXECUTE _query;
+    ELSE
+        RAISE NOTICE '%', _query;
+    END IF;
     -- co_cea_za
     IF index_exists('ran', 'idx_adresse_co_cea_za') AND NOT index_exists('ran', 'ix_adresse_co_cea_za') THEN
-        ALTER INDEX idx_adresse_co_cea_za RENAME TO ix_adresse_co_cea_za;
+        _query := 'ALTER INDEX idx_adresse_co_cea_za RENAME TO ix_adresse_co_cea_za';
     ELSE
-        CREATE INDEX IF NOT EXISTS ix_adresse_co_cea_za ON ran.adresse (co_cea_za);
+        _query := 'CREATE INDEX IF NOT EXISTS ix_adresse_co_cea_za ON ran.adresse (co_cea_za)';
+    END IF;
+    IF NOT simulation THEN
+        EXECUTE _query;
+    ELSE
+        RAISE NOTICE '%', _query;
     END IF;
 
-    DROP INDEX IF EXISTS idx_adresse_histo_key;
+    DROP INDEX IF EXISTS ran.idx_adresse_histo_key;
     --CREATE UNIQUE INDEX IF NOT EXISTS idx_adresse_histo_key ON ran.adresse_histo (co_cea_determinant, dt_reference);
 END
 $proc$ LANGUAGE plpgsql;

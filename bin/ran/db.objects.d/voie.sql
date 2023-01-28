@@ -110,7 +110,7 @@ BEGIN
     -- lb_md
     --CREATE INDEX ix_voie_lb_md ON ran.voie USING GIN(lb_md GIN_TRGM_OPS);
 
-    DROP INDEX IF EXISTS idx_voie_histo_key;
+    DROP INDEX IF EXISTS ran.idx_voie_histo_key;
     --CREATE UNIQUE INDEX IF NOT EXISTS idx_voie_histo_key ON ran.voie_histo (co_cea, dt_reference);
 END
 $proc$ LANGUAGE plpgsql;

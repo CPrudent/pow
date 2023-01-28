@@ -70,14 +70,13 @@ CREATE FUNCTION public.view_exists(
     )
 RETURNS BOOLEAN AS
 $func$
-DECLARE
-	_exists BOOLEAN;
 BEGIN
-    SELECT TRUE INTO _exists
+    PERFORM v.table_name
     FROM information_schema.views v
     WHERE v.table_schema = schema_name
         AND v.table_name = view_name;
-    RETURN _exists;
+
+    RETURN FOUND;
 END
 $func$ LANGUAGE plpgsql;
 
@@ -89,14 +88,13 @@ CREATE FUNCTION public.index_exists(
     )
 RETURNS BOOLEAN AS
 $func$
-DECLARE
-	_exists BOOLEAN;
 BEGIN
-    SELECT TRUE INTO _exists
+    PERFORM indexname
     FROM pg_catalog.pg_indexes
     WHERE indexname = index_name
     AND schemaname = schema_name;
-    RETURN _exists;
+
+    RETURN FOUND;
 END
 $func$ LANGUAGE plpgsql;
 
@@ -109,15 +107,14 @@ CREATE FUNCTION public.column_exists(
     )
 RETURNS BOOLEAN AS
 $func$
-DECLARE
-    _exists BOOLEAN;
 BEGIN
-    SELECT TRUE INTO _exists
+    PERFORM c.column_name
     FROM information_schema.columns c
     WHERE c.table_schema = schema_name
         AND c.table_name = table_name
         AND c.column_name = column_name;
-    RETURN _exists;
+
+    RETURN FOUND;
 END
 $func$ LANGUAGE plpgsql;
 
@@ -129,14 +126,13 @@ CREATE FUNCTION public.function_exists(
     )
 RETURNS BOOLEAN AS
 $func$
-DECLARE
-    _exists BOOLEAN;
 BEGIN
-    SELECT TRUE INTO _exists
+    PERFORM routine_name
     FROM information_schema.routines
     WHERE routine_schema = schema_name
         AND routine_name = LOWER(function_name);
-    RETURN _exists;
+
+    RETURN FOUND;
 END
 $func$ LANGUAGE plpgsql;
 

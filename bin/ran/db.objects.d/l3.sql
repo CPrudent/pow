@@ -147,7 +147,7 @@ BEGIN
         CREATE INDEX IF NOT EXISTS ix_l3_lb_standard_nn ON ran.l3 USING GIN(lb_standard_nn GIN_TRGM_OPS);
     END IF;
 
-    DROP INDEX IF EXISTS idx_l3_histo_key;
+    DROP INDEX IF EXISTS ran.idx_l3_histo_key;
     --CREATE UNIQUE INDEX IF NOT EXISTS idx_l3_histo_key ON ran.l3_histo (co_cea, dt_reference);
 END
 $proc$ LANGUAGE plpgsql;

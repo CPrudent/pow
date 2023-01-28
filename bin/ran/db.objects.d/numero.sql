@@ -67,7 +67,7 @@ BEGIN
         CREATE UNIQUE INDEX IF NOT EXISTS iux_numero_co_cea ON ran.numero (co_cea);
     END IF;
 
-    DROP INDEX IF EXISTS idx_numero_histo_key;
+    DROP INDEX IF EXISTS ran.idx_numero_histo_key;
     --CREATE UNIQUE INDEX IF NOT EXISTS idx_numero_histo_key ON ran.numero_histo (co_cea, dt_reference);
 END
 $proc$ LANGUAGE plpgsql;
