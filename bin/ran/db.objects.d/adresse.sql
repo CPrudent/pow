@@ -80,7 +80,7 @@ BEGIN
     IF index_exists('ran', 'idx_adresse_co_cea_determinant') AND NOT index_exists('ran', 'iux_adresse_co_cea_determinant') THEN
         ALTER INDEX idx_adresse_co_cea_determinant RENAME TO iux_adresse_co_cea_determinant;
     ELSE
-        CREATE UNIQUE INDEX IF NOT EXISTS iux_adresse_co_cea_determinant ON ran.adresse (co_cea);
+        CREATE UNIQUE INDEX IF NOT EXISTS iux_adresse_co_cea_determinant ON ran.adresse (co_cea_determinant);
     END IF;
 
     -- level
