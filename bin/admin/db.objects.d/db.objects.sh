@@ -48,7 +48,7 @@ for _schema in ${_schemas[@]}; do
     # begins w/ admin (core functions)
     set_env --schema_code $_schema &&
     [ -f "$POW_DIR_BATCH/db.objects.d/db.objects.sql" ] && {
-        log_info "schéma($_schema)"
+        log_info "Traitement schéma($_schema)"
         execute_query \
             --query "$POW_DIR_BATCH/db.objects.d/db.objects.sql" || {
             log_error "Echec mise à jour de la structure de $_schema"
