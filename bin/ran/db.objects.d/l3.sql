@@ -154,7 +154,7 @@ $proc$ LANGUAGE plpgsql;
 
 DO $$
 BEGIN
-    -- create indexes
-    PERFORM ran.setIndexComplement();
+    -- manage indexes
+    CALL ran.setIndexComplement();
 END
 $$;

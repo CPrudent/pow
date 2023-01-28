@@ -75,6 +75,6 @@ $proc$ LANGUAGE plpgsql;
 DO $$
 BEGIN
     -- manage indexes
-    PERFORM ran.setIndexHousenumber();
+    CALL ran.setIndexHousenumber();
 END
 $$;

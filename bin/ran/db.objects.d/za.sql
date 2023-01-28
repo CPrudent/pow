@@ -154,6 +154,6 @@ $proc$ LANGUAGE plpgsql;
 DO $$
 BEGIN
     -- manage indexes
-    PERFORM ran.setIndexZa();
+    CALL ran.setIndexZa();
 END
 $$;

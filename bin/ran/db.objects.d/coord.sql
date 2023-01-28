@@ -73,6 +73,6 @@ $proc$ LANGUAGE plpgsql;
 DO $$
 BEGIN
     -- manage indexes
-    PERFORM ran.setIndexCoordinates();
+    CALL ran.setIndexCoordinates();
 END
 $$;

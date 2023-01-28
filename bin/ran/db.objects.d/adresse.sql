@@ -133,6 +133,6 @@ $proc$ LANGUAGE plpgsql;
 DO $$
 BEGIN
     -- manage indexes
-    PERFORM ran.setIndexAddress();
+    CALL ran.setIndexAddress();
 END
 $$;

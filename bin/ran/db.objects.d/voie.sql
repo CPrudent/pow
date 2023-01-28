@@ -118,6 +118,6 @@ $proc$ LANGUAGE plpgsql;
 DO $$
 BEGIN
     -- manage indexes
-    PERFORM ran.setIndexStreet();
+    CALL ran.setIndexStreet();
 END
 $$;
