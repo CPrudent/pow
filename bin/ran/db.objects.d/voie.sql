@@ -20,7 +20,6 @@ CREATE TABLE IF NOT EXISTS ran.voie_ra41(
 ;
 
 DO $$
-DECLARE
 BEGIN
     -- error 25-01-2020
     PERFORM alter_column_drop_not_null('ran','voie_ra41','lb_desc_an');
@@ -54,7 +53,6 @@ ALTER TABLE ran.voie SET (
 );
 
 DO $$
-DECLARE
 BEGIN
     IF column_exists('ran','voie','co_cea_za') = FALSE THEN
         ALTER TABLE ran.voie ADD COLUMN co_cea_za CHAR(10);
@@ -85,9 +83,8 @@ CREATE TABLE IF NOT EXISTS ran.voie_histo
 )
 ;
 
---VACUUM géré manuellement (cf. ran/import.sh), on préfère désactiver l'autovacuum de façon à ce qu'il n'occupe pas de ressource inutilement (exemple : lancement pendant une opération intermédiaire au vacuum manuel)
 ALTER TABLE ran.voie_histo SET (
-  autovacuum_enabled = false
+    AUTOVACUUM_ENABLED = FALSE
 );
 
 COMMENT ON TABLE ran.voie_ra41 IS 'Adresses voie';
@@ -124,15 +121,10 @@ COMMENT ON COLUMN ran.voie_ra41.fl_diffusable IS 'Etat diffusable
 1 = diffusable, 0 = non diffusable';
 */
 
-
-
 -- Fonction remplacée par un appel à import_file
 SELECT drop_all_functions_if_exists('ran','setVoieRa41FromRa41');
 
-/*
-TEST
-
-Sur le serveur (REC) :
+/* TEST
 #extraction fichier ran
 cd /data/bcaa/common_env/import/ran/
 mkdir test
@@ -143,7 +135,7 @@ grep '^33' ra41aaaa.bm >> ra41aaaa.bm.tmp
 rm ra41aaaa.bm
 mv ra41aaaa.bm.tmp ra41aaaa.bm
 #chargement
-*/
+ */
 
 SELECT drop_all_functions_if_exists('ran','getVoieFromVoieRa41');
 CREATE OR REPLACE FUNCTION ran.getVoieFromVoieRa41(voie_ra41 IN ran.voie_ra41)

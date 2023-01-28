@@ -150,44 +150,7 @@ $proc$ LANGUAGE plpgsql;
 DO
 $$
 BEGIN
-    IF NOT column_exists('ran', 'za', 'dt_reference_commune') THEN
-        ALTER TABLE ran.za ADD COLUMN dt_reference_commune DATE;
-        ALTER TABLE ran.za ADD COLUMN co_insee_commune_ran CHAR(5);
-        ALTER TABLE ran.za ADD COLUMN co_insee_commune_precedente_ran CHAR(5);
-        UPDATE ran.za
-        SET	dt_reference_commune = za.dt_reference
-            , co_insee_commune_ran = za.co_insee_commune
-            , co_insee_commune_precedente_ran = za.co_insee_commune_precedente;
-        ALTER TABLE ran.za ALTER COLUMN dt_reference_commune SET NOT NULL;
-        ALTER TABLE ran.za ALTER COLUMN co_insee_commune_ran SET NOT NULL;
-    END IF;
-
-    IF table_exists('ran', 'za_histo') AND
-        NOT column_exists('ran', 'za_histo', 'dt_reference_commune') THEN
-        ALTER TABLE ran.za_histo ADD COLUMN dt_reference_commune DATE;
-        ALTER TABLE ran.za_histo ADD COLUMN co_insee_commune_ran CHAR(5);
-        ALTER TABLE ran.za_histo ADD COLUMN co_insee_commune_precedente_ran CHAR(5);
-        UPDATE ran.za_histo
-        SET	dt_reference_commune = za_histo.dt_reference
-            , co_insee_commune_ran = za_histo.co_insee_commune
-            , co_insee_commune_precedente_ran = za_histo.co_insee_commune_precedente;
-        ALTER TABLE ran.za_histo ALTER COLUMN dt_reference_commune SET NOT NULL;
-        ALTER TABLE ran.za_histo ALTER COLUMN co_insee_commune_ran SET NOT NULL;
-    END IF;
-
-    IF NOT column_exists('ran', 'za', 'co_insee_departement') THEN
-        ALTER TABLE ran.za ADD COLUMN co_insee_departement VARCHAR(3) NULL;
-        UPDATE ran.za
-        SET	co_insee_departement = public.get_department_code_from_district_code(za.co_insee_commune);
-        ALTER TABLE ran.za ALTER COLUMN co_insee_departement SET NOT NULL;
-    END IF;
-    IF table_exists('ran', 'za_histo') AND
-        NOT column_exists('ran', 'za_histo', 'co_insee_departement') THEN
-        ALTER TABLE ran.za_histo ADD COLUMN co_insee_departement VARCHAR(3) NULL;
-        UPDATE ran.za_histo
-        SET	co_insee_departement = public.get_department_code_from_district_code(za_histo.co_insee_commune);
-        ALTER TABLE ran.za_histo ALTER COLUMN co_insee_departement SET NOT NULL;
-    END IF;
+    PERFORM ran.setIndexZa();
 END
 $$ ;
 
