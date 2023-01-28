@@ -96,7 +96,7 @@ BEGIN
     IF index_exists('ran', 'idx_za_co_insee_com_arr') AND NOT index_exists('ran', 'ix_za_co_insee_commune') THEN
         ALTER INDEX idx_za_co_insee_com_arr RENAME TO ix_za_co_insee_commune;
     ELSE
-        CREATE UNIQUE INDEX IF NOT EXISTS ix_za_co_insee_commune ON ran.za (co_insee_commune);
+        CREATE INDEX IF NOT EXISTS ix_za_co_insee_commune ON ran.za (co_insee_commune);
     END IF;
 
     -- old INSEE (used by IRISation)
@@ -105,7 +105,7 @@ BEGIN
     IF index_exists('ran', 'idx_za_co_insee_com_arr_anc') AND NOT index_exists('ran', 'ix_za_co_insee_commune_anc') THEN
         ALTER INDEX idx_za_co_insee_com_arr_anc RENAME TO ix_za_co_insee_commune_anc;
     ELSE
-        CREATE UNIQUE INDEX IF NOT EXISTS ix_za_co_insee_commune_anc ON ran.za (co_insee_commune, COALESCE(co_insee_commune_precedente, ''));
+        CREATE INDEX IF NOT EXISTS ix_za_co_insee_commune_anc ON ran.za (co_insee_commune, COALESCE(co_insee_commune_precedente, ''));
     END IF;
 
     -- department (not useful)
@@ -116,7 +116,7 @@ BEGIN
     IF index_exists('ran', 'idx_za_co_postal') AND NOT index_exists('ran', 'ix_za_co_postal') THEN
         ALTER INDEX idx_za_co_postal RENAME TO ix_za_co_postal;
     ELSE
-        CREATE UNIQUE INDEX IF NOT EXISTS ix_za_co_postal ON ran.za (co_postal);
+        CREATE INDEX IF NOT EXISTS ix_za_co_postal ON ran.za (co_postal);
     END IF;
 
     -- similar labels
@@ -124,25 +124,25 @@ BEGIN
     IF index_exists('ran', 'idx_za_lb_l5_nn') AND NOT index_exists('ran', 'ix_za_lb_l5_nn') THEN
         ALTER INDEX idx_za_lb_l5_nn RENAME TO ix_za_lb_l5_nn;
     ELSE
-        CREATE UNIQUE INDEX IF NOT EXISTS ix_za_lb_l5_nn ON ran.za USING GIN(lb_l5_nn GIN_TRGM_OPS);
+        CREATE INDEX IF NOT EXISTS ix_za_lb_l5_nn ON ran.za USING GIN(lb_l5_nn GIN_TRGM_OPS);
     END IF;
     -- lb_in_ext_loc
     IF index_exists('ran', 'idx_za_lb_in_ext_loc') AND NOT index_exists('ran', 'ix_za_lb_in_ext_loc') THEN
         ALTER INDEX idx_za_lb_in_ext_loc RENAME TO ix_za_lb_in_ext_loc;
     ELSE
-        CREATE UNIQUE INDEX IF NOT EXISTS ix_za_lb_in_ext_loc ON ran.za USING GIN(lb_in_ext_loc GIN_TRGM_OPS);
+        CREATE INDEX IF NOT EXISTS ix_za_lb_in_ext_loc ON ran.za USING GIN(lb_in_ext_loc GIN_TRGM_OPS);
     END IF;
     -- lb_nn
     IF index_exists('ran', 'idx_za_lb_nn') AND NOT index_exists('ran', 'ix_za_lb_nn') THEN
         ALTER INDEX idx_za_lb_nn RENAME TO ix_za_lb_nn;
     ELSE
-        CREATE UNIQUE INDEX IF NOT EXISTS ix_za_lb_nn ON ran.za USING GIN(lb_nn GIN_TRGM_OPS);
+        CREATE INDEX IF NOT EXISTS ix_za_lb_nn ON ran.za USING GIN(lb_nn GIN_TRGM_OPS);
     END IF;
     -- lb_ach_nn
     IF index_exists('ran', 'idx_za_lb_ach_nn') AND NOT index_exists('ran', 'ix_za_lb_ach_nn') THEN
         ALTER INDEX idx_za_lb_ach_nn RENAME TO ix_za_lb_ach_nn;
     ELSE
-        CREATE UNIQUE INDEX IF NOT EXISTS ix_za_lb_ach_nn ON ran.za USING GIN(lb_ach_nn GIN_TRGM_OPS);
+        CREATE INDEX IF NOT EXISTS ix_za_lb_ach_nn ON ran.za USING GIN(lb_ach_nn GIN_TRGM_OPS);
     END IF;
 
     -- date history
