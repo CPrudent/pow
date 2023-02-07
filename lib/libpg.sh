@@ -12,11 +12,13 @@ execute_query() {
         --args_p '
             name:nommage de la commande;
             query:code SQL à exécuter (fichier ou ligne de commande);
+            output:fichier résultat;
             psql_arguments:paramètres supplémentaires, sous la forme (arg1:arg2:...:argn);
             return:résultat de la commande SELECT;
             with_log:avec log
         ' \
         --args_o '
+            name;
             query
         ' \
         --args_v '
@@ -27,7 +29,7 @@ execute_query() {
         ' \
         "$@" || return $ERROR_CODE
 
-    local _start=$(date +%s) _log _opt _info _rc _last
+    local _start=$(date +%s) _log _opt _info _rc _last _psql_output
     local _log_tmp_path _log_notice_tmp_path _log_error_tmp_path _log_error_archive_path
     [ -f "$get_arg_query" ] && {
         _log=$(basename "$get_arg_query")
@@ -51,6 +53,10 @@ execute_query() {
             get_arg_psql_arguments+="--${_args[$_i]} "
         done
     }
+    [ -z "$get_arg_output" ] && _psql_output=$_log_tmp_path || {
+        _psql_output=$get_arg_output
+        touch $_log_tmp_path
+    }
 
     # with log
     is_yes --var get_arg_with_log && log_info "Lancement de l'exécution $_info $_log"
@@ -64,7 +70,7 @@ execute_query() {
         --no-password \
         $get_arg_psql_arguments \
         $_opt "$get_arg_query" \
-        --output $_log_tmp_path 2> $_log_notice_tmp_path
+        --output $_psql_output 2> $_log_notice_tmp_path
     _rc=$?
     # purge & archive log
     grep --extended-regexp --invert-match 'ATTENTION:|NOTICE:|DÉTAIL : |DROP cascade sur ' $_log_notice_tmp_path >> $_log_error_tmp_path

@@ -294,6 +294,9 @@ bash_args() {
     return 0
 }
 
+    ###
+    # compare
+    #
 is_different() {
     bash_args --args_p '
             dir_a:Dossier à comparer;
@@ -388,15 +391,17 @@ is_different() {
 }
 
     ###
-    # récupérer type MIME d'un fichier
+    # get MIME's type of file
     #
 get_mimetype() {
     file --mime-type "$1" | sed 's/.*: //'
 }
 
+    ###
+    # known if file is binary
+    #
 file_is_binary() {
     file -bL --mime "$1" | grep -q 'charset=binary'
-    return $?
 }
 
     ###
@@ -655,7 +660,7 @@ get_tmp_file() {
         "$@" || return $ERROR_CODE
 
     local _tmp_pow=$(mktemp --tmpdir=$get_arg_tmpdir pow_XXXXX.$get_arg_tmpext)
-    typeset -n _tmp_ref=$get_arg_tmpfile
+    local -n _tmp_ref=$get_arg_tmpfile
     [ $get_arg_create = 'no' ] && rm --force $_tmp_pow || chmod $get_arg_chmod $_tmp_pow
     _tmp_ref=$_tmp_pow
     return $SUCCESS_CODE

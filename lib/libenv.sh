@@ -7,6 +7,7 @@
 source $POW_DIR_ROOT/lib/librun.sh  &&
 source $POW_DIR_ROOT/lib/libstd.sh  &&
 source $POW_DIR_ROOT/lib/libpg.sh   &&
+source $POW_DIR_ROOT/lib/libio.sh   &&
 source $POW_DIR_ROOT/lib/bashenv.sh || exit ${ERROR_CODE:-3}
 
     ###
