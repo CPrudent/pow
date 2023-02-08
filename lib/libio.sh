@@ -119,6 +119,10 @@ _io_manager() {
             ) TO STDOUT WITH (DELIMITER ';', FORMAT CSV, HEADER TRUE, ENCODING UTF8)
         "
         ;;
+    *)
+        log_error "Méthode '$get_arg_method' non implémentée!"
+        return $ERROR_CODE
+        ;;
     esac
 
     execute_query \
@@ -162,7 +166,7 @@ io_exists() {
         --method EXISTS \
         --status $get_arg_status \
         --type $get_arg_type \
-        --date_end $get_arg_date_end \
+        --date_end "$get_arg_date_end" \
         --id _io_id || return $ERROR_CODE
 
     [ -z "$_io_id" ] && return $ERROR_CODE
@@ -310,8 +314,6 @@ io_export_last() {
             type;
         ' \
         "$@" || return $ERROR_CODE
-
-    local -n _io_id=$get_arg_id
 
     _io_manager \
         --method EXPORT_LAST \

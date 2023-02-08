@@ -53,14 +53,22 @@ execute_query() {
             get_arg_psql_arguments+="--${_args[$_i]} "
         done
     }
-    [ -z "$get_arg_output" ] && _psql_output=$_log_tmp_path || {
-        _psql_output=$get_arg_output
-        touch $_log_tmp_path
+    [ -z "$get_arg_output" ] && {
+        [ -n "$get_arg_return" ] && _psql_output="$POW_DIR_TMP/$_log.out" || _psql_output="$_log_tmp_path"
+    } || {
+        [ -n "$get_arg_return" ] && {
+            log_error "Les options --output et --select sont exclusives"
+            return $ERROR_CODE
+        } || {
+            _psql_output="$get_arg_output"
+        }
     }
+    [ ! -f "$_log_tmp_path" ] && touch "$_log_tmp_path"
 
     # with log
     is_yes --var get_arg_with_log && log_info "Lancement de l'exécution $_info $_log"
     # call psql
+    # quiet: https://stackoverflow.com/questions/21777564/postgresql-is-there-a-way-to-disable-the-display-of-insert-statements-when-rea
     env PGPASSWORD=$POW_PG_PASSWORD PGOPTIONS='-c client_min_messages=NOTICE' $POW_DIR_PG_BIN/psql \
         --host $POW_PG_HOST \
         --port $POW_PG_PORT \
@@ -68,16 +76,17 @@ execute_query() {
         --dbname $POW_PG_DBNAME \
         --variable ON_ERROR_STOP=1 \
         --no-password \
+        --quiet \
         $get_arg_psql_arguments \
         $_opt "$get_arg_query" \
-        --output $_psql_output 2> $_log_notice_tmp_path
+        --output "$_psql_output" 2> "$_log_notice_tmp_path"
     _rc=$?
     # purge & archive log
-    grep --extended-regexp --invert-match 'ATTENTION:|NOTICE:|DÉTAIL : |DROP cascade sur ' $_log_notice_tmp_path >> $_log_error_tmp_path
-    sed --in-place --expression '/^NOTICE:  la relation « [^ ]* » existe déjà/d' $_log_notice_tmp_path
-    archive_file $_log_tmp_path
-    archive_file $_log_notice_tmp_path
-    archive_file $_log_error_tmp_path
+    grep --extended-regexp --invert-match 'ATTENTION:|NOTICE:|DÉTAIL : |DROP cascade sur ' "$_log_notice_tmp_path" >> "$_log_error_tmp_path"
+    sed --in-place --expression '/^NOTICE:  la relation « [^ ]* » existe déjà/d' "$_log_notice_tmp_path"
+    archive_file "$_log_tmp_path"
+    archive_file "$_log_notice_tmp_path"
+    archive_file "$_log_error_tmp_path"
     [ $_rc -ne 0 ] && {
         local _msg="Erreur lors de l'exécution de $_log"
         is_yes --var get_arg_with_log && _msg+=", veuillez consulter $_log_error_archive_path"
@@ -92,10 +101,11 @@ execute_query() {
     # requested result of SELECT
     [ -n "$get_arg_return" ] && {
         local -n _select_ref=$get_arg_return
-        _select_ref=$(< "$POW_DIR_ARCHIVE/$_log.log")
+        _select_ref=$(< "$_psql_output")
+        rm "$_psql_output"
     }
     # no log
-    is_yes --var get_arg_with_log || rm --force $_log_tmp_path $_log_notice_tmp_path $_log_error_tmp_path
+    is_yes --var get_arg_with_log || rm --force "$_log_tmp_path" "$_log_notice_tmp_path" "$_log_error_tmp_path"
 
     return $SUCCESS_CODE
 }
