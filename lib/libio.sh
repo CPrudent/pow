@@ -170,10 +170,10 @@ io_exists() {
 }
 
 export -n _t=0
-POW_IO_SUCCESSFUL=((_t++))
-POW_IO_IN_PROGRESS=((_t++))
-POW_IO_TODO=((_t++))
-POW_IO_ERROR=((_t++))
+POW_IO_SUCCESSFUL=$((_t++))
+POW_IO_IN_PROGRESS=$((_t++))
+POW_IO_TODO=$((_t++))
+POW_IO_ERROR=$((_t++))
 
 io_todo() {
     bash_args \
@@ -197,23 +197,24 @@ io_todo() {
 
     [ -n "$get_arg_id" ] && local -n _io_id=$get_arg_id || local _io_id
 
-    [ "$get_arg_force" = no ] &&
-    io_exists \
-        --type $get_arg_type \
-        --date_end "${get_arg_date_end}" \
-        --status SUCCES \
-        --id _io_id
-    && {
+    [ "$get_arg_force" = no ] && {
+        io_exists \
+            --type $get_arg_type \
+            --date_end "${get_arg_date_end}" \
+            --status SUCCES \
+            --id _io_id
+    } && {
         log_info "Le traitement $get_arg_type a déjà été réalisé avec succès"
         return $POW_IO_SUCCESSFUL
     }
 
-    io_exists \
-        --type $get_arg_type \
-        --date_end "${get_arg_date_end}" \
-        --status EN_COURS \
-        --id _io_id
-    && {
+    {
+        io_exists \
+            --type $get_arg_type \
+            --date_end "${get_arg_date_end}" \
+            --status EN_COURS \
+            --id _io_id
+    } && {
         log_info "Le traitement $get_arg_type est déjà en cours"
         return $POW_IO_IN_PROGRESS
     }

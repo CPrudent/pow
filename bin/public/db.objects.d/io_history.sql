@@ -2,7 +2,7 @@
  * add IO history
  */
 
-CREATE TABLE IF NOT EXISTS public.io_history
+CREATE TABLE IF NOT EXISTS public.io_history (
     id SERIAL NOT NULL -- after INSERT, do: SELECT CURRVAL('io_history_id_seq')
     , co_type VARCHAR(50) NOT NULL
     , dt_debut_execution TIMESTAMP NOT NULL DEFAULT NOW()
