@@ -34,8 +34,8 @@ _io_manager() {
 
     case $get_arg_method in
     EXISTS)
-        local -n _io_id=$get_arg_id
-        _return='--return _io_id'
+        local -n _io_id_manager=$get_arg_id
+        _return='--return _io_id_manager'
         _query="
             SELECT id FROM get_all_io(
                 type_in => '$get_arg_type'
@@ -45,17 +45,17 @@ _io_manager() {
         "
         ;;
     APPEND)
-        local -n _io_id=$get_arg_id
-        _return='--return _io_id'
+        local -n _io_id_manager=$get_arg_id
+        _return='--return _io_id_manager'
         local _infos
         [ -z "$get_arg_infos" ] && _infos='NULL' || _infos="'${infos_data}'"
         _query="
             INSERT INTO public.io_history(
                 co_type
-                , dt_debut_donnees
-                , dt_fin_donnees
-                , co_etat
-                , nb_enregistrements_a_traiter
+                , dt_data_begin
+                , dt_data_end
+                , co_status
+                , nb_rows_todo
                 , infos_data
             )
             VALUES (
@@ -75,9 +75,9 @@ _io_manager() {
         [ -z "$get_arg_infos" ] && _infos='infos_data' || _infos="'${infos_data}'"
         _query="
             UPDATE public.io_history SET
-                dt_fin_execution = NOW()
-                , co_etat = 'SUCCES'
-                , nb_enregistrements_traites = $get_arg_nrows_processed
+                dt_exec_end = NOW()
+                , co_status = 'SUCCES'
+                , nb_rows_processed = $get_arg_nrows_processed
                 , infos_data = $_infos
             WHERE id = $get_arg_id
         "
@@ -85,8 +85,8 @@ _io_manager() {
     UPDATE_KO)
         _query="
             UPDATE public.io_history SET
-                dt_fin_execution = NOW()
-                , co_etat = 'ERREUR'
+                dt_exec_end = NOW()
+                , co_status = 'ERREUR'
             WHERE id = $get_arg_id
         "
         ;;
@@ -97,23 +97,23 @@ _io_manager() {
             COPY (
                 SELECT
                     co_type
-                    , dt_debut_execution
-                    , dt_fin_execution
-                    , dt_debut_donnees
-                    , dt_fin_donnees
-                    , co_etat
-                    , nb_enregistrements_a_traiter
-                    , nb_enregistrements_traites
-                    , co_etat_integration
+                    , dt_exec_begin
+                    , dt_exec_end
+                    , dt_data_begin
+                    , dt_data_end
+                    , co_status
+                    , nb_rows_todo
+                    , nb_rows_processed
+                    , co_status_integration
                     , infos_data
                 FROM
                     public.io_history
                 WHERE
                     co_type ~ '$get_arg_type'
                     AND
-                    co_etat = 'SUCCES'
+                    co_status = 'SUCCES'
                 ORDER BY
-                    dt_fin_execution DESC
+                    dt_exec_end DESC
                 LIMIT
                     1
             ) TO STDOUT WITH (DELIMITER ';', FORMAT CSV, HEADER TRUE, ENCODING UTF8)
@@ -124,7 +124,7 @@ _io_manager() {
     execute_query \
         --name IO_${get_arg_method}_${get_arg_type} \
         --query "$_query" \
-        --psql_arguments '--tuples-only --pset=format=unaligned' \
+        --psql_arguments 'tuples-only:pset=format=unaligned' \
         $_return \
         $_output \
         --with_log $_with_log || return $ERROR_CODE
@@ -140,7 +140,7 @@ io_exists() {
     bash_args \
         --args_p '
             type:code type IO;
-            date:date de fin des données (format connu PostgreSQL);
+            date_end:date de fin des données (format connu PostgreSQL);
             status:état IO;
             id:variable pour récupérer ID de IO
         ' \
@@ -169,11 +169,10 @@ io_exists() {
     return $SUCCESS_CODE
 }
 
-export -n _t=0
-POW_IO_SUCCESSFUL=$((_t++))
-POW_IO_IN_PROGRESS=$((_t++))
-POW_IO_TODO=$((_t++))
-POW_IO_ERROR=$((_t++))
+POW_IO_SUCCESSFUL=10
+POW_IO_IN_PROGRESS=11
+POW_IO_TODO=12
+POW_IO_ERROR=13
 
 io_todo() {
     bash_args \
@@ -195,14 +194,14 @@ io_todo() {
         ' \
         "$@" || return $POW_IO_ERROR
 
-    [ -n "$get_arg_id" ] && local -n _io_id=$get_arg_id || local _io_id
+    [ -n "$get_arg_id" ] && local -n _io_id_todo=$get_arg_id || local _io_id_todo
 
     [ "$get_arg_force" = no ] && {
         io_exists \
             --type $get_arg_type \
             --date_end "${get_arg_date_end}" \
             --status SUCCES \
-            --id _io_id
+            --id _io_id_todo
     } && {
         log_info "Le traitement $get_arg_type a déjà été réalisé avec succès"
         return $POW_IO_SUCCESSFUL
@@ -213,7 +212,7 @@ io_todo() {
             --type $get_arg_type \
             --date_end "${get_arg_date_end}" \
             --status EN_COURS \
-            --id _io_id
+            --id _io_id_todo
     } && {
         log_info "Le traitement $get_arg_type est déjà en cours"
         return $POW_IO_IN_PROGRESS
