@@ -29,7 +29,7 @@ execute_query() {
         ' \
         "$@" || return $ERROR_CODE
 
-    local _start=$(date +%s) _log _opt _info _rc _last _psql_output
+    local _start=$(date +%s) _log _opt _info _rc _last _psql_output _psql_level=NOTICE
     local _log_tmp_path _log_notice_tmp_path _log_error_tmp_path _log_error_archive_path
     [ -f "$get_arg_query" ] && {
         _log=$(basename "$get_arg_query")
@@ -46,7 +46,7 @@ execute_query() {
     _log_error_archive_path="$POW_DIR_ARCHIVE/$_log.error.log"
     [ -n "$get_arg_psql_arguments" ] && {
         local _ifs=$IFS _args _i
-        # convert :-separated as list of option(s) of psql (w/ -- prefix for each)
+        # convert colon-separated (:) as list of option(s) of psql w/ -- prefix for each
         IFS=: ; _args=($get_arg_psql_arguments) ; IFS=$_ifs
         get_arg_psql_arguments=
         for ((_i=0; _i<${#_args[@]}; _i++)); do
@@ -54,29 +54,29 @@ execute_query() {
         done
     }
     [ -z "$get_arg_output" ] && {
-        [ -n "$get_arg_return" ] && _psql_output="$POW_DIR_TMP/$_log.out" || _psql_output="$_log_tmp_path"
+        _psql_output="$_log_tmp_path"
     } || {
         [ -n "$get_arg_return" ] && {
             log_error "Les options --output et --select sont exclusives"
             return $ERROR_CODE
         } || {
             _psql_output="$get_arg_output"
+            touch "$_log_tmp_path"
         }
     }
-    [ ! -f "$_log_tmp_path" ] && touch "$_log_tmp_path"
+    # quiet: https://stackoverflow.com/questions/21777564/postgresql-is-there-a-way-to-disable-the-display-of-insert-statements-when-rea
+    [ -n "$get_arg_return" ] && _psql_level=ERROR
 
-    # with log
+    # with log: start message
     is_yes --var get_arg_with_log && log_info "Lancement de l'exécution $_info $_log"
     # call psql
-    # quiet: https://stackoverflow.com/questions/21777564/postgresql-is-there-a-way-to-disable-the-display-of-insert-statements-when-rea
-    env PGPASSWORD=$POW_PG_PASSWORD PGOPTIONS='-c client_min_messages=NOTICE' $POW_DIR_PG_BIN/psql \
+    env PGPASSWORD=$POW_PG_PASSWORD PGOPTIONS='-c client_min_messages='$_psql_level $POW_DIR_PG_BIN/psql \
         --host $POW_PG_HOST \
         --port $POW_PG_PORT \
         --username $POW_PG_USERNAME \
         --dbname $POW_PG_DBNAME \
         --variable ON_ERROR_STOP=1 \
         --no-password \
-        --quiet \
         $get_arg_psql_arguments \
         $_opt "$get_arg_query" \
         --output "$_psql_output" 2> "$_log_notice_tmp_path"
@@ -93,7 +93,7 @@ execute_query() {
         log_error "$_msg"
         return $ERROR_CODE
     }
-    # result message (w/ last)
+    # with log: end message (w/ last)
     is_yes --var get_arg_with_log && {
         get_elapsed_time --start $_start --result _last
         log_info "Exécution avec succès de $_log en $_last"
@@ -101,11 +101,8 @@ execute_query() {
     # requested result of SELECT
     [ -n "$get_arg_return" ] && {
         local -n _select_ref=$get_arg_return
-        _select_ref=$(< "$_psql_output")
-        rm "$_psql_output"
+        _select_ref=$(< "$POW_DIR_ARCHIVE/$_log.log")
     }
-    # no log
-    is_yes --var get_arg_with_log || rm --force "$_log_tmp_path" "$_log_notice_tmp_path" "$_log_error_tmp_path"
 
     return $SUCCESS_CODE
 }
