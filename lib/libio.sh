@@ -324,5 +324,121 @@ io_export_last() {
 }
 
     #
+    # manage transfer
+    #
+
+download_file() {
+    bash_args \
+        --args_p '
+            url:URL à télécharger;
+            output_directory:dossier de destination;
+            output_file:fichier de destination;
+            overwrite:avec/sans écrasement;
+            user:compte HTTP;
+            password:mot de passe HTTP;
+            use_proxy:utilisation proxy
+        ' \
+        --args_o '
+            url;
+            output_directory
+        ' \
+        --args_v '
+            overwrite:no|yes;
+            use_proxy:no|yes
+        ' \
+        --args_d '
+            overwrite:no;
+            use_proxy:no
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local _download_url="$get_arg_url"
+    local _download_directory="$get_arg_output_directory"
+    local _download_file="$get_arg_output_file"
+    local _download_overwrite=$get_arg_overwrite
+
+    [ -z "$_download_file" ] && _download_file=$(basename "$_download_url")
+    [ "$_download_overwrite" = no ] && {
+        # already present
+        [ -f "$_download_directory/$_download_file" ] && {
+            log_info "Téléchargement de ${_download_file} inutile, car déjà présent dans ${_download_directory}"
+            return $SUCCESS_CODE
+        }
+
+        # available into COMMON and import as target
+        [ -f "$POW_DIR_COMMON_GLOBAL_SCHEMA/$_download_file" ] &&
+        [[ "${_download_directory}" =~ ^"${POW_DIR_IMPORT}"/*$ ]] && {
+            cp "$POW_DIR_COMMON_GLOBAL_SCHEMA/$_download_file" "$POW_DIR_IMPORT"
+            log_info "Téléchargement de "$_download_file" inutile, car déjà présent dans le dossier POW_DIR_COMMON_GLOBAL_SCHEMA, copié dans import"
+            return $SUCCESS_CODE
+        }
+    }
+
+    log_info "Téléchargement de $_download_file"
+    local _log_tmp_path="$POW_DIR_TMP/$_download_file.log"
+    local _log_archive_path="$POW_DIR_ARCHIVE/$_download_file.log"
+    local _cache_path _cache_dir
+    # user/password
+    local _user _password
+    [ -n "$get_arg_user" ] && _user="--user $get_arg_user"
+    [ -n "$get_arg_password" ] && _password="--password $get_arg_password"
+    # temporary downloaded file
+    local _download_file_tmp
+    get_tmp_file --tmpfile _download_file_tmp
+
+    wget \
+        $_download_url \
+        --output-document "$_download_file_tmp" \
+        --no-check-certificate \
+        --progress=dot:mega \
+        --retry-on-http-error=503 \
+        --wait=10 \
+        --random-wait \
+        $_user \
+        $_password \
+        > $_log_tmp_path 2>&1 || {
+
+        archive_file "$_log_tmp_path"
+        log_error "Erreur lors du téléchargement de $_download_file_tmp, veuillez consulter $_log_archive_path"
+        [ -f "$_download_file_tmp" ] && rm --force "$_download_file_tmp"
+        # use of previous file if present
+        [ -f "$_download_directory/$_download_file" ] && {
+            log_info "Utilisation du fichier déjà présent pour contourner l'erreur de téléchargement"
+            return $SUCCESS_CODE
+        }
+        # available in cache?
+        _cache_path=$(echo "${POW_DIR_COMMON_GLOBAL}/public/cache/${_download_url//[:#]/_}" | sed 's|/$||')
+        [ -f "$_cache_path" ] && {
+            log_info "Utilisation du fichier déjà présent en cache pour contourner l'erreur de téléchargement"
+            cp "$_cache_path" "$_download_directory/$_download_file"
+            return $SUCCESS_CODE
+        }
+
+        return $ERROR_CODE
+    }
+
+    if [ "$_download_overwrite" = no ]; then
+        # not available into COMMON and import as target
+        [ ! -f "$POW_DIR_COMMON_GLOBAL_SCHEMA/$_download_file" ] &&
+        [[ "${_download_directory}" =~ ^"${POW_DIR_IMPORT}"/*$ ]] && {
+            log_info "Copie de ${_download_file} sur le COMMON"
+            cp "$_download_file_tmp" "${POW_DIR_COMMON_GLOBAL_SCHEMA}/${_download_file}"
+        }
+    else
+        _cache_path=$(echo "${POW_DIR_COMMON_GLOBAL}/public/cache/${_download_url//[:#]/_}" | sed 's|/$||')
+        _cache_dir=$(dirname "$_cache_path")
+        mkdir -p "$_cache_dir"
+        cp "$_download_file_tmp" "${_cache_path}"
+    fi
+
+    # result
+    mv "$_download_file_tmp" "$_download_directory/$_download_file"
+    archive_file "$_log_tmp_path"
+    log_info "Téléchargement avec succès de $_download_file"
+
+    return $SUCCESS_CODE
+}
+
+    #
     # TODO IO imports (CSV, EXCEL, ...)
     #
