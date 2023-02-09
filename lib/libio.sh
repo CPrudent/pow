@@ -231,6 +231,7 @@ io_todo() {
     return $POW_IO_TODO
 }
 
+#
 io_begin() {
     bash_args \
         --args_p '
@@ -327,9 +328,92 @@ io_export_last() {
     # manage transfer
     #
 
-download_file() {
+# get available dates (list, details as URL)
+io_get_list_online_available() {
     bash_args \
         --args_p '
+            type_import:Produit en ligne recherché;
+            details_file:Détail des millésimes disponibles;
+            dates_list:Dates des millésimes disponibles
+        ' \
+        --args_o '
+            type_import;
+            details_file;
+            dates_list
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local _url _re1 _re2 _only_matching_re1=--only-matching _i
+    local -n _details_file_ref=$get_arg_details_file
+    local -n _dates_ref=$get_arg_dates_list
+
+    case $get_arg_type_import in
+    IGN_ADMINEXPRESS)
+        _url='https://geoservices.ign.fr/adminexpress'
+        _re1='href="(http|ftp)[^"]+ADMIN-EXPRESS_(?(?!WM)[^"])+[0-9-]{10}\.7z[^"]*'
+        _re2='[0-9-]{10}'
+        ;;
+    IGN_CONTOURS_IRIS)
+        _url='https://geoservices.ign.fr/contoursiris#telechargement'
+        _re1='href="(http|ftp)[^" ]+CONTOURS-IRIS[^" ]*(FXX|FRA)[^" ]*\.7z[^" ]*"'
+        _re2='[0-9]{4}-01-01'
+        ;;
+    BANATIC_EPCI)
+        _url='https://www.banatic.interieur.gouv.fr/V5/fichiers-en-telechargement/fichiers-telech.php'
+        _re1='Données mises à jour le :'
+        _re2='[0-9]{2}/[0-9]{2}/[0-9]{4}'
+        _only_matching_re1=
+        ;;
+    INSEE_DECOUPAGE_COMMUNAL)
+        _url='https://www.insee.fr/fr/information/2028028'
+        _re1='table-appartenance-geo-communes-[0-9]{2}[^.]*\.zip'
+        _re2='[0-9]{2}'
+        ;;
+    *)
+        log_error "produit $get_arg_type_import non pris en charge!"
+        return $ERROR_CODE
+        ;;
+    esac
+
+    # temporary file (to be deleted by caller)
+    get_tmp_file --tmpext html --tmpfile _details_file_ref &&
+    # download available dates
+    io_download_file \
+        --name $get_arg_type_import \
+        --url "$_url" \
+        --output_directory "$POW_DIR_TMP" \
+        --output_file "$(basename $_details_file_ref)" \
+        --overwrite yes &&
+    # array of available dates (desc), transforming / to -
+    _dates_ref=($(grep $_only_matching_re1 --perl-regexp "$_re1" $_details_file_ref | grep --only-matching --perl-regexp "$_re2" | sed -e 's@/@-@g' | uniq | sort --reverse)) || {
+        log_error "Impossible de consulter la liste des millésimes disponibles de $get_arg_type_import"
+        return $ERROR_CODE
+    }
+
+    # date need to be compatible w/ BASH date
+    for ((_i=0; _i<${#_dates_ref[@]}; _i++)); do
+        [[ ${_dates[$_i]} =~ [0-9]{4}-[0-9]{2}-[0-9]{2} ]] && continue
+
+        # tranform DD-MM-YYYY to YYYY-MM-DD
+        [[ ${_dates[$_i]} =~ ([0-9]{2})-([0-9]{2})-([0-9]{4}) ]] && {
+            _dates[$_i]="${BASH_REMATCH[3]}-${BASH_REMATCH[2]}-${BASH_REMATCH[1]}"
+            continue
+        }
+
+        # transform YY to CCYY-01-01
+        [[ ${_dates[$_i]} =~ ([0-9]{2}) ]] && {
+            _dates[$_i]="$(date '+%C')${BASH_REMATCH[1]}-01-01"
+            continue
+        }
+    done
+
+    return $SUCCESS_CODE
+}
+
+io_download_file() {
+    bash_args \
+        --args_p '
+            name:nommage du fichier à télécharger;
             url:URL à télécharger;
             output_directory:dossier de destination;
             output_file:fichier de destination;
@@ -356,12 +440,13 @@ download_file() {
     local _download_directory="$get_arg_output_directory"
     local _download_file="$get_arg_output_file"
     local _download_overwrite=$get_arg_overwrite
-
     [ -z "$_download_file" ] && _download_file=$(basename "$_download_url")
+    local _download_name=${get_arg_name:-"$_download_file"}
+
     [ "$_download_overwrite" = no ] && {
         # already present
         [ -f "$_download_directory/$_download_file" ] && {
-            log_info "Téléchargement de ${_download_file} inutile, car déjà présent dans ${_download_directory}"
+            log_info "Téléchargement de ${_download_name} inutile, car déjà présent dans ${_download_directory}"
             return $SUCCESS_CODE
         }
 
@@ -369,12 +454,12 @@ download_file() {
         [ -f "$POW_DIR_COMMON_GLOBAL_SCHEMA/$_download_file" ] &&
         [[ "${_download_directory}" =~ ^"${POW_DIR_IMPORT}"/*$ ]] && {
             cp "$POW_DIR_COMMON_GLOBAL_SCHEMA/$_download_file" "$POW_DIR_IMPORT"
-            log_info "Téléchargement de "$_download_file" inutile, car déjà présent dans le dossier POW_DIR_COMMON_GLOBAL_SCHEMA, copié dans import"
+            log_info "Téléchargement de "$_download_name" inutile, car déjà présent dans le dossier POW_DIR_COMMON_GLOBAL_SCHEMA, copié dans import"
             return $SUCCESS_CODE
         }
     }
 
-    log_info "Téléchargement de $_download_file"
+    log_info "Téléchargement de $_download_name"
     local _log_tmp_path="$POW_DIR_TMP/$_download_file.log"
     local _log_archive_path="$POW_DIR_ARCHIVE/$_download_file.log"
     local _cache_path _cache_dir
@@ -399,7 +484,7 @@ download_file() {
         > $_log_tmp_path 2>&1 || {
 
         archive_file "$_log_tmp_path"
-        log_error "Erreur lors du téléchargement de $_download_file_tmp, veuillez consulter $_log_archive_path"
+        log_error "Erreur lors du téléchargement de $_download_name, veuillez consulter $_log_archive_path"
         [ -f "$_download_file_tmp" ] && rm --force "$_download_file_tmp"
         # use of previous file if present
         [ -f "$_download_directory/$_download_file" ] && {
@@ -421,7 +506,7 @@ download_file() {
         # not available into COMMON and import as target
         [ ! -f "$POW_DIR_COMMON_GLOBAL_SCHEMA/$_download_file" ] &&
         [[ "${_download_directory}" =~ ^"${POW_DIR_IMPORT}"/*$ ]] && {
-            log_info "Copie de ${_download_file} sur le COMMON"
+            log_info "Copie de ${_download_name} sur le COMMON"
             cp "$_download_file_tmp" "${POW_DIR_COMMON_GLOBAL_SCHEMA}/${_download_file}"
         }
     else
@@ -434,7 +519,7 @@ download_file() {
     # result
     mv "$_download_file_tmp" "$_download_directory/$_download_file"
     archive_file "$_log_tmp_path"
-    log_info "Téléchargement avec succès de $_download_file"
+    log_info "Téléchargement avec succès de $_download_name"
 
     return $SUCCESS_CODE
 }
