@@ -48,7 +48,7 @@ _io_manager() {
         local -n _io_id_manager=$get_arg_id
         _return='--return _io_id_manager'
         local _infos
-        [ -z "$get_arg_infos" ] && _infos='NULL' || _infos="'${infos_data}'"
+        [ -z "$get_arg_infos" ] && _infos='NULL' || _infos="'${get_arg_infos}'"
         _query="
             INSERT INTO public.io_history(
                 co_type
@@ -72,7 +72,7 @@ _io_manager() {
     UPDATE_OK)
         local _infos
         # itself (if no defined) to remain previous value
-        [ -z "$get_arg_infos" ] && _infos='infos_data' || _infos="'${infos_data}'"
+        [ -z "$get_arg_infos" ] && _infos='infos_data' || _infos="'${get_arg_infos}'"
         _query="
             UPDATE public.io_history SET
                 dt_exec_end = NOW()
