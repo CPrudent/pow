@@ -720,71 +720,29 @@ extract_archive() {
         ;;
     x-bzip2)
         [ "$get_arg_extract_path" = STDOUT ] && {
+            bunzip2 --stdout "$get_arg_archive_path" 2> $_log_tmp_path
         } || {
+            bunzip2 --stdout "$get_arg_archive_path" > "$get_arg_extract_path/${_archive_name%.*}"
         }
+        ;;
+    *)
+        log_error "${FUNCNAME[1]}: format d'archive ($_type_archive) non pris en charge"
+        return $ERROR_CODE
         ;;
     esac
 
-    if file_has_extension $_archive_name 'zip'; then
-        if [ "$extract_path" = "stdout" ]; then
+    # https://stackoverflow.com/questions/19120263/why-exit-code-141-with-grep-q
+    [[ ! $? =~ 0|141 ]] && {
+        archive_file "$_log_tmp_path"
+        log_error "${FUNCNAME[1]}: erreur lors de l'extraction de l'archive $_archive_name, veuillez consulter $_log_archive_path"
+        return $ERROR_CODE
+    } || {
+        local _last
+        get_elapsed_time --start $_start --result _last
+        log_info "Extraction avec succès de l'archive $_archive_name en $_last"
+    }
 
-            unzip -p "$get_arg_archive_path" 2>&1
-        else
-            #log_info "Extraction de l'archive "$_archive_name
-            unzip -o "$get_arg_archive_path" -d $extract_path > $_log_tmp_path 2>&1
-        fi
-    elif file_has_extension $_archive_name 'tar.gz'; then
-        if [ "$extract_path" = "stdout" ]; then
-            tar -xOzf "$get_arg_archive_path" 2> $_log_tmp_path
-        else
-            #log_info "Extraction de l'archive "$_archive_name
-            tar -C $extract_path -xzf "$get_arg_archive_path" > $_log_tmp_path 2>&1
-        fi
-    elif file_has_extension $_archive_name 'gz'; then
-        if [ "$extract_path" = "stdout" ]; then
-            gunzip -c "$get_arg_archive_path" 2> $_log_tmp_path
-        else
-            #mkdir -p $extract_path ?
-            # || return $ERROR_CODE ?
-            gunzip -c "$get_arg_archive_path" > $extract_path/${_archive_name%.*}
-        fi
-    #FIXME : apt-get install p7zip-full et p7zip-rar à mettre dans socle
-    elif file_has_extension $_archive_name '7z'; then
-        if [ "$extract_path" = "stdout" ]; then
-            #TODO
-            log_error "Mode d'extraction sur le type d'archive .zip non pris en charge pour le moment"
-            return $ERROR_CODE
-        else
-            7z x "$get_arg_archive_path" -o$extract_path -y > $_log_tmp_path 2>&1
-        fi
-    elif file_has_extension $_archive_name 'rar'; then
-        if [ "$extract_path" = "stdout" ]; then
-            #TODO
-            log_error "Mode d'extraction sur le type d'archive .rar non pris en charge pour le moment"
-            return $ERROR_CODE
-        else
-            # Options pour extraire une archive .rar
-            7z x -o$extract_path "$get_arg_archive_path" -y > $_log_tmp_path 2>&1
-        fi
-    else
-        log_error "Format d'archive non pris en charge"
-        return $ERROR_CODE
-    fi
-    #on considère un exit code à 141 comme OK, cela arrive si on fait une extraction en stdout + head par exemple
-    local _exit_code=$?
-    if [ $_exit_code -ne 0 ] && [ $_exit_code -ne 141 ]; then
-        archive_file $_log_tmp_path
-        log_error "Erreur lors de l'extraction de l'archive "$_archive_name", veuillez consulter "$_log_archive_path
-        return $ERROR_CODE
-    else
-        rm --force $_log_tmp_path
-        if [ "$extract_path" != "stdout" ]; then
-            local endTime=$(date +%s)
-            local elapsedTime="$((($endTime-$startTime)/3600))h:$((($endTime-$startTime)%3600/60))m:$((($endTime-$startTime)%60))s"
-            log_info "Extraction avec succès de l'archive "$_archive_name" en $elapsedTime"
-        fi
-        return $SUCCESS_CODE
-    fi
+    return $SUCCESS_CODE
 }
 
 #TODO
