@@ -660,16 +660,16 @@ wait_for_file() {
 is_archive() {
     bash_args \
         --args_p "
-            file_path:chemin complet de l'archive;
+            archive_path:chemin complet de l'archive;
             type_archive:obtenir le type de l'archive (MIME)
         " \
-        --args_o 'file_path' \
+        --args_o 'archive_path' \
         "$@" || return $ERROR_CODE
 
-    expect file "$get_arg_file_path" || return $ERROR_CODE
+    expect file "$get_arg_archive_path" || return $ERROR_CODE
     [ -n "$get_arg_type_archive" ] && local -n _type_ref=$get_arg_type_archive
     # TODO: (to add 7z and rar) apt install p7zip-full p7zip-rar
-	[[ $(file --mime-type "$get_arg_file_path") =~ application/(zip|gzip|x-bzip2) ]] && {
+	[[ $(file --mime-type "$get_arg_archive_path") =~ application/(zip|gzip|x-bzip2) ]] && {
         _type_ref=${BASH_REMATCH[1]}
         return $SUCCESS_CODE
     }
@@ -693,13 +693,12 @@ extract_archive() {
     local _archive_name=$(basename "$get_arg_archive_path")
     local _log_tmp_path="$POW_DIR_TMP/extract_$_archive_name.log"
     local _log_archive_path="$POW_DIR_ARCHIVE/extract_$_archive_name.log"
-    local _type_archive
 
-    is_archive --file_path "$get_arg_archive_path" --type_archive _type_archive || {
+    local _type_archive
+    is_archive --archive_path "$get_arg_archive_path" --type_archive _type_archive || {
         log_error "${FUNCNAME[1]}: le fichier $get_arg_archive_path n'est pas une archive"
         return $ERROR_CODE
     }
-
     case $_type_archive in
     zip)
         [ "$get_arg_extract_path" = STDOUT ] && {
