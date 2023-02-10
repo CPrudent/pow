@@ -6,6 +6,10 @@
 # best practices: see https://gist.github.com/outro56/4a2403ae8fefdeb832a5
 set -o pipefail
 
+    #
+    # log
+    #
+
 set_log_active() {
     POW_LOG_ACTIVE=$1
 }
@@ -41,6 +45,151 @@ log_error() {
 
     return $?
 }
+
+    #
+    # general
+    #
+
+# print expression and wait ENTER
+breakpoint() {
+    echo "###BREAK($1)"
+    read
+}
+
+# expect expression
+# in: $1=(argc, isnum, env, file) as (#args, is numeric, variable is defined, file exists)
+expect() {
+    local _ctrl _var
+
+    case $1 in
+
+        # expect argc func $# nr_args
+    argc)
+        if [ $3 -ne $4 ]; then
+            log_error "$2: argument ($3/$4)"
+            return $ERROR_CODE
+        fi
+        ;;
+
+        # expect isnum <data>
+    isnum)
+        expect argc isnum $# 2 || return $ERROR_CODE
+
+            # Search for none numeric character (return null if not found)
+        _ctrl=$(expr "$2" : '.*\([^0-9]\).*' \| "")
+        if [ ! -z "$_ctrl" ]; then
+            log_error "variable non numerique ($2)"
+            return $ERROR_CODE
+        fi
+        ;;
+
+        # expect env <var>
+    env)
+        expect argc env $# 2 || return $ERROR_CODE
+
+        _var=$(eval echo \${$2})
+        [ -z "$_var" ] && {
+            log_error "manque variable ($2)"
+            return $ERROR_CODE
+        }
+        ;;
+
+        # expect file <path>
+    file)
+        expect argc env $# 2 || return $ERROR_CODE
+
+        [ ! -f "$2" ] && {
+            log_error "manque fichier ($2)"
+            return $ERROR_CODE
+        }
+        ;;
+
+    esac
+
+    return $SUCCESS_CODE
+}
+
+# item in array
+# https://stackoverflow.com/questions/8082947/how-to-pass-an-array-to-a-bash-function
+# optional 3rd argument gives ID of searched item, as: in_array ARRAY STR_TO_SEARCH ID
+# another solution w/ print
+# https://stackoverflow.com/questions/3685970/check-if-a-bash-array-contains-a-value
+in_array() {
+    local _ref=$1[@]
+    local _array=("${!_ref}")
+    local _rc=1 _i _return_id=0
+    [ $# -eq 3 ] && {
+        _return_id=1
+        local -n _id_ref=$3
+        [ "$3" = _i ] && log_error "retour indice vers _i (en conflit avec local _i) : changer le nom"
+    }
+    for ((_i=0; _i < ${#_array[@]}; _i++)); do
+        #echo "$_i: ${_array[$_i]}"
+        [ "${_array[$_i]}" = "$2" ] && {
+            _rc=0
+            break
+        }
+    done
+    [ $_return_id -eq 1 ] && [ $_i -lt ${#_array[@]} ] && _id_ref=$_i
+    return $_rc
+}
+
+# eval duration of treatment (w/ its beginning)
+get_elapsed_time() {
+    bash_args \
+        --args_p '
+            start:Horodatage du début de traitement;
+            result:Durée calculée
+        ' \
+        --args_o '
+            start;
+            result
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local -n _result_ref=$get_arg_result
+    local _end=$(date +%s)
+    _result_ref="$((($_end-$get_arg_start)/3600))h:$((($_end-$get_arg_start)%3600/60))m:$((($_end-$get_arg_start)%60))s"
+
+    return $SUCCESS_CODE
+}
+
+# check mandatory root
+is_user_root() {
+    [ "$USER" != root ] && {
+        log_error "Ce script est à exécuter par l'utilisateur root"
+        return $ERROR_CODE
+    }
+
+    return $SUCCESS_CODE
+}
+
+# check user exists
+user_exists() {
+    getent passwd $1 > /dev/null 2&>1
+    return $?
+}
+
+# OK if var contains a Yes value
+is_yes() {
+    bash_args \
+        --args_p '
+            var:Variable à tester
+        ' \
+        --args_o '
+            var
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local -n _var_ref=$get_arg_var
+
+    [[ $_var_ref =~ ^(yes|YES|y|Y|oui|OUI|o|O|ok|OK|t|T|true|TRUE)$ ]] && return $SUCCESS_CODE
+    return $ERROR_CODE
+}
+
+    #
+    # command line
+    #
 
 # getopts improved (w/ list of values, default value, ...)
 # voir wiki https://wiki.net.extra.laposte.fr/confluence/pages/viewpage.action?pageId=824282297
@@ -294,9 +443,11 @@ bash_args() {
     return 0
 }
 
-    ###
-    # compare
     #
+    # file
+    #
+
+# compare
 is_different() {
     bash_args --args_p '
             dir_a:Dossier à comparer;
@@ -390,33 +541,299 @@ is_different() {
     return $ERROR_CODE
 }
 
-    ###
-    # get MIME's type of file
-    #
+# get MIME's type of file
 get_mimetype() {
     file --mime-type "$1" | sed 's/.*: //'
 }
 
-    ###
-    # known if file is binary
-    #
+# known if file is binary
 file_is_binary() {
     file -bL --mime "$1" | grep -q 'charset=binary'
 }
 
-    ###
-    # send mail
+# get number of rows
+file_get_nrows() {
+    expect argc $0 $# 2  &&
+    expect file "$1"     || return $ERROR_CODE
+
+    local -n _nr=$2
+    _nr=$(wc -l $1 | cut -d ' ' -f 1)
+
+    return $SUCCESS_CODE
+}
+
+# backup file (with uniq extension as: .backup.#)
+backup_file_as_uniq() {
+    bash_args \
+        --args_p 'path:nom complet' \
+        --args_o 'path' \
+        "$@" || return $ERROR_CODE
+
+    local _suffix=1
+
+    while [ -f "${get_arg_path}.backup.${_suffix}" ]; do
+        ((_suffix++))
+    done
+    cp ${get_arg_path} ${get_arg_path}.backup.${_suffix}
+    return $?
+}
+
+# get temporary file (w/ uniq name)
+get_tmp_file() {
+    bash_args \
+        --args_p '
+            tmpfile:Nom de la variable dans laquelles est retourné le chemin du fichier temporaire demandé;
+            tmpdir:Dossier temporaire dans lequel le fichier temporaire est demandé;
+            tmpext:Extension du fichier temporaire;
+            chmod:Permissions (rwx) à donner à ce fichier;
+            create:Créer le fichier temporaire' \
+        --args_o '
+            tmpfile' \
+        --args_v '
+            create:no|yes' \
+        --args_d '
+            tmpdir:'$POW_DIR_TMP';
+            tmpext:tmp;
+            chmod:666;
+            create:no' \
+        "$@" || return $ERROR_CODE
+
+    local _tmp_pow=$(mktemp --tmpdir=$get_arg_tmpdir pow_XXXXX.$get_arg_tmpext)
+    local -n _tmp_ref=$get_arg_tmpfile
+    [ "$get_arg_create" = no ] && rm --force $_tmp_pow || chmod $get_arg_chmod $_tmp_pow
+    _tmp_ref=$_tmp_pow
+    return $SUCCESS_CODE
+}
+
+# sync to wait for file
+wait_for_file() {
+    bash_args	\
+        --args_p '
+            file_path:chemin complet vers le fichier attendu;
+            wait_file_minute:combien de temps en minutes faut-il attendre que le fichier soit présent ?;
+            max_age_file_minute:quel age maximum en minutes doit avoir le fichier ?
+        ' \
+        --args_o 'file_path' \
+        --args_d 'wait_file_minute:0;max_age_file_minute:0' \
+        "$@" || return $ERROR_CODE
+
+    local file_path=$get_arg_file_path
+    local wait_file_minute=$get_arg_wait_file_minute
+    local max_age_file_minute=$get_arg_max_age_file_minute
+
+    # waiting delay
+    # AND
+    #   file not available
+    #   OR
+    #   present file is too old
+    while [ $wait_file_minute -gt 0 ] && { [ ! -f $file_path ] || ([ $max_age_file_minute -gt 0 ] && [ $(find $file_path -mmin +$max_age_file_minute) ]) }; do
+        echo "En attente du fichier $file_path (temps restant : $wait_file_minute minutes, age maximum du fichier : $max_age_file_minute minutes, fichier présent mais trop ancien : $([ -f $file_path ] && echo 'oui' || echo 'non'))"
+        sleep 60
+        ((wait_file_minute--))
+    done
+
+    if [ -f $file_path ]; then
+        # older ?
+        [ $max_age_file_minute -gt 0 ] && [ $(find $file_path -mmin +$max_age_file_minute) ] && log_error "Le fichier $file_path est présent mais trop ancien et l'éventuel temps d'attente est dépassé" && return $ERROR_CODE
+
+        # not currently growing?
+        file_size_before=$(stat --printf="%s" $file_path)
+        sleep 5
+        file_size_after=$(stat --printf="%s" $file_path)
+        while [ "$file_size_before" != "$file_size_after" ]; do
+            echo "La taille du fichier $file_path a changée, attente de 5 secondes supplémentaires"
+            file_size_before=$file_size_after
+            sleep 5
+            file_size_after=$(stat --printf="%s" $file_path)
+        done
+    else
+        echo "Le fichier $file_path n'est pas présent et l'éventuel temps d'attente est dépassé" && return $ERROR_CODE
+    fi
+
+    return $SUCCESS_CODE
+}
+
     #
-    # message from a file
-    #  send_mail --subject 'test MAIL body as file' --body ./test_send_mail.txt --attachment "data.txt.gz,full2part.txt.gz" --to <mail>
-    # message from command line
-    #  send_mail --subject 'test MAIL body as text' --body 'test envoi message' --attachment "data.txt.gz,full2part.txt.gz" --to <mail>
+    # archive
     #
-    # argument --encoding to convert (UTF8 to LATIN1 (Windows))
-    #
-    # see:
-    #  https://stackoverflow.com/questions/5395082/how-to-send-html-body-email-with-multiple-text-attachments-using-sendmail
-    #
+
+is_archive() {
+    bash_args \
+        --args_p "
+            file_path:chemin complet de l'archive;
+            type_archive:obtenir le type de l'archive (MIME)
+        " \
+        --args_o 'file_path' \
+        "$@" || return $ERROR_CODE
+
+    expect file "$get_arg_file_path" || return $ERROR_CODE
+    [ -n "$get_arg_type_archive" ] && local -n _type_ref=$get_arg_type_archive
+    # TODO: (to add 7z and rar) apt install p7zip-full p7zip-rar
+	[[ $(file --mime-type "$get_arg_file_path") =~ application/(zip|gzip|x-bzip2) ]] && {
+        _type_ref=${BASH_REMATCH[1]}
+        return $SUCCESS_CODE
+    }
+    return $ERROR_CODE
+}
+
+# extract data from archive (zip, gz, ...)
+extract_archive() {
+    bash_args \
+        --args_p "
+            archive_path:chemin complet de l'archive;
+            extract_path:chemin complet du résultat de l'extraction de l'archive (STDOUT pour écran)
+        " \
+        --args_o '
+            archive_path;
+            extract_path
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local _start=$(date +%s)
+    local _archive_name=$(basename "$get_arg_archive_path")
+    local _log_tmp_path="$POW_DIR_TMP/extract_$_archive_name.log"
+    local _log_archive_path="$POW_DIR_ARCHIVE/extract_$_archive_name.log"
+    local _type_archive
+
+    is_archive --file_path "$get_arg_archive_path" --type_archive _type_archive || {
+        log_error "${FUNCNAME[1]}: le fichier $get_arg_archive_path n'est pas une archive"
+        return $ERROR_CODE
+    }
+
+    case $_type_archive in
+    zip)
+        [ "$get_arg_extract_path" = STDOUT ] && {
+            # -p : extract files to pipe (stdout)
+            unzip -p "$get_arg_archive_path" 2> $_log_tmp_path
+        } || {
+            # -o : overwrite files WITHOUT prompting
+            # -d : extract files into dir
+            unzip -o "$get_arg_archive_path" -d "$get_arg_extract_path" > $_log_tmp_path 2>&1
+        }
+        ;;
+    gzip)
+        [ "$get_arg_extract_path" = STDOUT ] && {
+            gunzip --stdout "$get_arg_archive_path" 2> $_log_tmp_path
+        } || {
+            gunzip --stdout "$get_arg_archive_path" > "$get_arg_extract_path/${_archive_name%.*}"
+        }
+        ;;
+    x-bzip2)
+        [ "$get_arg_extract_path" = STDOUT ] && {
+        } || {
+        }
+        ;;
+    esac
+
+    if file_has_extension $_archive_name 'zip'; then
+        if [ "$extract_path" = "stdout" ]; then
+
+            unzip -p "$get_arg_archive_path" 2>&1
+        else
+            #log_info "Extraction de l'archive "$_archive_name
+            unzip -o "$get_arg_archive_path" -d $extract_path > $_log_tmp_path 2>&1
+        fi
+    elif file_has_extension $_archive_name 'tar.gz'; then
+        if [ "$extract_path" = "stdout" ]; then
+            tar -xOzf "$get_arg_archive_path" 2> $_log_tmp_path
+        else
+            #log_info "Extraction de l'archive "$_archive_name
+            tar -C $extract_path -xzf "$get_arg_archive_path" > $_log_tmp_path 2>&1
+        fi
+    elif file_has_extension $_archive_name 'gz'; then
+        if [ "$extract_path" = "stdout" ]; then
+            gunzip -c "$get_arg_archive_path" 2> $_log_tmp_path
+        else
+            #mkdir -p $extract_path ?
+            # || return $ERROR_CODE ?
+            gunzip -c "$get_arg_archive_path" > $extract_path/${_archive_name%.*}
+        fi
+    #FIXME : apt-get install p7zip-full et p7zip-rar à mettre dans socle
+    elif file_has_extension $_archive_name '7z'; then
+        if [ "$extract_path" = "stdout" ]; then
+            #TODO
+            log_error "Mode d'extraction sur le type d'archive .zip non pris en charge pour le moment"
+            return $ERROR_CODE
+        else
+            7z x "$get_arg_archive_path" -o$extract_path -y > $_log_tmp_path 2>&1
+        fi
+    elif file_has_extension $_archive_name 'rar'; then
+        if [ "$extract_path" = "stdout" ]; then
+            #TODO
+            log_error "Mode d'extraction sur le type d'archive .rar non pris en charge pour le moment"
+            return $ERROR_CODE
+        else
+            # Options pour extraire une archive .rar
+            7z x -o$extract_path "$get_arg_archive_path" -y > $_log_tmp_path 2>&1
+        fi
+    else
+        log_error "Format d'archive non pris en charge"
+        return $ERROR_CODE
+    fi
+    #on considère un exit code à 141 comme OK, cela arrive si on fait une extraction en stdout + head par exemple
+    local _exit_code=$?
+    if [ $_exit_code -ne 0 ] && [ $_exit_code -ne 141 ]; then
+        archive_file $_log_tmp_path
+        log_error "Erreur lors de l'extraction de l'archive "$_archive_name", veuillez consulter "$_log_archive_path
+        return $ERROR_CODE
+    else
+        rm --force $_log_tmp_path
+        if [ "$extract_path" != "stdout" ]; then
+            local endTime=$(date +%s)
+            local elapsedTime="$((($endTime-$startTime)/3600))h:$((($endTime-$startTime)%3600/60))m:$((($endTime-$startTime)%60))s"
+            log_info "Extraction avec succès de l'archive "$_archive_name" en $elapsedTime"
+        fi
+        return $SUCCESS_CODE
+    fi
+}
+
+#TODO
+#function compress_to_archive {
+	#exemple pour zip : zip -r --junk-paths $archive_de_destination $fichiers_a_compresser
+#}
+function create_archive {
+    bash_args \
+        --args_p '
+            type_archive:Type archive demandée;
+            output:Chemin complet archive générée;
+            input:Données à archiver
+        ' \
+        --args_o 'output;input' \
+        --args_v 'type_archive:zip|7z|gz|tar.gz|rar' \
+        --args_d 'type_archive:zip' \
+        "$@" || return $ERROR_CODE
+
+    case "$get_arg_type_archive" in
+    zip)
+        zip --filesync --recurse-paths --junk-paths $get_arg_output $get_arg_input
+        ;;
+    gz|tar.gz)
+        # TODO tar ?
+        gzip --recursive --stdout $get_arg_input > $get_arg_output
+        ;;
+    7z)
+        # TODO
+        ;;
+    rar)
+        # TODO
+        ;;
+    esac
+
+    return $?
+}
+
+# send mail
+#
+# message from a file
+#  send_mail --subject 'test MAIL body as file' --body ./test_send_mail.txt --attachment "data.txt.gz,full2part.txt.gz" --to <mail>
+# message from command line
+#  send_mail --subject 'test MAIL body as text' --body 'test envoi message' --attachment "data.txt.gz,full2part.txt.gz" --to <mail>
+#
+# argument --encoding to convert (UTF8 to LATIN1 (Windows))
+#
+# see:
+#  https://stackoverflow.com/questions/5395082/how-to-send-html-body-email-with-multiple-text-attachments-using-sendmail
+#
 send_mail() {
     bash_args \
         --args_p '
@@ -467,7 +884,7 @@ send_mail() {
         }
     }
     # préparation message (avec éventuelle(s) pj(s))
-    local _msg=$dir_tmp/mail_$$.msg
+    local _msg=$POW_DIR_TMP/mail_$$.msg
     {
         echo "To: ${get_arg_to}"
         [ -n "${get_arg_cc}" ] && echo "Cc: ${get_arg_cc}"
@@ -542,261 +959,4 @@ send_mail() {
     [ -n "$_tmplist" ] && rm $_tmplist
     [ "$get_arg_debug" = no ] && [ -f $_msg ] && rm $_msg
     return $_rc
-}
-
-    ###
-    # print expression and wait ENTER
-    #
-breakpoint() {
-    echo "###BREAK($1)"
-    read
-}
-
-    ###
-    # expect expression
-    #  in: $1=(argc, isnum, env, file) as (#args, is numeric, variable is defined, file exists)
-expect() {
-    local _ctrl _var
-
-    case $1 in
-
-        # expect argc func $# nr_args
-    argc)
-        if [ $3 -ne $4 ]; then
-            log_error "$2: argument ($3/$4)"
-            return $ERROR_CODE
-        fi
-        ;;
-
-        # expect isnum <data>
-    isnum)
-        expect argc isnum $# 2 || return $ERROR_CODE
-
-            # Search for none numeric character (return null if not found)
-        _ctrl=$(expr "$2" : '.*\([^0-9]\).*' \| "")
-        if [ ! -z "$_ctrl" ]; then
-            log_error "variable non numerique ($2)"
-            return $ERROR_CODE
-        fi
-        ;;
-
-        # expect env <var>
-    env)
-        expect argc env $# 2 || return $ERROR_CODE
-
-        _var=$(eval echo \${$2})
-        [ -z "$_var" ] && {
-            log_error "manque variable ($2)"
-            return $ERROR_CODE
-        }
-        ;;
-
-        # expect file <path>
-    file)
-        expect argc env $# 2 || return $ERROR_CODE
-
-        [ ! -f "$2" ] && {
-            log_error "manque fichier ($2)"
-            return $ERROR_CODE
-        }
-        ;;
-
-    esac
-
-    return $SUCCESS_CODE
-}
-
-    ###
-    # get nrows of file
-    #
-file_get_nrows() {
-    expect argc $0 $# 2  &&
-    expect file "$1"     || return $ERROR_CODE
-
-    local -n _nr=$2
-    _nr=$(wc -l $1 | cut -d ' ' -f 1)
-
-    return $SUCCESS_CODE
-}
-
-    ###
-    # backup file (with uniq extension as: .backup.#)
-    #
-backup_file_as_uniq() {
-    bash_args \
-        --args_p 'path:nom complet' \
-        --args_o 'path' \
-        "$@" || return $ERROR_CODE
-
-    local _suffix=1
-
-    while [ -f "${get_arg_path}.backup.${_suffix}" ]; do
-        ((_suffix++))
-    done
-    cp ${get_arg_path} ${get_arg_path}.backup.${_suffix}
-    return $?
-}
-
-    ###
-    # get temporary file (w/ uniq name)
-    #
-get_tmp_file() {
-    bash_args \
-        --args_p '
-            tmpfile:Nom de la variable dans laquelles est retourné le chemin du fichier temporaire demandé;
-            tmpdir:Dossier temporaire dans lequel le fichier temporaire est demandé;
-            tmpext:Extension du fichier temporaire;
-            chmod:Permissions (rwx) à donner à ce fichier;
-            create:Créer le fichier temporaire' \
-        --args_o '
-            tmpfile' \
-        --args_v '
-            create:no|yes' \
-        --args_d '
-            tmpdir:'$POW_DIR_TMP';
-            tmpext:tmp;
-            chmod:666;
-            create:no' \
-        "$@" || return $ERROR_CODE
-
-    local _tmp_pow=$(mktemp --tmpdir=$get_arg_tmpdir pow_XXXXX.$get_arg_tmpext)
-    local -n _tmp_ref=$get_arg_tmpfile
-    [ $get_arg_create = 'no' ] && rm --force $_tmp_pow || chmod $get_arg_chmod $_tmp_pow
-    _tmp_ref=$_tmp_pow
-    return $SUCCESS_CODE
-}
-
-    ###
-    # item in array
-    # https://stackoverflow.com/questions/8082947/how-to-pass-an-array-to-a-bash-function
-    # optional 3rd argument gives ID of searched item, as: in_array ARRAY STR_TO_SEARCH ID
-    #
-    # another solution w/ print
-    # https://stackoverflow.com/questions/3685970/check-if-a-bash-array-contains-a-value
-in_array() {
-    local _ref=$1[@]
-    local _array=("${!_ref}")
-    local _rc=1 _i _return_id=0
-    [ $# -eq 3 ] && {
-        _return_id=1
-        local -n _id_ref=$3
-        [ "$3" = _i ] && log_error "retour indice vers _i (en conflit avec local _i) : changer le nom"
-    }
-    for ((_i=0; _i < ${#_array[@]}; _i++)); do
-        #echo "$_i: ${_array[$_i]}"
-        [ "${_array[$_i]}" = "$2" ] && {
-            _rc=0
-            break
-        }
-    done
-    [ $_return_id -eq 1 ] && [ $_i -lt ${#_array[@]} ] && _id_ref=$_i
-    return $_rc
-}
-
-    ###
-    # eval duration of treatment (w/ its beginning)
-    #
-get_elapsed_time() {
-    bash_args \
-        --args_p '
-            start:Horodatage du début de traitement;
-            result:Durée calculée
-        ' \
-        --args_o '
-            start;
-            result
-        ' \
-        "$@" || return $ERROR_CODE
-
-    local -n _result_ref=$get_arg_result
-    local _end=$(date +%s)
-    _result_ref="$((($_end-$get_arg_start)/3600))h:$((($_end-$get_arg_start)%3600/60))m:$((($_end-$get_arg_start)%60))s"
-
-    return $SUCCESS_CODE
-}
-
-    ###
-    # check mandatory root
-    #
-is_user_root() {
-    [ "$USER" != root ] && {
-        log_error "Ce script est à exécuter par l'utilisateur root"
-        return $ERROR_CODE
-    }
-
-    return $SUCCESS_CODE
-}
-
-    ###
-    # check user exists
-    #
-user_exists() {
-    getent passwd $1 > /dev/null 2&>1
-    return $?
-}
-
-    ###
-    # OK if var contains a Yes value
-    #
-is_yes() {
-    bash_args \
-        --args_p '
-            var:Variable à tester
-        ' \
-        --args_o '
-            var
-        ' \
-        "$@" || return $ERROR_CODE
-
-    local -n _var_ref=$get_arg_var
-
-    [[ $_var_ref =~ ^(yes|YES|y|Y|oui|OUI|o|O|ok|OK|t|T|true|TRUE)$ ]] && return $SUCCESS_CODE
-    return $ERROR_CODE
-}
-
-wait_for_file() {
-    bash_args	\
-        --args_p '
-            file_path:chemin complet vers le fichier attendu;
-            wait_file_minute:combien de temps en minutes faut-il attendre que le fichier soit présent ?;
-            max_age_file_minute:quel age maximum en minutes doit avoir le fichier ?
-        ' \
-        --args_o 'file_path' \
-        --args_d 'wait_file_minute:0;max_age_file_minute:0' \
-        "$@" || return $ERROR_CODE
-
-    local file_path=$get_arg_file_path
-    local wait_file_minute=$get_arg_wait_file_minute
-    local max_age_file_minute=$get_arg_max_age_file_minute
-
-    # waiting delay
-    # AND
-    #   file not available
-    #   OR
-    #   present file is too old
-    while [ $wait_file_minute -gt 0 ] && { [ ! -f $file_path ] || ([ $max_age_file_minute -gt 0 ] && [ $(find $file_path -mmin +$max_age_file_minute) ]) }; do
-        echo "En attente du fichier $file_path (temps restant : $wait_file_minute minutes, age maximum du fichier : $max_age_file_minute minutes, fichier présent mais trop ancien : $([ -f $file_path ] && echo 'oui' || echo 'non'))"
-        sleep 60
-        ((wait_file_minute--))
-    done
-
-    if [ -f $file_path ]; then
-        # older ?
-        [ $max_age_file_minute -gt 0 ] && [ $(find $file_path -mmin +$max_age_file_minute) ] && log_error "Le fichier $file_path est présent mais trop ancien et l'éventuel temps d'attente est dépassé" && return $ERROR_CODE
-
-        # not currently growing?
-        file_size_before=$(stat --printf="%s" $file_path)
-        sleep 5
-        file_size_after=$(stat --printf="%s" $file_path)
-        while [ "$file_size_before" != "$file_size_after" ]; do
-            echo "La taille du fichier $file_path a changée, attente de 5 secondes supplémentaires"
-            file_size_before=$file_size_after
-            sleep 5
-            file_size_after=$(stat --printf="%s" $file_path)
-        done
-    else
-        echo "Le fichier $file_path n'est pas présent et l'éventuel temps d'attente est dépassé" && return $ERROR_CODE
-    fi
-
-    return $SUCCESS_CODE
 }
