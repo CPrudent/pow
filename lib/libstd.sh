@@ -744,11 +744,7 @@ extract_archive() {
     return $SUCCESS_CODE
 }
 
-#TODO
-#function compress_to_archive {
-	#exemple pour zip : zip -r --junk-paths $archive_de_destination $fichiers_a_compresser
-#}
-function create_archive {
+create_archive() {
     bash_args \
         --args_p '
             type_archive:Type archive demandée;
@@ -756,28 +752,28 @@ function create_archive {
             input:Données à archiver
         ' \
         --args_o 'output;input' \
-        --args_v 'type_archive:zip|7z|gz|tar.gz|rar' \
-        --args_d 'type_archive:zip' \
+        --args_v 'type_archive:zip|gzip|x-bzip2' \
+        --args_d 'type_archive:gzip' \
         "$@" || return $ERROR_CODE
 
     case "$get_arg_type_archive" in
     zip)
-        zip --filesync --recurse-paths --junk-paths $get_arg_output $get_arg_input
+        zip --filesync --recurse-paths --junk-paths "$get_arg_output" "$get_arg_input"
         ;;
-    gz|tar.gz)
-        # TODO tar ?
-        gzip --recursive --stdout $get_arg_input > $get_arg_output
+    gzip)
+        gzip --recursive --stdout "$get_arg_input" > "$get_arg_output"
         ;;
-    7z)
-        # TODO
-        ;;
-    rar)
-        # TODO
+    x-bzip2)
+        bzip2 --stdout "$get_arg_input" > "$get_arg_output"
         ;;
     esac
 
     return $?
 }
+
+    #
+    # mail
+    #
 
 # send mail
 #
