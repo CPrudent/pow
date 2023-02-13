@@ -369,6 +369,11 @@ io_get_list_online_available() {
         _re1='table-appartenance-geo-communes-[0-9]{2}[^.]*\.zip'
         _re2='[0-9]{2}'
         ;;
+    INSEE_EVENEMENT_COMMUNE)
+        _url='https://www.insee.fr/fr/information/2560452'
+        _re1='Millésime [0-9]{4}&nbsp;: <a'
+        _re2='[0-9]{4}'
+        ;;
     *)
         log_error "produit $get_arg_type_import non pris en charge!"
         return $ERROR_CODE
@@ -392,17 +397,23 @@ io_get_list_online_available() {
 
     # date need to be compatible w/ BASH date
     for ((_i=0; _i<${#_dates_ref[@]}; _i++)); do
-        [[ ${_dates[$_i]} =~ [0-9]{4}-[0-9]{2}-[0-9]{2} ]] && continue
+        [[ ${_dates_ref[$_i]} =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] && continue
 
         # tranform DD-MM-YYYY to YYYY-MM-DD
-        [[ ${_dates[$_i]} =~ ([0-9]{2})-([0-9]{2})-([0-9]{4}) ]] && {
-            _dates[$_i]="${BASH_REMATCH[3]}-${BASH_REMATCH[2]}-${BASH_REMATCH[1]}"
+        [[ ${_dates_ref[$_i]} =~ ^([0-9]{2})-([0-9]{2})-([0-9]{4})$ ]] && {
+            _dates_ref[$_i]="${BASH_REMATCH[3]}-${BASH_REMATCH[2]}-${BASH_REMATCH[1]}"
             continue
         }
 
         # transform YY to CCYY-01-01
-        [[ ${_dates[$_i]} =~ ([0-9]{2}) ]] && {
-            _dates[$_i]="$(date '+%C')${BASH_REMATCH[1]}-01-01"
+        [[ ${_dates_ref[$_i]} =~ ^([0-9]{2})$ ]] && {
+            _dates_ref[$_i]="$(date '+%C')${BASH_REMATCH[1]}-01-01"
+            continue
+        }
+
+        # transform YYYY to YYYY-01-01
+        [[ ${_dates_ref[$_i]} =~ ^([0-9]{4})$ ]] && {
+            _dates_ref[$_i]="${BASH_REMATCH[1]}-01-01"
             continue
         }
     done
