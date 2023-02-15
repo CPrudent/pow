@@ -3,7 +3,7 @@
     #--------------------------------------------------------------------------
     # synopsis
     #--
-    # import events of district updates
+    # import events of district updates (into INSEE schema)
 
 bash_args \
     --args_p "
@@ -18,19 +18,15 @@ bash_args \
     ' \
     "$@" || exit $ERROR_CODE
 
-force="$get_arg_force_import"
-year=
 co_type_import=INSEE_EVENEMENT_COMMUNE
+# year of district events (w/ YYYY format)
+year=
 
 on_import_error() {
     # import created?
     [ -n "$year_history_id" ] && io_end_ko --id $year_history_id
 
-    #On ignore l'erreur si le millésime demandé / ou de l'année courante a déjà été importé avec succès
-    if [ -z "$get_arg_year" ]; then
-        year=$(date +%Y)
-        date_millesime='01/01/'$year
-    fi
+    # ignoring error if last year already exists
     if io_exists --type $co_type_import --date_end "${years[$year_id]}"; then
         if [ -z "$get_arg_year" ]; then
             log_info "Erreur ignorée car le millésime de l'année courante (${year}) a déjà été importé avec succès"
@@ -48,6 +44,7 @@ io_get_list_online_available --type_import $co_type_import --details_file years_
 
 # get year (w/ format YYYY)
 if [ -z "$get_arg_year" ]; then
+    # get more recent
     year_id=0
 else
     in_array years "${get_arg_year}-01-01" year_id || {
@@ -62,9 +59,9 @@ year=$(date -d ${years[$year_id]} +%Y)
 }
 
 # URL to year information
-url_information='https://www.insee.fr'$(grep --only-matching --perl-regexp 'Millésime '$year'&nbsp;: <a class="renvoi" href="[^"]*"' $years_list_path | grep --only-matching --perl-regexp '/fr/information/[^"]*') &&
-io_download_file --url "$url_information" --output_directory $POW_DIR_TMP &&
-year_information=$(basename $url_information) || on_import_error
+url_information='https://www.insee.fr'$(grep --only-matching --perl-regexp 'Millésime '$year'&nbsp;: <a class="renvoi" href="[^"]*"' "$years_list_path" | grep --only-matching --perl-regexp '/fr/information/[^"]*') &&
+io_download_file --url "$url_information" --output_directory "$POW_DIR_TMP" &&
+year_information=$(basename "$url_information") || on_import_error
 
 # example: https://www.insee.fr/fr/statistiques/fichier/3720946/mvtcommune-01012019-csv.zip
 # example: https://www.insee.fr/fr/statistiques/fichier/4316069/mvtcommune2020-csv.zip
@@ -78,9 +75,10 @@ url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/[0-9]*/m
 }
 
 url_data="https://www.insee.fr/$url_data"
-year_data=$(basename $url_data)
-rm --force $years_list_path $POW_DIR_TMP/$year_information
+year_data=$(basename "$url_data")
+rm --force "$years_list_path" "$POW_DIR_TMP/$year_information"
 
+set_env --schema_code insee &&
 io_todo \
     --force $get_arg_force \
     --type $co_type_import \
@@ -89,28 +87,29 @@ case $? in
 $POW_IO_SUCCESSFUL)
     exit $SUCCESS_CODE
     ;;
-$POW_IO_IN_PROGRESS | $POW_IO_ERROR)
+$POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
     exit $ERROR_CODE
     ;;
 esac
 
+# estimate to ~35000 districts
 log_info "Import du millésime $year de $co_type_import" &&
-io_download_file --url $url_data --output_directory $POW_DIR_IMPORT &&
-year_ressource="$POW_DIR_IMPORT/$year_data" &&
-import_file \
-    --file_path "$year_ressource" \
-    --table_name 'evenement_commune_tmp' \
-    --load_mode OVERWRITE_DATA \
-    --import_options 'table_columns:HEADER_TO_LOWER_CODE' &&
-execute_query \
-    --name "DELETE_IO_${co_type_import}" \
-    --query "DELETE FROM io_history WHERE co_type = '${co_type_import}'" &&
 io_begin \
     --type $co_type_import \
     --date_begin "${years[$year_id]}" \
     --date_end "${years[$year_id]}" \
     --nrows_todo 35000 \
     --id year_history_id &&
+io_download_file --url "$url_data" --output_directory "$POW_DIR_IMPORT" &&
+year_ressource="$POW_DIR_IMPORT/$year_data" &&
+import_file \
+    --file_path "$year_ressource" \
+    --table_name district_event_tmp \
+    --load_mode OVERWRITE_DATA \
+    --import_options 'table_columns:HEADER_TO_LOWER_CODE' &&
+execute_query \
+    --name "DELETE_IO_${co_type_import}" \
+    --query "DELETE FROM io_history WHERE co_type = '${co_type_import}'" &&
 execute_query \
     --query "$POW_DIR_BATCH/import_district_event.sql" &&
 io_end_ok \
