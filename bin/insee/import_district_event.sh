@@ -88,7 +88,7 @@ $POW_IO_SUCCESSFUL)
     exit $SUCCESS_CODE
     ;;
 $POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
-    exit $ERROR_CODE
+    on_import_error
     ;;
 esac
 
@@ -119,6 +119,7 @@ io_end_ok \
 vacuum \
     --schema_name insee \
     --table_name district_event \
-    --mode ANALYSE || on_import_error
+    --mode ANALYSE &&
+rm --force "$year_ressource" || on_import_error
 
 exit $SUCCESS_CODE
