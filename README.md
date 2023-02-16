@@ -4,7 +4,7 @@
 
 ###
 > this is a fork of :thumbsup: LAPOSTE/BCAA project, which aims to facilitate FR-business targeting with choropleth maps\
-the idea is to generalize the core of geographic tools developed
+the idea is to generalize the core of geographic tools developed, to store any addresses & territories of country (if possible!)
 
 ## 
 
