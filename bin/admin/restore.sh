@@ -11,7 +11,7 @@ SCHEMAS_JOIN_PIPE=${SCHEMAS[@]}
 SCHEMAS_JOIN_PIPE=${SCHEMAS_JOIN_PIPE// /|}
 SCHEMAS_JOIN_PIPE+="|ALL"
 
-bash_args	\
+bash_args \
     --args_p '
         schema_name:Nom du schema à restaurer;
         table_except_re:REGEX pour exclure des tables;

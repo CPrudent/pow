@@ -535,6 +535,324 @@ io_download_file() {
     return $SUCCESS_CODE
 }
 
-    #
-    # TODO IO imports (CSV, EXCEL, ...)
-    #
+# BOM: byte-order mark
+# https://learn.microsoft.com/fr-fr/globalization/encoding/byte-order-mark
+remove_bom() {
+    bash_args \
+        --args_p 'file_path:Chemin absolu vers le fichier à traiter;' \
+        --args_o 'file_path' \
+        "$@" || return $ERROR_CODE
+
+    sed --in-place --expression '1s/^\xEF\xBB\xBF//' --expression '1s/^\xFF\xFE//' $get_arg_file_path
+}
+
+# import CSV into DB
+import_csv_file() {
+    bash_args --args_p '
+        file_path:Chemin absolu vers le fichier à traiter;
+        file_with_header:Fichier avec ou sans entête;
+        schema_name:Nom du schema cible;
+        table_name:Nom de la table cible;
+        table_columns:Colonnes de la table cible;
+        table_columns_list:Liste des colonnes de la table cible;
+        load_mode:Mode de chargement des données;
+        delimiter:Séparateur de valeurs;
+        encoding:Encodage de caractères;
+        limit:Limiter à n enregistrements;
+        rowid:Générer un identifiant unique rowid;
+        from_line_number:Numéro de ligne à partir de laquelle il faut lire les fichier;
+        to_line_number:Numéro de ligne jusqu à laquelle il faut lire le fichier' \
+    --args_o 'file_path' \
+    --args_v '
+        table_columns:HEADER|HEADER_TO_LOWER_CODE|LIST;
+        load_mode:OVERWRITE_DATA|OVERWRITE_TABLE|APPEND;
+        delimiter:AUTODETECT|'${POW_DELIMITER_PIPE}';
+        file_with_header:yes|no;
+        encoding:UTF8|UTF16|WIN1252|LATIN1;
+        rowid:yes|no' \
+    --args_d '
+        schema_name:'${POW_PG_DEFAULT_SCHEMA}';
+        table_columns:HEADER;
+        delimiter:AUTODETECT;
+        file_with_header:yes;
+        encoding:UTF8;
+        load_mode:OVERWRITE_DATA;
+        rowid:yes' \
+    "$@" || return $ERROR_CODE
+
+    expect file "$get_arg_file_path" || exit $ERROR_CODE
+
+    local file_path="$get_arg_file_path"
+    local file_with_header=$get_arg_file_with_header
+    local file_name=$(get_file_name --file_path "$file_path")
+    local file_extension=$(get_file_extension --file_path "$file_path")
+    local file_to_tmp=no
+    local schema_name=$get_arg_schema_name
+    local table_name=$get_arg_table_name
+    local table_columns=$get_arg_table_columns
+    local table_columns_list="$get_arg_table_columns_list"
+    local load_mode=$get_arg_load_mode
+    local rowid=$get_arg_rowid
+    local from_line_number=$get_arg_from_line_number
+    local to_line_number=$get_arg_to_line_number
+    local encoding=$get_arg_encoding
+    local limit=$get_arg_limit
+
+    # only part of data?
+    if [ -n "$from_line_number" ] || [ -n "$to_line_number" ]; then
+        file_name="${file_name}.filtered"
+        local new_file_path="$POW_DIR_TMP/$file_name.$file_extension"
+        if [ -n "$from_line_number" ] && [ -n "$to_line_number" ]; then
+            to_line_number=$(($to_line_number - $from_line_number + 1))
+            tail --lines=+$from_line_number "${file_path}" | head -$to_line_number > "$new_file_path"
+        elif [ -n "$from_line_number" ]; then
+            tail --lines=+$from_line_number "${file_path}" > "$new_file_path"
+        elif [ -n "$to_line_number" ]; then
+            head --lines $to_line_number "${file_path}" > "$new_file_path"
+        fi
+        file_to_tmp=yes
+        file_path="$new_file_path"
+    fi
+
+    local delimiter_code=$get_arg_delimiter
+    local delimiter_value=
+    if [ "$delimiter_code" = AUTODETECT ]; then
+        # FIXME put first line into variable transforms TAB in SPACE
+        #local _first_line=$(head --lines 1 "$file_path")
+
+        # https://stackoverflow.com/questions/10806357/associative-arrays-are-local-by-default
+        declare -A _tokens
+        local _code
+        for _code in ${!POW_DELIMITER[@]}; do
+            # count number of tokens for each delimiter (into first line)
+            # https://unix.stackexchange.com/questions/18736/how-to-count-the-number-of-a-specific-character-in-each-line
+            _tokens[$_code]=$(head --lines 1 "$file_path" \
+                | tr --delete --complement "${POW_DELIMITER[$_code]}\n" \
+                | awk '{ print length }'
+            )
+            [ "$POW_DEBUG" = yes ] && echo "_tokens[$_code]=${_tokens[$_code]}"
+        done
+
+        local _ntokens=0
+        for _code in ${!POW_DELIMITER[@]}; do
+            [ ${_tokens[$_code]} -gt $_ntokens ] && {
+                _ntokens=${_tokens[$_code]}
+                delimiter_value=${POW_DELIMITER[$_code]}
+            }
+        done
+    else
+        set_delimiter --delimiter_code $delimiter_code --delimiter_value delimiter_value
+    fi
+    [ ${#delimiter_value} -eq 0 ] && {
+        log_error "Non détection du séparateur CSV"
+        return $ERROR_CODE
+    }
+    [ "$POW_DEBUG" = yes ] && echo "delimiter_value=[$delimiter_value]"
+
+    if [ -z "$table_name" ]; then
+        execute_query \
+            --name LABEL_TO_CODE \
+            --query "SELECT public.label_to_code('$file_name')" \
+            --psql_arguments 'tuples-only:pset=format=unaligned' \
+            --with_log no \
+            --return table_name || return $ERROR_CODE
+    fi
+    [ "$POW_DEBUG" = yes ] && echo "table_name=$table_name"
+
+    # encoding
+    file --mime "$file_path" | grep --silent 'charset=iso-8859-1' && encoding=LATIN1
+    file --mime "$file_path" | grep --silent 'charset=utf-16le' && encoding=UTF16
+    # PostgreSQL doesn't stand up UTF16
+    if [ $encoding = UTF16 ]; then
+        file_name="$file_name.to_utf8"
+        local new_file_path="$POW_DIR_TMP/$file_name.$file_extension"
+        iconv --from-code UTF16 --to-code UTF8 "$file_path" > "$new_file_path"
+        [ "$file_to_tmp" = yes ] && rm "$file_path"
+        file_to_tmp=yes
+        file_path="$new_file_path"
+        encoding=UTF8
+    fi
+
+# FIXME necessary?
+#     #si séparateur en tabulation, on le remplace en en virgule pour simplifier son intégration comme un CSV
+#     if [ "$delimiter" = 'TABULATION' ]; then
+#         #on vérifie qu'il n'y a pas de virgule dans les données
+#         nb_virgule=$(grep --only-matching --perl-regexp ',' "$file_path" | wc -l)
+#         if [ "$nb_virgule" -eq "0" ]; then
+#             delimiter='VIRGULE'
+#             delimiter_value=','
+#         else
+#             nb_point_virgule=$(grep --only-matching --perl-regexp ';' "$file_path" | wc -l)
+#             if [ "$nb_point_virgule" -eq "0" ]; then
+#                 delimiter='POINT_VIRGULE'
+#                 delimiter_value=';'
+#             else
+#                 nb_pipe=$(grep --only-matching --perl-regexp '|' "$file_path" | wc -l)
+#                 if [ "$nb_pipe" -eq "0" ]; then
+#                     delimiter='PIPE'
+#                     delimiter_value='|'
+#                 else
+#                     log_error "Erreur lors de l'import de $file_path, impossible de trouver un séparateur de remplacement de tabulation"
+#                     return $ERROR_CODE
+#                 fi
+#             fi
+#         fi
+#         file_name=$file_name'.tab_to_'$delimiter
+#         local new_file_path=$POW_DIR_TMP/$file_name'.'$file_extension
+#         sed -e 's/\t/'$delimiter_value'/g' $file_path > $new_file_path
+#         if [ "$file_to_tmp" = 'yes' ]; then
+#             rm $file_path
+#         fi
+#         file_to_tmp='yes'
+#         file_path=$new_file_path
+#     fi
+
+    local table_columns_create=
+    if [ "$file_with_header" = yes ]; then
+        if [[ $table_columns =~ HEADER|HEADER_TO_LOWER_CODE ]]; then
+                # convert to local encoding (UTF8)
+                # remove BOM
+                # remove CR (Windows)
+                # search for (into 1st line)
+                #  - [^'$delimiter_value'"]": ending by double quote, not preceding by (delimiter or ")
+                #  - '$delimiter_value'[^"'$delimiter_value']*: ending by delimiter, following all except (delimiter or ")
+                #  - '$delimiter_value'"[^"'$delimiter_value']+": ending by (delimiter and "), following all except (delimiter or ")
+            local _line_end_header=$(cat "$file_path" \
+                | iconv --from-code $encoding \
+                | sed --expression 's/^\xEF\xBB\xBF//' \
+                | sed --expression 's/\r//g' \
+                | grep --max-count 1 --line-number --perl-regexp '([^"'$delimiter_value']"|'$delimiter_value'[^"'$delimiter_value']*|'$delimiter_value'"[^"'$delimiter_value']+")$' \
+                | cut --fields 1 --delimiter : \
+            )
+            [ -z "$_line_end_header" ] && _line_end_header=1
+
+            table_columns_list=$(head --lines $_line_end_header "$file_path" \
+                | iconv --from-code $encoding \
+                | sed --expression 's/^\xEF\xBB\xBF//' \
+                | sed --expression 's/\r//g' \
+            )
+
+            if [ "$table_columns" = HEADER_TO_LOWER_CODE ]; then
+                    # to lower
+                    # w/o accent
+                    # replace no-alphanum by _ (except delimiter)
+                    # replace delimiter by ,
+                    # trim _ (begin or end)
+                table_columns_list=$(echo "$table_columns_list" \
+                    | tr '[:upper:]' '[:lower:]' \
+                    | sed 'y/àáâãäåçêéèëìíîïìñòóôõöùúûü/aaaaaaceeeeiiiiinooooouuuu/' \
+                    | tr 'œ' 'oe' \
+                    | tr 'æ' 'ae' \
+                    | sed "s/[^a-z0-9${delimiter_value}]\+/_/g" \
+                    | sed "s/_\?${delimiter_value}_\?/,/g" \
+                    | sed 's/^_\?//g' \
+                    | sed 's/_\?$//g' \
+                )
+            else
+                    # replace delimiter by "," (so surround each colmun by ")
+                    # add " at begin
+                    # add " at end
+                table_columns_list=$(echo "$table_columns_list" \
+                    | sed --expression "s/\"\?${delimiter_value}\"\?/\",\"/g" \
+                    | sed --expression 's/^"\?/"/g' \
+                    | sed --expression 's/"\?$/"/g' \
+                )
+            fi
+        fi
+        # each column as VARCHAR type
+        table_columns_create=$(echo "$table_columns_list" \
+            | sed "s/,/ VARCHAR,/g")' VARCHAR'
+        # add SERIAL
+        if [ "$rowid" = yes ]; then
+            table_columns_create="rowid SERIAL,$table_columns_create"
+        fi
+        [ "$POW_DEBUG" = yes ] && echo "table_columns_create=$table_columns_create"
+    fi
+
+    local table_to_load_exists=no
+    local schema_table="${schema_name}.${table_name}"
+    local backup_post_data_full_path="$POW_DIR_TMP/${schema_table}_post-data_$$.backup"
+    table_exists --schema_name "${schema_name}" --table_name "${table_name}" && table_to_load_exists=yes
+    if [ "$table_to_load_exists" = yes ]; then
+        [ "$POW_DEBUG" = yes ] && echo "load_mode=$load_mode"
+        # only in APPEND mode (backup post-data); alternative: don't remove
+        case "$load_mode" in
+        APPEND)
+            backup_table \
+                --schema_name "${schema_name}" \
+                --table_name "${table_name}" \
+                --sections 'post-data' \
+                --output "$backup_post_data_full_path" || return $ERROR_CODE
+            ;;
+        OVERWRITE_DATA|APPEND)
+            execute_query \
+                --name "DROP_CONSTRAINTS_INDEXES_TRIGGERS_${schema_table}" \
+                --query "
+                    SELECT public.drop_table_constraints('${schema_name}', '${table_name}');
+                    SELECT public.drop_table_indexes('${schema_name}', '${table_name}');
+                    SELECT public.drop_table_triggers('${schema_name}', '${table_name}');
+                    " || return $ERROR_CODE
+            [ "$load_mode" = OVERWRITE_DATA ] && {
+                execute_query \
+                    --name "TRUNCATE_${schema_table}" \
+                    --query "TRUNCATE TABLE ${schema_name}.${table_name} CASCADE" || return $ERROR_CODE
+            }
+            ;;
+        OVERWRITE_TABLE)
+            execute_query \
+                --name "DROP_${schema_table}" \
+                --query "DROP TABLE ${schema_name}.${table_name} CASCADE" || return $ERROR_CODE
+            ;;
+        esac
+    fi
+    if [ "$table_to_load_exists" = no ] || [ "$load_mode" = OVERWRITE_TABLE ]; then
+        if [ "$file_with_header" != yes ] && [ -z "$table_columns_create" ]; then
+            log_error "Erreur lors de l'import de $file_path, vous devez préciser le nom des colonnes cible, dans l'ordre des colonnes du fichier"
+            return $ERROR_CODE
+        fi
+        execute_query \
+            --name "CREATE_${schema_table}" \
+            --query "
+                CREATE TABLE IF NOT EXISTS ${schema_name}.${table_name} ($table_columns_create)
+                " || return $ERROR_CODE
+    fi
+
+    local file_with_header_boolean=$([ "$file_with_header" = yes ] && echo TRUE || echo FALSE)
+    local _copy_data
+    get_tmp_file --tmpext sql --tmpfile _copy_data
+    cat <<-EOF > $_copy_data
+COPY ${schema_name}.${table_name} (${table_columns_list})
+FROM $([ -n "$limit" ] && echo STDIN || echo "'$file_path'")
+WITH (DELIMITER E'$delimiter_value', FORMAT CSV, HEADER $file_with_header_boolean, QUOTE '"', ENCODING $encoding)
+EOF
+
+    if [ -n "$limit" ]; then
+        # NOTE: ko if CR exist in values
+        limit=$([ "$file_with_header" = yes ] && echo $((limit+1)) || echo $limit)
+        head --lines $limit "$file_path" \
+            | execute_query \
+                --name "COPY_${table_name}_FROM_${file_name}" \
+                --query "$_copy_data" || return $ERROR_CODE
+    else
+        execute_query \
+            --name "COPY_${table_name}_FROM_${file_name}" \
+            --query "$_copy_data" || return $ERROR_CODE
+    fi
+    rm --force "$_copy_data"
+
+    # only in APPEND mode (to do by caller for others, sometimes need to delete duplicates before)
+    if [ "$table_to_load_exists" = yes ] && [ "$load_mode" = APPEND ]; then
+        # restore contraints/indexes/triggers after loading data
+        restore_table \
+            --schema_name "${schema_name}" \
+            --table_name "${table_name}" \
+            --sections 'post-data' \
+            --input "$backup_post_data_full_path" &&
+        rm --force "$backup_post_data_full_path" || return $ERROR_CODE
+    fi
+
+    # clean
+    [ "$file_to_tmp" = yes ] && rm "$file_path"
+
+    return $SUCCESS_CODE
+}

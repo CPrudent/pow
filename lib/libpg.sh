@@ -31,12 +31,11 @@ execute_query() {
 
     local _start=$(date +%s) _log _opt _info _rc _last _psql_output _psql_level=NOTICE
     local _log_tmp_path _log_notice_tmp_path _log_error_tmp_path _log_error_archive_path
+    _log="$get_arg_name"
     [ -f "$get_arg_query" ] && {
-        _log=$(basename "$get_arg_query")
         _opt=--file
         _info='du fichier'
     } || {
-        _log="$get_arg_name"
         _opt=--command
         _info='de la commande SQL'
     }

@@ -187,6 +187,52 @@ is_yes() {
     return $ERROR_CODE
 }
 
+# extension of file
+get_file_extension() {
+    bash_args \
+        --args_p 'file_path:Nom du fichier' \
+        --args_o 'file_path' \
+        "$@" || return $ERROR_CODE
+
+    local _file_extension="${get_arg_file_path##*.}"
+    echo "${_file_extension,,}"
+    return $SUCCESS_CODE
+}
+
+# basename of file
+get_file_name() {
+    bash_args \
+        --args_p 'file_path:Nom du fichier' \
+        --args_o 'file_path' \
+        "$@" || return $ERROR_CODE
+
+    local _file_name=$(basename "$get_arg_file_path")
+    echo "${_file_name%.*}"
+    return $SUCCESS_CODE
+}
+
+# define delimiter w/o worry of bash_args!
+set_delimiter() {
+    bash_args \
+        --args_p '
+            delimiter_code:Code délimiteur;
+            delimiter_value:Valeur délimiteur' \
+        --args_o '
+            delimiter_code;
+            delimiter_value' \
+        "$@" || return $ERROR_CODE
+
+    local -n _delimiter_ref=$get_arg_delimiter_value
+    # https://linuxhint.com/associative_array_bash/
+    [ ${POW_DELIMITER[$get_arg_delimiter_code]+_} ] && {
+        _delimiter_ref=${POW_DELIMITER[$get_arg_delimiter_code]}
+    } || {
+        return $ERROR_CODE
+    }
+
+    return $SUCCESS_CODE
+}
+
     #
     # command line
     #

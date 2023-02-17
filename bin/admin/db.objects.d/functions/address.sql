@@ -30,11 +30,11 @@ CREATE OR REPLACE FUNCTION clean_address_label(
 RETURNS CHARACTER VARYING AS
 $func$
 BEGIN
-	label_in := TRANSLATE(UPPER(label_in),'ÀÁÂÃÄÅÇÊÉÈËÌÍÎÏÌÑÒÓÔÕÖÙÚÛÜ','AAAAAACEEEEIIIIINOOOOOUUUU');
-	label_in := REPLACE(label_in,'Œ','OE');
-	label_in := REPLACE(label_in,'Æ','AE');
+	label_in := TRANSLATE(UPPER(label_in), 'ÀÁÂÃÄÅÇÊÉÈËÌÍÎÏÌÑÒÓÔÕÖÙÚÛÜ', 'AAAAAACEEEEIIIIINOOOOOUUUU');
+	label_in := REPLACE(label_in, 'Œ', 'OE');
+	label_in := REPLACE(label_in, 'Æ', 'AE');
 	--exemples : '"’-&°
-	label_in := TRIM(REGEXP_REPLACE(label_in,'[^A-Z0-9]+',' ','g'));
+	label_in := TRIM(REGEXP_REPLACE(label_in, '[^A-Z0-9]+', ' ', 'g'));
 	return label_in;
 END
 $func$ LANGUAGE plpgsql;
@@ -48,12 +48,12 @@ RETURNS CHARACTER VARYING AS
 $func$
 DECLARE
 BEGIN
-	return LOWER(REPLACE(clean_address_label(label_in),' ','_'));
+	return LOWER(REPLACE(clean_address_label(label_in), ' ', '_'));
 END
 $func$ LANGUAGE plpgsql;
 
--- greatest gap between serie of number(s)
-SELECT drop_all_functions_if_exists('public','get_greatest_gap');
+-- greatest gap into serie of number(s)
+SELECT drop_all_functions_if_exists('public', 'get_greatest_gap');
 CREATE OR REPLACE FUNCTION public.get_greatest_gap(
     _numbers IN INTEGER[]
     )

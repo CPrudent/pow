@@ -10,6 +10,10 @@ source $POW_DIR_ROOT/lib/libpg.sh   &&
 source $POW_DIR_ROOT/lib/libio.sh   &&
 source $POW_DIR_ROOT/lib/bashenv.sh || exit ${ERROR_CODE:-3}
 
+    # build piped-values of all delimiters
+POW_DELIMITER_PIPE="${!POW_DELIMITER[@]}"
+POW_DELIMITER_PIPE=${POW_DELIMITER_PIPE// /|}
+
     ###
     # get value of config (associative array POW_CONF defined into bashenv.sh)
     #
