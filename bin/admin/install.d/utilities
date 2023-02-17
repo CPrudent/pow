@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+    #--------------------------------------------------------------------------
+    # synopsis
+    #--
+    # install utilities packages
+
+source $POW_DIR_ROOT/lib/libenv.sh || exit ${ERROR_CODE:-3}
+
+is_user_root &&
+
+apt install gnumeric || {
+    log_error "erreur installation du package gnumeric"
+    exit $ERROR_CODE
+}
+
+exit $SUCCESS_CODE
+
