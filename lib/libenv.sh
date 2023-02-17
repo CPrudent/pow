@@ -3,20 +3,18 @@
     #--
     # define ENV
 
-    # assume POW is correctly installed (w/ POW_DIR_ROOT defined)
+# assume POW is correctly installed (w/ POW_DIR_ROOT defined)
 source $POW_DIR_ROOT/lib/librun.sh  &&
 source $POW_DIR_ROOT/lib/libstd.sh  &&
 source $POW_DIR_ROOT/lib/libpg.sh   &&
 source $POW_DIR_ROOT/lib/libio.sh   &&
 source $POW_DIR_ROOT/lib/bashenv.sh || exit ${ERROR_CODE:-3}
 
-    # build piped-values of all delimiters
-POW_DELIMITER_PIPE="${!POW_DELIMITER[@]}"
-POW_DELIMITER_PIPE=${POW_DELIMITER_PIPE// /|}
+# build piped-values of all delimiters
+POW_DELIMITER_JOIN_PIPE="${!POW_DELIMITER[@]}"
+POW_DELIMITER_JOIN_PIPE=${POW_DELIMITER_JOIN_PIPE// /|}
 
-    ###
-    # get value of config (associative array POW_CONF defined into bashenv.sh)
-    #
+# get value of config (associative array POW_CONF defined into bashenv.sh)
 get_conf() {
     #bash_args \
     #    --args_p 'param:Code du paramètre' \
@@ -65,9 +63,7 @@ get_conf() {
     return $SUCCESS_CODE
 }
 
-    ###
-    # set parameter of config
-    #
+# set parameter of config
 set_param_conf_file() {
     bash_args \
 		--args_p 'conf_file:Chemin complet vers le fichier de configuration;
@@ -144,9 +140,7 @@ set_param_conf_file() {
     echo "$_line_content" >> $conf_file && return $SUCCESS_CODE || return $ERROR_CODE
 }
 
-    ###
-    # set parameters of config
-    #
+# set parameters of config
 set_params_conf_file() {
     bash_args \
 		--args_p 'conf_file:Chemin complet vers le fichier de configuration;
@@ -179,7 +173,7 @@ set_params_conf_file() {
     return $SUCCESS_CODE
 }
 
-    # initialize PostgreSQL's context (user, passwd, default_schema)
+# initialize PostgreSQL's context (user, passwd, default_schema)
 _set_pg_env() {
     bash_args \
         --args_p 'schema_code:code applicatif du schéma à utiliser' \
@@ -206,9 +200,7 @@ _set_pg_env() {
     return $SUCCESS_CODE
 }
 
-    ###
-    # custom PostgreSQL's context (w/ given schema)
-    #
+# custom PostgreSQL's context (w/ given schema)
 set_env_pg() {
     bash_args \
         --args_p '
@@ -260,9 +252,7 @@ set_env_pg() {
     return $SUCCESS_CODE
 }
 
-    ###
-    # custom Host's environment (w/ given schema)
-    #
+# custom Host's environment (w/ given schema)
 set_env_dirs() {
     bash_args \
         --args_p 'schema_code:code applicatif du schéma à utiliser' \
@@ -270,7 +260,7 @@ set_env_dirs() {
         "$@" || return $ERROR_CODE
 
     # define DIRs
-    local _dirs _dir
+    local _dir
     declare -A _dirs
 
     _dirs[POW_DIR_BATCH]="$POW_DIR_ROOT/bin/$get_arg_schema_code"
@@ -297,9 +287,7 @@ set_env_dirs() {
     return $SUCCESS_CODE
 }
 
-    ###
-    # custom POW's environment (w/ given schema)
-    #
+# custom POW's environment (w/ given schema)
 set_env() {
     bash_args \
         --args_p 'schema_code:code applicatif du schéma à utiliser' \
@@ -315,9 +303,7 @@ set_env() {
     return $SUCCESS_CODE
 }
 
-    ###
-    # archive file (log, ...)
-    #
+# archive file (log, ...)
 archive_file() {
     expect file "$1" || return $ERROR_CODE
 	[ ! -d $POW_DIR_ARCHIVE ] && mkdir -p $POW_DIR_ARCHIVE

@@ -199,7 +199,7 @@ get_file_extension() {
     return $SUCCESS_CODE
 }
 
-# basename of file
+# basename of file (w/o extension)
 get_file_name() {
     bash_args \
         --args_p 'file_path:Nom du fichier' \

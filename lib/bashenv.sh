@@ -14,7 +14,7 @@ declare -A POW_CONF=(
     [PG_PORT]=5432
 )
 
-# delimiters (worry w/ bash_args)
+# delimiters (worry w/ bash_args eval!)
 declare -A POW_DELIMITER=(
     [COLON]=':'
     [COMMA]=','

@@ -566,7 +566,7 @@ import_csv_file() {
     --args_v '
         table_columns:HEADER|HEADER_TO_LOWER_CODE|LIST;
         load_mode:OVERWRITE_DATA|OVERWRITE_TABLE|APPEND;
-        delimiter:AUTODETECT|'${POW_DELIMITER_PIPE}';
+        delimiter:AUTODETECT|'${POW_DELIMITER_JOIN_PIPE}';
         file_with_header:yes|no;
         encoding:UTF8|UTF16|WIN1252|LATIN1;
         rowid:yes|no' \
@@ -672,40 +672,6 @@ import_csv_file() {
         file_path="$new_file_path"
         encoding=UTF8
     fi
-
-# FIXME necessary?
-#     #si séparateur en tabulation, on le remplace en en virgule pour simplifier son intégration comme un CSV
-#     if [ "$delimiter" = 'TABULATION' ]; then
-#         #on vérifie qu'il n'y a pas de virgule dans les données
-#         nb_virgule=$(grep --only-matching --perl-regexp ',' "$file_path" | wc -l)
-#         if [ "$nb_virgule" -eq "0" ]; then
-#             delimiter='VIRGULE'
-#             delimiter_value=','
-#         else
-#             nb_point_virgule=$(grep --only-matching --perl-regexp ';' "$file_path" | wc -l)
-#             if [ "$nb_point_virgule" -eq "0" ]; then
-#                 delimiter='POINT_VIRGULE'
-#                 delimiter_value=';'
-#             else
-#                 nb_pipe=$(grep --only-matching --perl-regexp '|' "$file_path" | wc -l)
-#                 if [ "$nb_pipe" -eq "0" ]; then
-#                     delimiter='PIPE'
-#                     delimiter_value='|'
-#                 else
-#                     log_error "Erreur lors de l'import de $file_path, impossible de trouver un séparateur de remplacement de tabulation"
-#                     return $ERROR_CODE
-#                 fi
-#             fi
-#         fi
-#         file_name=$file_name'.tab_to_'$delimiter
-#         local new_file_path=$POW_DIR_TMP/$file_name'.'$file_extension
-#         sed -e 's/\t/'$delimiter_value'/g' $file_path > $new_file_path
-#         if [ "$file_to_tmp" = 'yes' ]; then
-#             rm $file_path
-#         fi
-#         file_to_tmp='yes'
-#         file_path=$new_file_path
-#     fi
 
     local table_columns_create=
     if [ "$file_with_header" = yes ]; then
@@ -819,6 +785,7 @@ import_csv_file() {
 
     local file_with_header_boolean=$([ "$file_with_header" = yes ] && echo TRUE || echo FALSE)
     local _copy_data
+    # put query into a file, due to error w/ command line (bash_args eval!)
     get_tmp_file --tmpext sql --tmpfile _copy_data
     cat <<-EOF > $_copy_data
 COPY ${schema_name}.${table_name} (${table_columns_list})
@@ -855,4 +822,166 @@ EOF
     [ "$file_to_tmp" = yes ] && rm "$file_path"
 
     return $SUCCESS_CODE
+}
+
+# tr EXCEL to CSV
+excel_to_csv() {
+    bash_args \
+        --args_p '
+            from_file_path:Chemin absolu vers le fichier à traiter;
+            to_file_path:Chemin absolu vers le fichier de sortie (ou STDOUT pour une sortie écran);
+            worksheet_name:Nom de la feuille à extraire (si non précisé ce sera la feuille active à l ouverture du fichier);
+            delimiter:Séparateur à utiliser pour la conversion vers CSV (ce caractère ne doit pas être utilisé dans les valeurs d entête)' \
+        --args_o 'from_file_path' \
+        --args_v '
+            delimiter:'${POW_DELIMITER_JOIN_PIPE} \
+        --args_d '
+            delimiter:COMMA;
+            to_file_path:${get_arg_from_file_path}.csv' \
+        "$@" || return $ERROR_CODE
+
+    expect file "$get_arg_from_file_path" || exit $ERROR_CODE
+
+    local from_file_path="$get_arg_from_file_path"
+    local to_file_path="$get_arg_to_file_path"
+    [ "$to_file_path" = STDOUT ] && to_file_path=$(dirname "$get_arg_from_file_path")/STDOUT.$$.csv
+    local from_file_name=$(get_file_name --file_path "$from_file_path")
+    local from_file_extension=$(get_file_extension --file_path "$from_file_path")
+    local to_file_name=$(get_file_name --file_path "$to_file_path")
+    local to_file_extension=$(get_file_extension --file_path "$to_file_path")
+    local worksheet_name="$get_arg_worksheet_name"
+    local delimiter_code=$get_arg_delimiter
+    local delimiter_value
+    set_delimiter --delimiter_code $delimiter_code --delimiter_value delimiter_value
+
+    # MIME type
+    # https://stackoverflow.com/questions/7076042/what-mime-type-should-i-use-for-csv
+    local _mime=$(get_mimetype "$from_file_path") _spreadsheet
+    case "$_mime" in
+    application/vnd.openxmlformats-officedocument.spreadsheetml.sheet|application/vnd.ms-excel)
+        _spreadsheet='MS Excel'
+        ;;
+    application/x-vnd.oasis.opendocument.spreadsheet)
+        _spreadsheet='Open Office sheet'
+        ;;
+    *)
+        log_error "Erreur excel_to_csv de $from_file_path, le fichier source ne semble pas être un classeur"
+        return $ERROR_CODE
+    esac
+
+    # prefer .txt to custom separator
+    local _sheet
+    [ -z "$worksheet_name" ] && _sheet="sheet='$worksheet_name'"
+    log_info "conversion $_spreadsheet de $from_file_path vers ${to_file_path}"
+    ssconvert -O "${_sheet} separator=$delimiter_value" "$from_file_path" "${to_file_path}.tmp.txt" > $POW_DIR_ARCHIVE/ssconvert.log 2> $POW_DIR_ARCHIVE/ssconvert.error.log
+    mv --force "${to_file_path}.tmp.txt" "$to_file_path"
+    [ "$to_file_name" = STDOUT ] && cat $to_file_path
+}
+
+# tr CSV to EXCEL
+csv_to_excel() {
+    bash_args \
+        --args_p '
+            from_file_path:Chemin absolu vers le fichier à traiter;
+            to_file_path:Chemin absolu vers le fichier de sortie' \
+        --args_o 'from_file_path' \
+        --args_d 'to_file_path:${get_arg_from_file_path}.xls' \
+        "$@" || return $ERROR_CODE
+
+    expect file "$get_arg_from_file_path" || exit $ERROR_CODE
+
+    local from_file_path="$get_arg_from_file_path"
+    local to_file_path="$get_arg_to_file_path"
+    local from_file_name=$(get_file_name --file_path "$from_file_path")
+    local from_file_extension=$(get_file_extension --file_path "$from_file_path")
+    local to_file_name=$(get_file_name --file_path "$to_file_path")
+    local to_file_extension=$(get_file_extension --file_path "$to_file_path")
+
+    # MIME type
+    # https://stackoverflow.com/questions/7076042/what-mime-type-should-i-use-for-csv
+    local _mime=$(get_mimetype "$from_file_path")
+    case "$_mime" in
+    text/plain|text/x-csv)
+        # NULL command
+        # https://www.shell-tips.com/bash/null-command
+        :
+        ;;
+    *)
+        log_error "Erreur csv_to_excel de $from_file_path, le fichier source ne semble pas être un CSV"
+        return $ERROR_CODE
+    esac
+
+    # protect alnum : starting w/ 0, including E (for exposant)
+    sed -e 's/\(\("0[0-9]\+"\)\|\("[0-9]\+E[0-9]\+"\)\)/"="\0""/g' "$from_file_path" > "$POW_DIR_TMP/$from_file_name.csv_to_excel.txt"
+    ssconvert "$POW_DIR_TMP/$from_file_name.csv_to_excel.txt" "$to_file_path" > /dev/null 2>&1
+}
+
+# import EXCEL in DB (before converting as CSV)
+import_excel_file() {
+    bash_args \
+        --args_p '
+            file_path:Chemin absolu vers le fichier à traiter;
+            schema_name:Nom du schema cible;
+            table_name:Nom de la table cible;
+            table_columns:Colonnes de la table cible;
+            table_columns_list:Liste des colonnes de la table cible;
+            load_mode:Mode de chargement des données;
+            worksheet_name:Nom de la feuille à extraire (si non précisé ce sera la feuille active à l ouverture du fichier);
+            from_line_number:Numéro de ligne à partir de laquelle il faut lire le fichier;
+            to_line_number:Numéro de ligne jusqu à laquelle il faut lire le fichier;
+            delimiter:Séparateur à utiliser pour la conversion vers CSV (ce caractère ne doit pas être utilisé dans les valeurs d entête);
+            limit:Limiter a n enregistrements;
+            rowid:Générer un identifiant unique rowid' \
+        --args_o 'file_path' \
+        --args_v '
+            delimiter:'${POW_DELIMITER_JOIN_PIPE}';
+            table_columns:HEADER|HEADER_TO_LOWER_CODE|LIST;
+            load_mode:OVERWRITE_DATA|OVERWRITE_TABLE|APPEND;
+            rowid:yes|no' \
+        --args_d '
+            schema_name:'${POW_PG_DEFAULT_SCHEMA}';
+            table_columns:HEADER;
+            delimiter:PIPE;
+            load_mode:OVERWRITE_DATA;
+            rowid:yes' \
+        "$@" || return $ERROR_CODE
+
+    expect file "$get_arg_file_path" || exit $ERROR_CODE
+
+    local file_path="$get_arg_file_path"
+    local file_name=$(get_file_name --file_path "$file_path")
+    local file_extension=$(get_file_extension --file_path "$file_path")
+    local schema_name=$get_arg_schema_name
+    local table_name=$get_arg_table_name
+    local table_columns=$get_arg_table_columns
+    local table_columns_list=$get_arg_table_columns_list
+    local load_mode=$get_arg_load_mode
+    local worksheet_name=$get_arg_worksheet_name
+    local from_line_number=$get_arg_from_line_number
+    local to_line_number=$get_arg_to_line_number
+    local delimiter=$get_arg_delimiter
+    local limit=$get_arg_limit
+    local rowid=$get_arg_rowid
+    local delimiter_code=$get_arg_delimiter
+
+    excel_to_csv \
+        --from_file_path "$file_path" \
+        --to_file_path "$file_path.txt" \
+        --worksheet_name "$worksheet_name" \
+        --delimiter "$delimiter_code" &&
+    import_csv_file \
+        --file_path "$file_path.txt" \
+        --schema_name "$schema_name" \
+        --table_name "$table_name" \
+        --delimiter "$delimiter_code" \
+        --load_mode "$load_mode" \
+        --table_columns "$table_columns" \
+        --table_columns_list "$table_columns_list" \
+        --limit "$limit" \
+        --from_line_number "$from_line_number" \
+        --to_line_number "$to_line_number" \
+        --rowid "$rowid" &&
+    rm "$file_path.txt" &&
+    return $SUCCESS_CODE ||
+    return $ERROR_CODE
 }

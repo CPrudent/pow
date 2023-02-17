@@ -3,10 +3,9 @@
     #--
     # define PG
 
-    ###
-    # execute query (from file or command line)
-    # samples:
-    # execute_query --name GET_VERSION --query 'select version()' --psql_arguments 'tuples-only:pset=format=unaligned' --return _pg_version
+# execute query (from file or command line)
+# sample:
+# execute_query --name GET_VERSION --query 'select version()' --psql_arguments 'tuples-only:pset=format=unaligned' --return _pg_version
 execute_query() {
     bash_args \
         --args_p '
@@ -106,9 +105,7 @@ execute_query() {
     return $SUCCESS_CODE
 }
 
-    ###
-    # check if table exists
-    #
+# check if table exists
 table_exists() {
     bash_args \
         --args_p '
@@ -134,9 +131,7 @@ table_exists() {
     return $_rc
 }
 
-    ###
-    # check if view exists
-    #
+# check if view exists
 view_exists() {
     bash_args \
         --args_p '
@@ -265,9 +260,7 @@ vacuum() {
     return $SUCCESS_CODE
 }
 
-    ###
-    # get sequences of a table
-    #
+# get sequences of a table
 get_table_sequences() {
     bash_args	\
         --args_p '
@@ -304,9 +297,7 @@ get_table_sequences() {
     return $SUCCESS_CODE
 }
 
-    ###
-    # backup table
-    #
+# backup table
 backup_table() {
     bash_args	\
         --args_p '
@@ -393,9 +384,7 @@ backup_table() {
     return $SUCCESS_CODE
 }
 
-    ###
-    # restore table (w/ backup)
-    #
+# restore table (from backup)
 restore_table() {
     bash_args \
         --args_p '
