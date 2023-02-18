@@ -22,11 +22,13 @@ bash_args \
 
 set_env --schema_code public
 
+cp $POW_DIR_ROOT/tests/data/test_spreadsheet.{xlsx,ods} $POW_DIR_TMP
+
 _info="Conversion (EXCEL, DEFAULT) :"
 [ "$get_arg_dry_run" = no ] && {
     excel_to_csv \
-        --from_file_path $POW_DOR_ROOT/tests/data/test_spreadsheet.xlsx \
-        && echo "$_info OK" || echo "$_info KO"
+        --from_file_path $POW_DIR_TMP/test_spreadsheet.xlsx &&
+    echo "$_info OK" || echo "$_info KO"
 } || {
     echo "$_info TODO"
 }
@@ -34,10 +36,21 @@ _info="Conversion (EXCEL, DEFAULT) :"
 _info="Conversion (EXCEL, OUTPUT, TAB) :"
 [ "$get_arg_dry_run" = no ] && {
     excel_to_csv \
-        --from_file_path $POW_DIR_ROOT/tests/data/test_spreadsheet.xlsx \
-        --to_file_path $POW_DIR_TMP/test_spreadsheet.tab.csv \
-        --delimiter TAB
-        && echo "$_info OK" || echo "$_info KO"
+        --from_file_path $POW_DIR_TMP/test_spreadsheet.xlsx \
+        --to_file_path $POW_DIR_TMP/test_spreadsheet-tab.txt \
+        --delimiter TAB &&
+    echo "$_info OK" || echo "$_info KO"
+} || {
+    echo "$_info TODO"
+}
+
+_info="Conversion (EXCEL, STDOUT, PIPE) :"
+[ "$get_arg_dry_run" = no ] && {
+    excel_to_csv \
+        --from_file_path $POW_DIR_TMP/test_spreadsheet.xlsx \
+        --to_file_path STDOUT \
+        --delimiter PIPE &&
+    echo "$_info OK" || echo "$_info KO"
 } || {
     echo "$_info TODO"
 }
@@ -45,8 +58,8 @@ _info="Conversion (EXCEL, OUTPUT, TAB) :"
 _info="Conversion (ODS, DEFAULT) :"
 [ "$get_arg_dry_run" = no ] && {
     excel_to_csv \
-        --from_file_path $POW_DIR_ROOT/tests/data/test_spreadsheet.ods \
-        && echo "$_info OK" || echo "$_info KO"
+        --from_file_path $POW_DIR_TMP/test_spreadsheet.ods &&
+    echo "$_info OK" || echo "$_info KO"
 } || {
     echo "$_info TODO"
 }
@@ -54,12 +67,32 @@ _info="Conversion (ODS, DEFAULT) :"
 _info="Conversion (ODS, OUTPUT, COLON) :"
 [ "$get_arg_dry_run" = no ] && {
     excel_to_csv \
-        --from_file_path $POW_DIR_ROOT/tests/data/test_spreadsheet.ods \
-        --to_file_path $POW_DIR_TMP/test_spreadsheet.colon.csv \
-        --delimiter COLON
-        && echo "$_info OK" || echo "$_info KO"
+        --from_file_path $POW_DIR_TMP/test_spreadsheet.ods \
+        --to_file_path $POW_DIR_TMP/test_spreadsheet-colon.txt \
+        --delimiter COLON &&
+    echo "$_info OK" || echo "$_info KO"
 } || {
     echo "$_info TODO"
+}
+
+_info="Import (EXCEL, DEFAULT) :"
+[ "$get_arg_dry_run" = no ] && {
+    import_excel_file \
+        --file_path $POW_DIR_TMP/test_spreadsheet.xlsx \
+        --table_columns HEADER_TO_LOWER_CODE &&
+    echo "$_info OK" || echo "$_info KO"
+} || {
+    echo "$_info TODO"
+}
+
+# clean
+[ "$get_arg_clean" = yes ] && {
+    rm $POW_DIR_TMP/test_spreadsheet.*
+
+    table_name=$(get_file_name --file_path "$POW_DIR_TMP/test_spreadsheet.xlsx")
+    execute_query \
+        --name "DROP_${table_name}" \
+        --query "DROP TABLE IF EXISTS ${table_name}"
 }
 
 exit $SUCCESS_CODE

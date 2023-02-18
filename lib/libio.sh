@@ -844,7 +844,7 @@ excel_to_csv() {
 
     local from_file_path="$get_arg_from_file_path"
     local to_file_path="$get_arg_to_file_path"
-    [ "$to_file_path" = STDOUT ] && to_file_path=$(dirname "$get_arg_from_file_path")/STDOUT.$$.csv
+    [ "$to_file_path" = STDOUT ] && to_file_path=$(dirname "$get_arg_from_file_path")/STDOUT.txt
     local from_file_name=$(get_file_name --file_path "$from_file_path")
     local from_file_extension=$(get_file_extension --file_path "$from_file_path")
     local to_file_name=$(get_file_name --file_path "$to_file_path")
@@ -861,7 +861,7 @@ excel_to_csv() {
     application/vnd.openxmlformats-officedocument.spreadsheetml.sheet|application/vnd.ms-excel)
         _spreadsheet='MS Excel'
         ;;
-    application/x-vnd.oasis.opendocument.spreadsheet)
+    application/vnd.oasis.opendocument.spreadsheet)
         _spreadsheet='Open Office sheet'
         ;;
     *)
@@ -870,12 +870,19 @@ excel_to_csv() {
     esac
 
     # prefer .txt to custom separator
-    local _sheet
-    [ -z "$worksheet_name" ] && _sheet="sheet='$worksheet_name'"
+    local _sheet _convert
+    [ -n "$worksheet_name" ] && _sheet="sheet=$worksheet_name "
     log_info "conversion $_spreadsheet de $from_file_path vers ${to_file_path}"
-    ssconvert -O "${_sheet} separator=$delimiter_value" "$from_file_path" "${to_file_path}.tmp.txt" > $POW_DIR_ARCHIVE/ssconvert.log 2> $POW_DIR_ARCHIVE/ssconvert.error.log
-    mv --force "${to_file_path}.tmp.txt" "$to_file_path"
-    [ "$to_file_name" = STDOUT ] && cat $to_file_path
+    get_tmp_file --tmpext txt --tmpfile _convert
+    ssconvert --export-options "${sheet}separator=$delimiter_value format=preserve" "$from_file_path" "${_convert}" > $POW_DIR_ARCHIVE/ssconvert.log 2> $POW_DIR_ARCHIVE/ssconvert.error.log
+    mv "$_convert" "${to_file_path}"
+    [ "$to_file_name" = STDOUT ] &&
+    [ -f "${to_file_path}" ] && {
+        cat "$to_file_path"
+        rm "$to_file_path"
+    }
+
+    return $SUCCESS_CODE
 }
 
 # tr CSV to EXCEL
