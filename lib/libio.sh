@@ -908,7 +908,7 @@ csv_to_excel() {
     # https://stackoverflow.com/questions/7076042/what-mime-type-should-i-use-for-csv
     local _mime=$(get_file_mimetype "$from_file_path")
     case "$_mime" in
-    text/plain|text/x-csv)
+    text/plain|text/csv|text/x-csv)
         # NULL command
         # https://www.shell-tips.com/bash/null-command
         :
@@ -918,6 +918,7 @@ csv_to_excel() {
         return $ERROR_CODE
     esac
 
+    log_info "conversion de $from_file_path vers ${to_file_path}"
     # protect alnum : starting w/ 0, including E (for exposant)
     sed -e 's/\(\("0[0-9]\+"\)\|\("[0-9]\+E[0-9]\+"\)\)/"="\0""/g' "$from_file_path" > "$POW_DIR_TMP/$from_file_name.csv_to_excel.txt"
     ssconvert "$POW_DIR_TMP/$from_file_name.csv_to_excel.txt" "$to_file_path" > /dev/null 2>&1
