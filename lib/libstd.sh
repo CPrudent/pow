@@ -582,19 +582,19 @@ get_file_name() {
         --args_o 'file_path' \
         "$@" || return $ERROR_CODE
 
-    local _file_name=$(basename "$get_arg_file_path")
+    local _file_name=$(basename -- "$get_arg_file_path")
     echo "${_file_name%%.*}"
     return $SUCCESS_CODE
 }
 
 # get MIME's type of file
-get_mimetype() {
+get_file_mimetype() {
     file --mime-type "$1" | sed 's/.*: //'
 }
 
 # known if file is binary
 file_is_binary() {
-    file -bL --mime "$1" | grep -q 'charset=binary'
+    file --brief --dereference --mime "$1" | grep --silent 'charset=binary'
 }
 
 # get number of rows
@@ -920,7 +920,7 @@ send_mail() {
                     }
                 fi
 
-                _mime=$(get_mimetype "$_todo")
+                _mime=$(get_file_mimetype "$_todo")
 
                 echo '--###BOUNDARY'
                 echo 'Content-Type: '$_mime

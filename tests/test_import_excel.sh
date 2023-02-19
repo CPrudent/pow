@@ -55,7 +55,7 @@ _info="Conversion (EXCEL, STDOUT, PIPE) :"
     echo "$_info TODO"
 }
 
-_info="Conversion (CSV, DEFAULT) :"
+_info="Conversion (CSV) :"
 [ "$get_arg_dry_run" = no ] && {
     csv_to_excel \
         --from_file_path $POW_DIR_TMP/test_spreadsheet.xlsx.csv \

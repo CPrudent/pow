@@ -7,7 +7,7 @@
     # IO history
     #
 
-_io_manager() {
+_io_history_manager() {
     bash_args \
         --args_p '
             method:méthode de mise à jour;
@@ -137,10 +137,10 @@ _io_manager() {
 }
 
 # IO in progress
-# io_exists --status EN_COURS
+# io_history_exists --status EN_COURS
 # IO already success
-# io_exists --status SUCCES
-io_exists() {
+# io_history_exists --status SUCCES
+io_history_exists() {
     bash_args \
         --args_p '
             type:code type IO;
@@ -162,7 +162,7 @@ io_exists() {
 
     [ -n "$get_arg_id" ] && local -n _io_id=$get_arg_id || local _io_id
 
-    _io_manager \
+    _io_history_manager \
         --method EXISTS \
         --status $get_arg_status \
         --type $get_arg_type \
@@ -201,7 +201,7 @@ io_todo() {
     [ -n "$get_arg_id" ] && local -n _io_id_todo=$get_arg_id || local _io_id_todo
 
     [ "$get_arg_force" = no ] && {
-        io_exists \
+        io_history_exists \
             --type $get_arg_type \
             --date_end "${get_arg_date_end}" \
             --status SUCCES \
@@ -212,7 +212,7 @@ io_todo() {
     }
 
     {
-        io_exists \
+        io_history_exists \
             --type $get_arg_type \
             --date_end "${get_arg_date_end}" \
             --status EN_COURS \
@@ -232,7 +232,7 @@ io_todo() {
 }
 
 #
-io_begin() {
+io_history_begin() {
     bash_args \
         --args_p '
             type:code type IO;
@@ -253,7 +253,7 @@ io_begin() {
 
     local -n _io_id=$get_arg_id
 
-    _io_manager \
+    _io_history_manager \
         --method APPEND \
         --type $get_arg_type \
         --status EN_COURS \
@@ -266,7 +266,7 @@ io_begin() {
     return $SUCCESS_CODE
 }
 
-io_end_ok() {
+io_history_end_ok() {
     bash_args \
         --args_p '
             nrows_processed:nombre de données traitées;
@@ -279,7 +279,7 @@ io_end_ok() {
         ' \
         "$@" || return $ERROR_CODE
 
-    _io_manager \
+    _io_history_manager \
         --method UPDATE_OK \
         --nrows_processed $get_arg_nrows_processed \
         --infos "$get_arg_infos" \
@@ -288,7 +288,7 @@ io_end_ok() {
     return $SUCCESS_CODE
 }
 
-io_end_ko() {
+io_history_end_ko() {
     bash_args \
         --args_p '
             id:identifiant IO
@@ -298,14 +298,14 @@ io_end_ko() {
         ' \
         "$@" || return $ERROR_CODE
 
-    _io_manager \
+    _io_history_manager \
         --method UPDATE_KO \
         --id $get_arg_id || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
 
-io_export_last() {
+io_history_export_last() {
     bash_args \
         --args_p '
             type:code type IO;
@@ -316,7 +316,7 @@ io_export_last() {
         ' \
         "$@" || return $ERROR_CODE
 
-    _io_manager \
+    _io_history_manager \
         --method EXPORT_LAST \
         --type $get_arg_type \
         --output "$get_arg_output" || return $ERROR_CODE
@@ -856,7 +856,7 @@ excel_to_csv() {
 
     # MIME type
     # https://stackoverflow.com/questions/7076042/what-mime-type-should-i-use-for-csv
-    local _mime=$(get_mimetype "$from_file_path") _spreadsheet
+    local _mime=$(get_file_mimetype "$from_file_path") _spreadsheet
     case "$_mime" in
     application/vnd.openxmlformats-officedocument.spreadsheetml.sheet|application/vnd.ms-excel)
         _spreadsheet='MS Excel'
@@ -906,7 +906,7 @@ csv_to_excel() {
 
     # MIME type
     # https://stackoverflow.com/questions/7076042/what-mime-type-should-i-use-for-csv
-    local _mime=$(get_mimetype "$from_file_path")
+    local _mime=$(get_file_mimetype "$from_file_path")
     case "$_mime" in
     text/plain|text/x-csv)
         # NULL command
@@ -991,4 +991,322 @@ import_excel_file() {
     rm "$file_path.txt" &&
     return $SUCCESS_CODE ||
     return $ERROR_CODE
+}
+
+# import GEO (as shapefile, ...)
+import_geo_file() {
+    bash_args \
+        --args_p '
+            file_path:Chemin absolu vers le fichier à traiter;
+            schema_name:Nom du schema cible;
+            table_name:Nom de la table cible;
+            load_mode:Mode de chargement des données;
+            encoding:Encodage de caractères;
+            from_srid:Identifiant du système de projection des objets géographiques;
+            to_srid:Identifiant du système de reprojection des objets géographiques;
+            geometry_type:Type des objets geographiques;
+            spatial_index:Indique si il faut créer un index géographique;
+            limit:Limiter a n enregistrements;
+            rowid:Générer un identifiant unique rowid' \
+        --args_o 'file_path' \
+        --args_v '
+            load_mode:OVERWRITE_DATA|OVERWRITE_TABLE|APPEND;
+            encoding:UTF-8|LATIN1;
+            geometry_type:NONE|GEOMETRY|POINT|LINESTRING|POLYGON|GEOMETRYCOLLECTION|MULTIPOINT|MULTIPOLYGON|MULTILINESTRING|CIRCULARSTRING|COMPOUNDCURVE|CURVEPOLYGON|MULTICURVE|MULTISURFACE|PROMOTE_TO_MULTI|CONVERT_TO_LINEAR|CONVERT_TO_CURVE;
+            spatial_index:yes|no;
+            rowid:yes|no' \
+        --args_d '
+            schema_name:'${POW_PG_DEFAULT_SCHEMA}';
+            encoding:UTF-8;
+            load_mode:OVERWRITE_DATA;
+            geometry_type:GEOMETRY;
+            spatial_index:yes;
+            rowid:yes' \
+        "$@" || return $ERROR_CODE
+
+    expect file "$get_arg_file_path" || exit $ERROR_CODE
+
+    # geometry_type :
+    # Define the geometry type for the created layer.
+    # One of NONE, GEOMETRY, POINT, LINESTRING, POLYGON, GEOMETRYCOLLECTION, MULTIPOINT, MULTIPOLYGON or MULTILINESTRING.
+    # And CIRCULARSTRING, COMPOUNDCURVE, CURVEPOLYGON, MULTICURVE and MULTISURFACE for GDAL 2.0 non-linear geometry types.
+    # Add "Z", "M", or "ZM" to the name to get coordinates with elevation, measure, or elevation and measure.
+    # Starting with GDAL 1.10, PROMOTE_TO_MULTI can be used to automatically promote layers that mix polygon or multipolygons to multipolygons, and layers that mix linestrings or multilinestrings to multilinestrings.
+    # Can be useful when converting shapefiles to PostGIS and other target drivers that implement strict checks for geometry types.
+    # Starting with GDAL 2.0, CONVERT_TO_LINEAR can be used to to convert non-linear geometries types into linear geometries by approximating them, and CONVERT_TO_CURVE to promote a non-linear type to its generalized curve type (POLYGON to CURVEPOLYGON, MULTIPOLYGON to MULTISURFACE, LINESTRING to COMPOUNDCURVE, MULTILINESTRING to MULTICURVE).
+    # Starting with 2.1 the type can be defined as measured ("25D" remains as an alias for single "Z").
+    # Some forced geometry conversions may result in invalid geometries, for example when forcing conversion of multi-part multipolygons with -nlt POLYGON, the resulting polygon will break the Simple Features rules.
+
+    # load_mode :
+    # overwrite (default) : Delete the output layer and recreate it empty
+    # append : Append to existing layer instead of creating new
+    # update : Open existing output datasource in update mode rather than trying to create a new one
+
+    local file_path="$get_arg_file_path"
+    local schema_name=$get_arg_schema_name
+    local table_name=$get_arg_table_name
+    local load_mode=$get_arg_load_mode
+    local load_mode_ogr2ogr=
+    case "$load_mode" in
+    OVERWRITE_DATA|OVERWRITE_TABLE)
+        load_mode_ogr2ogr=overwrite
+        ;;
+    APPEND)
+        load_mode_ogr2ogr=append
+        ;;
+    esac
+    local encoding=$get_arg_encoding
+    local from_srid=$get_arg_from_srid
+    local to_srid=$get_arg_to_srid
+    local geometry_type=$get_arg_geometry_type
+    local spatial_index=$get_arg_spatial_index
+    local limit=$get_arg_limit
+    local rowid=$get_arg_rowid
+
+    if [ -z "$table_name" ]; then
+        execute_query \
+            --name LABEL_TO_CODE \
+            --query "SELECT public.label_to_code('$file_name')" \
+            --psql_arguments 'tuples-only:pset=format=unaligned' \
+            --with_log no \
+            --return table_name || return $ERROR_CODE
+    fi
+    [ "$POW_DEBUG" = yes ] && echo "table_name=$table_name"
+
+    [[ ! $file_extension =~ shp|mif|dbf|json ]] && {
+        log_error "Le Fichier $file_path n'a pas une extension shp, mif, dbf ou json"
+        return $ERROR_CODE
+    }
+
+    local log_tmp_path
+    get_tmp_file --tmpfile log_tmp_path --create yes --tmpext log || {
+        log_error "Erreur de création du fichier temporaire de LOG"
+        return $ERROR_CODE
+    }
+
+    # http://www.bostongis.com/PrinterFriendly.aspx?content_name=ogr_cheatsheet
+    # -t_srs srs_def : Reproject/transform to this SRS on output
+    # -s_srs srs_def : Override source SRS
+    local ogr_args=''
+    [ -n "$to_srid" ] && ogr_args="$ogr_args -t_srs $to_srid"
+    [ -n "$from_srid" ] && ogr_args="$ogr_args -s_srs $from_srid"
+    [ -n "$limit" ] && ogr_args="$ogr_args -limit $limit"
+
+    if [ "$file_extension" = mif ]; then
+        # NOTE: remains origin dbf (not one this created by ogr2ogr), so use temporary directory
+        local mif_dir=$(dirname "$file_path")
+        local mif_to_shp_dir=$mif_dir/mif_to_shp
+        local log_mif_to_shp="$POW_DIR_TMP/mif_to_shp_$file_name.log"
+        mkdir --parents $mif_to_shp_dir
+        ogr2ogr \
+            -f 'ESRI Shapefile' \
+            $mif_to_shp_dir \
+            $file_path > "$log_mif_to_shp" 2>&1
+        if [ $? -ne 0 ] || [ -n "$(grep --max-count 1 ERROR $log_mif_to_shp)" ]; then
+            log_error "Erreur lors de la conversion de $file_name en shapefile, voir $log_mif_to_shp"
+            return $ERROR_CODE
+        else
+            archive_file "$log_mif_to_shp"
+            log_info "Conversion avec succès de $file_name en shapefile"
+        fi
+        # NOTE: copy only new files (so origin dbf is not replaced
+        mv --no-clobber $mif_to_shp_dir/* $mif_dir/
+        rm --recursive $mif_to_shp_dir
+        file_path="$mif_dir/${file_name}.shp"
+    fi
+
+    if [ -n $encoding ]; then
+        _PGCLIENTENCODING_SAVE=$PGCLIENTENCODING
+        export PGCLIENTENCODING=$encoding
+    fi
+
+    layer_creation_options='-lco FID=rowid -lco GEOMETRY_NAME=geom'
+    [ "$spatial_index" = no ] && layer_creation_options="${layer_creation_options} -lco SPATIAL_INDEX=NO"
+
+    local _rc
+    ogr2ogr \
+        -f "PostgreSQL" \
+        PG:"host=$pg_host user=$pg_username dbname=$pg_dbname password=$pg_password" \
+        $file_path \
+        -$load_mode_ogr2ogr \
+        -nln "$table_name" \
+        -nlt $geometry_type \
+        $ogr_args \
+        $layer_creation_options 2> "$log_tmp_path"
+    _rc=$?
+
+    # restore previous encoding
+    [ -n $encoding ] && PGCLIENTENCODING=$_PGCLIENTENCODING_SAVE
+
+    # returns OK even if encoding error, so search for ERROR
+    if [ $_rc -ne 0 ] || [ -n "$(grep --max-count 1 ERROR $log_tmp_path)" ]; then
+        log_error "Erreur lors de l'import de $file_name, voir $log_tmp_path"
+        return $ERROR_CODE
+    fi
+
+    if [ "$rowid" = no ]; then
+        execute_query \
+            --name DROP_COLUMN_ROWID \
+            --query "ALTER TABLE $table_name DROP COLUMN IF EXISTS rowid" \
+    fi
+    archive_file "$log_tmp_path"
+    log_info "Import avec succès de $file_name dans $table_name"
+
+    return $SUCCESS_CODE
+}
+
+# import file into DB
+import_file() {
+    bash_args \
+    --args_p '
+        file_path:Chemin absolu vers le fichier à importer;
+        schema_name:Nom du schema cible;
+        table_name:Nom de la table cible;
+        load_mode:Mode de chargement des données;
+        import_options:Options d import du fichier spécifiques à son format;
+        limit:Limiter a n enregistrements;
+        rowid:Générer un identifiant unique rowid' \
+    --args_o 'file_path' \
+    --args_v '
+        load_mode:OVERWRITE_DATA|OVERWRITE_TABLE|APPEND;
+        rowid:yes|no' \
+    --args_d '
+        schema_name:$pg_default_schema_name;
+        load_mode:OVERWRITE_DATA;
+        rowid:yes' \
+    "$@" || return $ERROR_CODE
+
+    expect file "$get_arg_file_path" || exit $ERROR_CODE
+
+    local file_path="$get_arg_file_path"
+    local file_name=$(get_file_name --file_path "$file_path")
+    local file_extension=$(get_file_extension --file_path "$file_path")
+    local schema_name=$get_arg_schema_name
+    local table_name=$get_arg_table_name
+    local load_mode=$get_arg_load_mode
+    local limit=$get_arg_limit
+    local import_options="$get_arg_import_options"
+    local rowid=$get_arg_rowid
+
+    local file_archive_extract_dir
+    if is_archive --archive_path "$file_path"; then
+        file_archive_extract_dir="$POW_DIR_TMP/$file_name"
+        rm --recursive --force "$POW_DIR_TMP/$file_name" &&
+        mkdir "$POW_DIR_TMP/$file_name" &&
+        extract_archive \
+            --archive_path "$file_path" \
+            --extract_path "$file_archive_extract_dir" || return $ERROR_CODE
+
+        local _files=($(ls -1 "$file_archive_extract_dir"/*)) _error=yes _msg
+        case ${#_files[@]} in
+        0)
+            _msg="Auncun fichier trouvé dans l'archive $file_path, un attendu"
+            ;;
+        1)
+            _error=no
+            ;;
+        *)
+            _msg="Plusieurs fichiers trouvés dans l'archive $file_path, un seul attendu"
+            ;;
+        esac
+        [ "$_error" = yes ] && {
+            log_error "$_msg"
+            return $ERROR_CODE
+        }
+        file_path=${_files[0]}
+        file_name=$(get_file_name --file_path "$file_path")
+        file_extension=$(get_file_extension --file_path "$file_path")
+    fi
+
+    if [ -z "$table_name" ]; then
+        execute_query \
+            --name LABEL_TO_CODE \
+            --query "SELECT public.label_to_code('$file_name')" \
+            --psql_arguments 'tuples-only:pset=format=unaligned' \
+            --with_log no \
+            --return table_name || return $ERROR_CODE
+    fi
+    [ "$POW_DEBUG" = yes ] && echo "table_name=$table_name"
+
+    # options
+    local tmp_liste_import_options=()
+    local tmp_import_option tmp_import_option_name tmp_import_option_value import_options_string
+    local tmp_import_option_prefix
+    IFS=';' read -ra tmp_liste_import_options <<< "${import_options}"
+    for tmp_import_option in "${tmp_liste_import_options[@]}"; do
+        tmp_import_option_name=$(echo $tmp_import_option | grep --only-matching '^[^:]*')
+        tmp_import_option_value=$(echo $tmp_import_option | grep --only-matching '[^:]*$')
+        if [ $(expr length $tmp_import_option_name) -eq 1 ]; then
+            tmp_import_option_prefix='-'
+        else
+            tmp_import_option_prefix='--'
+        fi
+        if [ -n "$import_options_string" ]; then
+            tmp_import_option_prefix=" ${tmp_import_option_prefix}"
+        fi
+        import_options_string+="${tmp_import_option_prefix}${tmp_import_option_name} ${tmp_import_option_value}"
+    done
+
+    local _mime=$(get_file_mimetype "$from_file_path") _type_import _type_file
+    case "$_mime" in
+    text/plain|text/x-csv)
+        _type_import=CSV
+        ;;
+    application/vnd.openxmlformats-officedocument.spreadsheetml.sheet|application/vnd.ms-excel|application/vnd.oasis.opendocument.spreadsheet)
+        _type_import=SPREADSHEET
+        ;;
+    application/*dbf*|application/octet-stream|application/*json*)
+        _type_file=$(file "$file_path" | cut --delimiter : --fields 2)
+        _type_file=${_type_file,,}
+        [[ $_type_file =~ esri[[:space:]]shapefile|dbase|json ]] && _type_import=GEO
+        ;;
+    esac
+    [ "$POW_DEBUG" = yes ] && echo "_type_import (MIME)=$_type_import"
+    [ -z "$_type_import" ] &&
+    case "${file_extension,,}" in
+    txt|[cdt]sv)    _type_import=CSV            ;;
+    shp|dbf|json)   _type_import=GEO            ;;
+    xls|xlsx|ods)   _type_import=SPREADSHEET    ;;
+    esac &&
+    [ "$POW_DEBUG" = yes ] && echo "_type_import (EXTENSION)=$_type_import"
+
+    case "$_type_import" in
+    CSV)
+        import_csv_file \
+            --file_path "$file_path" \
+            --schema_name "$schema_name" \
+            --table_name "$table_name" \
+            --load_mode "$load_mode" \
+            --limit "$limit" \
+            --rowid "$rowid" \
+            $import_options_string
+        ;;
+    SPREADSHEET)
+        import_excel_file \
+            --file_path "$file_path" \
+            --schema_name "$schema_name" \
+            --table_name "$table_name" \
+            --load_mode "$load_mode" \
+            --limit "$limit" \
+            --rowid "$rowid" \
+            $import_options_string
+        ;;
+    GEO)
+        import_geo_file \
+            --file_path "$file_path" \
+            --schema_name "$schema_name" \
+            --table_name "$table_name" \
+            --load_mode "$load_mode" \
+            --limit "$limit" \
+            --rowid "$rowid" \
+            $import_options_string
+        ;;
+    *)
+        log_error "Le fichier $file_path ne peut pas être traité!"
+        false
+    esac || return $ERROR_CODE
+
+    [ -n "$file_archive_extract_dir" ] && rm --recursive --force "$file_archive_extract_dir"
+
+    return $SUCCESS_CODE
 }

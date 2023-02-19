@@ -24,10 +24,10 @@ year=
 
 on_import_error() {
     # import created?
-    [ -n "$year_history_id" ] && io_end_ko --id $year_history_id
+    [ -n "$year_history_id" ] && io_history_end_ko --id $year_history_id
 
     # ignoring error if last year already exists
-    if io_exists --type $co_type_import --date_end "${years[$year_id]}"; then
+    if io_history_exists --type $co_type_import --date_end "${years[$year_id]}"; then
         if [ -z "$get_arg_year" ]; then
             log_info "Erreur ignorée car le millésime de l'année courante (${year}) a déjà été importé avec succès"
         else
@@ -94,7 +94,7 @@ esac
 
 # estimate to ~35000 districts
 log_info "Import du millésime $year de $co_type_import" &&
-io_begin \
+io_history_begin \
     --type $co_type_import \
     --date_begin "${years[$year_id]}" \
     --date_end "${years[$year_id]}" \
@@ -112,7 +112,7 @@ execute_query \
     --query "DELETE FROM io_history WHERE co_type = '${co_type_import}'" &&
 execute_query \
     --query "$POW_DIR_BATCH/import_district_event.sql" &&
-io_end_ok \
+io_history_end_ok \
     --type $co_type_import \
     --nrows_processed '(SELECT COUNT(*) FROM insee.district_event)' \
     --id $year_history_id &&
