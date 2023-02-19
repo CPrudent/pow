@@ -36,8 +36,8 @@ INSERT INTO insee.district_event(
     FROM insee.district_event_tmp
 );
 
-CREATE INDEX IF NOT EXISTS idx_evenement_commune_com_av_com_to_com ON insee.district_event(com_av) WHERE typecom_av = 'COM' AND typecom_ap = 'COM';
-CREATE INDEX IF NOT EXISTS idx_evenement_commune_com_ap_com_to_com ON insee.district_event(com_ap) WHERE typecom_av = 'COM' AND typecom_ap = 'COM';
+CREATE INDEX IF NOT EXISTS ix_district_event_com_av ON insee.district_event(com_av) WHERE typecom_av = 'COM' AND typecom_ap = 'COM';
+CREATE INDEX IF NOT EXISTS ix_district_event_com_ap ON insee.district_event(com_ap) WHERE typecom_av = 'COM' AND typecom_ap = 'COM';
 
 --https://fr.wikipedia.org/wiki/Loisey-Culey : Au 1er janvier 2014, les communes devaient retrouver leur indépendance, mais la procédure est reportée au 1er janvier 2015, ne pouvant avoir lieu dans l'année précédant une échéance électorale. Cependant, lors des élections municipales de 2014, un maire est élu dans chaque commune, et finalement, par décision du tribunal le 1er juillet 2014, les deux communes sont indépendantes.
 --> on retarde l'evenement au 1er juillet 2014
@@ -53,4 +53,3 @@ WHERE date_eff = TO_DATE('2014-01-07', 'YYYY-MM-DD')
 AND typecom_av = 'COM' AND typecom_ap = 'COM' 
 AND com_av = '14697';
 
-DROP TABLE insee.district_event_tmp;

@@ -31,6 +31,7 @@ _io_history_manager() {
         "$@" || return $ERROR_CODE
 
     local _query _return _output _with_log=no
+    [ "$POW_DEBUG" = yes ] && _with_log=yes
 
     case $get_arg_method in
     EXISTS)
@@ -133,6 +134,9 @@ _io_history_manager() {
         $_output \
         --with_log $_with_log || return $ERROR_CODE
 
+    [ -n "$_return" ] &&
+    [ "$POW_DEBUG" = yes ] && { echo io_id=$_io_id_manager; }
+
     return $SUCCESS_CODE
 }
 
@@ -156,7 +160,7 @@ io_history_exists() {
             status:EN_COURS|SUCCES|ERREUR
         ' \
         --args_d '
-            status:EN_COURS
+            status:SUCCES
         ' \
         "$@" || return $ERROR_CODE
 
@@ -787,10 +791,8 @@ import_csv_file() {
     local _copy_data
     # put query into a file, due to error w/ command line (bash_args eval!)
     get_tmp_file --tmpext sql --tmpfile _copy_data
-    cat <<-EOF > $_copy_data
-COPY ${schema_name}.${table_name} (${table_columns_list})
-FROM $([ -n "$limit" ] && echo STDIN || echo "'$file_path'")
-WITH (DELIMITER E'$delimiter_value', FORMAT CSV, HEADER $file_with_header_boolean, QUOTE '"', ENCODING $encoding)
+    cat <<-EOF > "$_copy_data"
+\\COPY ${schema_name}.${table_name} (${table_columns_list}) FROM $([ -n "$limit" ] && echo STDIN || echo "'$file_path'") WITH (DELIMITER E'$delimiter_value', FORMAT CSV, HEADER $file_with_header_boolean, QUOTE '"', ENCODING $encoding)
 EOF
 
     if [ -n "$limit" ]; then
@@ -1250,7 +1252,7 @@ import_file() {
 
     local _mime=$(get_file_mimetype "$from_file_path") _type_import _type_file
     case "$_mime" in
-    text/plain|text/x-csv)
+    text/plain|text/csv|text/x-csv)
         _type_import=CSV
         ;;
     application/vnd.openxmlformats-officedocument.spreadsheetml.sheet|application/vnd.ms-excel|application/vnd.oasis.opendocument.spreadsheet)
