@@ -3,10 +3,9 @@
     #--
     # define PG
 
-    ###
-    # execute query (from file or command line)
-    # samples:
-    # execute_query --name GET_VERSION --query 'select version()' --psql_arguments 'tuples-only:pset=format=unaligned' --return _pg_version
+# execute query (from file or command line)
+# sample:
+# execute_query --name GET_VERSION --query 'select version()' --psql_arguments 'tuples-only:pset=format=unaligned' --return _pg_version
 execute_query() {
     bash_args \
         --args_p '
@@ -31,13 +30,15 @@ execute_query() {
 
     local _start=$(date +%s) _log _opt _info _rc _last _psql_output _psql_level=NOTICE
     local _log_tmp_path _log_notice_tmp_path _log_error_tmp_path _log_error_archive_path
+    _log="$get_arg_name"
     [ -f "$get_arg_query" ] && {
-        _log=$(basename "$get_arg_query")
-        _opt=--file
+        _opt='--file'
         _info='du fichier'
+        if [ -z "$_log" ]; then
+            _log=$(basename -- "$get_arg_query")
+        fi
     } || {
-        _log="$get_arg_name"
-        _opt=--command
+        _opt='--command'
         _info='de la commande SQL'
     }
     _log_tmp_path="$POW_DIR_TMP/$_log.log"
@@ -69,8 +70,16 @@ execute_query() {
 
     # with log: start message
     is_yes --var get_arg_with_log && log_info "Lancement de l'exécution $_info $_log"
+
+    [ "$POW_DEBUG" = yes ] && {
+        echo "PGOPTIONS=-c client_min_messages=$_psql_level"
+        echo "psql_arguments=$get_arg_psql_arguments"
+        echo "input=$_opt $get_arg_query"
+        echo "output=$_psql_output"
+    }
+
     # call psql
-    env PGPASSWORD=$POW_PG_PASSWORD PGOPTIONS='-c client_min_messages='$_psql_level $POW_DIR_PG_BIN/psql \
+    env PGPASSWORD=$POW_PG_PASSWORD PGOPTIONS="-c client_min_messages=$_psql_level" $POW_DIR_PG_BIN/psql \
         --host $POW_PG_HOST \
         --port $POW_PG_PORT \
         --username $POW_PG_USERNAME \
@@ -81,12 +90,25 @@ execute_query() {
         $_opt "$get_arg_query" \
         --output "$_psql_output" 2> "$_log_notice_tmp_path"
     _rc=$?
+
+    [ "$POW_DEBUG" = yes ] && {
+        echo "output:"
+        cat $_psql_output
+    }
+
     # purge & archive log
-    grep --extended-regexp --invert-match 'ATTENTION:|NOTICE:|DÉTAIL : |DROP cascade sur ' "$_log_notice_tmp_path" >> "$_log_error_tmp_path"
-    sed --in-place --expression '/^NOTICE:  la relation « [^ ]* » existe déjà/d' "$_log_notice_tmp_path"
+    grep \
+        --extended-regexp \
+        --invert-match \
+        'ATTENTION:|NOTICE:|DÉTAIL : |DROP cascade sur ' "$_log_notice_tmp_path" >> "$_log_error_tmp_path"
+    sed \
+        --in-place \
+        --expression \
+        '/^NOTICE:  la relation « [^ ]* » existe déjà/d' "$_log_notice_tmp_path"
     archive_file "$_log_tmp_path"
     archive_file "$_log_notice_tmp_path"
     archive_file "$_log_error_tmp_path"
+
     [ $_rc -ne 0 ] && {
         local _msg="Erreur lors de l'exécution de $_log"
         is_yes --var get_arg_with_log && _msg+=", veuillez consulter $_log_error_archive_path"
@@ -101,15 +123,15 @@ execute_query() {
     # requested result of SELECT
     [ -n "$get_arg_return" ] && {
         local -n _select_ref=$get_arg_return
-        _select_ref=$(< "$POW_DIR_ARCHIVE/$_log.log")
+        # FIXME client_min_messages=ERROR doesn't behavior correctly! always INSERT message
+        #_select_ref=$(< "$POW_DIR_ARCHIVE/$_log.log")
+        _select_ref=$(grep --perl-regexp --invert-match '^(INSERT|UPDATE|DELETE) [0-9]+ [0-9]+$' "$POW_DIR_ARCHIVE/$_log.log")
     }
 
     return $SUCCESS_CODE
 }
 
-    ###
-    # check if table exists
-    #
+# check if table exists
 table_exists() {
     bash_args \
         --args_p '
@@ -135,9 +157,7 @@ table_exists() {
     return $_rc
 }
 
-    ###
-    # check if view exists
-    #
+# check if view exists
 view_exists() {
     bash_args \
         --args_p '
@@ -266,9 +286,7 @@ vacuum() {
     return $SUCCESS_CODE
 }
 
-    ###
-    # get sequences of a table
-    #
+# get sequences of a table
 get_table_sequences() {
     bash_args	\
         --args_p '
@@ -305,9 +323,7 @@ get_table_sequences() {
     return $SUCCESS_CODE
 }
 
-    ###
-    # backup table
-    #
+# backup table
 backup_table() {
     bash_args	\
         --args_p '
@@ -394,9 +410,7 @@ backup_table() {
     return $SUCCESS_CODE
 }
 
-    ###
-    # restore table (w/ backup)
-    #
+# restore table (from backup)
 restore_table() {
     bash_args \
         --args_p '

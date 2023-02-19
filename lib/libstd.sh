@@ -187,6 +187,28 @@ is_yes() {
     return $ERROR_CODE
 }
 
+# define delimiter w/o worry of bash_args!
+set_delimiter() {
+    bash_args \
+        --args_p '
+            delimiter_code:Code délimiteur;
+            delimiter_value:Valeur délimiteur' \
+        --args_o '
+            delimiter_code;
+            delimiter_value' \
+        "$@" || return $ERROR_CODE
+
+    local -n _delimiter_ref=$get_arg_delimiter_value
+    # https://linuxhint.com/associative_array_bash/
+    [ ${POW_DELIMITER[$get_arg_delimiter_code]+_} ] && {
+        _delimiter_ref=${POW_DELIMITER[$get_arg_delimiter_code]}
+    } || {
+        return $ERROR_CODE
+    }
+
+    return $SUCCESS_CODE
+}
+
     #
     # command line
     #
@@ -541,23 +563,47 @@ is_different() {
     return $ERROR_CODE
 }
 
+# extension of file
+get_file_extension() {
+    bash_args \
+        --args_p 'file_path:Nom du fichier' \
+        --args_o 'file_path' \
+        "$@" || return $ERROR_CODE
+
+    local _file_extension="${get_arg_file_path##*.}"
+    echo "${_file_extension,,}"
+    return $SUCCESS_CODE
+}
+
+# basename of file (w/o extension)
+get_file_name() {
+    bash_args \
+        --args_p 'file_path:Nom du fichier' \
+        --args_o 'file_path' \
+        "$@" || return $ERROR_CODE
+
+    local _file_name=$(basename -- "$get_arg_file_path")
+    echo "${_file_name%%.*}"
+    return $SUCCESS_CODE
+}
+
 # get MIME's type of file
-get_mimetype() {
+get_file_mimetype() {
     file --mime-type "$1" | sed 's/.*: //'
 }
 
 # known if file is binary
 file_is_binary() {
-    file -bL --mime "$1" | grep -q 'charset=binary'
+    file --brief --dereference --mime "$1" | grep --silent 'charset=binary'
 }
 
 # get number of rows
-file_get_nrows() {
+get_file_nrows() {
     expect argc $0 $# 2  &&
     expect file "$1"     || return $ERROR_CODE
 
     local -n _nr=$2
-    _nr=$(wc -l $1 | cut -d ' ' -f 1)
+    _nr=$(wc --lines "$1" | cut --delimiter ' ' --fields 1)
 
     return $SUCCESS_CODE
 }
@@ -574,7 +620,7 @@ backup_file_as_uniq() {
     while [ -f "${get_arg_path}.backup.${_suffix}" ]; do
         ((_suffix++))
     done
-    cp ${get_arg_path} ${get_arg_path}.backup.${_suffix}
+    cp "${get_arg_path}" "${get_arg_path}.backup.${_suffix}"
     return $?
 }
 
@@ -598,10 +644,10 @@ get_tmp_file() {
             create:no' \
         "$@" || return $ERROR_CODE
 
-    local _tmp_pow=$(mktemp --tmpdir=$get_arg_tmpdir pow_XXXXX.$get_arg_tmpext)
+    local _tmp_pow=$(mktemp --tmpdir="$get_arg_tmpdir" pow_XXXXX.$get_arg_tmpext)
     local -n _tmp_ref=$get_arg_tmpfile
-    [ "$get_arg_create" = no ] && rm --force $_tmp_pow || chmod $get_arg_chmod $_tmp_pow
-    _tmp_ref=$_tmp_pow
+    [ "$get_arg_create" = no ] && rm --force "$_tmp_pow" || chmod $get_arg_chmod "$_tmp_pow"
+    _tmp_ref="$_tmp_pow"
     return $SUCCESS_CODE
 }
 
@@ -632,7 +678,7 @@ wait_for_file() {
         ((wait_file_minute--))
     done
 
-    if [ -f $file_path ]; then
+    if [ -f "$file_path" ]; then
         # older ?
         [ $max_age_file_minute -gt 0 ] && [ $(find $file_path -mmin +$max_age_file_minute) ] && log_error "Le fichier $file_path est présent mais trop ancien et l'éventuel temps d'attente est dépassé" && return $ERROR_CODE
 
@@ -874,7 +920,7 @@ send_mail() {
                     }
                 fi
 
-                _mime=$(get_mimetype "$_todo")
+                _mime=$(get_file_mimetype "$_todo")
 
                 echo '--###BOUNDARY'
                 echo 'Content-Type: '$_mime

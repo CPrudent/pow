@@ -13,11 +13,11 @@ BEGIN
     GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO bal, divers, geopad, ign, insee, ran;
 
     -- more specific objects
-    IF public.table_exists('public','historique_import') THEN
-        GRANT ALL PRIVILEGES ON public.historique_import TO bal, divers, geopad, ign, insee, ran;
-        GRANT ALL PRIVILEGES ON SEQUENCE historique_import_id_seq TO bal, divers, geopad, ign, insee, ran;
+    IF public.table_exists('public', 'io_history') THEN
+        GRANT ALL PRIVILEGES ON public.io_history TO bal, divers, geopad, ign, insee, ran;
+        GRANT ALL PRIVILEGES ON SEQUENCE io_history_id_seq TO bal, divers, geopad, ign, insee, ran;
     END IF;
-    IF public.view_exists('public','za_ran_view') THEN
+    IF public.view_exists('public', 'za_ran_view') THEN
         GRANT ALL PRIVILEGES ON public.za_ran_view TO bal;
     END IF;
 END $PERMS$;

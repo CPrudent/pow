@@ -13,3 +13,12 @@ declare -A POW_CONF=(
     [POSTGIS_VERSION]=3
     [PG_PORT]=5432
 )
+
+# delimiters (worry w/ bash_args eval!)
+declare -A POW_DELIMITER=(
+    [COLON]=':'
+    [COMMA]=','
+    [PIPE]='|'
+    [SEMICOLON]=';'
+    [TAB]='\t'
+)
