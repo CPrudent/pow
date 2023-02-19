@@ -1046,7 +1046,7 @@ import_geo_file() {
     local schema_name=$get_arg_schema_name
     local table_name=$get_arg_table_name
     local load_mode=$get_arg_load_mode
-    local load_mode_ogr2ogr=
+    local load_mode_ogr2ogr
     case "$load_mode" in
     OVERWRITE_DATA|OVERWRITE_TABLE)
         load_mode_ogr2ogr=overwrite
@@ -1105,10 +1105,10 @@ import_geo_file() {
         if [ $? -ne 0 ] || [ -n "$(grep --max-count 1 ERROR $log_mif_to_shp)" ]; then
             log_error "Erreur lors de la conversion de $file_name en shapefile, voir $log_mif_to_shp"
             return $ERROR_CODE
-        else
-            archive_file "$log_mif_to_shp"
-            log_info "Conversion avec succès de $file_name en shapefile"
         fi
+
+        archive_file "$log_mif_to_shp"
+        log_info "Conversion avec succès de $file_name en shapefile"
         # NOTE: copy only new files (so origin dbf is not replaced
         mv --no-clobber $mif_to_shp_dir/* $mif_dir/
         rm --recursive $mif_to_shp_dir
@@ -1121,13 +1121,13 @@ import_geo_file() {
     fi
 
     layer_creation_options='-lco FID=rowid -lco GEOMETRY_NAME=geom'
-    [ "$spatial_index" = no ] && layer_creation_options="${layer_creation_options} -lco SPATIAL_INDEX=NO"
+    [ "$spatial_index" = no ] && layer_creation_options+=" -lco SPATIAL_INDEX=NO"
 
     local _rc
     ogr2ogr \
         -f "PostgreSQL" \
         PG:"host=$pg_host user=$pg_username dbname=$pg_dbname password=$pg_password" \
-        $file_path \
+        "$file_path" \
         -$load_mode_ogr2ogr \
         -nln "$table_name" \
         -nlt $geometry_type \
@@ -1147,7 +1147,7 @@ import_geo_file() {
     if [ "$rowid" = no ]; then
         execute_query \
             --name DROP_COLUMN_ROWID \
-            --query "ALTER TABLE $table_name DROP COLUMN IF EXISTS rowid" \
+            --query "ALTER TABLE $table_name DROP COLUMN IF EXISTS rowid"
     fi
     archive_file "$log_tmp_path"
     log_info "Import avec succès de $file_name dans $table_name"
