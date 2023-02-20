@@ -127,7 +127,7 @@ _io_history_manager() {
     esac
 
     execute_query \
-        --name IO_${get_arg_method}_${get_arg_type} \
+        --name IO_${get_arg_method}_${get_arg_type:-$get_arg_id} \
         --query "$_query" \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         $_return \

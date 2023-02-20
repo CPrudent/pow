@@ -28,7 +28,8 @@ execute_query() {
         ' \
         "$@" || return $ERROR_CODE
 
-    local _start=$(date +%s) _log _opt _info _rc _last _psql_output _psql_level=NOTICE
+    local _start=$(date +%s) _log _opt _info _rc _last _psql_output
+    local _quiet _psql_level=NOTICE
     local _log_tmp_path _log_notice_tmp_path _log_error_tmp_path _log_error_archive_path
     _log="$get_arg_name"
     [ -f "$get_arg_query" ] && {
@@ -66,7 +67,10 @@ execute_query() {
         }
     }
     # quiet: https://stackoverflow.com/questions/21777564/postgresql-is-there-a-way-to-disable-the-display-of-insert-statements-when-rea
-    [ -n "$get_arg_return" ] && _psql_level=ERROR
+    [ -n "$get_arg_return" ] && {
+        _psql_level=ERROR
+        _quiet=--quiet
+    }
 
     # with log: start message
     is_yes --var get_arg_with_log && log_info "Lancement de l'exécution $_info $_log"
@@ -86,6 +90,7 @@ execute_query() {
         --dbname $POW_PG_DBNAME \
         --variable ON_ERROR_STOP=1 \
         --no-password \
+        $_quiet \
         $get_arg_psql_arguments \
         $_opt "$get_arg_query" \
         --output "$_psql_output" 2> "$_log_notice_tmp_path"
@@ -123,9 +128,7 @@ execute_query() {
     # requested result of SELECT
     [ -n "$get_arg_return" ] && {
         local -n _select_ref=$get_arg_return
-        # FIXME client_min_messages=ERROR doesn't behavior correctly! always INSERT message
-        #_select_ref=$(< "$POW_DIR_ARCHIVE/$_log.log")
-        _select_ref=$(grep --perl-regexp --invert-match '^(INSERT|UPDATE|DELETE) [0-9]+ [0-9]+$' "$POW_DIR_ARCHIVE/$_log.log")
+        _select_ref=$(< "$POW_DIR_ARCHIVE/$_log.log")
     }
 
     return $SUCCESS_CODE
