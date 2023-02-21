@@ -2,6 +2,7 @@
  * DDL: INSEE municipality events
  */
 
+-- temporary code to rename
 DO $$
 BEGIN
     IF table_exists('insee', 'district_event') THEN
