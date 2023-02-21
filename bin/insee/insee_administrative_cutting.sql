@@ -6,57 +6,57 @@
 INSERT INTO insee.administrative_cutting_municipality_and_district
 (
     millesime
-    ,codgeo
-    ,libgeo
-    ,dep
-    ,reg
-    ,epci
-    ,nature_epci
-    ,arr
-    ,cv
+    , codgeo
+    , libgeo
+    , dep
+    , reg
+    , epci
+    , nature_epci
+    , arr
+    , cv
 )
 (
     SELECT
         millesime
-        ,"CODGEO"
-        ,"LIBGEO"
-        ,"DEP"
-        ,"REG"
-        ,"EPCI"
-        ,"NATURE_EPCI"
-        ,"ARR"
-        ,"CV"
+        , "CODGEO"
+        , "LIBGEO"
+        , "DEP"
+        , "REG"
+        , "EPCI"
+        , "NATURE_EPCI"
+        , "ARR"
+        , "CV"
     FROM insee.administrative_cutting_municipality_tmp
     -- "global" municipalities (w/ districts) are thought as supra-territory
-    WHERE "CODGEO" NOT IN ('75056','13055','69123')
+    WHERE "CODGEO" NOT IN ('75056', '13055', '69123')
 );
 
 -- districts for Paris/Lyon/Marseille
 INSERT INTO insee.administrative_cutting_municipality_and_district
 (
     millesime
-    ,codgeo
-    ,libgeo
-    ,com
-    ,dep
-    ,reg
-    ,epci
-    ,nature_epci
-    ,arr
-    ,cv
+    , codgeo
+    , libgeo
+    , com
+    , dep
+    , reg
+    , epci
+    , nature_epci
+    , arr
+    , cv
 )
 (
     SELECT
         millesime
-        ,"CODGEO"
-        ,"LIBGEO"
-        ,"COM"
-        ,"DEP"
-        ,"REG"
-        ,"EPCI"
-        ,"NATURE_EPCI"
-        ,"ARR"
-        ,"CV"
+        , "CODGEO"
+        , "LIBGEO"
+        , "COM"
+        , "DEP"
+        , "REG"
+        , "EPCI"
+        , "NATURE_EPCI"
+        , "ARR"
+        , "CV"
     FROM insee.administrative_cutting_district_tmp
 );
 
@@ -64,31 +64,31 @@ INSERT INTO insee.administrative_cutting_municipality_and_district
 INSERT INTO insee.administrative_cutting_supra
 (
     millesime
-    ,nivgeo
-    ,codgeo
-    ,libgeo
+    , nivgeo
+    , codgeo
+    , libgeo
 )
 (
     SELECT
         millesime
-        ,"NIVGEO"
-        ,"CODGEO"
-        ,"LIBGEO"
+        , "NIVGEO"
+        , "CODGEO"
+        , "LIBGEO"
     FROM insee.administrative_cutting_supra_tmp
 );
 INSERT INTO insee.administrative_cutting_supra
 (
     millesime
-    ,nivgeo
-    ,codgeo
-    ,libgeo
+    , nivgeo
+    , codgeo
+    , libgeo
 )
 (
     SELECT
         millesime
-        ,'COM_GLOBALE_ARM'
-        ,"CODGEO"
-        ,"LIBGEO"
+        , 'COM_GLOBALE_ARM'
+        , "CODGEO"
+        , "LIBGEO"
     FROM insee.administrative_cutting_municipality_tmp
-    WHERE "CODGEO" IN ('75056','13055','69123')
+    WHERE "CODGEO" IN ('75056', '13055', '69123')
 );

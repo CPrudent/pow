@@ -25,13 +25,21 @@ CREATE TABLE IF NOT EXISTS insee.administrative_cutting_supra
 	, nb_com VARCHAR
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_decoupage_communal_com_arm_codgeo ON insee.administrative_cutting_municipality_and_district (codgeo, millesime);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_decoupage_communal_zsc_codgeo ON insee.administrative_cutting_supra (nivgeo, codgeo, millesime);
+CREATE UNIQUE INDEX IF NOT EXISTS iux_administrative_cutting_municipality_and_district_codgeo ON insee.administrative_cutting_municipality_and_district (codgeo, millesime);
+CREATE UNIQUE INDEX IF NOT EXISTS iux_administrative_cutting_supra_codgeo ON insee.administrative_cutting_supra (nivgeo, codgeo, millesime);
 
 SELECT set_table_comment(
     'insee'
     , 'administrative_cutting_municipality_and_district'
-    , 'Découpage communal - communes + arrondissements'
+    , 'Découpage administratif - communes & arrondissements municipaux'
     , 'Table d''appartenance géographique des communes - Communes et arrondissements municipaux'
+    , ''
+);
+
+SELECT set_table_comment(
+    'insee'
+    , 'administrative_cutting_supra'
+    , 'Découpage administratif - zones supra-communales'
+    , 'Table d''appartenance géographique des communes - Zones supra-communales'
     , ''
 );
