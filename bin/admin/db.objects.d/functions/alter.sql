@@ -121,7 +121,7 @@ BEGIN
         )
         LOOP
             _result := public.alter_table_change_schema(schema_name_from, schema_name_to, _record.tablename, simulation);
-            IF NOT _result THEN return FALSE END IF;
+            IF NOT _result THEN return FALSE; END IF;
         END LOOP;
         RETURN TRUE;
     END IF;

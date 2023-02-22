@@ -44,7 +44,15 @@ execute_query \
 # needed to avoid error "type geometry not exists"
 execute_query \
     --name 'PREPARE_EXTENSION_POSTGIS' \
-    --query "$POW_DIR_BATCH/db.objects.d/actions/extension_postgis.sql" || exit $ERROR_CODE
+    --query "$POW_DIR_BATCH/db.objects.d/actions/extension_postgis.sql" &&
+{
+    # need permissions to access schemas
+    if [ "$get_arg_relocate" = yes ]; then
+        execute_query \
+            --name 'PERMISSIONS' \
+            --query "$POW_DIR_BATCH/db.objects.d/actions/grant.sql"
+    fi
+} || exit $ERROR_CODE
 
 for _schema in ${_schemas[@]}; do
     # begins w/ admin (core functions)
