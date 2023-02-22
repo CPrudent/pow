@@ -4,7 +4,7 @@
 
 -- BAL
 
-\include_relative bal_mumiciplality.sql
+\include_relative bal_municipality.sql
 \include_relative bal_street.sql
 \include_relative bal_housenumber.sql
 
@@ -21,4 +21,4 @@
 \include_relative laposte_housenumber.sql
 \include_relative laposte_complement.sql
 \include_relative laposte_xy.sql
-\include_relative laposte_pdi.sql
+\include_relative laposte_delivery_point.sql

@@ -36,52 +36,51 @@ bash_args \
 [ -n "$get_arg_schema_only" ] && _schemas=($get_arg_schema_only)
 
 log_info "Mise à jour de la structure de la base de données"
+# superuser
 set_env --schema_code admin &&
 # need drop_all_functions_if_exists()
 execute_query \
-    --name 'CREATE_DROP_FUNCTIONS' \
+    --name CREATE_DROP_FUNCTIONS \
     --query "$POW_DIR_BATCH/db.objects.d/functions/drop.sql" &&
 # needed to avoid error "type geometry not exists"
 execute_query \
-    --name 'PREPARE_EXTENSION_POSTGIS' \
-    --query "$POW_DIR_BATCH/db.objects.d/actions/extension_postgis.sql" &&
-{
-    # need permissions to access schemas
-    if [ "$get_arg_relocate" = yes ]; then
-        execute_query \
-            --name 'PERMISSIONS' \
-            --query "$POW_DIR_BATCH/db.objects.d/actions/grant.sql"
-    fi
-} || exit $ERROR_CODE
-
+    --name PREPARE_EXTENSION_POSTGIS \
+    --query "$POW_DIR_BATCH/db.objects.d/actions/extension_postgis.sql" || exit $ERROR_CODE
 for _schema in ${_schemas[@]}; do
     # begins w/ admin (core functions)
-    set_env --schema_code $_schema &&
-    {
-        if [ -f "$POW_DIR_BATCH/db.objects.d/db.objects.sql" ] || ([ -f "$POW_DIR_BATCH/db.objects.d/actions/relocate.sql" ] && [ "$get_arg_relocate" = yes ]); then
-            log_info "Traitement schéma($_schema)"
+    # be careful, because relocation has to be run by superuser
+    if [ -f "$POW_DIR_BATCH/../${_schema}/db.objects.d/db.objects.sql" ] || ([ -f "$POW_DIR_BATCH/db.objects.d/actions/relocate.sql" ] && [ "$get_arg_relocate" = yes ]); then
+        log_info "Traitement schéma($_schema)" &&
+        {
             {
-                if ([ -f "$POW_DIR_BATCH/db.objects.d/actions/relocate.sql" ] && [ "$get_arg_relocate" = yes ]); then
+                if ([ -f "$POW_DIR_BATCH/../${_schema}/db.objects.d/actions/relocate.sql" ] && [ "$get_arg_relocate" = yes ]); then
                     execute_query \
-                        --name "RELOCATE_${_schema}" \
-                        --query "$POW_DIR_BATCH/db.objects.d/actions/relocate.sql"
+                        --name RELOCATE \
+                        --query "$POW_DIR_BATCH/../${_schema}/db.objects.d/actions/relocate.sql"
                 fi
             } &&
+            set_env --schema_code $_schema &&
             {
                 if [ -f "$POW_DIR_BATCH/db.objects.d/db.objects.sql" ]; then
                     execute_query \
-                        --name "${_schema}_CREATE_OBJECTS" \
+                        --name CREATE_OBJECTS \
                         --query "$POW_DIR_BATCH/db.objects.d/db.objects.sql"
                 fi
+            } &&
+            set_env --schema_code admin &&
+            {
+                if ([ -f "$POW_DIR_BATCH/../${_schema}/db.objects.d/actions/relocate.sql" ] && [ "$get_arg_relocate" = yes ] && [ -f "$POW_DIR_BATCH/../${_schema}/db.objects.d/actions/purge_after_relocate.sql" ]); then
+                    execute_query \
+                        --name RELOCATE_PURGE \
+                        --query "$POW_DIR_BATCH/../${_schema}/db.objects.d/actions/purge_after_relocate.sql"
+                fi
             }
-        fi
-    } || {
-        log_error "Echec mise à jour de la structure de $_schema"
-        exit $ERROR_CODE
-    }
+        } || {
+            log_error "Echec mise à jour de la structure de $_schema"
+            exit $ERROR_CODE
+        }
+    fi
 done
-
-set_env --schema_code admin &&
 execute_query \
     --name 'PERMISSIONS' \
     --query "$POW_DIR_BATCH/db.objects.d/actions/grant.sql" &&

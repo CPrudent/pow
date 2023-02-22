@@ -85,7 +85,7 @@ $func$
 DECLARE
     _query VARCHAR;
 BEGIN
-    IF schema_exists(schema_name_from) AND schema_exists(schema_name_to) THEN
+    IF schema_exists(schema_name_from) AND schema_exists(schema_name_to) AND table_exists(schema_name_from, table_name) THEN
         _query := CONCAT(
             'ALTER TABLE '
             , quote_ident(schema_name_from)

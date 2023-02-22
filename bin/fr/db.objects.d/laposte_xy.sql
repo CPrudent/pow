@@ -35,10 +35,10 @@ BEGIN
     END IF;
 
     -- INSEE
-    IF index_exists('fr', 'idx_laposte_xy_co_insee') AND NOT index_exists('fr', 'iux_laposte_xy_co_insee') THEN
-        ALTER INDEX idx_laposte_xy_co_insee RENAME TO iux_laposte_xy_co_insee;
+    IF index_exists('fr', 'idx_laposte_xy_co_insee') AND NOT index_exists('fr', 'ix_laposte_xy_co_insee') THEN
+        ALTER INDEX idx_laposte_xy_co_insee RENAME TO ix_laposte_xy_co_insee;
     ELSE
-        CREATE INDEX IF NOT EXISTS iux_laposte_xy_co_insee ON fr.laposte_xy (co_insee);
+        CREATE INDEX IF NOT EXISTS ix_laposte_xy_co_insee ON fr.laposte_xy (co_insee);
     END IF;
 
     -- parent

@@ -20,3 +20,23 @@ CREATE TABLE IF NOT EXISTS fr.bal_municipality (
 )
 ;
 
+SELECT drop_all_functions_if_exists('fr', 'setBalIndexMunicipality');
+CREATE OR REPLACE PROCEDURE fr.setBalIndexMunicipality()
+AS
+$proc$
+BEGIN
+    -- uniq ID
+    IF index_exists('fr', 'idx_communes_summary_code_commune') AND NOT index_exists('fr', 'iux_bal_municipality_code_commune') THEN
+        ALTER INDEX idx_communes_summary_code_commune RENAME TO iux_bal_municipality_id_bal_voie;
+    ELSE
+        CREATE UNIQUE INDEX IF NOT EXISTS iux_bal_municipality_code_commune ON fr.bal_municipality (code_commune);
+    END IF;
+END
+$proc$ LANGUAGE plpgsql;
+
+DO $$
+BEGIN
+    -- manage indexes
+    CALL fr.setBalIndexMunicipality();
+END
+$$;

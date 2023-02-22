@@ -4,9 +4,8 @@
 
 DO $SCHEMAS_ROLES$
 BEGIN
-
     /*
-     * old schemas inherited from BCAA
+     * old schemas inherited from BCAA, only necessary to restore data, see: restore.sh
      *
     -- LAPOSTE (DELIVERY)
     IF NOT role_exists('geopad') THEN
@@ -55,6 +54,10 @@ BEGIN
             NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;
     END IF;
     CREATE SCHEMA IF NOT EXISTS divers AUTHORIZATION divers;
+     */
+
+    /*
+     * DON'T forget to modify libenv.sh w/ password for the new schema
      */
 
     -- FR-COUNTRY
