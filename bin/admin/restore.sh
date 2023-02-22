@@ -78,7 +78,7 @@ for _schema_name in ${SCHEMAS[@]}; do
             }
         }
     done
-    log_info 'Fin de la restauration du  contexte '${_schema_name}
+    log_info "Fin de la restauration du  contexte ${_schema_name} avec succès"
 done
 
 exit $SUCCESS_CODE

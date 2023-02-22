@@ -182,21 +182,24 @@ _set_pg_env() {
         --args_d 'schema_code:public' \
         "$@" || return $ERROR_CODE
 
-    local _std=(admin public rao ban)
+    # FIXME find solution to hidden passwords
+    local _std=(admin public)
     in_array _std "$get_arg_schema_code" && {
         POW_PG_USERNAME=postgres
         POW_PG_PASSWORD=pgpow+123
         POW_PG_DEFAULT_SCHEMA=public
     } || {
         POW_PG_USERNAME=$get_arg_schema_code
-        POW_PG_PASSWORD=pg${get_arg_schema_code}+123
         POW_PG_DEFAULT_SCHEMA=$get_arg_schema_code
+        case $get_arg_schema_code in
+        fr)     POW_PG_PASSWORD=luxor       ;;
+        *)      return $ERROR_CODE          ;;
+        esac
     }
 
     POW_PG_DBNAME=$(get_conf PG_DBNAME)
-    # path outils (psql, pg_dump, pg_restore, ...)
+    # path for tools (psql, pg_dump, pg_restore, ...)
     POW_DIR_PG_BIN="/usr/lib/postgresql/$(get_conf PG_VERSION)/bin"
-    #PGPASSWORD=$pg_password
     export POW_PG_DBNAME POW_DIR_PG_BIN POW_PG_USERNAME POW_PG_PASSWORD POW_PG_DEFAULT_SCHEMA
 
     return $SUCCESS_CODE
