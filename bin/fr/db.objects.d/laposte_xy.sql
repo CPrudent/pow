@@ -1,29 +1,9 @@
 /***
- * RAN : add COORDINATES (XY) data
- */
-
-/*
--- data from RAN-RA50 file
-CREATE TABLE IF NOT EXISTS ran.coord_ra50(
-    co_insee CHAR(5) NOT NULL,
-    co_cea CHAR(10) NULL,
-    va_x CHARACTER VARYING /*NOT*/ NULL,
-    va_y CHARACTER VARYING /*NOT*/ NULL,
-    no_type_localisation INTEGER /*NOT*/ NULL,
-    lb_type_localisation CHARACTER VARYING(100) /*NOT*/ NULL,
-    co_type_projection CHAR(1) /*NOT*/ NULL,
-    lb_type_projection CHARACTER VARYING(100) /*NOT*/ NULL,
-    fl_diffusable INTEGER
-)
-;
-
-ALTER TABLE ran.coord_ra50 SET (
-    AUTOVACUUM_ENABLED = FALSE
-);
+ * FR: add LAPOSTE/RAN coordinates (XY)
  */
 
 -- address-XY with history (date & type of last change)
-CREATE TABLE IF NOT EXISTS ran.coord
+CREATE TABLE IF NOT EXISTS fr.laposte_xy
 (
     co_insee CHAR(5) NOT NULL,
     co_cea CHAR(10) NULL,
@@ -37,35 +17,35 @@ CREATE TABLE IF NOT EXISTS ran.coord
 )
 ;
 
--- manual VACUUM (ran/import.sh)
-ALTER TABLE ran.coord SET (
+-- manual VACUUM (fr/import.sh)
+ALTER TABLE fr.laposte_xy SET (
     AUTOVACUUM_ENABLED = FALSE
 );
 
-SELECT drop_all_functions_if_exists('ran', 'setIndexCoordinates');
-CREATE OR REPLACE PROCEDURE ran.setIndexCoordinates()
+SELECT drop_all_functions_if_exists('fr', 'setLaPosteIndexCoordinates');
+CREATE OR REPLACE PROCEDURE fr.setLaPosteIndexCoordinates()
 AS
 $proc$
 BEGIN
     -- uniq CEA
-    IF index_exists('ran', 'idx_ran_coord_co_cea') AND NOT index_exists('ran', 'iux_coord_co_cea') THEN
-        ALTER INDEX idx_ran_coord_co_cea RENAME TO iux_coord_co_cea;
+    IF index_exists('fr', 'idx_laposte_xy_co_cea') AND NOT index_exists('fr', 'iux_laposte_xy_co_cea') THEN
+        ALTER INDEX idx_laposte_xy_co_cea RENAME TO iux_laposte_xy_co_cea;
     ELSE
-        CREATE UNIQUE INDEX IF NOT EXISTS iux_coord_co_cea ON ran.coord (co_cea);
+        CREATE UNIQUE INDEX IF NOT EXISTS iux_laposte_xy_co_cea ON fr.laposte_xy (co_cea);
     END IF;
 
     -- INSEE
-    IF index_exists('ran', 'idx_ran_coord_co_insee') AND NOT index_exists('ran', 'iux_coord_co_insee') THEN
-        ALTER INDEX idx_ran_coord_co_insee RENAME TO iux_coord_co_insee;
+    IF index_exists('fr', 'idx_laposte_xy_co_insee') AND NOT index_exists('fr', 'iux_laposte_xy_co_insee') THEN
+        ALTER INDEX idx_laposte_xy_co_insee RENAME TO iux_laposte_xy_co_insee;
     ELSE
-        CREATE INDEX IF NOT EXISTS iux_coord_co_insee ON ran.coord (co_insee);
+        CREATE INDEX IF NOT EXISTS iux_laposte_xy_co_insee ON fr.laposte_xy (co_insee);
     END IF;
 
     -- parent
-    IF index_exists('ran', 'idx_ran_coord_gm_coord') AND NOT index_exists('ran', 'ix_coord_gm_coord') THEN
-        ALTER INDEX idx_ran_coord_gm_coord RENAME TO ix_coord_gm_coord;
+    IF index_exists('fr', 'idx_laposte_xy_gm_coord') AND NOT index_exists('fr', 'ix_laposte_xy_gm_coord') THEN
+        ALTER INDEX idx_laposte_xy_gm_coord RENAME TO ix_laposte_xy_gm_coord;
     ELSE
-        CREATE INDEX IF NOT EXISTS ix_coord_gm_coord ON ran.coord USING GIST(gm_coord);
+        CREATE INDEX IF NOT EXISTS ix_laposte_xy_gm_coord ON fr.laposte_xy USING GIST(gm_coord);
     END IF;
 END
 $proc$ LANGUAGE plpgsql;
@@ -73,6 +53,6 @@ $proc$ LANGUAGE plpgsql;
 DO $$
 BEGIN
     -- manage indexes
-    CALL ran.setIndexCoordinates();
+    CALL fr.setLaPosteIndexCoordinates();
 END
 $$;

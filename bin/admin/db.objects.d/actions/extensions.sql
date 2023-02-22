@@ -1,5 +1,5 @@
 /***
- * add EXTENSIONS to DB
+ * DB: add EXTENSIONS
  */
 
 /* NOTE

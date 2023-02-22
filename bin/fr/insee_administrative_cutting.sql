@@ -1,9 +1,9 @@
 /***
- * import INSEE administrative cuttings (municipality, district and supra)
+ * FR: import INSEE administrative cuttings (municipality, district and supra)
  */
 
 -- municipalities (except global ones, w/ districts)
-INSERT INTO insee.administrative_cutting_municipality_and_district
+INSERT INTO fr.insee_administrative_cutting_municipality_and_district
 (
     millesime
     , codgeo
@@ -26,13 +26,13 @@ INSERT INTO insee.administrative_cutting_municipality_and_district
         , "NATURE_EPCI"
         , "ARR"
         , "CV"
-    FROM insee.administrative_cutting_municipality_tmp
+    FROM fr.insee_administrative_cutting_municipality_tmp
     -- "global" municipalities (w/ districts) are thought as supra-territory
     WHERE "CODGEO" NOT IN ('75056', '13055', '69123')
 );
 
 -- districts for Paris/Lyon/Marseille
-INSERT INTO insee.administrative_cutting_municipality_and_district
+INSERT INTO fr.insee_administrative_cutting_municipality_and_district
 (
     millesime
     , codgeo
@@ -57,11 +57,11 @@ INSERT INTO insee.administrative_cutting_municipality_and_district
         , "NATURE_EPCI"
         , "ARR"
         , "CV"
-    FROM insee.administrative_cutting_district_tmp
+    FROM fr.insee_administrative_cutting_district_tmp
 );
 
 -- supra-territories
-INSERT INTO insee.administrative_cutting_supra
+INSERT INTO fr.insee_administrative_cutting_supra
 (
     millesime
     , nivgeo
@@ -74,9 +74,9 @@ INSERT INTO insee.administrative_cutting_supra
         , "NIVGEO"
         , "CODGEO"
         , "LIBGEO"
-    FROM insee.administrative_cutting_supra_tmp
+    FROM fr.insee_administrative_cutting_supra_tmp
 );
-INSERT INTO insee.administrative_cutting_supra
+INSERT INTO fr.insee_administrative_cutting_supra
 (
     millesime
     , nivgeo
@@ -89,6 +89,6 @@ INSERT INTO insee.administrative_cutting_supra
         , 'COM_GLOBALE_ARM'
         , "CODGEO"
         , "LIBGEO"
-    FROM insee.administrative_cutting_municipality_tmp
+    FROM fr.insee_administrative_cutting_municipality_tmp
     WHERE "CODGEO" IN ('75056', '13055', '69123')
 );

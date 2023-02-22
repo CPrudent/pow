@@ -1,8 +1,8 @@
 /***
- * add BAL summary
+ * FR: add BAL municipality
  */
 
-CREATE TABLE IF NOT EXISTS bal.communes_summary (
+CREATE TABLE IF NOT EXISTS fr.bal_municipality (
     code_commune CHAR(5)
     , nom_commune VARCHAR
     , departement VARCHAR(3)

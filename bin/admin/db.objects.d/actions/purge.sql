@@ -1,5 +1,5 @@
 /***
- * deal w/ purge
+ * DB: deal w/ purge
  */
 
 DO $PURGE$

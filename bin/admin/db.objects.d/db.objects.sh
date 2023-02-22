@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
     #--------------------------------------------------------------------------
     # synopsis
@@ -8,12 +8,7 @@
 # https://stackoverflow.com/questions/54773652/is-there-a-way-to-prepend-to-a-bash-array-without-writing-a-function
 _t=1
 _schemas=(
-    [((_t++))]=bal
-    [((_t++))]=divers
-    [((_t++))]=geopad
-    [((_t++))]=ign
-    [((_t++))]=insee
-    [((_t++))]=ran
+    [((_t++))]=fr
 )
 # NOTE: begin with 'admin' schema
 _schemas[0]=admin
@@ -26,11 +21,16 @@ _schemas_join_pipe=${_schemas_join_pipe// /|}
 
 bash_args \
     --args_p '
-        schema_only:Limiter la mise à jour à un schéma
+        schema_only:Limiter la mise à jour à un schéma;
+        relocate:Changer de schéma (après restauration)
     ' \
 	--args_v "
-        schema_only:${_schemas_join_pipe}
+        schema_only:${_schemas_join_pipe};
+        relocate:no|yes
     " \
+    --args_d '
+        relocate:no
+    ' \
     "$@" || exit $ERROR_CODE
 
 [ -n "$get_arg_schema_only" ] && _schemas=($get_arg_schema_only)
@@ -39,28 +39,46 @@ log_info "Mise à jour de la structure de la base de données"
 set_env --schema_code admin &&
 # need drop_all_functions_if_exists()
 execute_query \
+    --name 'CREATE_DROP_FUNCTIONS' \
     --query "$POW_DIR_BATCH/db.objects.d/functions/drop.sql" &&
 # needed to avoid error "type geometry not exists"
 execute_query \
+    --name 'PREPARE_EXTENSION_POSTGIS' \
     --query "$POW_DIR_BATCH/db.objects.d/actions/extension_postgis.sql" || exit $ERROR_CODE
 
 for _schema in ${_schemas[@]}; do
     # begins w/ admin (core functions)
     set_env --schema_code $_schema &&
-    [ -f "$POW_DIR_BATCH/db.objects.d/db.objects.sql" ] && {
-        log_info "Traitement schéma($_schema)"
-        execute_query \
-            --query "$POW_DIR_BATCH/db.objects.d/db.objects.sql" || {
-            log_error "Echec mise à jour de la structure de $_schema"
-            exit $ERROR_CODE
-        }
+    {
+        if [ -f "$POW_DIR_BATCH/db.objects.d/db.objects.sql" ] || ([ -f "$POW_DIR_BATCH/db.objects.d/actions/relocate.sql" ] && [ "$get_arg_relocate" = yes ]); then
+            log_info "Traitement schéma($_schema)"
+            {
+                if ([ -f "$POW_DIR_BATCH/db.objects.d/actions/relocate.sql" ] && [ "$get_arg_relocate" = yes ]); then
+                    execute_query \
+                        --name "RELOCATE_${_schema}" \
+                        --query "$POW_DIR_BATCH/db.objects.d/actions/relocate.sql"
+                fi
+            } &&
+            {
+                if [ -f "$POW_DIR_BATCH/db.objects.d/db.objects.sql" ]; then
+                    execute_query \
+                        --name "${_schema}_CREATE_OBJECTS" \
+                        --query "$POW_DIR_BATCH/db.objects.d/db.objects.sql"
+                fi
+            }
+        fi
+    } || {
+        log_error "Echec mise à jour de la structure de $_schema"
+        exit $ERROR_CODE
     }
 done
 
 set_env --schema_code admin &&
 execute_query \
+    --name 'PERMISSIONS' \
     --query "$POW_DIR_BATCH/db.objects.d/actions/grant.sql" &&
 execute_query \
+    --name 'PURGE' \
     --query "$POW_DIR_BATCH/db.objects.d/actions/purge.sql" || exit $ERROR_CODE
 
 exit $SUCCESS_CODE

@@ -144,14 +144,14 @@ CREATE OR REPLACE FUNCTION public.extension_exists(
 RETURNS BOOLEAN AS
 $func$
 DECLARE
-	_extension pg_catalog.pg_extension%ROWTYPE;
+    _extension pg_catalog.pg_extension%ROWTYPE;
 BEGIN
-	SELECT * INTO STRICT _extension
-	FROM pg_catalog.pg_extension
-	WHERE extname = extension_name;
-	RETURN TRUE;
+    SELECT * INTO STRICT _extension
+    FROM pg_catalog.pg_extension
+    WHERE extname = extension_name;
+    RETURN TRUE;
 EXCEPTION WHEN NO_DATA_FOUND THEN
-	RETURN FALSE;
+    RETURN FALSE;
 END
 $func$ LANGUAGE plpgsql;
 
@@ -163,13 +163,26 @@ CREATE OR REPLACE FUNCTION public.role_exists(
 RETURNS BOOLEAN AS
 $func$
 DECLARE
-	_role pg_catalog.pg_authid%ROWTYPE;
+    _role pg_catalog.pg_authid%ROWTYPE;
 BEGIN
-	SELECT * INTO STRICT _role
-	FROM pg_catalog.pg_authid
-	WHERE rolname = role_name;
-	RETURN TRUE;
+    SELECT * INTO STRICT _role
+    FROM pg_catalog.pg_authid
+    WHERE rolname = role_name;
+    RETURN TRUE;
 EXCEPTION WHEN NO_DATA_FOUND THEN
-	RETURN FALSE;
+    RETURN FALSE;
+END
+$func$ LANGUAGE plpgsql;
+
+-- test if schema_exists
+SELECT public.drop_all_functions_if_exists('public', 'schema_exists');
+CREATE OR REPLACE FUNCTION public.schema_exists(
+    schema_name IN VARCHAR
+    )
+RETURNS BOOLEAN AS
+$func$
+BEGIN
+    PERFORM 1 FROM pg_namespace WHERE nspname = schema_name;
+    RETURN FOUND;
 END
 $func$ LANGUAGE plpgsql;

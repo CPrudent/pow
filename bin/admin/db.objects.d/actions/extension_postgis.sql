@@ -1,5 +1,5 @@
 /***
- * install EXTENSION postgis
+ * DB: install EXTENSION postgis
  */
 
 -- need this script to force 2-steps installation, and avoid "type geometry not exists"

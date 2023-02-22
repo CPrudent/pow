@@ -1,9 +1,13 @@
 /***
- * add SCHEMAS/ROLES to DB
+ * DB: add SCHEMAS/ROLES
  */
 
 DO $SCHEMAS_ROLES$
 BEGIN
+
+    /*
+     * old schemas inherited from BCAA
+     *
     -- LAPOSTE (DELIVERY)
     IF NOT role_exists('geopad') THEN
         CREATE ROLE geopad LOGIN
@@ -51,4 +55,14 @@ BEGIN
             NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;
     END IF;
     CREATE SCHEMA IF NOT EXISTS divers AUTHORIZATION divers;
+     */
+
+    -- FR-COUNTRY
+    IF NOT role_exists('fr') THEN
+        CREATE ROLE fr LOGIN
+            ENCRYPTED PASSWORD 'md5220680a960c20fcc5663a47dd49ccfd5'
+            NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;
+    END IF;
+    CREATE SCHEMA IF NOT EXISTS fr AUTHORIZATION fr;
+
 END $SCHEMAS_ROLES$;
