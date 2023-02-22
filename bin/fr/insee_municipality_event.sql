@@ -3,7 +3,7 @@
  */
 
 TRUNCATE TABLE fr.insee_municipality_event;
-SELECT public.drop_table_indexes('insee', 'municipality_event');
+SELECT public.drop_table_indexes('fr', 'insee_municipality_event');
 
 INSERT INTO fr.insee_municipality_event(
     mod

@@ -87,7 +87,7 @@ url_data="https://www.insee.fr/${url_data}"
 year_data=$(basename "$url_data")
 rm --force "$years_list_path"
 
-set_env --schema_code insee &&
+set_env --schema_code fr &&
 io_todo \
     --force $get_arg_force \
     --type $co_type_import \
@@ -118,6 +118,12 @@ elif [ $year -le 13 ]; then
     name_worksheet_district=
     name_worksheet_supra='Zones supra-communales'
 fi
+[ "$POW_DEBUG" = yes ] && {
+    echo "name_worksheet_municipality=$name_worksheet_municipality"
+    echo "name_worksheet_district=$name_worksheet_district"
+    echo "name_worksheet_supra=$name_worksheet_supra"
+    echo "line_number_supra=$line_number_supra"
+}
 
 log_info "Import du millésime $year de $co_type_import" &&
 {
@@ -150,22 +156,22 @@ year_ressource="$POW_DIR_IMPORT/$year_data" &&
 import_file \
     --file_path "$year_ressource" \
     --import_options "worksheet_name:${name_worksheet_municipality};from_line_number:6" \
-    --table_name administrative_cutting_municipality_tmp \
+    --table_name insee_administrative_cutting_municipality_tmp \
     --load_mode OVERWRITE_TABLE &&
 {
     execute_query \
         --name MUNICIPALITY_ADD_COLUMNS_EPCI \
         --query '
-            ALTER TABLE insee.administrative_cutting_municipality_tmp
+            ALTER TABLE fr.insee_administrative_cutting_municipality_tmp
                 ADD COLUMN IF NOT EXISTS "EPCI" VARCHAR;
-            ALTER TABLE insee.administrative_cutting_municipality_tmp
+            ALTER TABLE fr.insee_administrative_cutting_municipality_tmp
                 ADD COLUMN IF NOT EXISTS "NATURE_EPCI" VARCHAR;
             '
 } &&
 import_file \
     --file_path "$year_ressource" \
     --import_options "worksheet_name:${name_worksheet_supra};from_line_number:${line_number_supra}" \
-    --table_name administrative_cutting_supra_tmp \
+    --table_name insee_administrative_cutting_supra_tmp \
     --load_mode OVERWRITE_TABLE &&
 {
     {
@@ -174,11 +180,11 @@ import_file \
             execute_query \
                 --name SUPRA_RENAME_COLUMNS \
                 --query '
-                    ALTER TABLE insee.administrative_cutting_supra_tmp
+                    ALTER TABLE fr.insee_administrative_cutting_supra_tmp
                         RENAME COLUMN "Code géographique" TO "CODGEO";
-                    ALTER TABLE insee.administrative_cutting_supra_tmp
+                    ALTER TABLE fr.insee_administrative_cutting_supra_tmp
                         RENAME COLUMN "Niveau géographique" TO "NIVGEO";
-                    ALTER TABLE insee.administrative_cutting_supra_tmp
+                    ALTER TABLE fr.insee_administrative_cutting_supra_tmp
                         RENAME COLUMN "Libellé géographique" TO "LIBGEO";
                     '
         fi
@@ -188,14 +194,14 @@ import_file \
             import_file \
                 --file_path "$year_ressource" \
                 --import_options "worksheet_name:${name_worksheet_district};from_line_number:6" \
-                --table_name administrative_cutting_district_tmp \
+                --table_name insee_administrative_cutting_district_tmp \
                 --load_mode OVERWRITE_TABLE &&
             execute_query \
                 --name DISTRICT_ADD_COLUMNS_EPCI \
                 --query '
-                    ALTER TABLE insee.administrative_cutting_district_tmp
+                    ALTER TABLE fr.insee_administrative_cutting_district_tmp
                         ADD COLUMN IF NOT EXISTS "EPCI" VARCHAR;
-                    ALTER TABLE insee.administrative_cutting_district_tmp
+                    ALTER TABLE fr.insee_administrative_cutting_district_tmp
                         ADD COLUMN IF NOT EXISTS "NATURE_EPCI" VARCHAR;
                     '
         else
@@ -203,8 +209,8 @@ import_file \
             execute_query \
                 --name DISTRICT_CREATE_TMP \
                 --query '
-                    DROP TABLE IF EXISTS insee.administrative_cutting_district_tmp;
-                    CREATE TABLE insee.administrative_cutting_district_tmp AS (
+                    DROP TABLE IF EXISTS fr.insee_administrative_cutting_district_tmp;
+                    CREATE TABLE fr.insee_administrative_cutting_district_tmp AS (
                         SELECT
                             arm."CODGEO"
                             ,arm."LIBGEO"
@@ -215,8 +221,8 @@ import_file \
                             ,com_globale_arm."NATURE_EPCI"
                             ,com_globale_arm."ARR"
                             ,com_globale_arm."CV"
-                        FROM insee.administrative_cutting_supra_tmp AS arm
-                        INNER JOIN insee.administrative_cutting_municipality_tmp AS com_globale_arm
+                        FROM fr.insee_administrative_cutting_supra_tmp AS arm
+                        INNER JOIN fr.insee_administrative_cutting_municipality_tmp AS com_globale_arm
                             ON com_globale_arm."CODGEO" = (
                                 CASE LEFT(arm."CODGEO",3)
                                 WHEN '"'"'132'"'"' THEN '"'"'13055'"'"' /*Marseille*/
@@ -226,7 +232,7 @@ import_file \
                             )
                         WHERE arm."NIVGEO" = '"'"'ARM'"'"'
                     );
-                    DELETE FROM insee.administrative_cutting_supra_tmp
+                    DELETE FROM fr.insee_administrative_cutting_supra_tmp
                         WHERE "NIVGEO" = '"'"'ARM'"'"';
                     '
         fi
@@ -235,11 +241,11 @@ import_file \
 execute_query \
     --name ALL_ADD_COLUMN_YEAR \
     --query "
-        ALTER TABLE insee.administrative_cutting_municipality_tmp
+        ALTER TABLE fr.insee_administrative_cutting_municipality_tmp
             ADD column millesime INTEGER DEFAULT 20${year};
-        ALTER TABLE insee.administrative_cutting_district_tmp
+        ALTER TABLE fr.insee_administrative_cutting_district_tmp
             ADD column millesime INTEGER DEFAULT 20${year};
-        ALTER TABLE insee.administrative_cutting_supra_tmp
+        ALTER TABLE fr.insee_administrative_cutting_supra_tmp
             ADD column millesime INTEGER DEFAULT 20${year};
         " &&
 {
@@ -248,46 +254,46 @@ execute_query \
         execute_query \
             --name TRUNCATE_DATA \
             --query '
-                TRUNCATE TABLE insee.administrative_cutting_municipality_and_district;
-                TRUNCATE TABLE insee.administrative_cutting_supra;"
+                TRUNCATE TABLE fr.insee_administrative_cutting_municipality_and_district;
+                TRUNCATE TABLE fr.insee_administrative_cutting_supra;"
                 '
         ;;
     APPEND)
         execute_query \
             --name DELETE_YEAR \
             --query "
-                DELETE FROM insee.administrative_cutting_municipality_and_district
+                DELETE FROM fr.insee_administrative_cutting_municipality_and_district
                     WHERE millesime = '20${year}';
-                DELETE FROM insee.administrative_cutting_supra
+                DELETE FROM fr.insee_administrative_cutting_supra
                     WHERE millesime = '20${year}';"
         ;;
     esac
 } &&
 execute_query \
     --name ADMINISTRATIVE_CUTTING \
-    --query "$POW_DIR_BATCH/insee_adminitrative_cutting.sql" &&
+    --query "$POW_DIR_BATCH/insee_administrative_cutting.sql" &&
 execute_query \
     --name DROP_TMP \
     --query '
-        DROP TABLE insee.administrative_cutting_municipality_tmp;
-        DROP TABLE insee.administrative_cutting_district_tmp;
-        DROP TABLE insee.administrative_cutting_supra_tmp;
+        DROP TABLE fr.insee_administrative_cutting_municipality_tmp;
+        DROP TABLE fr.insee_administrative_cutting_district_tmp;
+        DROP TABLE fr.insee_administrative_cutting_supra_tmp;
         ' &&
 io_history_end_ok \
     --nrows_processed '
         (
-            (SELECT COUNT(*) FROM insee.administrative_cutting_municipality_and_district)+
-            (SELECT COUNT(*) FROM insee.administrative_cutting_supra)
+            (SELECT COUNT(*) FROM fr.insee_administrative_cutting_municipality_and_district)+
+            (SELECT COUNT(*) FROM fr.insee_administrative_cutting_supra)
         )
         ' \
     --id $year_history_id &&
 vacuum \
-    --schema_name insee \
-    --table_name administrative_cutting_municipality_and_district \
+    --schema_name fr \
+    --table_name insee_administrative_cutting_municipality_and_district \
     --mode FULL &&
 vacuum \
-    --schema_name insee \
-    --table_name administrative_cutting_supra \
+    --schema_name fr \
+    --table_name insee_administrative_cutting_supra \
     --mode FULL &&
 rm --force "$year_ressource" || on_import_error
 

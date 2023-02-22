@@ -88,7 +88,7 @@ year_data=$(basename "$url_data")
 [ "$POW_DEBUG" = yes ] && { echo "year_data=$year_data"; }
 rm --force "$years_list_path" "$POW_DIR_TMP/$year_information"
 
-set_env --schema_code insee &&
+set_env --schema_code fr &&
 io_todo \
     --force $get_arg_force \
     --type $co_type_import \
@@ -120,18 +120,18 @@ year_ressource="$POW_DIR_IMPORT/$year_data" &&
 } &&
 import_file \
     --file_path "$year_ressource" \
-    --table_name municipality_event_tmp \
+    --table_name insee_municipality_event_tmp \
     --load_mode OVERWRITE_DATA \
     --import_options 'table_columns:HEADER_TO_LOWER_CODE' &&
 execute_query \
     --name MUNICIPALITY_EVENT \
     --query "$POW_DIR_BATCH/insee_municipality_event.sql" &&
 io_history_end_ok \
-    --nrows_processed '(SELECT COUNT(*) FROM insee.municipality_event)' \
+    --nrows_processed '(SELECT COUNT(*) FROM fr.insee_municipality_event)' \
     --id $year_history_id &&
 vacuum \
-    --schema_name insee \
-    --table_name municipality_event \
+    --schema_name fr \
+    --table_name insee_municipality_event \
     --mode ANALYSE &&
 rm --force "$year_ressource" || on_import_error
 

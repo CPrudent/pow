@@ -602,6 +602,11 @@ import_csv_file() {
     local encoding=$get_arg_encoding
     local limit=$get_arg_limit
 
+    [ "$POW_DEBUG" = yes ] && {
+        echo "from_line_number=$from_line_number"
+        echo "to_line_number=$to_line_number"
+    }
+
     # only part of data?
     if [ -n "$from_line_number" ] || [ -n "$to_line_number" ]; then
         file_name="${file_name}.filtered"
@@ -866,17 +871,32 @@ excel_to_csv() {
     application/vnd.oasis.opendocument.spreadsheet)
         _spreadsheet='Open Office sheet'
         ;;
+    esac
+    [ "$POW_DEBUG" = yes ] && echo "spreadsheet (MIME)=$_mime"
+    [ -z "$_mime" ] &&
+    case "${file_extension,,}" in
+    xls|xlsx|ods)
+        :
+        ;;
     *)
         log_error "Erreur excel_to_csv de $from_file_path, le fichier source ne semble pas être un classeur"
         return $ERROR_CODE
-    esac
+        ;;
+    esac &&
+    [ "$POW_DEBUG" = yes ] && echo "spreadsheet (EXTENSION)=$file_extension"
 
     # prefer .txt to custom separator
     local _sheet _convert
-    [ -n "$worksheet_name" ] && _sheet="sheet=$worksheet_name "
+    [ -n "$worksheet_name" ] && _sheet="sheet=$worksheet_name"
     log_info "conversion $_spreadsheet de $from_file_path vers ${to_file_path}"
     get_tmp_file --tmpext txt --tmpfile _convert
-    ssconvert --export-options "${sheet}separator=$delimiter_value format=preserve" "$from_file_path" "${_convert}" > $POW_DIR_ARCHIVE/ssconvert.log 2> $POW_DIR_ARCHIVE/ssconvert.error.log
+
+    if [ -n "$worksheet_name" ]; then
+        ssconvert --export-options "sheet=$worksheet_name separator=$delimiter_value format=preserve" "$from_file_path" "${_convert}" > $POW_DIR_ARCHIVE/ssconvert.log 2> $POW_DIR_ARCHIVE/ssconvert.error.log
+    else
+        ssconvert --export-options "separator=$delimiter_value format=preserve" "$from_file_path" "${_convert}" > $POW_DIR_ARCHIVE/ssconvert.log 2> $POW_DIR_ARCHIVE/ssconvert.error.log
+    fi
+
     mv "$_convert" "${to_file_path}"
     [ "$to_file_name" = STDOUT ] &&
     [ -f "${to_file_path}" ] && {
@@ -936,10 +956,10 @@ import_excel_file() {
             table_columns:Colonnes de la table cible;
             table_columns_list:Liste des colonnes de la table cible;
             load_mode:Mode de chargement des données;
-            worksheet_name:Nom de la feuille à extraire (si non précisé ce sera la feuille active à l ouverture du fichier);
+            worksheet_name:Nom de la feuille à extraire, si non précisé ce sera la feuille active à l ouverture du fichier;
             from_line_number:Numéro de ligne à partir de laquelle il faut lire le fichier;
             to_line_number:Numéro de ligne jusqu à laquelle il faut lire le fichier;
-            delimiter:Séparateur à utiliser pour la conversion vers CSV (ce caractère ne doit pas être utilisé dans les valeurs d entête);
+            delimiter:Séparateur à utiliser pour la conversion vers CSV, ce caractère ne doit pas être utilisé dans les valeurs d entête;
             limit:Limiter a n enregistrements;
             rowid:Générer un identifiant unique rowid' \
         --args_o 'file_path' \
@@ -966,7 +986,7 @@ import_excel_file() {
     local table_columns=$get_arg_table_columns
     local table_columns_list=$get_arg_table_columns_list
     local load_mode=$get_arg_load_mode
-    local worksheet_name=$get_arg_worksheet_name
+    local worksheet_name="$get_arg_worksheet_name"
     local from_line_number=$get_arg_from_line_number
     local to_line_number=$get_arg_to_line_number
     local delimiter=$get_arg_delimiter
@@ -1271,7 +1291,12 @@ import_file() {
     shp|dbf|json)   _type_import=GEO            ;;
     xls|xlsx|ods)   _type_import=SPREADSHEET    ;;
     esac &&
-    [ "$POW_DEBUG" = yes ] && echo "_type_import (EXTENSION)=$_type_import"
+    [ "$POW_DEBUG" = yes ] && {
+        echo "_type_import (EXTENSION)=$_type_import"
+        echo "import_options_string=$import_options_string"
+        echo "limit=$limit"
+        echo "rowid=$rowid"
+    }
 
     case "$_type_import" in
     CSV)
