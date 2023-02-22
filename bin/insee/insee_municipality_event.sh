@@ -76,10 +76,10 @@ year_information=$(basename "$url_information") || on_import_error
 # example: https://www.insee.fr/fr/statistiques/fichier/6051727/mvtcommune_2022.csv
 
 # URL to data (take last one, thinking it's the more recent)
-# NOTE: change 2023 v_mvtcommune_2023.csv
+# NOTE: change 2023 (v_)mvtcommune_2023.csv
 url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/[0-9]*/.*mvtcommune[0-9-_]*$year(-csv\.zip|\.csv)" "$POW_DIR_TMP/$year_information" | tail -1)
 [ -z "$url_data" ] && {
-	log_error "Impossible de trouver le fichier evenement commune du millésime $year sur la page $url_information"
+	log_error "Impossible de trouver le fichier évènement commune du millésime $year sur la page $url_information"
 	on_import_error
 }
 
