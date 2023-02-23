@@ -715,7 +715,7 @@ is_archive() {
     expect file "$get_arg_archive_path" || return $ERROR_CODE
     [ -n "$get_arg_type_archive" ] && local -n _type_ref=$get_arg_type_archive
     # TODO: (to add 7z and rar) apt install p7zip-full p7zip-rar
-	[[ $(file --mime-type "$get_arg_archive_path") =~ application/(zip|gzip|x-bzip2) ]] && {
+	[[ $(file --mime-type "$get_arg_archive_path") =~ application/(zip|gzip|x-bzip2|x-7z-compressed) ]] && {
         _type_ref=${BASH_REMATCH[1]}
         return $SUCCESS_CODE
     }
@@ -747,28 +747,36 @@ extract_archive() {
     }
     case $_type_archive in
     zip)
-        [ "$get_arg_extract_path" = STDOUT ] && {
+        if [ "$get_arg_extract_path" = STDOUT ]; then
             # -p : extract files to pipe (stdout)
             unzip -p "$get_arg_archive_path" 2> $_log_tmp_path
-        } || {
+        else
             # -o : overwrite files WITHOUT prompting
             # -d : extract files into dir
             unzip -o "$get_arg_archive_path" -d "$get_arg_extract_path" > $_log_tmp_path 2>&1
-        }
+        fi
         ;;
     gzip)
-        [ "$get_arg_extract_path" = STDOUT ] && {
+        if [ "$get_arg_extract_path" = STDOUT ]; then
             gunzip --stdout "$get_arg_archive_path" 2> $_log_tmp_path
-        } || {
+        else
             gunzip --stdout "$get_arg_archive_path" > "$get_arg_extract_path/${_archive_name%.*}"
-        }
+        fi
         ;;
     x-bzip2)
-        [ "$get_arg_extract_path" = STDOUT ] && {
+        if [ "$get_arg_extract_path" = STDOUT ]; then
             bunzip2 --stdout "$get_arg_archive_path" 2> $_log_tmp_path
-        } || {
+        else
             bunzip2 --stdout "$get_arg_archive_path" > "$get_arg_extract_path/${_archive_name%.*}"
-        }
+        fi
+        ;;
+    x-7z-compressed)
+        if [ "$get_arg_extract_path" = STDOUT ]; then
+            log_error "Mode d'extraction sur le type d'archive .7z non pris en charge pour le moment"
+            return $ERROR_CODE
+        else
+            7z x "$get_arg_archive_path" -o"$get_arg_extract_path" -y > $_log_tmp_path 2>&1
+        fi
         ;;
     *)
         log_error "${FUNCNAME[1]}: format d'archive ($_type_archive) non pris en charge"

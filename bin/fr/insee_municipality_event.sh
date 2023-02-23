@@ -3,7 +3,7 @@
     #--------------------------------------------------------------------------
     # synopsis
     #--
-    # import INSEE events of municipality updates (into INSEE schema)
+    # import INSEE events of municipality updates (into FR schema)
 
 bash_args \
     --args_p "

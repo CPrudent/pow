@@ -14,5 +14,10 @@ apt install gnumeric || {
     exit $ERROR_CODE
 }
 
+apt install p7zip-full || {
+    log_error "erreur installation du package 7z"
+    exit $ERROR_CODE
+}
+
 exit $SUCCESS_CODE
 

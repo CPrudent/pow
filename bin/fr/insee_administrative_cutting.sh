@@ -3,7 +3,7 @@
     #--------------------------------------------------------------------------
     # synopsis
     #--
-    # import INSEE administrative cuttings (into INSEE schema)
+    # import INSEE administrative cuttings (into FR schema)
 
 bash_args \
     --args_p "

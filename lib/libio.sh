@@ -1066,6 +1066,8 @@ import_geo_file() {
     # update : Open existing output datasource in update mode rather than trying to create a new one
 
     local file_path="$get_arg_file_path"
+    local file_name=$(get_file_name --file_path "$file_path")
+    local file_extension=$(get_file_extension --file_path "$file_path")
     local schema_name=$get_arg_schema_name
     local table_name=$get_arg_table_name
     local load_mode=$get_arg_load_mode
@@ -1096,7 +1098,9 @@ import_geo_file() {
     fi
     [ "$POW_DEBUG" = yes ] && echo "table_name=$table_name"
 
-    [[ ! $file_extension =~ shp|mif|dbf|json ]] && {
+    # FIXME: try to run each word (shp, ...) as command!
+    #[[ ! $file_extension =~ shp|mif|dbf|json ]] && {
+    echo $file_extension | grep --perl-regexp --silent 'shp|mif|dbf|json' || {
         log_error "Le Fichier $file_path n'a pas une extension shp, mif, dbf ou json"
         return $ERROR_CODE
     }
@@ -1138,28 +1142,28 @@ import_geo_file() {
         file_path="$mif_dir/${file_name}.shp"
     fi
 
-    if [ -n $encoding ]; then
+    if [ -n "$encoding" ]; then
         _PGCLIENTENCODING_SAVE=$PGCLIENTENCODING
         export PGCLIENTENCODING=$encoding
     fi
 
     layer_creation_options='-lco FID=rowid -lco GEOMETRY_NAME=geom'
-    [ "$spatial_index" = no ] && layer_creation_options+=" -lco SPATIAL_INDEX=NO"
+    [ "$spatial_index" = no ] && layer_creation_options+=' -lco SPATIAL_INDEX=no'
 
     local _rc
     ogr2ogr \
         -f "PostgreSQL" \
-        PG:"host=$pg_host user=$pg_username dbname=$pg_dbname password=$pg_password" \
+        PG:"host=$POW_PG_HOST user=$POW_PG_USERNAME dbname=$POW_PG_DBNAME password=$POW_PG_PASSWORD" \
         "$file_path" \
         -$load_mode_ogr2ogr \
-        -nln "$table_name" \
+        -nln "${schema_name}.${table_name}" \
         -nlt $geometry_type \
         $ogr_args \
         $layer_creation_options 2> "$log_tmp_path"
     _rc=$?
 
     # restore previous encoding
-    [ -n $encoding ] && PGCLIENTENCODING=$_PGCLIENTENCODING_SAVE
+    [ -n "$encoding" ] && PGCLIENTENCODING=$_PGCLIENTENCODING_SAVE
 
     # returns OK even if encoding error, so search for ERROR
     if [ $_rc -ne 0 ] || [ -n "$(grep --max-count 1 ERROR $log_tmp_path)" ]; then
