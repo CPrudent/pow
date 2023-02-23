@@ -132,7 +132,7 @@ io_history_end_ok \
 vacuum \
     --schema_name fr \
     --table_name insee_municipality_event \
-    --mode ANALYSE &&
+    --mode ANALYZE &&
 rm --force "$year_ressource" || on_import_error
 
 log_info "Import du millésime $year de $co_type_import avec succès"

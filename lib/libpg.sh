@@ -194,10 +194,10 @@ vacuum() {
             mode:Mode VACUUM à appliquer
         ' \
         --args_v '
-            mode:ANALYSE|FULL
+            mode:ANALYZE|FULL
         ' \
         --args_d '
-            mode:ANALYSE
+            mode:ANALYZE
         ' \
         "$@" || return $ERROR_CODE
 
@@ -205,7 +205,7 @@ vacuum() {
     local _vacuum_table=$get_arg_table_name
     local _vacuum_mode=$get_arg_mode
     if [ -z "$_vacuum_mode" ]; then
-        log_error "Veuillez préciser avec le paramètre -m le mode de VACUUM (ANALYSE, FULL). Exemple : -m ANALYSE"
+        log_error "Veuillez préciser avec le paramètre -m le mode de VACUUM (ANALYZE, FULL). Exemple : -m ANALYZE"
         return $ERROR_CODE
     fi
 
@@ -220,9 +220,9 @@ vacuum() {
 
     if [ "$_vacuum_mode" = FULL ]; then
         df -h >> $_log_tmp_path
-        _vacuum_options='(FULL, ANALYSE, VERBOSE)'
-    elif [ "$_vacuum_mode" = ANALYSE ]; then
-        _vacuum_options='(ANALYSE, VERBOSE)'
+        _vacuum_options='(FULL, ANALYZE, VERBOSE)'
+    elif [ "$_vacuum_mode" = ANALYZE ]; then
+        _vacuum_options='(ANALYZE, VERBOSE)'
     fi
 
     # with table?
