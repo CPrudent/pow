@@ -2,26 +2,6 @@
  * add ADDRESS facilities
  */
 
--- deduce department code from district code
-SELECT public.drop_all_functions_if_exists('public', 'get_department_code_from_district_code');
-CREATE OR REPLACE FUNCTION public.get_department_code_from_district_code(
-    district_code CHARACTER(5)
-    )
-RETURNS CHARACTER VARYING(3)
-IMMUTABLE
-AS
-$func$
-BEGIN
-    -- LAPOSTE/RAN db
-    RETURN CASE
-        -- DOM + (98) = POLYNESIE
-        WHEN LEFT(district_code, 2) IN ('97', '98') THEN LEFT(district_code, 3)
-        -- FRANCE métropolitaine + (99) = MONACO
-        ELSE LEFT(district_code, 2)
-        END;
-END
-$func$ LANGUAGE plpgsql;
-
 -- clean address label (upcase, no special chars, only alphanum)
 SELECT public.drop_all_functions_if_exists('public', 'clean_address_label');
 CREATE OR REPLACE FUNCTION clean_address_label(
