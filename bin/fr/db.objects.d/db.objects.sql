@@ -2,6 +2,8 @@
  * schema FR : list of objects to create
  */
 
+\include_relative ./functions/address.sql
+
 -- BAL
 
 \include_relative bal_municipality.sql
