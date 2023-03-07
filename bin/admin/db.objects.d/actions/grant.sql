@@ -16,11 +16,4 @@ BEGIN
         GRANT ALL PRIVILEGES ON public.io_history TO fr;
         GRANT ALL PRIVILEGES ON SEQUENCE io_history_id_seq TO fr;
     END IF;
-    IF public.table_exists('public', 'territory') THEN
-        GRANT ALL PRIVILEGES ON public.territory TO fr;
-        GRANT ALL PRIVILEGES ON SEQUENCE territory_id_seq TO fr;
-    END IF;
-    IF public.table_exists('public', 'territory_level') THEN
-        GRANT ALL PRIVILEGES ON public.territory_level TO fr;
-    END IF;
 END $PERMS$;

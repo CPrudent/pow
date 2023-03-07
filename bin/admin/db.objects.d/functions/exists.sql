@@ -190,13 +190,14 @@ $func$ LANGUAGE plpgsql;
 -- test if type exists
 SELECT public.drop_all_functions_if_exists('public', 'type_exists');
 CREATE OR REPLACE FUNCTION public.type_exists(
-    type_name IN VARCHAR
+    schema_name IN VARCHAR
+    , type_name IN VARCHAR
     )
 RETURNS BOOLEAN AS
 $func$
 BEGIN
     -- https://stackoverflow.com/questions/7624919/check-if-a-user-defined-type-already-exists-in-postgresql
-    PERFORM 1 FROM pg_type WHERE typname = type_name;
+    PERFORM (CONCAT_WS('.', schema_name, type_name))::regtype;
     RETURN FOUND;
 END
 $func$ LANGUAGE plpgsql;

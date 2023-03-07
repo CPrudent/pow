@@ -24,3 +24,6 @@
 \include_relative laposte_complement.sql
 \include_relative laposte_xy.sql
 \include_relative laposte_delivery_point.sql
+
+-- POW
+\include_relative territory_level.sql
