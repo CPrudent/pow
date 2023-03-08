@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS public.territory (
 ;
 
 -- manual VACUUM
-ALTER TABLE public.territoire SET (
+ALTER TABLE public.territory SET (
 	autovacuum_enabled = FALSE
 );
 

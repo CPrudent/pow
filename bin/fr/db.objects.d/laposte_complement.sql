@@ -3,8 +3,7 @@
  */
 
 -- address-complement with history (date & type of last change)
-CREATE TABLE IF NOT EXISTS fr.laposte_complement
-(
+CREATE TABLE IF NOT EXISTS fr.laposte_complement (
     co_cea CHAR(10) NOT NULL,
     dt_reference DATE NOT NULL,
     co_mouvement CHAR(1) NOT NULL,
@@ -44,7 +43,8 @@ ALTER TABLE fr.laposte_complement SET (
 );
 
 SELECT drop_all_functions_if_exists('fr', 'setLaPosteIndexComplement');
-CREATE OR REPLACE PROCEDURE fr.setLaPosteIndexComplement()
+SELECT drop_all_functions_if_exists('fr', 'set_laposte_complement_index');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_complement_index()
 AS
 $proc$
 BEGIN
@@ -71,6 +71,6 @@ $proc$ LANGUAGE plpgsql;
 DO $$
 BEGIN
     -- manage indexes
-    CALL fr.setLaPosteIndexComplement();
+    CALL fr.set_laposte_complement_index();
 END
 $$;

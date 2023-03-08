@@ -4,16 +4,15 @@
 
 /*
 TODO
-- remove files NOT IN db.objects.sql
-- \include_relative tache_serveur.sql ?
-- <FUNCTION> in minuscules, such: CONCAT, ARRAY_*, ST_*
-- TESTS en TEST
-- ,data as: , data (RE= ,([^ ]) w/ , \1)
+    - remove files NOT IN db.objects.sql
+    - <FUNCTION> in minuscules, such: CONCAT, ARRAY_*, ST_*
+    - TESTS en TEST
+    - ,data as: , data (RE= ,([^ ]) w/ , \1)
  */
 
 -- system functions
 /* NOTE
-besgins w/ drop.sql due to drop_all_functions_if_exists() called for each function
+begins w/ drop.sql due to drop_all_functions_if_exists() called for each function
  */
 \include_relative ./functions/drop.sql
 \include_relative ./functions/admin.sql
@@ -54,6 +53,7 @@ besgins w/ drop.sql due to drop_all_functions_if_exists() called for each functi
 
 -- business functions
 \include_relative ./functions/address.sql
+\include_relative territory_to_date.sql
 
 /* INCLUDE
 \include_relative ./functions/getcodeinseedepartementfromcodeinseecommune.sql

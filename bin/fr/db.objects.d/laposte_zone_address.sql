@@ -3,8 +3,7 @@
  */
 
 -- address-ZA with history (date & type of last change)
-CREATE TABLE IF NOT EXISTS fr.laposte_zone_address
-(
+CREATE TABLE IF NOT EXISTS fr.laposte_zone_address (
     co_cea CHAR(10) NOT NULL
     , dt_reference DATE NOT NULL
     , co_mouvement CHAR(1) NOT NULL
@@ -28,7 +27,8 @@ ALTER TABLE fr.laposte_zone_address SET (
 );
 
 SELECT drop_all_functions_if_exists('fr', 'setLaPosteIndexZoneAddress');
-CREATE OR REPLACE PROCEDURE fr.setLaPosteIndexZoneAddress()
+SELECT drop_all_functions_if_exists('fr', 'set_laposte_zone_address_index');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_zone_address_index()
 AS
 $proc$
 BEGIN
@@ -103,6 +103,6 @@ $proc$ LANGUAGE plpgsql;
 DO $$
 BEGIN
     -- manage indexes
-    CALL fr.setLaPosteIndexZoneAddress();
+    CALL fr.set_laposte_zone_address_index();
 END
 $$;

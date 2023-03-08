@@ -71,9 +71,10 @@ CREATE TABLE IF NOT EXISTS fr.laposte_delivery_point (
 );
 
 SELECT drop_all_functions_if_exists('fr', 'setLaPosteIndexDeliveryPoint');
-CREATE OR REPLACE PROCEDURE fr.setLaPosteIndexDeliveryPoint(
+SELECT drop_all_functions_if_exists('fr', 'set_laposte_delivery_point_index');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_delivery_point_index(
     simulation BOOLEAN DEFAULT FALSE
-    )
+)
 AS
 $proc$
 DECLARE
@@ -144,6 +145,6 @@ $proc$ LANGUAGE plpgsql;
 DO $$
 BEGIN
     -- manage indexes
-    CALL fr.setLaPosteIndexDeliveryPoint();
+    CALL fr.set_laposte_delivery_point_index();
 END
 $$;

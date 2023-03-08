@@ -2,8 +2,7 @@
  * FR: add LAPOSTE/RAN address
  */
 
-CREATE TABLE IF NOT EXISTS fr.laposte_address
-(
+CREATE TABLE IF NOT EXISTS fr.laposte_address (
     co_cea_determinant CHAR(10) NOT NULL,
     dt_reference DATE NOT NULL,
     co_mouvement CHAR(1) NOT NULL,
@@ -28,9 +27,10 @@ ALTER TABLE fr.laposte_address SET (
 );
 
 SELECT drop_all_functions_if_exists('fr', 'setLaPosteIndexAddress');
-CREATE OR REPLACE PROCEDURE fr.setLaPosteIndexAddress(
+SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_index');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_address_index(
     simulation BOOLEAN DEFAULT FALSE
-    )
+)
 AS
 $proc$
 DECLARE
@@ -123,6 +123,6 @@ $proc$ LANGUAGE plpgsql;
 DO $$
 BEGIN
     -- manage indexes
-    CALL fr.setLaPosteIndexAddress();
+    CALL fr.set_laposte_address_index();
 END
 $$;

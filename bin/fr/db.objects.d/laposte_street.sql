@@ -3,8 +3,7 @@
  */
 
 -- address-street with history (date & type of last change)
-CREATE TABLE IF NOT EXISTS fr.laposte_street
-(
+CREATE TABLE IF NOT EXISTS fr.laposte_street (
     co_cea CHAR(10),
     dt_reference DATE NOT NULL,
     co_mouvement CHAR(1) NOT NULL,
@@ -28,7 +27,8 @@ ALTER TABLE fr.laposte_street SET (
 );
 
 SELECT drop_all_functions_if_exists('fr', 'setLaPosteIndexStreet');
-CREATE OR REPLACE PROCEDURE fr.setLaPosteIndexStreet()
+SELECT drop_all_functions_if_exists('fr', 'set_laposte_street_index');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_street_index()
 AS
 $proc$
 BEGIN
@@ -68,6 +68,6 @@ $proc$ LANGUAGE plpgsql;
 DO $$
 BEGIN
     -- manage indexes
-    CALL fr.setLaPosteIndexStreet();
+    CALL fr.set_laposte_street_index();
 END
 $$;

@@ -3,8 +3,7 @@
  */
 
 -- address-housenumber with history (date & type of last change)
-CREATE TABLE IF NOT EXISTS fr.laposte_housenumber
-(
+CREATE TABLE IF NOT EXISTS fr.laposte_housenumber (
     co_cea CHAR(10) NOT NULL,
     dt_reference DATE NOT NULL,
     co_mouvement CHAR(1) NOT NULL,
@@ -17,7 +16,8 @@ CREATE TABLE IF NOT EXISTS fr.laposte_housenumber
 ;
 
 SELECT drop_all_functions_if_exists('fr', 'setLaPosteIndexHousenumber');
-CREATE OR REPLACE PROCEDURE fr.setLaPosteIndexHousenumber()
+SELECT drop_all_functions_if_exists('fr', 'set_laposte_housenumber_index');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_housenumber_index()
 AS
 $proc$
 BEGIN
@@ -36,6 +36,6 @@ $proc$ LANGUAGE plpgsql;
 DO $$
 BEGIN
     -- manage indexes
-    CALL fr.setLaPosteIndexHousenumber();
+    CALL fr.set_laposte_housenumber_index();
 END
 $$;

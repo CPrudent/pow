@@ -3,8 +3,7 @@
  */
 
 -- address-XY with history (date & type of last change)
-CREATE TABLE IF NOT EXISTS fr.laposte_xy
-(
+CREATE TABLE IF NOT EXISTS fr.laposte_xy (
     co_insee CHAR(5) NOT NULL,
     co_cea CHAR(10) NULL,
     dt_reference DATE NOT NULL,
@@ -23,7 +22,8 @@ ALTER TABLE fr.laposte_xy SET (
 );
 
 SELECT drop_all_functions_if_exists('fr', 'setLaPosteIndexCoordinates');
-CREATE OR REPLACE PROCEDURE fr.setLaPosteIndexCoordinates()
+SELECT drop_all_functions_if_exists('fr', 'set_laposte_xy_index');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_xy_index()
 AS
 $proc$
 BEGIN
@@ -53,6 +53,6 @@ $proc$ LANGUAGE plpgsql;
 DO $$
 BEGIN
     -- manage indexes
-    CALL fr.setLaPosteIndexCoordinates();
+    CALL fr.set_laposte_xy_index();
 END
 $$;
