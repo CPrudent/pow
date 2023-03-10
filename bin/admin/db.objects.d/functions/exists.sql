@@ -198,6 +198,8 @@ $func$
 BEGIN
     -- https://stackoverflow.com/questions/7624919/check-if-a-user-defined-type-already-exists-in-postgresql
     PERFORM (CONCAT_WS('.', schema_name, type_name))::regtype;
-    RETURN FOUND;
+    RETURN TRUE;
+EXCEPTION WHEN UNDEFINED_OBJECT THEN
+    RETURN FALSE;
 END
 $func$ LANGUAGE plpgsql;

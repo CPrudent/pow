@@ -10,11 +10,10 @@ BEGIN
 
     INSERT INTO public.territory_level(
         country
-        , "level"
+        , level
     )
     (
-        'FR'
-        , SELECT UNNEST(ARRAY[
+        SELECT 'FR', UNNEST(ARRAY[
             'ZA'
                 , 'CP'
                     , 'PPDC_PDC'
@@ -34,7 +33,7 @@ BEGIN
 
     UPDATE public.territory_level
     SET name =
-        CASE "level"
+        CASE level
             WHEN 'ZA'                       THEN 'Croisement Commune & Code Postal'
                 WHEN 'CP'                   THEN 'Code Postal'
                     WHEN 'PPDC_PDC'         THEN 'Zone de préparation/distribution du Courrier'
@@ -49,11 +48,11 @@ BEGIN
                                 WHEN 'REG'  THEN 'Région'
                                     WHEN 'METROPOLE_DOM_TOM' THEN 'Métropole ou territoire d''outre-mer'
                                         WHEN 'PAYS'          THEN 'Pays'
-            ELSE "level"
+            ELSE level
         END
 
         , name_short =
-        CASE "level"
+        CASE level
             WHEN 'ZA'                       THEN 'Commune/CP'
                 WHEN 'CP'                   THEN 'Code Postal'
                     WHEN 'PPDC_PDC'         THEN 'Zone prépa. courrier'
@@ -68,10 +67,10 @@ BEGIN
                                 WHEN 'REG'  THEN 'Région'
                                     WHEN 'METROPOLE_DOM_TOM' THEN 'Métropole ou DOM/TOM'
                                         WHEN 'PAYS'          THEN 'Pays'
-            ELSE "level"
+            ELSE level
         END
         , name_plural =
-        CASE "level"
+        CASE level
             WHEN 'ZA'                       THEN 'Croisements Communes & Code Postaux'
                 WHEN 'CP'                   THEN 'Code Postaux'
                     WHEN 'PPDC_PDC'         THEN 'Zones de préparation du courrier'
@@ -86,10 +85,10 @@ BEGIN
                                 WHEN 'REG'  THEN 'Régions'
                                     WHEN 'METROPOLE_DOM_TOM' THEN 'Métropoles ou territoires d''outre-mer'
                                         WHEN 'PAYS'          THEN 'Pays'
-            ELSE "level"
+            ELSE level
         END
-        , name_article =
-        CASE "level"
+        , article =
+        CASE level
             WHEN 'ZA'                       THEN 'le'
                 WHEN 'CP'                   THEN 'le'
                     WHEN 'PPDC_PDC'         THEN 'la'
@@ -104,28 +103,28 @@ BEGIN
                                 WHEN 'REG'  THEN 'la'
                                     WHEN 'METROPOLE_DOM_TOM' THEN 'la'
                                         WHEN 'PAYS'          THEN 'le'
-            ELSE "level"
+            ELSE level
         END
-        , "order" =
-        CASE "level"
-            WHEN 'ZA'                       THEN 0110
-                WHEN 'CP'                   THEN 0210
-                    WHEN 'PPDC_PDC'         THEN 0410
-                        WHEN 'DEX'          THEN 0510
-        WHEN 'IRIS'                         THEN 0000
-                WHEN 'COM'                  THEN 0200
-                    WHEN 'COM_GLOBALE_ARM'  THEN 0300
-                        WHEN 'EPCI'         THEN 0400
-                        WHEN 'CV'           THEN 0401
-                        WHEN 'ARR'          THEN 0402
-                            WHEN 'DEP'      THEN 0500
-                                WHEN 'REG'  THEN 0600
-                                    WHEN 'METROPOLE_DOM_TOM' THEN 0700
-                                        WHEN 'PAYS'          THEN 0800
+        , hierarchy =
+        CASE level
+            WHEN 'ZA'                       THEN 110
+                WHEN 'CP'                   THEN 210
+                    WHEN 'PPDC_PDC'         THEN 410
+                        WHEN 'DEX'          THEN 510
+        WHEN 'IRIS'                         THEN 000
+                WHEN 'COM'                  THEN 200
+                    WHEN 'COM_GLOBALE_ARM'  THEN 300
+                        WHEN 'EPCI'         THEN 400
+                        WHEN 'CV'           THEN 401
+                        WHEN 'ARR'          THEN 402
+                            WHEN 'DEP'      THEN 500
+                                WHEN 'REG'  THEN 600
+                                    WHEN 'METROPOLE_DOM_TOM' THEN 700
+                                        WHEN 'PAYS'          THEN 800
             ELSE NULL
         END
         , sublevels =
-        CASE "level"
+        CASE level
             WHEN 'ZA'                       THEN NULL
                 WHEN 'CP'                   THEN ARRAY['ZA']
                     WHEN 'PPDC_PDC'         THEN ARRAY['CP']

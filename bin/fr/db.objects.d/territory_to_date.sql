@@ -16,53 +16,53 @@ DECLARE
     _date_max DATE;
     _fr_municipality_event VARCHAR := 'fr.insee_municipality_event';
 BEGIN
-    IF table_exists('fr', 'insee_municipality_event') THEN
-        IF minmax THEN
-            IF NULLIF(current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_min')), '') IS NULL THEN
-                RAISE 'RELOAD';
-            END IF;
-            RETURN TO_DATE(
-                NULLIF(
-                    current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_min'))
-                    , 'NULL'
-                )
-                , 'DD/MM/YYYY'
-            );
-        ELSE
-            IF NULLIF(current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_max')), '') IS NULL THEN
-                RAISE 'RELOAD';
-            END IF;
-            RETURN TO_DATE(
-                NULLIF(
-                    current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_max'))
-                    , 'NULL'
-                )
-                , 'DD/MM/YYYY'
-            );
-        END IF;
-    EXCEPTION WHEN OTHERS THEN
-        SELECT MIN(date_eff) - 1, MAX(date_eff)
-        INTO _date_min, _date_max
-        FROM fr.insee_municipality_event;
-        EXECUTE CONCAT(
-            'set_config('''
-            , CONCAT_WS('.', _fr_municipality_event, 'date_min')
-            , ''', '''
-            , COALESCE(TO_CHAR(_date_min, 'DD/MM/YYYY'), 'NULL')
-            , ''', TRUE)'
-        );
-        EXECUTE CONCAT(
-            'set_config('''
-            , CONCAT_WS('.', _fr_municipality_event, 'date_max')
-            , ''', '''
-            , COALESCE(TO_CHAR(_date_max, 'DD/MM/YYYY'), 'NULL')
-            , ''', TRUE)'
-        );
-    ELSE
+    IF NOT table_exists('fr', 'insee_municipality_event') THEN
         _date_min := NOW();
         _date_max := '1970-01-01'::DATE;
+        IF minmax THEN RETURN _date_min; ELSE RETURN _date_max; END IF;
     END IF;
 
+    IF minmax THEN
+        IF NULLIF(current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_min')), '') IS NULL THEN
+            RAISE 'RELOAD';
+        END IF;
+        RETURN TO_DATE(
+            NULLIF(
+                current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_min'))
+                , 'NULL'
+            )
+            , 'DD/MM/YYYY'
+        );
+    ELSE
+        IF NULLIF(current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_max')), '') IS NULL THEN
+            RAISE 'RELOAD';
+        END IF;
+        RETURN TO_DATE(
+            NULLIF(
+                current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_max'))
+                , 'NULL'
+            )
+            , 'DD/MM/YYYY'
+        );
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    SELECT MIN(date_eff) - 1, MAX(date_eff)
+    INTO _date_min, _date_max
+    FROM fr.insee_municipality_event;
+    EXECUTE CONCAT(
+        'SELECT set_config('''
+        , CONCAT_WS('.', _fr_municipality_event, 'date_min')
+        , ''', '''
+        , COALESCE(TO_CHAR(_date_min, 'DD/MM/YYYY'), 'NULL')
+        , ''', TRUE)'
+    );
+    EXECUTE CONCAT(
+        'SELECT set_config('''
+        , CONCAT_WS('.', _fr_municipality_event, 'date_max')
+        , ''', '''
+        , COALESCE(TO_CHAR(_date_max, 'DD/MM/YYYY'), 'NULL')
+        , ''', TRUE)'
+    );
     IF minmax THEN RETURN _date_min; ELSE RETURN _date_max; END IF;
 END
 $func$ LANGUAGE plpgsql;
@@ -86,53 +86,53 @@ DECLARE
     _date_max DATE;
     _fr_municipality_event VARCHAR := 'fr.wikipedia_municipality_event';
 BEGIN
-    IF table_exists('fr', 'wikipedia_municipality_event') THEN
-        IF minmax THEN
-            IF NULLIF(current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_min')), '') IS NULL THEN
-                RAISE 'RELOAD';
-            END IF;
-            RETURN TO_DATE(
-                NULLIF(
-                    current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_min'))
-                    , 'NULL'
-                )
-                , 'DD/MM/YYYY'
-            );
-        ELSE
-            IF NULLIF(current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_max')), '') IS NULL THEN
-                RAISE 'RELOAD';
-            END IF;
-            RETURN TO_DATE(
-                NULLIF(
-                    current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_max'))
-                    , 'NULL'
-                )
-                , 'DD/MM/YYYY'
-            );
-        END IF;
-    EXCEPTION WHEN OTHERS THEN
-        SELECT MIN(dt_effet) - 1, MAX(dt_effet)
-        INTO _date_min, _date_max
-        FROM fr.wikipedia_municipality_event;
-        EXECUTE CONCAT(
-            'set_config('''
-            , CONCAT_WS('.', _fr_municipality_event, 'date_min')
-            , ''', '''
-            , COALESCE(TO_CHAR(_date_min, 'DD/MM/YYYY'), 'NULL')
-            , ''', TRUE)'
-        );
-        EXECUTE CONCAT(
-            'set_config('''
-            , CONCAT_WS('.', _fr_municipality_event, 'date_max')
-            , ''', '''
-            , COALESCE(TO_CHAR(_date_max, 'DD/MM/YYYY'), 'NULL')
-            , ''', TRUE)'
-        );
-    ELSE
+    IF NOT table_exists('fr', 'wikipedia_municipality_event') THEN
         _date_min := NOW();
         _date_max := '1970-01-01'::DATE;
+        IF minmax THEN RETURN _date_min; ELSE RETURN _date_max; END IF;
     END IF;
 
+    IF minmax THEN
+        IF NULLIF(current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_min')), '') IS NULL THEN
+            RAISE 'RELOAD';
+        END IF;
+        RETURN TO_DATE(
+            NULLIF(
+                current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_min'))
+                , 'NULL'
+            )
+            , 'DD/MM/YYYY'
+        );
+    ELSE
+        IF NULLIF(current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_max')), '') IS NULL THEN
+            RAISE 'RELOAD';
+        END IF;
+        RETURN TO_DATE(
+            NULLIF(
+                current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_max'))
+                , 'NULL'
+            )
+            , 'DD/MM/YYYY'
+        );
+    END IF;
+EXCEPTION WHEN OTHERS THEN
+    SELECT MIN(dt_effet) - 1, MAX(dt_effet)
+    INTO _date_min, _date_max
+    FROM fr.wikipedia_municipality_event;
+    EXECUTE CONCAT(
+        'SELECT set_config('''
+        , CONCAT_WS('.', _fr_municipality_event, 'date_min')
+        , ''', '''
+        , COALESCE(TO_CHAR(_date_min, 'DD/MM/YYYY'), 'NULL')
+        , ''', TRUE)'
+    );
+    EXECUTE CONCAT(
+        'SELECT set_config('''
+        , CONCAT_WS('.', _fr_municipality_event, 'date_max')
+        , ''', '''
+        , COALESCE(TO_CHAR(_date_max, 'DD/MM/YYYY'), 'NULL')
+        , ''', TRUE)'
+    );
     IF minmax THEN RETURN _date_min; ELSE RETURN _date_max; END IF;
 END
 $func$ LANGUAGE plpgsql;
@@ -310,6 +310,7 @@ BEGIN
 
         RETURN NEXT ROW (
             code
+            , code_previous
             , name
             , CASE
                 WHEN date_geography_to IS NULL OR date_geography_to > date_geography_from THEN
@@ -332,7 +333,6 @@ BEGIN
             , distribution
             , information
             , is_new
-            , code_previous
         );
     ELSE
         _i := 0;
@@ -413,9 +413,11 @@ BEGIN
                 codes_event := NULL::INTEGER[];
             END IF;
 
+            /*
             IF _back_to_code IS NOT NULL AND _back_to_code != _code_new THEN
                 CONTINUE;
             END IF;
+             */
 
             RETURN QUERY
                 SELECT *
@@ -588,6 +590,7 @@ BEGIN
     IF _date_effect IS NULL THEN
         RETURN NEXT ROW (
             code
+            , code_previous
             , name
             , CASE
                 WHEN date_geography_to IS NULL OR date_geography_to > date_geography_from THEN
@@ -610,7 +613,6 @@ BEGIN
             , distribution
             , information
             , is_new
-            , code_previous
         );
     ELSE
         _i := 0;
@@ -760,12 +762,12 @@ BEGIN
     AND (date_geography_to IS NULL OR date_geography_to >= TO_DATE('15/07/2007', 'DD/MM/YYYY')) THEN
         RETURN NEXT ROW(
             '97701'::VARCHAR
+            , code
             , 'Saint-Barthélemy'::VARCHAR
             , TO_DATE('15/07/2007', 'DD/MM/YYYY')
             , 1::NUMERIC
             , 'Les anciennes communes de Saint-Barthélemy (ancien code INSEE 97123) et Saint-Martin (ancien code INSEE 97127) ne font plus partie du département et la région d''outre-mer de Guadeloupe mais forment des collectivités d''outre-mer séparées depuis le 15 juillet 2007'::TEXT
             , TRUE
-            , code
         );
         RETURN;
     ELSIF code = '97127'
@@ -773,12 +775,12 @@ BEGIN
     AND (date_geography_to IS NULL OR date_geography_to >= TO_DATE('15/07/2007', 'DD/MM/YYYY')) THEN
         RETURN NEXT ROW(
             '97801'::VARCHAR
+            , code
             , 'Saint-Martin'::VARCHAR
             , TO_DATE('15/07/2007', 'DD/MM/YYYY')
             , 1::NUMERIC
             , 'Les anciennes communes de Saint-Barthélemy (ancien code INSEE 97123) et Saint-Martin (ancien code INSEE 97127) ne font plus partie du département et la région d''outre-mer de Guadeloupe mais forment des collectivités d''outre-mer séparées depuis le 15 juillet 2007'::TEXT
             , TRUE
-            , code
         );
         RETURN;
     ELSIF code IN ('75056', '13055', '69123') THEN
@@ -788,12 +790,12 @@ BEGIN
             distribution := 0;
             RETURN NEXT ROW (
                 code
+                , code_previous
                 , name
                 , date_geography_from
                 , distribution
                 , information
                 , is_new
-                , code_previous
             );
         END IF;
         RETURN;
@@ -804,12 +806,12 @@ BEGIN
             distribution := 0;
             RETURN NEXT ROW (
                 code
+                , code_previous
                 , name
                 , date_geography_from
                 , distribution
                 , information
                 , is_new
-                , code_previous
             );
         END IF;
         RETURN;
@@ -992,12 +994,12 @@ BEGIN
         END IF;
         RETURN NEXT ROW (
             code
+            , code_previous
             , name
             , date_geography_from
             , distribution
             , information
             , is_new
-            , code_previous
         );
     END IF;
 END
@@ -1057,6 +1059,7 @@ BEGIN
         FOREACH _municipality IN ARRAY _municipalities.municipalities_now LOOP
             RETURN NEXT ROW (
                 _municipality
+                , NULL
                 , _date_address
                 , _municipalities.distribution
             );
@@ -1066,6 +1069,7 @@ BEGIN
     IF _return THEN
         RETURN NEXT ROW (
             code
+            , NULL
             , _date_address
             , distribution
         );
@@ -1087,7 +1091,7 @@ BEGIN
 
     SELECT *
     INTO _municipality_to_now
-    FROM public.get_municipality_to_date(
+    FROM fr.get_municipality_to_date(
         code => zone_address.co_insee_commune
         --On force l'algo à considérer en cas de fusion que cette ZA correspond à la portion avant fusion, même pour la commune déléguée chef lieu
         , code_previous => COALESCE(
@@ -1101,8 +1105,8 @@ BEGIN
     WHERE commune_to_now.is_new --Seulement ce qui est nouveau
     ;
     --Même en cas de fusion, on ne stocke pas dans RAN le code INSEE précédent s'il ne change pas (cas de la commune déléguée chef lieu)
-    IF _municipality_to_now.codgeo = _municipality_to_now.codgeo_precedent THEN
-        _municipality_to_now.codgeo_precedent := NULL;
+    IF _municipality_to_now.code = _municipality_to_now.code_previous THEN
+        _municipality_to_now.code_previous := NULL;
     END IF;
 
     IF _municipality_to_now.distribution = 1 THEN
@@ -1173,7 +1177,7 @@ RETURNS BOOLEAN AS
 $func$
 DECLARE
     _zone_address_to_now RECORD;
-    _date_address DATE := public.get_last_io(type_in => 'RAN_ADRESSE');
+    _date_address DATE := (public.get_last_io(type_in => 'RAN_ADRESSE')).dt_data_end;
     _laposte_updated BOOLEAN DEFAULT FALSE;
 BEGIN
     FOR _zone_address_to_now IN (
@@ -1198,7 +1202,7 @@ BEGIN
                 ELSE FALSE
             END AS modification
         FROM fr.laposte_zone_address AS za
-        CROSS JOIN public.get_zone_address_to_date(za) AS za_to_now
+        CROSS JOIN fr.get_zone_address_to_date(za) AS za_to_now
         WHERE za_to_now.dt_reference_commune != za.dt_reference_commune
     )
     LOOP
@@ -1281,7 +1285,7 @@ DECLARE
     _end_execution TIMESTAMP WITHOUT TIME ZONE := clock_timestamp() + execution_time;
     _raise_overtime VARCHAR := 'set_data_with_geography_to_now: Temps de traitement maximum dépassé';
 BEGIN
-    /*
+    /* TODO
     --déjà fait toutes les semaines lors de l'intégration de RAN, suite import RAN, suite import et intégration GEOPAD / INSEE / IGN / ... (cf /public/adresse_ran.sh -> /public/territory.sh)
     PERFORM public.setTerritoireIgnGeoToNow();
     PERFORM public.setTerritoireInseeGeoToNow();
@@ -1300,7 +1304,7 @@ BEGIN
     COMMIT;
      */
 
-    IF clock_timestamp() > _end_execution THEN RAISE NOTICE _raise_overtime; RETURN; END IF;
+    IF clock_timestamp() > _end_execution THEN RAISE NOTICE '%', _raise_overtime; RETURN; END IF;
 
 END
 $func$ LANGUAGE plpgsql;
