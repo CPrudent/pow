@@ -1117,7 +1117,18 @@ BEGIN
             , zone_address.lb_nn
             , _municipality_to_now.code
             , _municipality_to_now.name;
-        --A déjà fusionné : on garde le code INSEE précédent
+
+        /* maj des libellés
+        -- new normalized label, as L6-label
+        zone_address.lb_ach_nn := address_label_normalize_municipality(_municipality_to_now.code, _municipality_to_now.name);
+        -- TODO what about lb_nn ???
+        -- remains merged municipality as L5-label
+        IF zone_address.co_insee_commune != _municipality_to_now.code THEN
+            zone_address.lb_l5_nn := zone_address.lb_ach_nn;
+        END IF;
+         */
+
+        -- keep eventualy previuous code (if already merged)
         IF zone_address.co_insee_commune_precedente IS NULL THEN
             zone_address.co_insee_commune_precedente := zone_address.co_insee_commune;
         END IF;
@@ -1136,6 +1147,7 @@ BEGIN
          * 4) Il faut ignorer les différence due à la normalisation du libellé, le mieux étant d'appliquer les règles officielles de normalisation (quelles sont elles ?) :
          * public.removeMotsOutils(REPLACE(public.upperNoSpecialsCharsOnlyAlfaNum(_municipality_to_now.libgeo), 'SAINT', 'ST')) != public.removeMotsOutils(REPLACE(zone_address.lb_nn, 'SAINT', 'ST'))
          */
+
     ELSIF _municipality_to_now.distribution < 1 AND _municipality_to_now.distribution > 0 THEN
         RAISE NOTICE 'Cas de rétablissement de commune géré pour maj GEO de RAN ZA : %, % / %, % -> %, %'
             , zone_address.co_cea

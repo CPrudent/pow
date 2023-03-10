@@ -29,9 +29,9 @@ ALTER TABLE public.territory SET (
  *
  * ZA
  *  L5=>name of old municipality
- *  L5_normalize=>normalized name
+ *  L5_normalized=>normalized name
  * COM
- *  L6_normalize=>normalized name
+ *  L6_normalized=>normalized name
  * EPCI
  *  type=>type of EPCI
  */
