@@ -25,7 +25,7 @@ ALTER TABLE public.territory SET (
 );
 
 /*
- * attributs
+ * FR-attributs
  *
  * ZA
  *  L5=>name of old municipality
