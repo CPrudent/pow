@@ -9,14 +9,14 @@ SELECT public.drop_all_functions_if_exists('fr', 'set_territory_level');
 CREATE OR REPLACE PROCEDURE fr.set_territory_level() AS
 $proc$
 BEGIN
-    DELETE FROM fr.territory_level WHERE country = 'FR';
+    DELETE FROM public.territory_level WHERE country = 'FR';
 
-    INSERT INTO fr.territory_level(
+    INSERT INTO public.territory_level(
         country
         , level
     )
     (
-        SELECT 'FR', UNNEST(ARRAY[
+        SELECT UNNEST(ARRAY[
             'ZA'
                 , 'CP'
                         , 'PPDC_PDC'
@@ -34,7 +34,7 @@ BEGIN
         ])
     );
 
-    UPDATE fr.territory_level
+    UPDATE public.territory_level
     SET name =
         CASE level
             WHEN 'ZA'                       THEN 'Croisement Commune & Code Postal'
@@ -144,6 +144,8 @@ BEGIN
                                         WHEN 'PAYS'          THEN ARRAY['METROPOLE_DOM_TOM']
             ELSE NULL
         END
+    WHERE
+        country = 'FR'
     ;
 END
 $proc$ LANGUAGE plpgsql;
@@ -161,7 +163,8 @@ DECLARE
     _immediate_sublevel_b VARCHAR;
 BEGIN
     IF (level_a = level_b) THEN RETURN FALSE; END IF;
-    SELECT sublevels INTO _immediate_sublevels_b FROM fr.territory_level WHERE level = level_b;
+    SELECT sublevels INTO _immediate_sublevels_b FROM public.territory_level
+        WHERE level = level_b AND country = 'FR';
     IF (_immediate_sublevels_b IS NOT NULL) THEN
         -- level A is an immediate sublevel from leval B
         IF (level_a = ANY(_immediate_sublevels_b)) THEN RETURN TRUE; END IF;
@@ -262,11 +265,13 @@ BEGIN
     IF order_in = 'DESC' THEN
         SELECT ARRAY_AGG(level ORDER BY hierarchy DESC)
         INTO _levels
-        FROM fr.territory_level;
+        FROM public.territory_level
+        WHERE country = 'FR';
     ELSE
         SELECT ARRAY_AGG(level ORDER BY hierarchy ASC)
         INTO _levels
-        FROM fr.territory_level;
+        FROM public.territory_level
+        WHERE country = 'FR';
     END IF;
 
     IF subfilter IS NOT NULL THEN
@@ -310,7 +315,9 @@ BEGIN
         --En les ordonnant par ordre du plus grand niveau parent et par ordre d'apparition dans la liste des sous niveaux directs sur niveau parent
         SELECT level FROM (
             SELECT level, ROW_NUMBER() OVER() AS hierarchy FROM (
-                SELECT UNNEST(sublevels) AS level FROM fr.territory_level ORDER BY hierarchy DESC
+                SELECT UNNEST(sublevels) AS level FROM public.territory_level
+                WHERE country = 'FR'
+                ORDER BY hierarchy DESC
             ) AS sq
         ) AS sq2
         GROUP BY level
@@ -346,7 +353,9 @@ BEGIN
         --En les ordonnant par ordre du plus grand niveau parent et par ordre d'apparition dans la liste des sous niveaux directs sur niveau parent
         SELECT level FROM (
             SELECT level, ROW_NUMBER() OVER() AS hierarchy FROM (
-                SELECT UNNEST(sublevels) AS level FROM fr.territory_level ORDER BY hierarchy DESC
+                SELECT UNNEST(sublevels) AS level FROM public.territory_level
+                WHERE country = 'FR'
+                ORDER BY hierarchy DESC
             ) AS sq
         ) AS sq2
         GROUP BY level
