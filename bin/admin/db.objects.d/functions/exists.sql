@@ -110,9 +110,9 @@ $func$
 BEGIN
     PERFORM c.column_name
     FROM information_schema.columns c
-    WHERE c.table_schema = schema_name
-        AND c.table_name = table_name
-        AND c.column_name = column_name;
+    WHERE c.table_schema = column_exists.schema_name
+        AND c.table_name = column_exists.table_name
+        AND c.column_name = column_exists.column_name;
 
     RETURN FOUND;
 END

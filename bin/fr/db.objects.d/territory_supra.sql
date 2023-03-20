@@ -125,7 +125,7 @@ BEGIN
             --Ceux qui sont différents du niveau de base
             _level != base_level
             --Et si filtre sur niveau, dont le niveau filtré est un sous-découpage
-            AND (supra_levels_filter IS NULL OR public.is_level_below(supra_levels_filter, _level))
+            AND (supra_levels_filter IS NULL OR fr.is_level_below(supra_levels_filter, _level))
         )
         THEN
             _levels := ARRAY_REMOVE(_levels, _level);
@@ -183,7 +183,7 @@ BEGIN
     END IF;
     --v_first_time := TRUE;
     FOREACH _level IN ARRAY _levels LOOP
-        _bigger_sublevel := public.get_bigger_sublevel(in_de_nivgeo => _level, among_levels => ARRAY_APPEND(_levels, base_level));
+        _bigger_sublevel := fr.get_bigger_sublevel(level_in => _level, among_levels => ARRAY_APPEND(_levels, base_level));
         IF _level = 'COM' AND _bigger_sublevel IN ('ZA', 'IRIS') THEN
             _query := CONCAT(
                 '(
@@ -200,9 +200,9 @@ BEGIN
         ELSE
             --On prend le niveau le plus grand, représentant le mieux le niveau à calculer, en le comparant à ce qu'on pourrait obtenir avec le niveau de base
             IF _bigger_sublevel != base_level THEN
-                _query := 'SELECT public.get_bigger_sublevel(in_de_nivgeo => $1, among_levels => ARRAY[$2';
+                _query := 'SELECT fr.get_bigger_sublevel(level_in => $1, among_levels => ARRAY[$2';
                 FOREACH _level2 IN ARRAY _levels LOOP
-                    IF public.is_level_below(_level2, _level) THEN
+                    IF fr.is_level_below(_level2, _level) THEN
                         _query := CONCAT(_query, ',
                             CASE WHEN
                                 --premier test rapide : dans le cas du calcul de DEP à partir du niveau CV, comparé au niveau de base COM : le nombre de communes ayant un département parent est le même que le nombre de communes ayant un département parent ET un canton ville parent
@@ -212,7 +212,7 @@ BEGIN
                                     SELECT SUM(CASE WHEN unique_codgeo_', _level, '_parent IS NOT NULL THEN nb ELSE 0 END) FROM (
                                         SELECT codgeo_', _level2, '_parent, UNIQUE_AGG(codgeo_', _level, '_parent) AS unique_codgeo_', _level, '_parent
                                             , COUNT(codgeo_', _level, '_parent) AS nb
-                                        FROM ', CASE WHEN _self_use THEN CONCAT(_tmp_table_name, '_base WHERE 1=1') ELSE 'public.territoire WHERE nivgeo = $2' END, '
+                                        FROM ', CASE WHEN _self_use THEN CONCAT(_tmp_table_name, '_base WHERE 1=1') ELSE 'fr.territory WHERE nivgeo = $2' END, '
                                         AND codgeo_', _level, '_parent IS NOT NULL
                                         AND codgeo_', _level2, '_parent IS NOT NULL
                                         GROUP BY codgeo_', _level2, '_parent
@@ -222,7 +222,7 @@ BEGIN
                         );
                     END IF;
                 END LOOP;
-                _query := CONCAT(_query, ']) AS nivgeo_agg FROM ', CASE WHEN _self_use THEN CONCAT(_tmp_table_name, '_base AS source') ELSE 'public.territoire AS source WHERE nivgeo = $2' END);
+                _query := CONCAT(_query, ']) AS nivgeo_agg FROM ', CASE WHEN _self_use THEN CONCAT(_tmp_table_name, '_base AS source') ELSE 'fr.territory AS source WHERE nivgeo = $2' END);
                 IF NOT simulation THEN
                     _start_time := clock_timestamp();
                     EXECUTE _query INTO _level2 USING _level, base_level;
@@ -261,7 +261,7 @@ BEGIN
                             , territoire.codgeo_', _level, '_parent AS codgeo
                             , ', _columns_select, '
                         FROM ', _tmp_table_name, CASE WHEN _bigger_sublevel = base_level THEN '_base' END, ' AS source
-                        INNER JOIN public.territoire ON (territoire.nivgeo, territoire.codgeo) = (source.nivgeo, source.codgeo)
+                        INNER JOIN fr.territory ON (territoire.nivgeo, territoire.codgeo) = (source.nivgeo, source.codgeo)
                         WHERE territoire.nivgeo = $1 AND territoire.codgeo_', _level, '_parent IS NOT NULL
                         GROUP BY territoire.codgeo_', _level, '_parent
                         ', CASE WHEN _columns_groupby IS NOT NULL THEN CONCAT(', ', _columns_groupby) END, '

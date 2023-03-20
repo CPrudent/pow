@@ -2,7 +2,7 @@
  * FR-TERRITORY postal definition
  */
 
-CREATE TABLE IF NOT EXISTS fr.territory_postal (
+CREATE TABLE IF NOT EXISTS fr.territory_laposte (
     nivgeo VARCHAR
     , codgeo VARCHAR
     , libgeo VARCHAR
@@ -15,8 +15,8 @@ SELECT drop_all_functions_if_exists('fr', 'set_territory_laposte');
 CREATE OR REPLACE FUNCTION fr.set_territory_laposte()
 RETURNS BOOLEAN AS $$
 BEGIN
-    TRUNCATE TABLE public.territory_laposte;
-    PERFORM public.drop_table_indexes('public', 'territory_laposte');
+    TRUNCATE TABLE fr.territory_laposte;
+    PERFORM public.drop_table_indexes('fr', 'territory_laposte');
 
     INSERT INTO fr.territory_laposte (
         nivgeo
@@ -63,10 +63,10 @@ BEGIN
         FROM cp
     );
 
-    CREATE UNIQUE INDEX ON fr.territory_laposte (nivgeo, codgeo);
+    CREATE UNIQUE INDEX iux_territory_laposte_nivgeo_codgeo ON fr.territory_laposte (nivgeo, codgeo);
 
     --Mise à jour GEO, qui déclenchera un init GeoSupra le SUPRA n'existant pas, qui déclenchera l'updateGeoSupra spécifique
-    PERFORM fr.set_territory_laposte_to_now();
+    --PERFORM fr.set_territory_laposte_to_now();
 
     RETURN TRUE;
 END $$ LANGUAGE plpgsql;
@@ -100,12 +100,12 @@ CREATE OR REPLACE FUNCTION fr.update_territory_laposte_supra()
 RETURNS BOOLEAN AS $$
 BEGIN
     --Codes Postaux : libellé = code
-    UPDATE public.territory_laposte
+    UPDATE fr.territory_laposte
     SET libgeo = codgeo
     WHERE nivgeo = 'CP';
 
     --Zones Postales : libellés SOURCE-ORGA (avec métier COURRIER, ELP) sinon sites manquants du RLP (réseau, enseigne)
-    UPDATE public.territory_laposte
+    UPDATE fr.territory_laposte
     SET libgeo =
         --On retire le mot "PARIS" qui est en préfixe du libellé de chaque DEX, sauf pour celle qui vraiment de Paris
         -- de même avec le mot "GENTILLY" en préfixe de la DEX OM (du métier ELP)

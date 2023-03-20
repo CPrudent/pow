@@ -16,7 +16,7 @@ BEGIN
         , level
     )
     (
-        SELECT UNNEST(ARRAY[
+        SELECT 'FR', UNNEST(ARRAY[
             'ZA'
                 , 'CP'
                     , 'PDC_PPDC'
