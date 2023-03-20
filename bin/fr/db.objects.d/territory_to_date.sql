@@ -1006,23 +1006,23 @@ END
 $func$ LANGUAGE plpgsql;
 
 /* TEST
-SELECT * FROM get_municipality_to_date('05043', TO_DATE('01/01/1900', 'DD/MM/YYYY'))
-SELECT * FROM get_municipality_to_date('33110', TO_DATE('01/01/1900', 'DD/MM/YYYY'))
-SELECT * FROM get_municipality_to_date('33063', TO_DATE('01/01/1900', 'DD/MM/YYYY'))
-SELECT * FROM get_municipality_to_date('76601', TO_DATE('01/01/1900', 'DD/MM/YYYY'))
-SELECT * FROM get_municipality_to_date('76676', TO_DATE('01/01/1900', 'DD/MM/YYYY'))
-SELECT * FROM get_municipality_to_date('76676', TO_DATE('01/01/2006', 'DD/MM/YYYY'))
-SELECT * FROM get_municipality_to_date('02344', TO_DATE('01/01/1800', 'DD/MM/YYYY'))
-SELECT * FROM get_municipality_to_date('49382', TO_DATE('01/01/1800', 'DD/MM/YYYY'))
-SELECT * FROM get_municipality_to_date('44060', TO_DATE('01/01/1800', 'DD/MM/YYYY'))
-SELECT * FROM get_municipality_to_date('97123', TO_DATE('01/01/1800', 'DD/MM/YYYY'))
-SELECT * FROM get_municipality_to_date('31300', TO_DATE('01/01/1999', 'DD/MM/YYYY'))
+SELECT * FROM get_municipality_to_date('05043', TO_DATE('01/01/1900', 'DD/MM/YYYY'));
+SELECT * FROM get_municipality_to_date('33110', TO_DATE('01/01/1900', 'DD/MM/YYYY'));
+SELECT * FROM get_municipality_to_date('33063', TO_DATE('01/01/1900', 'DD/MM/YYYY'));
+SELECT * FROM get_municipality_to_date('76601', TO_DATE('01/01/1900', 'DD/MM/YYYY'));
+SELECT * FROM get_municipality_to_date('76676', TO_DATE('01/01/1900', 'DD/MM/YYYY'));
+SELECT * FROM get_municipality_to_date('76676', TO_DATE('01/01/2006', 'DD/MM/YYYY'));
+SELECT * FROM get_municipality_to_date('02344', TO_DATE('01/01/1800', 'DD/MM/YYYY'));
+SELECT * FROM get_municipality_to_date('49382', TO_DATE('01/01/1800', 'DD/MM/YYYY'));
+SELECT * FROM get_municipality_to_date('44060', TO_DATE('01/01/1800', 'DD/MM/YYYY'));
+SELECT * FROM get_municipality_to_date('97123', TO_DATE('01/01/1800', 'DD/MM/YYYY'));
+SELECT * FROM get_municipality_to_date('31300', TO_DATE('01/01/1999', 'DD/MM/YYYY'));
 
 -- municipality merge on 01/01/2018
 SELECT fr.get_municipality_to_date(
     code => '16296'
     , date_geography_from => TO_DATE('2018-01-06', 'YYYY-MM-DD')
-)
+);
  */
 
 SELECT public.drop_all_functions_if_exists('fr', 'get_municipality_to_date_from_laposte');
@@ -1077,8 +1077,8 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
-SELECT drop_all_functions_if_exists('fr', 'get_zone_address_to_date');
-CREATE OR REPLACE FUNCTION fr.get_zone_address_to_date(
+SELECT drop_all_functions_if_exists('fr', 'get_zone_address_to_now');
+CREATE OR REPLACE FUNCTION fr.get_zone_address_to_now(
     zone_address fr.laposte_zone_address
 )
 RETURNS fr.laposte_zone_address AS
@@ -1183,8 +1183,8 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
-SELECT drop_all_functions_if_exists('fr', 'set_zone_address_to_date');
-CREATE OR REPLACE FUNCTION fr.set_zone_address_to_date()
+SELECT drop_all_functions_if_exists('fr', 'set_zone_address_to_now');
+CREATE OR REPLACE FUNCTION fr.set_zone_address_to_now()
 RETURNS BOOLEAN AS
 $func$
 DECLARE
@@ -1214,7 +1214,7 @@ BEGIN
                 ELSE FALSE
             END AS modification
         FROM fr.laposte_zone_address AS za
-        CROSS JOIN fr.get_zone_address_to_date(za) AS za_to_now
+        CROSS JOIN fr.get_zone_address_to_now(za) AS za_to_now
         WHERE za_to_now.dt_reference_commune != za.dt_reference_commune
     )
     LOOP
@@ -1280,7 +1280,7 @@ WHERE co_etat = 'SUCCES' AND co_type = 'WIKIPEDIA_COMMUNE_NOUVELLE';
 INSERT INTO historique_import (co_type, co_etat, dt_debut_donnees, dt_fin_donnees, nb_enregistrements_a_traiter)
 VALUES ('WIKIPEDIA_COMMUNE_NOUVELLE', 'SUCCES', '01/01/2020'::DATE, '01/01/2020'::DATE, 0);
 
-SELECT * FROM public.set_zone_address_to_date();
+SELECT * FROM public.set_zone_address_to_now();
 SELECT * FROM fr.laposte_zone_address WHERE co_insee_commune != co_insee_commune_ran;
  */
 
@@ -1303,7 +1303,7 @@ BEGIN
     PERFORM public.setTerritoireInseeGeoToNow();
     --déjà fait toutes les semaines lors de l'import de RAN, (cf /ran/structure/za.sql)
     --donc théoriquement inutile, sauf retard ou MAJ des sources d'évènement avant application dans RAN (evenements commune insee, commune nouvelle wikipedia)
-    PERFORM fr.set_zone_address_to_date();
+    PERFORM fr.set_zone_address_to_now();
     --à faire régulièrement ?
     PERFORM public.setTerritoireHasDataGeoToNow(
         in_table => 'territoire_has_insee'
@@ -1321,6 +1321,38 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
-/* TEST
-SELECT public.setTerritoireCritereAggAdrPdiHistoGeoToNow(execution_time => INTERVAL '1 min')
+/*
+ * test if exists 'level' value into a table
  */
+SELECT drop_all_functions_if_exists('fr', 'exists_level');
+CREATE OR REPLACE FUNCTION fr.exists_level(
+    table_name VARCHAR
+    , levels IN VARCHAR[]
+    , schema_name VARCHAR DEFAULT 'public'
+    , where_in IN VARCHAR DEFAULT NULL
+)
+RETURNS BOOLEAN AS
+$func$
+DECLARE
+    _query TEXT;
+    _level VARCHAR;
+    _exists BOOLEAN DEFAULT FALSE;
+BEGIN
+    FOREACH _level IN ARRAY levels
+    LOOP
+        _query := CONCAT(
+            'SELECT TRUE FROM ', schema_name, '.', table_name, ' AS source
+            WHERE source.nivgeo = $1
+            ', CASE WHEN NULLIF(where_in, '') IS NOT NULL THEN CONCAT(' AND ', where_in) END, '
+            LIMIT 1'
+        );
+        EXECUTE _query INTO _exists USING _level;
+        _exists := COALESCE(_exists, FALSE);
+        IF NOT _exists THEN
+            RAISE NOTICE 'data NIVGEO % inexistante', _level;
+            RETURN FALSE;
+        END IF;
+    END LOOP;
+    RETURN _exists;
+END
+$func$ LANGUAGE plpgsql;

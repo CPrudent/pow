@@ -28,3 +28,5 @@
 -- POW
 \include_relative territory_level.sql
 \include_relative territory_to_date.sql
+\include_relative territory_supra.sql
+\include_relative territory.sql

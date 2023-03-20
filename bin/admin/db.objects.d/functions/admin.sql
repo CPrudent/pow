@@ -11,15 +11,14 @@ CREATE FUNCTION public.get_table_columns(
 RETURNS TEXT[] AS
 $func$
 DECLARE
-	_columns TEXT[];
+    _columns TEXT[];
 BEGIN
-	SELECT ARRAY_AGG(column_name)
-	INTO _columns
-	FROM information_schema.columns c
-	WHERE c.table_schema = schema_name
-		AND c.table_name = get_table_columns.table_name;
+    SELECT ARRAY_AGG(column_name)
+    INTO _columns
+    FROM information_schema.columns c
+    WHERE c.table_schema = schema_name AND c.table_name = get_table_columns.table_name;
 
-	RETURN _columns;
+    RETURN _columns;
 END
 $func$ LANGUAGE plpgsql;
 

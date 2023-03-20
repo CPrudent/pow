@@ -19,6 +19,7 @@ BEGIN
         SELECT UNNEST(ARRAY[
             'ZA'
                 , 'CP'
+                    , 'PDC_PPDC'
                         , 'PPDC_PDC'
                                 , 'DEX'
         , 'IRIS'
@@ -39,8 +40,9 @@ BEGIN
         CASE level
             WHEN 'ZA'                       THEN 'Croisement Commune & Code Postal'
                 WHEN 'CP'                   THEN 'Code Postal'
-                    WHEN 'PPDC_PDC'         THEN 'Zone de préparation/distribution du Courrier'
-                        WHEN 'DEX'          THEN 'Direction exécutive Courrier'
+                    WHEN 'PDC_PPDC'			THEN 'Zone de distribution du Courrier'
+                        WHEN 'PPDC_PDC'     THEN 'Zone de préparation/distribution du Courrier'
+                            WHEN 'DEX'      THEN 'Direction exécutive du Courrier'
         WHEN 'IRIS'                         THEN 'IRIS'
                 WHEN 'COM'                  THEN 'Commune'
                     WHEN 'COM_GLOBALE_ARM'  THEN 'Commune globale composée d''arrondissements municipaux'
@@ -58,8 +60,9 @@ BEGIN
         CASE level
             WHEN 'ZA'                       THEN 'Commune/CP'
                 WHEN 'CP'                   THEN 'Code Postal'
-                    WHEN 'PPDC_PDC'         THEN 'Zone prépa. courrier'
-                        WHEN 'DEX'          THEN 'DEX'
+                    WHEN 'PDC_PPDC'			THEN 'Zone distri. courrier'
+                        WHEN 'PPDC_PDC'     THEN 'Zone prépa. courrier'
+                            WHEN 'DEX'      THEN 'DEX'
         WHEN 'IRIS'                         THEN 'IRIS'
                 WHEN 'COM'                  THEN 'Commune'
                     WHEN 'COM_GLOBALE_ARM'  THEN 'Commune globale'
@@ -76,8 +79,9 @@ BEGIN
         CASE level
             WHEN 'ZA'                       THEN 'Croisements Communes & Code Postaux'
                 WHEN 'CP'                   THEN 'Code Postaux'
-                    WHEN 'PPDC_PDC'         THEN 'Zones de préparation du courrier'
-                        WHEN 'DEX'          THEN 'Directions exécutives courrier'
+                    WHEN 'PDC_PPDC'         THEN 'Zones de distribution du Courrier'
+                        WHEN 'PPDC_PDC'     THEN 'Zones de préparation du Courrier'
+                            WHEN 'DEX'      THEN 'Directions exécutives du Courrier'
         WHEN 'IRIS'                         THEN 'IRIS'
                 WHEN 'COM'                  THEN 'Communes'
                     WHEN 'COM_GLOBALE_ARM'  THEN 'Communes globales composées d''arrondissements municipaux'
@@ -94,8 +98,9 @@ BEGIN
         CASE level
             WHEN 'ZA'                       THEN 'le'
                 WHEN 'CP'                   THEN 'le'
-                    WHEN 'PPDC_PDC'         THEN 'la'
-                        WHEN 'DEX'          THEN 'la'
+                    WHEN 'PDC_PPDC'         THEN 'la'
+                        WHEN 'PPDC_PDC'     THEN 'la'
+                            WHEN 'DEX'      THEN 'la'
         WHEN 'IRIS'                         THEN 'l'''
                 WHEN 'COM'                  THEN 'la'
                     WHEN 'COM_GLOBALE_ARM'  THEN 'la'
@@ -112,8 +117,9 @@ BEGIN
         CASE level
             WHEN 'ZA'                       THEN 110
                 WHEN 'CP'                   THEN 210
-                    WHEN 'PPDC_PDC'         THEN 410
-                        WHEN 'DEX'          THEN 510
+                    WHEN 'PDC_PPDC'			THEN 310
+                        WHEN 'PPDC_PDC'     THEN 410
+                            WHEN 'DEX'      THEN 510
         WHEN 'IRIS'                         THEN 000
                 WHEN 'COM'                  THEN 200
                     WHEN 'COM_GLOBALE_ARM'  THEN 300
@@ -130,8 +136,9 @@ BEGIN
         CASE level
             WHEN 'ZA'                       THEN NULL
                 WHEN 'CP'                   THEN ARRAY['ZA']
-                    WHEN 'PPDC_PDC'         THEN ARRAY['CP']
-                        WHEN 'DEX'          THEN ARRAY['PPDC_PDC']
+                    WHEN 'PDC_PPDC'         THEN ARRAY['CP']
+                        WHEN 'PPDC_PDC'     THEN ARRAY['PDC_PPDC']
+                            WHEN 'DEX'      THEN ARRAY['PPDC_PDC']
         WHEN 'IRIS'                         THEN NULL
                 WHEN 'COM'                  THEN ARRAY['ZA', 'IRIS']
                     WHEN 'COM_GLOBALE_ARM'  THEN ARRAY['COM']

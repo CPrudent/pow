@@ -47,7 +47,7 @@ _AVAILABLE_ITEMS_JOIN_PIPE=${_AVAILABLE_ITEMS_JOIN_PIPE// /|}
 
 bash_args \
     --args_p '
-        force:Forcer l import même si celui-ci a déjà été fait;
+        force:Forcer le traitement même si celui-ci a déjà été fait;
         item:Type d élément a importer;
         year:Importer un millésime spécifique (au format YYYY-MM-DD) au lieu du dernier millésime disponible
     ' \

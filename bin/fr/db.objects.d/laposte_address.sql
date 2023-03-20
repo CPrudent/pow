@@ -121,8 +121,91 @@ END
 $proc$ LANGUAGE plpgsql;
 
 DO $$
+DECLARE
+    _query TEXT;
 BEGIN
     -- manage indexes
     CALL fr.set_laposte_address_index();
-END
-$$;
+
+    _query := '
+        SELECT
+            --INFORMATIONS IDENTIFIANT L ADRESSE (code, niveau, parenté, composition)
+            adresse.co_cea_determinant AS co_adr
+            , adresse.dt_reference AS dt_reference_adr
+            , adresse.co_niveau
+            , adresse.co_cea_parent AS co_adr_parent
+            , adresse.co_cea_l3 AS co_adr_l3
+            , adresse.co_cea_numero AS co_adr_numero
+            , adresse.co_cea_voie AS co_adr_voie
+            , adresse.co_cea_za AS co_adr_za
+            --INFORMATIONS SUR L ETAT DE L ADRESSE
+            , adresse.fl_diffusable
+            , adresse.fl_active
+            --LIGNE3 DE L ADRESSE
+            , l3.lb_standard_nn AS lb_ligne3
+            , CONCAT(l3.lb_descr_nn_groupe1, l3.lb_descr_nn_groupe2, l3.lb_descr_nn_groupe3) AS lb_ligne3_desc
+            --INFORMATIONS SUR LE NUMERO DE L ADRESSE
+            , numero.no_voie AS no_numero
+            , numero.lb_ext AS lb_extension_numero
+            , numero.lb_abr_nn AS lb_extension_numero_abrege
+            --VOIE DE L ADRESSE
+            , voie.co_voie
+            , voie.lb_type AS lb_type_voie
+            , voie.lb_type_abrege AS lb_type_voie_abrege
+            , voie.lb_voie
+            , voie.lb_voie_normalise
+            , voie.lb_md AS lb_voie_mot_directeur
+            , voie.lb_desc AS lb_voie_desc
+            --ZONE DE L ADRESSE
+            , za.co_postal AS co_postal
+            , za.lb_l5_nn AS lb_ligne5
+            , za.lb_in_ext_loc AS lb_localite
+            , za.lb_nn AS lb_localite_normalise
+            , za.lb_ach_nn AS lb_acheminement
+            , za.co_insee_commune
+            , za.co_insee_commune_precedente
+            , za.co_insee_departement
+            , za.fl_active AS fl_active_za
+            --COORDONNEES
+            , coord.co_cea AS co_coord
+            , ''RAN''::VARCHAR AS co_source_coord
+            , coord.dt_reference AS dt_reference_coord
+            , coord.no_type_localisation AS no_type_localisation_coord
+            , coord.va_x AS x_natif_coord
+            , coord.va_y AS y_natif_coord
+            , coord.gm_coord
+            --RAO
+            , rao.co_type AS rao_co_type
+            , rao.lb_libelle AS rao_lb_libelle
+            , rao.co_roc_site
+            , source_orga.code_regate AS rao_co_regate
+            , source_orga.libelle AS rao_libelle_site
+            , NULLIF(CONCAT(rao.co_type, rao.lb_libelle), '''') AS rao_co_tournee
+        FROM fr.laposte_address adresse
+        LEFT OUTER JOIN fr.laposte_zone_address za ON za.co_cea = adresse.co_cea_za
+        LEFT OUTER JOIN fr.laposte_street voie ON voie.co_cea = adresse.co_cea_voie
+        LEFT OUTER JOIN fr.laposte_housenumber numero ON numero.co_cea = adresse.co_cea_numero
+        LEFT OUTER JOIN fr.laposte_complement l3 ON l3.co_cea = adresse.co_cea_l3
+        LEFT OUTER JOIN fr.laposte_xy coord ON coord.co_cea = adresse.co_cea_determinant
+
+        LEFT OUTER JOIN fr.laposte_delivery_address rao ON rao.co_adr = adresse.co_cea_determinant
+            --TODO : modifier le type de la colonne source_orga.code : alter table source_orga alter column code type CHAR(6);
+            -- Pour éviter de devoir faire un CAST en VARCHAR et rendre exploitable l''index sur source_orga.code
+        LEFT OUTER JOIN fr.laposte_organization source_orga ON source_orga.code = rao.co_roc_site::VARCHAR
+    ';
+
+    DROP VIEW IF EXISTS fr.address_all_view CASCADE;
+    EXECUTE CONCAT_WS(
+        ' '
+        , 'CREATE VIEW fr.address_all_view AS'
+        , _query
+    );
+
+    DROP VIEW IF EXISTS fr.address_view CASCADE;
+    EXECUTE CONCAT_WS(
+        ' '
+        , 'CREATE VIEW fr.address_view AS'
+        , _query
+        , 'WHERE adresse.fl_active = TRUE AND adresse.fl_diffusable = TRUE'
+    );
+END $$;
