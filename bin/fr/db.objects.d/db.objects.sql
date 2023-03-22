@@ -25,6 +25,8 @@
 
 -- POW
 \include_relative ./functions/address.sql
+\include_relative ./functions/address_normalize.sql
+\include_relative constant.sql
 \include_relative territory_level.sql
 \include_relative territory_laposte.sql
 \include_relative territory_to_date.sql

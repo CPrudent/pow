@@ -22,13 +22,16 @@ _schemas_join_pipe=${_schemas_join_pipe// /|}
 bash_args \
     --args_p '
         schema_only:Limiter la mise à jour à un schéma;
+        constant:Indicateur de génération des constantes;
         relocate:Changer de schéma (après restauration)
     ' \
 	--args_v "
         schema_only:${_schemas_join_pipe};
+        constant:no|yes;
         relocate:no|yes
     " \
     --args_d '
+        constant:no;
         relocate:no
     ' \
     "$@" || exit $ERROR_CODE
@@ -65,6 +68,11 @@ for _schema in ${_schemas[@]}; do
                     execute_query \
                         --name CREATE_OBJECTS \
                         --query "$POW_DIR_BATCH/db.objects.d/db.objects.sql"
+                fi
+            } &&
+            {
+                if [ "$get_arg_constant" = yes ] && [ -x "$POW_DIR_BATCH/constant.sh" ]; then
+                    $POW_DIR_BATCH/constant.sh
                 fi
             } &&
             set_env --schema_code admin &&

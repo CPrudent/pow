@@ -180,7 +180,6 @@ BEGIN
                     fr.admin_express_arrondissement_municipal AS arm
                     INNER JOIN fr.admin_express_commune AS com
                     ON arm.insee_com = com.insee_com
-
             )
             AS commune_ign
             ON commune_ign.codgeo = za.co_insee_commune
