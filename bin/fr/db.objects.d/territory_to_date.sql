@@ -1037,7 +1037,7 @@ $func$
 DECLARE
     --_territory_to_date_t territory_to_date_t%ROWTYPE;
     _territory_to_date_t territory_to_date_t;
-    _date_address DATE := public.get_last_io(type_in => 'RAN_ADRESSE');
+    _date_address DATE := (public.get_last_io(type_in => 'RAN_ADRESSE')).dt_data_end;
     _municipalities RECORD;
     _municipality VARCHAR;
     _return BOOLEAN := TRUE;
@@ -1305,11 +1305,11 @@ BEGIN
     --donc théoriquement inutile, sauf retard ou MAJ des sources d'évènement avant application dans RAN (evenements commune insee, commune nouvelle wikipedia)
     PERFORM fr.set_zone_address_to_now();
     --à faire régulièrement ?
-    PERFORM public.setTerritoireHasDataGeoToNow(
-        in_table => 'territoire_has_insee'
-        , in_set_geo_supra => TRUE
+    PERFORM fr.set_territory_to_date(
+        table_name => 'territoire_has_insee'
+        , set_supra => TRUE
         -- pas nécessaire, on fait confiance à l'INSEE ? et pour garder l'indépendance avec la table territory ?
-        , in_check_exists => FALSE
+        , check_exists => FALSE
     );
 
     PERFORM public.setTerritoireGeoToNow();
@@ -1354,5 +1354,384 @@ BEGIN
         END IF;
     END LOOP;
     RETURN _exists;
+END
+$func$ LANGUAGE plpgsql;
+
+/*
+ * keep up to date a table w/ (nivgeo, codgeo, ...) mandatory columns
+ * update aggregate columns according to municipality events
+ */
+SELECT drop_all_functions_if_exists('fr', 'set_territory_to_date');
+CREATE OR REPLACE FUNCTION fr.set_territory_to_date(
+    table_name IN VARCHAR
+    , columns_agg IN TEXT[] DEFAULT NULL                -- NULL for all else list of column(s)
+    , columns_groupby IN TEXT[] DEFAULT NULL            -- idem
+    , where_in IN TEXT DEFAULT NULL
+    , set_supra IN BOOLEAN DEFAULT TRUE
+    , schema_name IN VARCHAR DEFAULT 'public'
+    , check_exists IN BOOLEAN DEFAULT TRUE
+    , date_geography_to IN DATE DEFAULT NOW()
+    , date_geography_default_from IN DATE DEFAULT NULL  -- for first time update
+    , upsert_mode IN BOOLEAN DEFAULT FALSE
+    , simulation IN BOOLEAN DEFAULT FALSE
+    , base_level IN VARCHAR DEFAULT 'COM'
+    , date_geography_metadata IN VARCHAR DEFAULT 'dtrgeo'
+)
+RETURNS BOOLEAN AS                                      -- FALSE if nothing to do
+$func$
+DECLARE
+    _date_geography_from DATE;
+    _is_init BOOLEAN DEFAULT FALSE;
+
+    _query TEXT;
+    _query_where TEXT;
+    _query_join TEXT;
+
+    _tmp_table_name VARCHAR;
+    _full_table_name VARCHAR := CONCAT(schema_name, '.', table_name);
+    _columns_select TEXT := 'ARRAY_AGG(source.codgeo) AS anciens_codgeo, SUM(commune_to_now.repartition) AS sum_repartition';
+    _columns_groupby TEXT := 'commune_to_now.codgeo';
+    _columns_insert TEXT;
+    _columns_onconflict TEXT;
+    _columns_onconflict_set TEXT;
+    _column_information information_schema.columns%ROWTYPE;
+    _column_type VARCHAR;
+    _column_name TEXT;
+    _column_geometry_information RECORD;
+
+    _nrows_deleted INTEGER := 0;
+    _nrows_inserted INTEGER := 0;
+
+    _levels VARCHAR[];
+    _level VARCHAR;
+
+    _self_use BOOLEAN := FALSE;
+    _exists_supra BOOLEAN;
+    _exists_nivgeo BOOLEAN := FALSE;
+    _exists_libgeo BOOLEAN := FALSE;
+    _start_time TIMESTAMP WITHOUT TIME ZONE;
+BEGIN
+    IF where_in IS NOT NULL AND date_geography_metadata = 'dtrgeo' THEN
+        RAISE 'Veuillez préciser un nom de métadonnées dtrgeo spécifique à la condition where';
+    END IF;
+
+    _query_where := NULLIF(CONCAT_WS(' AND ', _query_where, where_in), '');
+    FOREACH _column_name IN ARRAY get_table_columns(schema_name, table_name) LOOP
+        IF _column_name LIKE 'codgeo_%_parent' THEN
+            IF NOT _self_use THEN
+                _self_use := TRUE;
+                _levels := NULL::VARCHAR[];
+            END IF;
+            _level := UPPER(REPLACE(REPLACE(_column_name, 'codgeo_', ''), '_parent', ''));
+            _levels := ARRAY_APPEND(_levels, _level);
+        END IF;
+
+        IF _column_name IN ('id_histo', 'nb_histo_use') THEN CONTINUE;
+        ELSIF _column_name IN ('codgeo') THEN
+            _columns_select := CONCAT_WS(', ', _columns_select, 'commune_to_now.codgeo');
+            _columns_onconflict := CONCAT_WS(', ', _columns_onconflict, _column_name);
+            _query_join := CONCAT_WS(' AND ', _query_join, CONCAT('source.', _column_name, ' = destination.', _column_name));
+        ELSIF _column_name IN ('nivgeo') THEN
+            _exists_nivgeo := TRUE;
+            _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('''', base_level, '''::VARCHAR AS nivgeo'));
+            _query_where := CONCAT_WS(' AND ', _query_where, CONCAT('source.nivgeo = ''', base_level, ''''));
+            _columns_onconflict := CONCAT_WS(', ', _columns_onconflict, _column_name);
+            _query_join := CONCAT_WS(' AND ', _query_join, CONCAT('source.', _column_name, ' = destination.', _column_name));
+        ELSIF _column_name IN ('libgeo') THEN
+            _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('FIRST(commune_to_now.', _column_name, ') AS libgeo'));
+            _columns_onconflict_set := CONCAT_WS(', ', _columns_onconflict_set, CONCAT(_column_name, '=EXCLUDED.', _column_name));
+        ELSIF _column_name IN ('dt_reference', 'dt_reference_data') OR (_column_name = ANY(columns_groupby)) THEN
+            _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('source.', _column_name));
+            _columns_groupby := CONCAT_WS(', ', _columns_groupby, CONCAT('source.', _column_name));
+            _columns_onconflict := CONCAT_WS(', ', _columns_onconflict, _column_name);
+            _query_join := CONCAT_WS(' AND ', _query_join, CONCAT('source.', _column_name, ' = destination.', _column_name));
+        ELSE
+            _column_information := public.get_column_information(schema_name, table_name, _column_name);
+            _column_type := LOWER(COALESCE(NULLIF(_column_information.data_type, 'USER-DEFINED'), _column_information.udt_name));
+            IF _column_type IN ('numeric', 'integer', 'real', 'smallint', 'bigint', 'double precision') THEN
+                _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('SUM(source.', _column_name, ' * commune_to_now.repartition) AS ', _column_name));
+                _columns_onconflict_set := CONCAT_WS(', ', _columns_onconflict_set, CONCAT(_column_name, '=(destination.', _column_name, '+EXCLUDED.', _column_name, ')'));
+            ELSIF _column_type IN ('geometry') THEN
+                SELECT srid, type
+                INTO _column_geometry_information
+                FROM ext_postgis.geometry_columns
+                WHERE f_table_catalog = 'pow'
+                AND f_table_schema = schema_name
+                AND f_table_name = table_name
+                AND f_geometry_column = _column_name;
+                IF _column_geometry_information.type LIKE 'MULTI%' THEN
+                    _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('ST_Multi(ST_Union(source.', _column_name, ')) AS ', _column_name));
+                    _columns_onconflict_set := CONCAT_WS(', ', _columns_onconflict_set, CONCAT(_column_name, '=ST_Multi(ST_Union(destination.', _column_name, ', EXCLUDED.', _column_name, '))'));
+                ELSE
+                    _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('ST_Union(source.', _column_name, ') AS ', _column_name));
+                    _columns_onconflict_set := CONCAT_WS(', ', _columns_onconflict_set, CONCAT(_column_name, '=ST_Union(destination.', _column_name, ', EXCLUDED.', _column_name, ')'));
+                END IF;
+            ELSIF _column_type IN ('array') THEN
+                RAISE NOTICE 'Type % non géré, les valeurs NULL de la colonne % de la table %.% sont à recalculer', _column_type, _column_name, schema_name, table_name;
+                _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('NULL AS ', _column_name));
+                _columns_onconflict_set := CONCAT_WS(', ', _columns_onconflict_set, CONCAT(_column_name, '=NULL'));
+            ELSE
+                /* NOTE de GVOYAU : on utilise FIRST et non pas UNIQUE_AGG
+                car quand plusieurs communes fusionnent, même si les valeurs textuelles ne sont pas les mêmes pour toutes les communes
+                on garde la valeur de la commune qui absorbe
+                exemple : une commune absorbée a un département différent de celui de la commune qui absorbe
+                 */
+                _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('FIRST(source.', _column_name, ' ORDER BY source.codgeo=commune_to_now.codgeo DESC) AS ', _column_name));
+                /* NOTE de GVOYAU : pas de ONCONFLICT géré pour cette colonne, car pas nécessaire, car alors on garde la valeur actuelle
+                 */
+            END IF;
+        END IF;
+        _columns_insert := CONCAT_WS(', ', _columns_insert, _column_name);
+    END LOOP;
+
+    _levels = fr.get_levels(
+        order_in => 'ASC'
+        , among_levels => _levels --en cas de self use, on ordonne les niveaux
+        , subfilter => base_level
+    );
+
+    IF NOT fr.exists_level(
+        schema_name => schema_name
+        , table_name => table_name
+        , levels => ARRAY[base_level]
+        , where_in => _query_where
+    )
+    THEN
+        RAISE NOTICE 'Traitement GEO TO NOW % de %.% inutile (aucune donnée GEO)', base_level, schema_name, table_name;
+        RETURN FALSE;
+    END IF;
+
+    _date_geography_from := TO_DATE(NULLIF(public.get_table_metadata(schema_name, table_name)->>date_geography_metadata, ''), 'DD/MM/YYYY');
+    IF _date_geography_from IS NULL THEN
+        _is_init := TRUE;
+        IF date_geography_metadata IS NOT NULL THEN
+            /* NOTE
+            on considère que les données ne peuvent pas être plus à jour que le système de mise à jour ?
+             */
+            _date_geography_from := LEAST(date_geography_metadata, fr.get_most_recent_municipality_to_date(date_geography_to => date_geography_to));
+            /* NOTE
+            On préfère enregistrer l'information, pour s'en souvenir plus tard, au cas où la date de géo par défaut serait changeante dans le temps (exemple : addTerritoireHasDataHisto)
+             */
+            IF NOT simulation THEN
+                --RAISE NOTICE 'set_table_metadata % % % = %', schema_name, table_name, date_geography_metadata, _date_geography_from;
+                PERFORM public.set_table_metadata(schema_name, table_name, CONCAT('{"', date_geography_metadata, '":"', TO_CHAR(_date_geography_from, 'DD/MM/YYYY'), '"}'));
+            END IF;
+        ELSE
+            RAISE 'Veuillez préciser la date de référence de la géographie initiale de la table %.%', schema_name, table_name;
+        END IF;
+    END IF;
+
+    date_geography_to := fr.get_most_recent_municipality_to_date(date_geography_from => _date_geography_from, date_geography_to => date_geography_to);
+    /* NOTE
+    si c'est la première fois qu'on met à jour ces données, et qu'un contrôle d'existance est demandé, on fait quand même l'appel à getCommuneToNow
+     */
+    IF date_geography_to <= _date_geography_from AND (NOT _is_init OR NOT check_exists ) THEN
+        RAISE NOTICE 'Traitement GEO TO NOW % de %.% inutile (GEO déjà à jour)', base_level, schema_name, table_name;
+        IF NOT set_supra THEN RETURN FALSE; END IF;
+    ELSE
+        RAISE NOTICE '% : début traitement GEO TO NOW de %.% du % au %', TO_CHAR(clock_timestamp(), 'HH24:MI:SS'), schema_name, table_name, _date_geography_from, date_geography_to;
+
+        _tmp_table_name := CONCAT('tmp_gtn_', MD5(CONCAT(table_name, _columns_insert)));
+        _query := CONCAT(
+            'CREATE TEMPORARY TABLE IF NOT EXISTS ', _tmp_table_name, ' AS (
+                SELECT
+                    NULL::VARCHAR[] AS anciens_codgeo
+                    , NULL::NUMERIC AS sum_repartition
+                    , ', _columns_insert, ' FROM ', _full_table_name, ' LIMIT 0
+            ) WITH NO DATA;
+            TRUNCATE TABLE ', _tmp_table_name, ';
+            --DROP INDEX IF EXISTS idx_', _tmp_table_name, '_pk;
+            INSERT INTO ', _tmp_table_name, '(
+                anciens_codgeo, sum_repartition, ', _columns_insert, '
+            )
+            (
+            ', CASE WHEN base_level = 'COM' THEN CONCAT(
+                'WITH distinct_commune AS (
+                    SELECT source.codgeo AS old_codgeo_com', CASE WHEN _exists_libgeo THEN ', source.libgeo' END, '
+                    FROM ', _full_table_name, ' AS source
+                    ', CASE WHEN _query_where IS NOT NULL THEN CONCAT('WHERE ', _query_where) END, '
+                    GROUP BY source.codgeo
+                )
+                , commune_to_now AS (
+                    SELECT
+                        commune_to_now.codgeo
+                        , commune_to_now.libgeo
+                        , commune_to_now.repartition
+                        , distinct_commune.old_codgeo_com AS old_codgeo
+                    FROM distinct_commune
+                    INNER JOIN fr.get_municipality_to_date(
+                        code => distinct_commune.old_codgeo_com
+                        , date_geography_from => $3
+                        , name => ', CASE WHEN _exists_libgeo THEN 'distinct_commune.libgeo' ELSE 'NULL' END, '
+                        , check_exists => $1
+                        , with_deleted => $4 --Besoin des suppressions pour le mode UPSERT
+                        , date_geography_to => $2
+                    ) AS commune_to_now
+                    ON (NOT $4 OR commune_to_now.is_new) --Uniquement ce qui est nouveau si on est en mode UPSERT
+                )')
+            WHEN base_level IN ('ZA', 'IRIS') THEN CONCAT(
+                'WITH distinct_commune AS (
+                    SELECT LEFT(source.codgeo, 5) AS old_codgeo_com, ARRAY_AGG(DISTINCT source.codgeo) AS old_codgeos_subcom
+                    FROM ', _full_table_name, ' AS source
+                    ', CASE WHEN _query_where IS NOT NULL THEN CONCAT('WHERE ', _query_where) END, '
+                    GROUP BY LEFT(source.codgeo, 5)
+                )
+                , commune_to_now AS (
+                    SELECT
+                        CONCAT(commune_to_now.codgeo, ''-'', RIGHT(UNNEST(distinct_commune.old_codgeos_subcom), 5))::VARCHAR AS codgeo
+                        , commune_to_now.libgeo --TODO : REPLACE [0-9]{5}
+                        , commune_to_now.repartition
+                        , UNNEST(distinct_commune.old_codgeos_subcom) AS old_codgeo
+                    FROM distinct_commune
+                    INNER JOIN fr.get_municipality_to_date(
+                        code => distinct_commune.old_codgeo_com
+                        , date_geography_from => $3
+                        --TODO, name => ', CASE WHEN _exists_libgeo THEN 'distinct_commune.libgeo' ELSE 'NULL' END, '
+                        , check_exists => $1
+                        , with_deleted => $4 --Besoin des suppressions pour le mode UPSERT
+                        , date_geography_to => $2
+                    ) AS commune_to_now
+                    ON (NOT $4 OR commune_to_now.is_new) --Uniquement ce qui est nouveau si on est en mode UPSERT
+                )')
+            END,
+                'SELECT ', _columns_select, '
+                FROM ', _full_table_name, ' AS source
+                INNER JOIN commune_to_now ON commune_to_now.old_codgeo = source.codgeo
+                ', CASE WHEN _query_where IS NOT NULL THEN CONCAT('WHERE ', _query_where) END, '
+                GROUP BY ', _columns_groupby, '
+            );
+            UPDATE ', _tmp_table_name, ' AS destination
+            SET anciens_codgeo=ARRAY_APPEND(destination.anciens_codgeo, source.codgeo), ', REPLACE(_columns_onconflict_set, 'EXCLUDED', 'source'), '
+            FROM (
+                --Cas des communes déléguées absentes à cause d''une date de référence erronée
+                WITH destination AS (SELECT * FROM ', _tmp_table_name, ' WHERE NOT (codgeo = ANY(anciens_codgeo)))
+                SELECT source.*
+                FROM ', _full_table_name, ' AS source
+                INNER JOIN destination ON ', _query_join, '
+            ) AS source
+            WHERE ', _query_join);
+        IF NOT simulation THEN
+            _start_time := clock_timestamp();
+            EXECUTE _query USING check_exists, date_geography_to, _date_geography_from, upsert_mode;
+            RAISE NOTICE 'Traitement GEO TO NOW "%" : %', LEFT(_query, 30), (clock_timestamp() - _start_time);
+        ELSE
+            RAISE NOTICE '% - % - % - % - %', _query, check_exists, date_geography_to, _date_geography_from, upsert_mode;
+        END IF;
+
+        IF NOT upsert_mode THEN
+            _query := CONCAT(
+                'DELETE FROM ', _full_table_name, ' AS source
+                WHERE ', _query_where
+            );
+        ELSE
+            IF _exists_nivgeo THEN
+                _query := CONCAT(
+                    'UPDATE ', _full_table_name, ' AS source
+                    SET nivgeo = CONCAT(source.nivgeo, ''_A_'', TO_CHAR($1, ''YYYYMMDD''))
+                    FROM ', _tmp_table_name, ' AS destination
+                    WHERE ', REPLACE(_query_join, 'destination.codgeo', 'ANY(destination.anciens_codgeo)'), '
+                    ', CASE WHEN _query_where IS NOT NULL THEN CONCAT(' AND ', _query_where) END, ' --a priori pas indispensable, la jointure sur des données déjà filtrée étant suffisante'
+                );
+            ELSE
+                _query := CONCAT(
+                    'DELETE FROM ', _full_table_name, ' AS source
+                    USING ', _tmp_table_name, ' AS destination
+                    WHERE ', REPLACE(_query_join, 'destination.codgeo', 'ANY(destination.anciens_codgeo)'), '
+                    ', CASE WHEN _query_where IS NOT NULL THEN CONCAT(' AND ', _query_where) END, ' --a priori pas indispensable, la jointure sur des données déjà filtrée étant suffisante'
+                );
+            END IF;
+        END IF;
+        IF NOT simulation THEN
+            _start_time := clock_timestamp();
+            EXECUTE _query USING _date_geography_from;
+            GET DIAGNOSTICS _nrows_deleted = ROW_COUNT;
+            RAISE NOTICE 'Traitement GEO TO NOW "%" : %', LEFT(_query, 30), (clock_timestamp() - _start_time);
+        ELSE
+            RAISE NOTICE '%', _query;
+        END IF;
+
+        IF NOT upsert_mode THEN
+            _query := CONCAT(
+                'INSERT INTO ', _full_table_name, ' AS destination (', _columns_insert, ') (SELECT ', _columns_insert, ' FROM ', _tmp_table_name, ')'
+            );
+        ELSE
+            /* NOTE
+            en théorie tous les territoires anciens ont un évènement vers le nouveau territoire
+            Mais dans le cas de d'une création d'une commune nouvelle et de date de géographie erronée, on ne peut détecter l'erreur pour la commune dont le code est gardé
+            Il faut donc gérer un conflit lors de l'insert, mais la solution ON CONFLICT n'est pas compatible avec les vues + instead of
+            Ce problème est résolu par un UPDATE de la table tmp_gtn juste après sa création
+            */
+            _query := CONCAT(
+                'INSERT INTO ', _full_table_name, ' AS destination (', _columns_insert, ') (SELECT ', _columns_insert, ' FROM ', _tmp_table_name, ' AS source WHERE sum_repartition > 0 AND NOT EXISTS (SELECT 1 FROM ', _full_table_name, ' AS destination WHERE ', _query_join, '))'
+                --ON CONFLICT (', _columns_onconflict, ') DO UPDATE SET ', _columns_onconflict_set
+            );
+        END IF;
+        IF NOT simulation THEN
+            _start_time := clock_timestamp();
+            EXECUTE _query;
+            GET DIAGNOSTICS _nrows_inserted = ROW_COUNT;
+            RAISE NOTICE 'Traitement GEO TO NOW "%" : %', LEFT(_query, 30), (clock_timestamp() - _start_time);
+        ELSE
+            RAISE NOTICE '%', _query;
+        END IF;
+
+        RAISE NOTICE '% : Fin traitement GEO TO NOW % de %.% du % au % : % (%-%)', TO_CHAR(clock_timestamp(), 'HH24:MI:SS'), base_level, schema_name, table_name, _date_geography_from, date_geography_to, CONCAT(CASE WHEN (_nrows_inserted-_nrows_deleted) >=0 THEN '+' ELSE '-' END, ABS(_nrows_inserted-_nrows_deleted)), _nrows_inserted, _nrows_deleted;
+
+        IF NOT simulation THEN
+            --RAISE NOTICE 'set_table_metadata % % % = %', schema_name, table_name, date_geography_metadata, date_geography_to;
+            PERFORM public.set_table_metadata(schema_name, table_name, CONCAT('{"', date_geography_metadata, '":"', TO_CHAR(date_geography_to, 'DD/MM/YYYY'), '"}'));
+        END IF;
+    END IF;
+
+    IF set_supra THEN
+        --Y a t-il des territoires d'un niveau autre que le niveau de base, qui est un sous découpage du niveau de base ?
+        _exists_supra := FALSE;
+        IF _nrows_inserted = 0
+        AND _nrows_deleted = 0
+        AND _is_init = FALSE --Si c'est la première fois qu'on met à jour ces données, on fait quand même la mise à jour SUPRA quoi qu'il en soit
+        THEN
+            _exists_supra := TRUE;
+            --Vérification des niveaux parents à générer
+            --On prend parmi les niveaux possibles
+            FOREACH _level IN ARRAY _levels
+            LOOP
+                IF  --Ceux qui sont différents du niveau de base
+                    _level != base_level
+                THEN
+                    IF NOT fr.exists_level(
+                            schema_name => schema_name
+                            , table_name => table_name
+                            , levels => ARRAY[_level]
+                            , where_in => where_in
+                    )
+                    THEN
+                        RAISE NOTICE 'GEO SUPRA % inexistant', _level;
+                        _exists_supra := FALSE;
+                        EXIT;
+                    END IF;
+                END IF;
+            END LOOP;
+        END IF;
+
+        IF _nrows_inserted = 0
+        AND _nrows_deleted = 0
+        AND _exists_supra = TRUE
+        THEN
+            RAISE NOTICE 'Traitement GEO SUPRA % de % inutile (GEO à jour, SUPRA déjà présent)', base_level, table_name;
+            RETURN FALSE;
+        ELSE
+            PERFORM fr.set_territory_supra(
+                table_name => table_name
+                , columns_agg => columns_agg
+                , columns_groupby => columns_groupby
+                , where_in => where_in
+                , schema_name => schema_name
+                , base_level => base_level
+                , simulation => simulation
+            );
+        END IF;
+    END IF;
+
+    RETURN TRUE;
 END
 $func$ LANGUAGE plpgsql;

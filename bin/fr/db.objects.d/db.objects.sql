@@ -2,8 +2,6 @@
  * schema FR : list of objects to create
  */
 
-\include_relative ./functions/address.sql
-
 -- BAL
 
 \include_relative bal_municipality.sql
@@ -26,6 +24,7 @@
 \include_relative laposte_delivery_point.sql
 
 -- POW
+\include_relative ./functions/address.sql
 \include_relative territory_level.sql
 \include_relative territory_laposte.sql
 \include_relative territory_to_date.sql

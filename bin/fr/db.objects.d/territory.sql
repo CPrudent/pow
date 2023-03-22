@@ -37,6 +37,10 @@ CREATE OR REPLACE FUNCTION fr.set_territory()
 RETURNS BOOLEAN
 AS $$
 DECLARE
+    _date_ign TIMESTAMP := (public.get_last_io(type_in => 'IGN_ADMINEXPRESS')).dt_data_end;
+    _date_insee TIMESTAMP := (public.get_last_io(type_in => 'INSEE_DECOUPAGE_COMMUNAL')).dt_data_end;
+    _date_ran TIMESTAMP := (public.get_last_io(type_in => 'RAN_ADRESSE')).dt_data_end;
+
 BEGIN
     /*
     --On vérifie que les sources sont à jour
@@ -47,20 +51,33 @@ BEGIN
     PERFORM public.setTerritoireHasDataGeoToNow(
         in_table => 'territoire_has_insee'
         , in_set_geo_supra => TRUE
-        -- pas nécessaire, on fait confiance à l'INSEE ? et pour garder l'indépendance avec la table territoire ?
+        -- pas nécessaire, on fait confiance à l'INSEE ? et pour garder l'indépendance avec la table territory ?
         , in_check_exists => FALSE
     );
         */
     --On considère cette table de même à jour
-    PERFORM public.set_table_metadata('public', 'territoire', CONCAT('{"dtrgeo":"', TO_CHAR(public.getDateMajCommuneToNow(), 'DD/MM/YYYY'), '"}'));
+    PERFORM public.set_table_metadata('public', 'territory', CONCAT('{"dtrgeo":"', TO_CHAR(public.getDateMajCommuneToNow(), 'DD/MM/YYYY'), '"}'));
+     */
+
+    /*
+    SELECT dt_fin_donnees INTO v_dtrgeo_source FROM historique_import WHERE co_type = 'IGN_ADMINEXPRESS' AND co_etat = 'SUCCES';
+    SELECT TO_DATE(NULLIF(public.get_table_metadata('public','territoire_ign')->>'dtrgeo_source',''),'DD/MM/YYYY') INTO v_table_metadata_dtrgeo_source;
+    SELECT TO_DATE(NULLIF(public.get_table_metadata('public','territoire_ign')->>'dtrgeo',''),'DD/MM/YYYY') INTO v_table_metadata_dtrgeo;
+    IF v_dtrgeo_source IS NULL THEN
+        RAISE NOTICE 'Territoires IGN non importés';
+    ELSIF in_force = FALSE AND v_table_metadata_dtrgeo_source >= v_dtrgeo_source THEN
+        RAISE NOTICE 'Recopie des territoires IGN importés inutile car pas plus récents (géo du %) que ceux intégrés (géo du % à jour au %)',v_dtrgeo_source,v_table_metadata_dtrgeo_source,v_table_metadata_dtrgeo;
+    ELSE
+        RAISE NOTICE 'Recopie des territoires IGN importés (géo du %)',v_dtrgeo_source;
      */
 
     TRUNCATE TABLE fr.territory;
     PERFORM public.drop_table_indexes('fr', 'territory');
 
     /* NOTE
-     Ajout des territoires du niveau le plus bas : COM_CP = croisement CP et COMMUNE, issu de RAN + RAO + INSEE + IGN
-     CROISEMENT CP ET COMMUNE (une commune peut être sous-découpée en CP, et un CP peut être la composition de plusieurs communes entières ou non)
+     Ajout des territoires du niveau le plus bas : ZA = croisement CP et COMMUNE, issu de RAN + RAO + INSEE + IGN
+     croisement CP et COMMUNE :
+     une commune peut être sous-découpée en CP, et un CP peut être la composition de plusieurs communes entières ou non
      */
     INSERT INTO fr.territory (
         nivgeo
@@ -105,12 +122,12 @@ BEGIN
             'ZA' AS nivgeo
             , za.codgeo
             , za.dt_reference_geo
-            , CASE
-                WHEN commune_ign.codgeo IS NOT NULL THEN
-                    CONCAT(za.co_postal, ' ', REPLACE(REPLACE(commune_ign.libgeo, 'œ', 'oe'), 'Œ', 'Oe'))
-                ELSE
-                    za.libgeo
-            END AS libgeo
+            , COALESCE(
+                za.libgeo
+                , CASE
+                    WHEN commune_ign.codgeo IS NOT NULL THEN
+                        CONCAT(za.co_postal, ' ', REPLACE(REPLACE(commune_ign.libgeo, 'œ', 'oe'), 'Œ', 'Oe'))
+                END) AS libgeo
             , za.co_insee_commune AS codgeo_com_parent
             , commune_insee.com AS codgeo_com_globale_arm_parent
             , COALESCE(
@@ -223,20 +240,14 @@ BEGIN
 
     CREATE UNIQUE INDEX IF NOT EXISTS iux_territory_codgeo_za ON fr.territory (codgeo) WHERE nivgeo = 'ZA';
 
-    --utile ? CREATE UNIQUE INDEX IF NOT EXISTS idx_territoire_key_base ON fr.territory (codgeo) WHERE nivgeo = 'COM_CP';
-
-    /* Vérification inutile car les sources étant à jour, le résultat croisé l'est aussi
-    --Mise à jour GEO + init / maj SUPRA si nécessaire + UPDATE SUPRA si nécessaire
-    PERFORM public.setTerritoireGeoToNow();
-        * On fait donc un simple setGeoSupra = updateGeoSupra spécifique :
-        */
+    -- initialize SUPRA levels
     PERFORM fr.set_territory_supra(
         table_name => 'territory'
         , schema_name => 'fr'
         , base_level => 'ZA'
     );
 
-    --PERFORM updateTerritoireGeoSupra();
+    PERFORM fr.update_territory();
 
     RETURN TRUE;
 END $$ LANGUAGE plpgsql;
@@ -246,284 +257,272 @@ SELECT drop_all_functions_if_exists('public', 'setTerritoireGeoToNow');
 CREATE OR REPLACE FUNCTION public.setTerritoireGeoToNow()
 RETURNS BOOLEAN
 AS $$
-DECLARE
 BEGIN
-	IF public.setTerritoireHasDataGeoToNow(
-		in_table => 'territoire'
-		, in_nivgeo_base => 'COM_CP'
-		, in_set_geo_supra => TRUE
-		, in_check_exists => FALSE
-	) THEN
-		PERFORM public.updateTerritoireGeoSupra();
-		--Recalcul du voisinage, là ou il est indéfini suite MAJ geo
-		PERFORM public.updateTerritoireVoisins(in_null_only => TRUE);
-		RETURN TRUE;
-	END IF;
-	RETURN FALSE;
-END $$ LANGUAGE plpgsql;
-
-SELECT drop_all_functions_if_exists('public', 'updateTerritoireGeoSupra');
-CREATE OR REPLACE FUNCTION public.updateTerritoireGeoSupra()
-RETURNS BOOLEAN
-AS $$
-DECLARE
-	v_nivgeos VARCHAR[] := public.getAllNivgeos(in_order => 'ASC');
-	v_nivgeo VARCHAR;
-BEGIN
-	--Population sur niveau COM
-	IF column_exists('public', 'territoire_has_insee_histo', 'pmun') THEN
-		RAISE NOTICE 'Population issue des series historiques INSEE';
-		UPDATE fr.territory
-		SET population = (
-			SELECT insee_histo.pmun
-			FROM fr.territory_has_insee_histo AS insee_histo
-			WHERE insee_histo.pmun IS NOT NULL
-			AND insee_histo.nivgeo = 'COM'
-			AND insee_histo.codgeo = territoire.codgeo
-			ORDER BY insee_histo.dt_reference_data DESC LIMIT 1
-		)
-		WHERE territoire.nivgeo = 'COM';
-	ELSE
-		RAISE NOTICE 'Population issue de ADMIN EXPRESS IGN';
-		UPDATE fr.territory
-		SET population = commune_ign.population
-		FROM fr.territory_ign AS commune_ign
-		WHERE commune_ign.nivgeo = 'COM'
-		AND commune_ign.codgeo = territoire.codgeo
-		AND territoire.nivgeo = 'COM';
-	END IF;
-	/* EXEMPLE de différence de population sur le département 59
-	2603723 (ign)
-	2605238 (insee p_pop15)
-	2603723 (insee p_pop16)
-	SELECT SUM("D68_POP"::INTEGER), SUM("P11_POP"::INTEGER), SUM("P16_POP"::INTEGER) FROM insee.serie_historique
-	*/
-	--Remontée supra COM
-	PERFORM public.setTerritoireHasDataGeoSupra(
-		in_table => 'territoire'
-		, in_nivgeo_base => 'COM'
-		, in_update_mode => TRUE
-		, in_columns_agg => ARRAY['population']
-	);
-
-	/* inutile depuis qu'on ne calcule les parentés qu'entre niveaux qui en sont des sous découpages (cf territoire_has_data.sql, fonction setTerritoireHasDataGeoSupra)
-	--Les DEX et régions sont équivalentes, il est inutile d'étendre de l'un vers l'autre et vice-versa, on supprime les parentés
-	UPDATE fr.territory
-	SET codgeo_reg_parent = NULL
-		, codgeo_dec_parent = NULL
-	WHERE nivgeo IN ('REG', 'DEC');
-	*/
-
-	--Pour les EPCI, on souhaite enregistrer en parenté le département et la région majoritaire
-	RAISE NOTICE 'Calcul département/région majoriaire pour les EPCI';
-	WITH com_groupby_epci AS (
-		SELECT
-			codgeo_epci_parent AS codgeo
-			, (
-				WITH dep_by_nb_com AS (
-					SELECT dep, COUNT(*) AS nb_com FROM UNNEST(ARRAY_AGG(codgeo_dep_parent)) AS dep GROUP BY dep
-				)
-				SELECT dep FROM dep_by_nb_com ORDER BY nb_com DESC LIMIT 1
-			) AS codgeo_dep_majoritaire
-			, (
-				WITH reg_by_nb_com AS (
-					SELECT reg, COUNT(*) AS nb_com FROM UNNEST(ARRAY_AGG(codgeo_reg_parent)) AS reg GROUP BY reg
-				)
-				SELECT reg FROM reg_by_nb_com ORDER BY nb_com DESC LIMIT 1
-			) AS codgeo_reg_majoritaire
-		FROM fr.territory
-		WHERE nivgeo = 'COM' AND codgeo_epci_parent IS NOT NULL
-		GROUP BY codgeo_epci_parent
-	)
-	UPDATE fr.territory
-	SET codgeo_dep_parent = com_groupby_epci.codgeo_dep_majoritaire
-		, codgeo_reg_parent = com_groupby_epci.codgeo_reg_majoritaire
-	FROM com_groupby_epci WHERE com_groupby_epci.codgeo = territoire.codgeo
-	AND territoire.nivgeo = 'EPCI';
-
-	RAISE NOTICE 'Libellés des territoires : COM, COM_GLOBALE_ARM';
-	--COMMUNE et COMMUNE globale d'arrondissements : libellé IGN par défaut, sinon libellé RAN
-	UPDATE fr.territory
-	SET libgeo = COALESCE(
-			territoire_ign.libgeo
-			, (
-				SELECT STRING_AGG(DISTINCT za.lb_acheminement, ' + ') AS libgeo
-				FROM public.za_ran_ad_view AS za
-				WHERE za.co_insee_commune = territoire.codgeo
-			)
-		)
-	FROM fr.territory_ign
-	WHERE territoire.nivgeo IN ('COM', 'COM_GLOBALE_ARM')
-	AND territoire_ign.nivgeo = territoire.nivgeo
-	AND territoire_ign.codgeo = territoire.codgeo;
-
-	/* On préfère les EPCI de l'INSEE qui cette année 2020 sont plus rapidement à jour que ADMIN EXPRESS DE L'IGN (inconvénient : maj annuelle)
-	 * VOIR EVENTUELLEMENT A PRENDRE GOUV_COLLECTIVITES_LOCALES : https://www.collectivites-locales.gouv.fr/liste-et-composition-des-epci-a-fiscalite-propre
-	 * Attention structure légèrement différente pour les arrondissements / communes globales composées d'arrondissements (cf territoire_epci_compare.sql)
-	--EPCI : libellé et type IGN
-	UPDATE fr.territory
-	SET libgeo = territoire_ign.libgeo
-		, typgeo = territoire_ign.typgeo
-	FROM fr.territory_ign
-	WHERE territoire.nivgeo = 'EPCI'
-	AND territoire_ign.nivgeo = territoire.nivgeo
-	AND territoire_ign.codgeo = territoire.codgeo;
-	*/
-	RAISE NOTICE 'Libellés des territoires : EPCI';
-	/* EPCI : libellé et type de collectivites-locales.gouv.fr
-	WITH collectivites_locales_epci AS (
-		SELECT DISTINCT
-			codgeo_epci_parent AS codgeo
-			, libgeo_epci_parent AS libgeo
-			, typgeo_epci_parent AS typgeo
-		FROM divers.collectivites_locales_gouv_epci_com
-	)
-	UPDATE fr.territory
-	SET libgeo = collectivites_locales_epci.libgeo
-		, typgeo = collectivites_locales_epci.typgeo
-	FROM collectivites_locales_epci
-	WHERE territoire.nivgeo = 'EPCI'
-	AND territoire.codgeo = collectivites_locales_epci.codgeo;
-	*/
-	--EPCI : libellé et type de DGCL/BANATIC
-	UPDATE fr.territory
-	SET libgeo = banatic_liste_epci.nom_du_groupement
-		, typgeo = banatic_liste_epci.nature_juridique
-	FROM divers.banatic_liste_epci
-	WHERE territoire.nivgeo = 'EPCI'
-	AND territoire.codgeo = banatic_liste_epci.n_siren;
-
-	RAISE NOTICE 'Libellés des territoires : ARR, CV, DEP, REG';
-	--DEPARTEMENT, REGION : On préfère les libellés INSEE, car les libellés IGN sont en majuscules
-	--ARRONDISSEMENTS, CANTON VILLE : Libellés INSEE, on n'a pas les libellés IGN
-	UPDATE fr.territory
-	SET libgeo = territoire_insee.libgeo
-	FROM fr.territory_insee
-	WHERE territoire.nivgeo IN ('ARR', 'CV', 'DEP', 'REG')
-	AND territoire_insee.nivgeo = territoire.nivgeo
-	AND territoire_insee.codgeo = territoire.codgeo;
-
-	RAISE NOTICE 'Libellés des territoires : SUPRA CP';
-	--Libellés des territoires POSTAUX
-	UPDATE fr.territory
-	SET libgeo = territory_laposte.libgeo
-	FROM fr.territory_postal
-	WHERE public.nivgeoIsSousDecoupageDeNivgeo('CP', territoire.nivgeo)
-	AND territory_laposte.nivgeo = territoire.nivgeo
-	AND territory_laposte.codgeo = territoire.codgeo;
-
-	RAISE NOTICE 'Libellés des territoires : CP';
-	--Codes Postaux : libellé = code et libellé des communes liées (entièrement ou partiellement)
-	WITH libelle_cp AS (
-		SELECT
-			territoire_com_cp.codgeo_cp_parent AS codgeo
-			, STRING_AGG(DISTINCT territoire_com.libgeo, ', ' ORDER BY territoire_com.libgeo) AS libgeo
-		FROM territoire AS territoire_com
-		INNER JOIN territoire AS territoire_com_cp
-			ON territoire_com_cp.nivgeo = 'COM_CP'
-			AND territoire_com_cp.codgeo_com_parent = territoire_com.codgeo
-		WHERE territoire_com.nivgeo = 'COM'
-		GROUP BY territoire_com_cp.codgeo_cp_parent
-	)
-	UPDATE fr.territory
-	SET libgeo = libelle_cp.libgeo
-	FROM libelle_cp
-	WHERE territoire.nivgeo = 'CP'
-	AND territoire.codgeo = libelle_cp.codgeo;
-
-	--Ajout libellé DVE
-	WITH libelle_dve AS (
-		SELECT
-			code_dve 	AS codgeo,
-			libelle_dve	AS libgeo
-		FROM divers.referentiel_dve_dr
-	)
-
-	UPDATE fr.territory
-	SET libgeo = libelle_dve.libgeo
-	FROM libelle_dve
-	WHERE territoire.nivgeo = 'DVE'
-	AND territoire.codgeo = libelle_dve.codgeo;
-
-	UPDATE fr.territory
-	SET libgeo = CASE CONCAT_WS(':', nivgeo, territoire.codgeo)
-		WHEN 'METROPOLE_DOM_TOM:FRM' THEN 'France métropolitaine'
-		WHEN 'METROPOLE_DOM_TOM:FRO' THEN 'France d''outre-mer'
-		WHEN 'PAYS:FR' THEN 'France'
-	END
-	WHERE territoire.nivgeo IN ('METROPOLE_DOM_TOM', 'PAYS');
-
-	RAISE NOTICE 'Calcul des index';
-	FOREACH v_nivgeo IN ARRAY v_nivgeos
-	LOOP
-		EXECUTE CONCAT(
-			'CREATE UNIQUE INDEX IF NOT EXISTS idx_territoire_codgeo_', v_nivgeo, ' ON fr.territory (codgeo) WHERE nivgeo = ''', v_nivgeo, ''''
-		);
-		--TODO : voir si ces indexes sont judicieux
-		IF column_exists('public', 'territoire', CONCAT('codgeo_', v_nivgeo, '_parent')) THEN
-			EXECUTE CONCAT(
-				'CREATE INDEX IF NOT EXISTS idx_territoire_codgeo_', v_nivgeo, '_parent ON fr.territory (nivgeo, codgeo_', v_nivgeo, '_parent)'
-			);
-		END IF;
-	END LOOP;
-
-	CREATE UNIQUE INDEX IF NOT EXISTS idx_territoire_key ON fr.territory (nivgeo, codgeo);
-	CREATE INDEX IF NOT EXISTS idx_territoire_nivgeo ON fr.territory (nivgeo);
-	--index pour optimiser la recherche de territoire par nom approchant
-	--TODO : à revoir avec utilisation trigramme ? CREATE INDEX IF NOT EXISTS idx_territoire_libgeo ON fr.territory USING gin(libgeo gin_trgm_ops);
-
-	RETURN TRUE;
-END $$ LANGUAGE plpgsql;
-
-SELECT drop_all_functions_if_exists('public', 'updateTerritoireVoisins');
-CREATE OR REPLACE FUNCTION public.updateTerritoireVoisins(in_null_only BOOLEAN DEFAULT FALSE)
-RETURNS BOOLEAN
-AS $$
-DECLARE
-	v_nb_rows_affected INTEGER;
-BEGIN
-	IF in_null_only = TRUE THEN
-		WITH selection_initiale AS (
-			SELECT nivgeo, codgeo, gm_contour
-			FROM fr.territory
-			WHERE codgeo_voisins IS NULL
-			AND gm_contour IS NOT NULL
-			AND nivgeo = ANY(public.getAllNivgeos()) --Pour éviter les niveaux de sauvegarde type "COM_A_XXXXXX"
-		)
-		, selection_etendue AS (
-			SELECT DISTINCT UNNEST(ARRAY[voisin.codgeo, territoire.codgeo]) AS codgeo, voisin.nivgeo
-			FROM selection_initiale AS territoire
-			INNER JOIN fr.territory voisin
-				ON voisin.nivgeo = territoire.nivgeo
-				AND voisin.codgeo <> territoire.codgeo
-				AND ST_Touches(voisin.gm_contour, territoire.gm_contour) = TRUE
-		)
-		UPDATE fr.territory
-		SET codgeo_voisins = (
-			SELECT ARRAY_AGG(voisin.codgeo)
-			FROM fr.territory voisin
-			WHERE voisin.nivgeo = territoire.nivgeo
-			AND voisin.codgeo <> territoire.codgeo
-			AND ST_Touches(voisin.gm_contour, territoire.gm_contour) = TRUE
-		)
-		FROM selection_etendue
-		WHERE territoire.codgeo = selection_etendue.codgeo
-		AND territoire.nivgeo = selection_etendue.nivgeo;
-	ELSE
-		UPDATE fr.territory
-		SET codgeo_voisins = (
-			SELECT ARRAY_AGG(voisin.codgeo)
-			FROM fr.territory voisin
-			WHERE voisin.nivgeo = territoire.nivgeo
-			AND voisin.codgeo <> territoire.codgeo
-			AND ST_Touches(voisin.gm_contour, territoire.gm_contour) = TRUE
-		)
-		WHERE nivgeo = ANY(public.getAllNivgeos()); --Pour éviter les niveaux de sauvegarde type "COM_A_XXXXXX";
-	END IF;
-	GET DIAGNOSTICS v_nb_rows_affected = ROW_COUNT;
-	RETURN v_nb_rows_affected > 0;
+    IF public.setTerritoireHasDataGeoToNow(
+        in_table => 'territory'
+        , in_nivgeo_base => 'COM_CP'
+        , in_set_geo_supra => TRUE
+        , in_check_exists => FALSE
+    ) THEN
+        PERFORM public.update_territory();
+        --Recalcul du voisinage, là ou il est indéfini suite MAJ geo
+        PERFORM public.update_territory_near(null_only => TRUE);
+        RETURN TRUE;
+    END IF;
+    RETURN FALSE;
 END $$ LANGUAGE plpgsql;
  */
+
+SELECT drop_all_functions_if_exists('fr', 'update_territory');
+CREATE OR REPLACE FUNCTION fr.update_territory()
+RETURNS BOOLEAN
+AS $$
+DECLARE
+    _levels VARCHAR[] := fr.get_levels();
+    _level VARCHAR;
+BEGIN
+    -- set population (COM level)
+    IF column_exists('public', 'territoire_has_insee_histo', 'pmun') THEN
+        RAISE NOTICE 'Population issue des séries historiques INSEE';
+        UPDATE fr.territory
+        SET population = (
+            SELECT insee_histo.pmun
+            FROM fr.territory_has_insee_histo AS insee_histo
+            WHERE insee_histo.pmun IS NOT NULL
+            AND insee_histo.nivgeo = 'COM'
+            AND insee_histo.codgeo = territory.codgeo
+            ORDER BY insee_histo.dt_reference_data DESC LIMIT 1
+        )
+        WHERE territory.nivgeo = 'COM';
+    ELSE
+        RAISE NOTICE 'Population issue de ADMIN-EXPRESS IGN';
+        UPDATE fr.territory
+        SET population = commune_ign.population
+        FROM (
+                SELECT
+                    insee_com AS codgeo
+                    , population
+                FROM
+                    fr.admin_express_commune
+                WHERE
+                    insee_com NOT IN ('75056', '13055', '69123')
+                UNION
+                SELECT
+                    insee_arm
+                    , population
+                FROM
+                    fr.admin_express_arrondissement_municipal
+            )
+            AS commune_ign
+        WHERE commune_ign.codgeo = territory.codgeo AND territory.nivgeo = 'COM';
+    END IF;
+    -- set population (SUPRA levels)
+    PERFORM fr.set_territory_supra(
+        table_name => 'territory'
+        , schema_name => 'fr'
+        , base_level => 'COM'
+        , update_mode => TRUE
+        , columns_agg => ARRAY['population']
+    );
+
+    -- set link for EPCI level w/ majority DEP & REG levels
+    RAISE NOTICE 'Calcul département/région majoriaire pour les EPCI';
+    WITH com_groupby_epci AS (
+        SELECT
+            codgeo_epci_parent AS codgeo
+            , (
+                WITH dep_by_nb_com AS (
+                    SELECT dep, COUNT(*) AS nb_com FROM UNNEST(ARRAY_AGG(codgeo_dep_parent)) AS dep GROUP BY dep
+                )
+                SELECT dep FROM dep_by_nb_com ORDER BY nb_com DESC LIMIT 1
+            ) AS codgeo_dep_majoritaire
+            , (
+                WITH reg_by_nb_com AS (
+                    SELECT reg, COUNT(*) AS nb_com FROM UNNEST(ARRAY_AGG(codgeo_reg_parent)) AS reg GROUP BY reg
+                )
+                SELECT reg FROM reg_by_nb_com ORDER BY nb_com DESC LIMIT 1
+            ) AS codgeo_reg_majoritaire
+        FROM fr.territory
+        WHERE nivgeo = 'COM' AND codgeo_epci_parent IS NOT NULL
+        GROUP BY codgeo_epci_parent
+    )
+    UPDATE fr.territory
+    SET codgeo_dep_parent = com_groupby_epci.codgeo_dep_majoritaire
+        , codgeo_reg_parent = com_groupby_epci.codgeo_reg_majoritaire
+    FROM com_groupby_epci
+    WHERE com_groupby_epci.codgeo = territory.codgeo AND territory.nivgeo = 'EPCI';
+
+    -- set name (COM & COM_GLOBALE_ARM levels) from IGN, else RAN
+    RAISE NOTICE 'Libellés des territoires : COM, COM_GLOBALE_ARM';
+    UPDATE fr.territory
+    SET libgeo = COALESCE(
+            commune_ign.libgeo
+            , (
+                SELECT STRING_AGG(DISTINCT za.lb_ach_nn, ' + ') AS libgeo
+                FROM fr.laposte_zone_address AS za
+                WHERE za.co_insee_commune = territory.codgeo
+            )
+        )
+    FROM (
+            SELECT
+                'COM' AS nivgeo
+                , insee_com AS codgeo
+                , nom AS libgeo
+            FROM
+                fr.admin_express_commune
+            WHERE
+                insee_com NOT IN ('75056', '13055', '69123')
+            UNION
+            SELECT
+                'COM' AS nivgeo
+                , insee_arm
+                , nom
+            FROM
+                fr.admin_express_arrondissement_municipal
+            UNION
+            SELECT
+                'COM_GLOBALE_ARM' AS nivgeo
+                , insee_com AS codgeo
+                , nom AS libgeo
+            FROM
+                fr.admin_express_commune
+            WHERE
+                insee_com IN ('75056', '13055', '69123')
+    ) AS commune_ign
+    WHERE territory.nivgeo IN ('COM', 'COM_GLOBALE_ARM')
+    AND commune_ign.nivgeo = territory.nivgeo
+    AND commune_ign.codgeo = territory.codgeo;
+
+    -- set name, type (EPCI level) from DGCL/BANATIC
+    RAISE NOTICE 'Libellés des territoires : EPCI';
+    UPDATE fr.territory
+    SET libgeo = epci.nom_du_groupement
+        , typgeo = epci.nature_juridique
+    FROM fr.banatic_listof_epci epci
+    WHERE territory.nivgeo = 'EPCI'
+    AND territory.codgeo = epci.n_siren;
+
+    -- set name (ARR & CV & DEP & REG levels) from INSEE
+    RAISE NOTICE 'Libellés des territoires : ARR, CV, DEP, REG';
+    UPDATE fr.territory
+    SET libgeo = insee.libgeo
+    FROM fr.insee_administrative_cutting_supra insee
+    WHERE territory.nivgeo IN ('ARR', 'CV', 'DEP', 'REG')
+    AND insee.nivgeo = territory.nivgeo
+    AND insee.codgeo = territory.codgeo
+    AND insee.millesime = (SELECT MAX(millesime) FROM fr.insee_administrative_cutting_supra);
+
+    -- set name (postal levels) from LAPOSTE
+    RAISE NOTICE 'Libellés des territoires : SUPRA CP';
+    UPDATE fr.territory
+    SET libgeo = territory_laposte.libgeo
+    FROM fr.territory_laposte
+    WHERE fr.is_level_below('CP', territory.nivgeo)
+    AND territory_laposte.nivgeo = territory.nivgeo
+    AND territory_laposte.codgeo = territory.codgeo;
+
+    RAISE NOTICE 'Libellés des territoires : CP';
+    WITH name_of_CP AS (
+        SELECT
+            za.codgeo_cp_parent AS codgeo
+            , STRING_AGG(DISTINCT com.libgeo, ', ' ORDER BY com.libgeo) AS libgeo
+        FROM fr.territory AS com
+        INNER JOIN fr.territory AS za
+            ON za.nivgeo = 'ZA'
+            AND za.codgeo_com_parent = com.codgeo
+        WHERE com.nivgeo = 'COM'
+        GROUP BY za.codgeo_cp_parent
+    )
+    UPDATE fr.territory
+    SET libgeo = name_of_CP.libgeo
+    FROM name_of_CP
+    WHERE territory.nivgeo = 'CP'
+    AND territory.codgeo = name_of_CP.codgeo;
+
+    -- set name (COUNTRY levels)
+    UPDATE fr.territory
+    SET libgeo = CASE CONCAT_WS(':', nivgeo, territory.codgeo)
+        WHEN 'METROPOLE_DOM_TOM:FRM' THEN 'France métropolitaine'
+        WHEN 'METROPOLE_DOM_TOM:FRO' THEN 'France d''outre-mer'
+        WHEN 'PAYS:FR' THEN 'France'
+    END
+    WHERE territory.nivgeo IN ('METROPOLE_DOM_TOM', 'PAYS');
+
+    RAISE NOTICE 'Calcul des index';
+    FOREACH _level IN ARRAY _levels LOOP
+        EXECUTE CONCAT(
+            'CREATE UNIQUE INDEX IF NOT EXISTS iux_territory_codgeo_', _level, ' ON fr.territory (codgeo) WHERE nivgeo = ''', _level, ''''
+        );
+        /*
+        --TODO : voir si ces indexes sont judicieux
+        IF column_exists('public', 'territory', CONCAT('codgeo_', _level, '_parent')) THEN
+            EXECUTE CONCAT(
+                'CREATE INDEX IF NOT EXISTS idx_territoire_codgeo_', _level, '_parent ON fr.territory (nivgeo, codgeo_', _level, '_parent)'
+            );
+        END IF;
+
+         */
+    END LOOP;
+
+    CREATE UNIQUE INDEX IF NOT EXISTS iux_territory_nivgeo_codgeo ON fr.territory (nivgeo, codgeo);
+
+    RETURN TRUE;
+END $$ LANGUAGE plpgsql;
+
+SELECT drop_all_functions_if_exists('fr', 'update_territory_near');
+CREATE OR REPLACE FUNCTION fr.update_territory_near(
+    null_only BOOLEAN DEFAULT FALSE
+)
+RETURNS BOOLEAN
+AS $$
+DECLARE
+    _nrows_affected INTEGER;
+BEGIN
+    IF null_only = TRUE THEN
+        WITH initial_territory AS (
+            SELECT nivgeo, codgeo, gm_contour
+            FROM fr.territory
+            -- only NULL ones
+            WHERE codgeo_voisins IS NULL
+            AND gm_contour IS NOT NULL
+            -- to avoid backup-levels (as COM_A_XXXXXX)
+            AND nivgeo = ANY(fr.get_all_levels())
+        )
+        , extend_territory AS (
+            SELECT DISTINCT UNNEST(ARRAY[near_territory.codgeo, territory.codgeo]) AS codgeo, near_territory.nivgeo
+            FROM initial_territory AS territory
+            INNER JOIN fr.territory AS near_territory
+                ON near_territory.nivgeo = territory.nivgeo
+                AND near_territory.codgeo <> territory.codgeo
+                AND ST_Touches(near_territory.gm_contour, territory.gm_contour)
+        )
+        UPDATE fr.territory
+        SET codgeo_voisins = (
+            SELECT ARRAY_AGG(near_territory.codgeo)
+            FROM fr.territory near_territory
+            WHERE near_territory.nivgeo = territory.nivgeo
+            AND near_territory.codgeo <> territory.codgeo
+            AND ST_Touches(near_territory.gm_contour, territory.gm_contour)
+        )
+        FROM extend_territory
+        WHERE territory.codgeo = extend_territory.codgeo
+        AND territory.nivgeo = extend_territory.nivgeo;
+    ELSE
+        UPDATE fr.territory
+        SET codgeo_voisins = (
+            SELECT ARRAY_AGG(near_territory.codgeo)
+            FROM fr.territory AS near_territory
+            WHERE near_territory.nivgeo = territory.nivgeo
+            AND near_territory.codgeo <> territory.codgeo
+            AND ST_Touches(near_territory.gm_contour, territory.gm_contour)
+        )
+        -- to avoid backup-levels (as COM_A_XXXXXX)
+        WHERE nivgeo = ANY(fr.get_all_levels());
+    END IF;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    RAISE NOTICE 'Calcul voisinage de territoires #%', _nrows_affected;
+    RETURN _nrows_affected > 0;
+END $$ LANGUAGE plpgsql;
 
 /*
 select * from (
@@ -613,7 +612,7 @@ SELECT
 		WHEN millesime_b.codgeo IS NOT NULL THEN 'INSEE'
 		WHEN millesime_c.codgeo IS NOT NULL THEN 'IGN'
 	END AS presence
-FROM territoire AS millesime_a
+FROM territory AS millesime_a
 FULL OUTER JOIN territoire_insee AS millesime_b
 	ON millesime_a.codgeo = millesime_b.codgeo
 	AND millesime_a.nivgeo = millesime_b.nivgeo

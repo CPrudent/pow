@@ -38,7 +38,7 @@ BEGIN
     FROM information_schema.columns c
     WHERE c.table_schema = schema_name
         AND c.table_name = get_column_information.table_name
-        AND c.column_name = column_name;
+        AND c.column_name = get_column_information.column_name;
 
     RETURN _information_schema_column;
 END

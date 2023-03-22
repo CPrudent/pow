@@ -258,12 +258,12 @@ BEGIN
                     '(
                         SELECT
                             $2::VARCHAR AS nivgeo
-                            , territoire.codgeo_', _level, '_parent AS codgeo
+                            , territory.codgeo_', _level, '_parent AS codgeo
                             , ', _columns_select, '
                         FROM ', _tmp_table_name, CASE WHEN _bigger_sublevel = base_level THEN '_base' END, ' AS source
-                        INNER JOIN fr.territory ON (territoire.nivgeo, territoire.codgeo) = (source.nivgeo, source.codgeo)
-                        WHERE territoire.nivgeo = $1 AND territoire.codgeo_', _level, '_parent IS NOT NULL
-                        GROUP BY territoire.codgeo_', _level, '_parent
+                        INNER JOIN fr.territory ON (territory.nivgeo, territory.codgeo) = (source.nivgeo, source.codgeo)
+                        WHERE territory.nivgeo = $1 AND territory.codgeo_', _level, '_parent IS NOT NULL
+                        GROUP BY territory.codgeo_', _level, '_parent
                         ', CASE WHEN _columns_groupby IS NOT NULL THEN CONCAT(', ', _columns_groupby) END, '
                     )'
                 );
