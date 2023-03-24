@@ -21,7 +21,7 @@ bash_args \
     "$@" || exit $ERROR_CODE
 
 # TODO
-# replace postal_geom w/ deduce of: RAN date | PDI date greatest than TERRITORY date
+# replace postal_geom w/ deduce of: RAN?|PDI|IGN date greatest than TERRITORY date
 # and use force to bypass this rule
 
 force="$get_arg_force"
@@ -45,7 +45,7 @@ $POW_DIR_BATCH/banatic_setof_municipalities.sh --force $force && {
                 DROP TABLE IF EXISTS fr.territory_za;
                 CREATE TABLE fr.territory_za AS (
                     SELECT codgeo, gm_contour, superficie
-                    FROM fr.territory WHERE nivgeo = 'ZA'
+                    FROM fr.territory WHERE nivgeo = 'COM_CP'
                 );
             "
     fi
@@ -55,11 +55,11 @@ execute_query \
     --query "SELECT fr.set_territory()" && {
     if [ "$get_arg_postal_geom" = yes ]; then
         execute_query \
-            --name EVAL_TERRITORY_ZA_GEOM \
-            --query "$POW_DIR_BATCH/territory_laposte_za_geom.sql" && {
-            _error=$(grep '^ERREUR' $POW_DIR_ARCHIVE/EVAL_TERRITORY_ZA_GEOM.notice.log)
+            --name SET_TERRITORY_GEOMETRY \
+            --query "CALL fr.set_territory_geometry()" && {
+            _error=$(grep '^ERREUR' $POW_DIR_ARCHIVE/SET_TERRITORY_GEOMETRY.notice.log)
             [ -n "$_error" ] && {
-                log_error "calcul des géométries ZA : $_error"
+                log_error "calcul des géométries : $_error"
                 false
             } || true
         }
@@ -70,17 +70,18 @@ execute_query \
             --query "
                 UPDATE fr.territory
                 SET gm_contour = territory_za.gm_contour
-                    ,superficie = territory_za.superficie
+                    , superficie = territory_za.superficie
                 FROM fr.territory_za
                 WHERE territory.codgeo = territory_za.codgeo
-                AND territory.nivgeo = 'ZA';
+                AND territory.nivgeo = 'COM_CP';
 
                 DROP INDEX IF EXISTS fr.ix_territory_gm_contour;
-                SELECT setTerritoireHasDataGeoSupra(
-                    in_table => 'territory'
-                    ,in_nivgeo_base => 'ZA'
-                    ,in_columns_agg => ARRAY['gm_contour','superficie']
-                    ,in_update_mode => TRUE
+                SELECT fr.set_territory_supra(
+                    schema_name => 'fr'
+                    , table_name => 'territory'
+                    , base_level => 'COM_CP'
+                    , columns_agg => ARRAY['gm_contour', 'superficie']
+                    , update_mode => TRUE
                 );
                 CREATE INDEX IF NOT EXISTS ix_territory_gm_contour ON fr.territory USING GIST(nivgeo, gm_contour);
             "

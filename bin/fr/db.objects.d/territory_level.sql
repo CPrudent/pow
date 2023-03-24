@@ -17,7 +17,7 @@ BEGIN
     )
     (
         SELECT 'FR', UNNEST(ARRAY[
-            'ZA'
+            'COM_CP'
                 , 'CP'
                     , 'PDC_PPDC'
                         , 'PPDC_PDC'
@@ -38,7 +38,7 @@ BEGIN
     UPDATE public.territory_level
     SET name =
         CASE level
-            WHEN 'ZA'                       THEN 'Croisement Commune & Code Postal'
+            WHEN 'COM_CP'                       THEN 'Croisement Commune & Code Postal'
                 WHEN 'CP'                   THEN 'Code Postal'
                     WHEN 'PDC_PPDC'			THEN 'Zone de distribution du Courrier'
                         WHEN 'PPDC_PDC'     THEN 'Zone de préparation/distribution du Courrier'
@@ -58,7 +58,7 @@ BEGIN
 
         , name_short =
         CASE level
-            WHEN 'ZA'                       THEN 'Commune/CP'
+            WHEN 'COM_CP'                       THEN 'Commune/CP'
                 WHEN 'CP'                   THEN 'Code Postal'
                     WHEN 'PDC_PPDC'			THEN 'Zone distri. courrier'
                         WHEN 'PPDC_PDC'     THEN 'Zone prépa. courrier'
@@ -77,7 +77,7 @@ BEGIN
         END
         , name_plural =
         CASE level
-            WHEN 'ZA'                       THEN 'Croisements Communes & Code Postaux'
+            WHEN 'COM_CP'                       THEN 'Croisements Communes & Code Postaux'
                 WHEN 'CP'                   THEN 'Code Postaux'
                     WHEN 'PDC_PPDC'         THEN 'Zones de distribution du Courrier'
                         WHEN 'PPDC_PDC'     THEN 'Zones de préparation du Courrier'
@@ -96,7 +96,7 @@ BEGIN
         END
         , article =
         CASE level
-            WHEN 'ZA'                       THEN 'le'
+            WHEN 'COM_CP'                       THEN 'le'
                 WHEN 'CP'                   THEN 'le'
                     WHEN 'PDC_PPDC'         THEN 'la'
                         WHEN 'PPDC_PDC'     THEN 'la'
@@ -115,7 +115,7 @@ BEGIN
         END
         , hierarchy =
         CASE level
-            WHEN 'ZA'                       THEN 110
+            WHEN 'COM_CP'                       THEN 110
                 WHEN 'CP'                   THEN 210
                     WHEN 'PDC_PPDC'			THEN 310
                         WHEN 'PPDC_PDC'     THEN 410
@@ -134,13 +134,13 @@ BEGIN
         END
         , sublevels =
         CASE level
-            WHEN 'ZA'                       THEN NULL
-                WHEN 'CP'                   THEN ARRAY['ZA']
+            WHEN 'COM_CP'                       THEN NULL
+                WHEN 'CP'                   THEN ARRAY['COM_CP']
                     WHEN 'PDC_PPDC'         THEN ARRAY['CP']
                         WHEN 'PPDC_PDC'     THEN ARRAY['PDC_PPDC']
                             WHEN 'DEX'      THEN ARRAY['PPDC_PDC']
         WHEN 'IRIS'                         THEN NULL
-                WHEN 'COM'                  THEN ARRAY['ZA', 'IRIS']
+                WHEN 'COM'                  THEN ARRAY['COM_CP', 'IRIS']
                     WHEN 'COM_GLOBALE_ARM'  THEN ARRAY['COM']
                         WHEN 'EPCI'         THEN ARRAY['COM']
                         WHEN 'CV'           THEN ARRAY['COM']
@@ -214,7 +214,7 @@ BEGIN
             WHEN fr.is_level_below(level_b, level_a) THEN level_b
             WHEN fr.is_level_below('COM', level_a) AND fr.is_level_below('COM', level_b) THEN 'COM'
             WHEN fr.is_level_below('CP', level_a) AND fr.is_level_below('CP', level_b) THEN 'CP'
-            ELSE 'ZA'
+            ELSE 'COM_CP'
         END;
     END IF;
 END
@@ -249,9 +249,9 @@ SELECT fr.get_common_level('DEP', 'REG') --> DEP
 SELECT fr.get_common_level('DEP', 'ARR') --> ARR
 SELECT fr.get_common_level('DEP', 'EPCI') --> COM
 SELECT fr.get_common_level('ARR', 'EPCI') --> COM
-SELECT fr.get_common_level('DEP', 'CP') --> ZA
-SELECT fr.get_common_level('DEP', 'DSCC') --> ZA
-SELECT fr.get_common_level(ARRAY['DEP', 'DSCC', 'CP', 'COM']) --> ZA
+SELECT fr.get_common_level('DEP', 'CP') --> COM_CP
+SELECT fr.get_common_level('DEP', 'DSCC') --> COM_CP
+SELECT fr.get_common_level(ARRAY['DEP', 'DSCC', 'CP', 'COM']) --> COM_CP
 SELECT fr.get_common_level(ARRAY['DEP', 'EPCI', 'REG']) --> COM
 SELECT fr.get_common_level(ARRAY['DEP', 'REG', 'PAYS']) --> DEP
  */

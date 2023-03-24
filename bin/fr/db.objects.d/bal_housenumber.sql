@@ -15,8 +15,8 @@ CREATE TABLE IF NOT EXISTS fr.bal_housenumber (
     , dt_derniere_maj TIMESTAMP WITHOUT TIME ZONE NOT NULL
 );
 
-SELECT drop_all_functions_if_exists('fr', 'setBalIndexHousenumber');
-CREATE OR REPLACE PROCEDURE fr.setBalIndexHousenumber()
+SELECT drop_all_functions_if_exists('fr', 'set_bal_housenumber_index');
+CREATE OR REPLACE PROCEDURE fr.set_bal_housenumber_index()
 AS
 $proc$
 BEGIN
@@ -32,7 +32,7 @@ $proc$ LANGUAGE plpgsql;
 DO $$
 BEGIN
     -- manage indexes
-    CALL fr.setBalIndexHousenumber();
+    CALL fr.set_bal_housenumber_index();
 
     -- add integrity constraint on table fr.bal_housenumber
     IF NOT EXISTS(

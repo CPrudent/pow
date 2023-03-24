@@ -13,8 +13,8 @@ CREATE TABLE IF NOT EXISTS fr.bal_street (
     , dt_derniere_maj TIMESTAMP WITHOUT TIME ZONE NOT NULL
 );
 
-SELECT drop_all_functions_if_exists('fr', 'setBalIndexStreet');
-CREATE OR REPLACE PROCEDURE fr.setBalIndexStreet()
+SELECT drop_all_functions_if_exists('fr', 'set_bal_street_index');
+CREATE OR REPLACE PROCEDURE fr.set_bal_street_index()
 AS
 $proc$
 BEGIN
@@ -40,6 +40,6 @@ $proc$ LANGUAGE plpgsql;
 DO $$
 BEGIN
     -- manage indexes
-    CALL fr.setBalIndexStreet();
+    CALL fr.set_bal_street_index();
 END
 $$;

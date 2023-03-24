@@ -61,21 +61,21 @@ BEGIN
 
     /*
     SELECT dt_fin_donnees INTO v_dtrgeo_source FROM historique_import WHERE co_type = 'IGN_ADMINEXPRESS' AND co_etat = 'SUCCES';
-    SELECT TO_DATE(NULLIF(public.get_table_metadata('public','territoire_ign')->>'dtrgeo_source',''),'DD/MM/YYYY') INTO v_table_metadata_dtrgeo_source;
-    SELECT TO_DATE(NULLIF(public.get_table_metadata('public','territoire_ign')->>'dtrgeo',''),'DD/MM/YYYY') INTO v_table_metadata_dtrgeo;
+    SELECT TO_DATE(NULLIF(public.get_table_metadata('public', 'territoire_ign')->>'dtrgeo_source', ''), 'DD/MM/YYYY') INTO v_table_metadata_dtrgeo_source;
+    SELECT TO_DATE(NULLIF(public.get_table_metadata('public', 'territoire_ign')->>'dtrgeo', ''), 'DD/MM/YYYY') INTO v_table_metadata_dtrgeo;
     IF v_dtrgeo_source IS NULL THEN
         RAISE NOTICE 'Territoires IGN non importés';
     ELSIF in_force = FALSE AND v_table_metadata_dtrgeo_source >= v_dtrgeo_source THEN
-        RAISE NOTICE 'Recopie des territoires IGN importés inutile car pas plus récents (géo du %) que ceux intégrés (géo du % à jour au %)',v_dtrgeo_source,v_table_metadata_dtrgeo_source,v_table_metadata_dtrgeo;
+        RAISE NOTICE 'Recopie des territoires IGN importés inutile car pas plus récents (géo du %) que ceux intégrés (géo du % à jour au %)', v_dtrgeo_source, v_table_metadata_dtrgeo_source, v_table_metadata_dtrgeo;
     ELSE
-        RAISE NOTICE 'Recopie des territoires IGN importés (géo du %)',v_dtrgeo_source;
+        RAISE NOTICE 'Recopie des territoires IGN importés (géo du %)', v_dtrgeo_source;
      */
 
     TRUNCATE TABLE fr.territory;
     PERFORM public.drop_table_indexes('fr', 'territory');
 
     /* NOTE
-     Ajout des territoires du niveau le plus bas : ZA = croisement CP et COMMUNE, issu de RAN + RAO + INSEE + IGN
+     Ajout des territoires du niveau le plus bas : COM_CP = croisement CP et COMMUNE, issu de RAN + RAO + INSEE + IGN
      croisement CP et COMMUNE :
      une commune peut être sous-découpée en CP, et un CP peut être la composition de plusieurs communes entières ou non
      */
@@ -99,36 +99,41 @@ BEGIN
         , codgeo_dex_parent
     )
     (
-        WITH za AS (
+        WITH com_cp AS (
             SELECT
-                co_cea AS codgeo
-                , dt_reference AS dt_reference_geo
-                , CONCAT_WS('-',
-                    lb_l5_nn
-                    , co_postal
-                    , lb_ach_nn
-                ) AS libgeo
+                CONCAT_WS('-', za.co_insee_commune, za.co_postal) AS codgeo
+                , MAX(za.dt_reference) AS dt_reference_geo
+                , CONCAT(
+                    FIRST(co_postal)
+                    , ' ('
+                    /* NOTE
+                    L5/L6 are inverted for Polynésie (98)
+                    */
+                    , STRING_AGG(
+                        DISTINCT CASE WHEN co_insee_commune ~ '^98' THEN lb_l5_nn ELSE lb_ach_nn END
+                        , ', '
+                        ORDER BY CASE WHEN co_insee_commune ~ '^98' THEN lb_l5_nn ELSE lb_ach_nn END)
+                    , ')') AS libgeo
                 , co_postal
                 , co_insee_commune
-            FROM
-                fr.laposte_zone_address
-            WHERE
-                fl_active
+            FROM fr.laposte_zone_address AS za
+            GROUP BY co_postal, co_insee_commune
         )
+
         /* NOTE
          on met la valeur Z... là où la parenté n'est pas connue, mais où elle devrait toujours l'être. cela est aussi utile à la remontée de données où on ne souhaite pas exclure les données dont la parenté n'est pas connue
          */
         SELECT
-            'ZA' AS nivgeo
-            , za.codgeo
-            , za.dt_reference_geo
+            'COM_CP' AS nivgeo
+            , com_cp.codgeo
+            , com_cp.dt_reference_geo
             , COALESCE(
-                za.libgeo
+                com_cp.libgeo
                 , CASE
                     WHEN commune_ign.codgeo IS NOT NULL THEN
-                        CONCAT(za.co_postal, ' ', REPLACE(REPLACE(commune_ign.libgeo, 'œ', 'oe'), 'Œ', 'Oe'))
+                        CONCAT(com_cp.co_postal, ' ', REPLACE(REPLACE(commune_ign.libgeo, 'œ', 'oe'), 'Œ', 'Oe'))
                 END) AS libgeo
-            , za.co_insee_commune AS codgeo_com_parent
+            , com_cp.co_insee_commune AS codgeo_com_parent
             , commune_insee.com AS codgeo_com_globale_arm_parent
             , COALESCE(
                 commune_insee.arr
@@ -150,15 +155,15 @@ BEGIN
                 /*ELSE 'ZZZ'*/
             END AS codgeo_metropole_dom_tom_parent
             , 'FR' AS codgeo_pays_parent
-            , za.co_postal AS codgeo_cp_parent
+            , com_cp.co_postal AS codgeo_cp_parent
             , territory_laposte.codgeo_pdc_ppdc_parent
             , territory_laposte.codgeo_ppdc_pdc_parent
             , territory_laposte.codgeo_dex_parent
-        FROM za
+        FROM com_cp
             -- INSEE municipalities
             LEFT OUTER JOIN fr.insee_administrative_cutting_municipality_and_district
             AS commune_insee
-            ON commune_insee.codgeo = za.co_insee_commune
+            ON commune_insee.codgeo = com_cp.co_insee_commune
             -- IGN municipalities
             LEFT OUTER JOIN (
                 SELECT
@@ -182,10 +187,10 @@ BEGIN
                     ON arm.insee_com = com.insee_com
             )
             AS commune_ign
-            ON commune_ign.codgeo = za.co_insee_commune
+            ON commune_ign.codgeo = com_cp.co_insee_commune
             -- LAPOSTE territories
             LEFT OUTER JOIN fr.territory_laposte
-            ON territory_laposte.nivgeo = 'CP' AND territory_laposte.codgeo = za.co_postal
+            ON territory_laposte.nivgeo = 'CP' AND territory_laposte.codgeo = com_cp.co_postal
             -- BANATIC EPCI
             LEFT OUTER JOIN fr.banatic_siren_insee
                 /* NOTE
@@ -202,7 +207,7 @@ BEGIN
                     COALESCE(
                         commune_ign.codgeo_dep_parent --source à priori la plus à jour
                         , commune_insee.dep --source alternative
-                        , fr.get_department_code_from_municipality_code(za.co_insee_commune) --génère des départements fictifs pour les communes fictives (collectivités d'outre mer)
+                        , fr.get_department_code_from_municipality_code(com_cp.co_insee_commune) --génère des départements fictifs pour les communes fictives (collectivités d'outre mer)
                     ) AS codgeo
                     , CASE
                         WHEN commune_ign.codgeo_dep_parent IS NOT NULL THEN 'IGN'
@@ -237,13 +242,13 @@ BEGIN
             ON TRUE
     );
 
-    CREATE UNIQUE INDEX IF NOT EXISTS iux_territory_codgeo_za ON fr.territory (codgeo) WHERE nivgeo = 'ZA';
+    CREATE UNIQUE INDEX IF NOT EXISTS iux_territory_codgeo_za ON fr.territory (codgeo) WHERE nivgeo = 'COM_CP';
 
     -- initialize SUPRA levels
     PERFORM fr.set_territory_supra(
         table_name => 'territory'
         , schema_name => 'fr'
-        , base_level => 'ZA'
+        , base_level => 'COM_CP'
     );
 
     PERFORM fr.update_territory();
@@ -427,7 +432,7 @@ BEGIN
             , STRING_AGG(DISTINCT com.libgeo, ', ' ORDER BY com.libgeo) AS libgeo
         FROM fr.territory AS com
         INNER JOIN fr.territory AS za
-            ON za.nivgeo = 'ZA'
+            ON za.nivgeo = 'COM_CP'
             AND za.codgeo_com_parent = com.codgeo
         WHERE com.nivgeo = 'COM'
         GROUP BY za.codgeo_cp_parent

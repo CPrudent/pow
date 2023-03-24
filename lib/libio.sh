@@ -715,7 +715,7 @@ import_csv_file() {
                     # trim _ (begin or end)
                 table_columns_list=$(echo "$table_columns_list" \
                     | tr '[:upper:]' '[:lower:]' \
-                    | sed 'y/àáâãäåçêéèëìíîïìñòóôõöùúûü/aaaaaaceeeeiiiiinooooouuuu/' \
+                    | sed 'y/àáâãäåçêéèëìíîïìñòóôõöùúûüýÿ/aaaaaaceeeeiiiiinooooouuuuyy/' \
                     | tr 'œ' 'oe' \
                     | tr 'æ' 'ae' \
                     | sed "s/[^a-z0-9${delimiter_value}]\+/_/g" \
@@ -752,14 +752,15 @@ import_csv_file() {
         [ "$POW_DEBUG" = yes ] && echo "load_mode=$load_mode"
         # only in APPEND mode (backup post-data); alternative: don't remove
         case "$load_mode" in
-        APPEND)
-            backup_table \
-                --schema_name "${schema_name}" \
-                --table_name "${table_name}" \
-                --sections 'post-data' \
-                --output "$backup_post_data_full_path" || return $ERROR_CODE
-            ;;
         OVERWRITE_DATA|APPEND)
+            [ "$load_mode" = APPEND ] && {
+                backup_table \
+                    --schema_name "${schema_name}" \
+                    --table_name "${table_name}" \
+                    --sections 'post-data' \
+                    --output "$backup_post_data_full_path" || return $ERROR_CODE
+            }
+
             execute_query \
                 --name "DROP_CONSTRAINTS_INDEXES_TRIGGERS_${schema_table}" \
                 --query "
@@ -767,6 +768,7 @@ import_csv_file() {
                     SELECT public.drop_table_indexes('${schema_name}', '${table_name}');
                     SELECT public.drop_table_triggers('${schema_name}', '${table_name}');
                     " || return $ERROR_CODE
+
             [ "$load_mode" = OVERWRITE_DATA ] && {
                 execute_query \
                     --name "TRUNCATE_${schema_table}" \

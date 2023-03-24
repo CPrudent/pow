@@ -46,18 +46,18 @@ END
 $func$ LANGUAGE plpgsql;
 
 /*
- * TESTS
+ * TEST
 
 DO $$
 BEGIN
-	RAISE NOTICE 'table ordinaire %.% : %', 'ran', 'za', table_exists('ran', 'za');
-	RAISE NOTICE 'table ordinaire %.% : %', 'public', 'suivi_adn', table_exists('public', 'suivi_adn');
+    RAISE NOTICE 'table ordinaire %.% : %', 'ran', 'za', table_exists('ran', 'za');
+    RAISE NOTICE 'table ordinaire %.% : %', 'public', 'suivi_adn', table_exists('public', 'suivi_adn');
 
-	RAISE NOTICE 'table temporaire % : %', 'tmp_test_1', table_exists('<FOO>', 'tmp_test_1', TRUE);
-	CREATE TEMPORARY TABLE tmp_test_1 AS SELECT * FROM public.suivi_adn WITH NO DATA;
-	RAISE NOTICE 'table temporaire % : %', 'tmp_test_1', table_exists('<FOO>', 'tmp_test_1', TRUE);
-	DROP TABLE tmp_test_1;
-	RAISE NOTICE 'table temporaire % : %', 'tmp_test_1', table_exists('<FOO>', 'tmp_test_1', TRUE);
+    RAISE NOTICE 'table temporaire % : %', 'tmp_test_1', table_exists('<FOO>', 'tmp_test_1', TRUE);
+    CREATE TEMPORARY TABLE tmp_test_1 AS SELECT * FROM public.suivi_adn WITH NO DATA;
+    RAISE NOTICE 'table temporaire % : %', 'tmp_test_1', table_exists('<FOO>', 'tmp_test_1', TRUE);
+    DROP TABLE tmp_test_1;
+    RAISE NOTICE 'table temporaire % : %', 'tmp_test_1', table_exists('<FOO>', 'tmp_test_1', TRUE);
 END $$;
 
  */

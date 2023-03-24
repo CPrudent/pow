@@ -956,7 +956,7 @@ BEGIN
             BEGIN
                 SELECT TRUE
                 INTO STRICT _exists
-                FROM public.territory
+                FROM fr.territory
                 WHERE country = 'FR' AND level = 'COM' AND code = code;
             EXCEPTION WHEN NO_DATA_FOUND THEN
                 IF months_back_if_not_exists > 0 THEN
@@ -964,7 +964,7 @@ BEGIN
                     --Alternative à enlever les mois un par un : on les enlève tous en une fois
                     --EXECUTE CONCAT('SELECT $1 - INTERVAL ''', months_back_if_not_exists, ' months''') INTO date_geography_from USING date_geography_from_first;
                     date_geography_from := (date_geography_from_first - INTERVAL '1 month')::DATE;
-                    RAISE NOTICE 'Avertissement : la commune % n''existe pas dans public.territory : recherche d''un évènement un mois avant la date de référence initiale (soit à partir du %)', code, date_geography_from;
+                    RAISE NOTICE 'Avertissement : la commune % n''existe pas dans fr.territory : recherche d''un évènement un mois avant la date de référence initiale (soit à partir du %)', code, date_geography_from;
                     RETURN QUERY
                         SELECT * FROM fr.get_municipality_to_date(
                             code => code
@@ -982,7 +982,7 @@ BEGIN
                         );
                     RETURN;
                 ELSE
-                    RAISE NOTICE 'Erreur : la commune % n''existe pas dans public.territory', code;
+                    RAISE NOTICE 'Erreur : la commune % n''existe pas dans fr.territory', code;
                     IF with_deleted THEN
                         is_new := TRUE;
                         distribution := 0;
@@ -1104,10 +1104,13 @@ BEGIN
     ) AS commune_to_now
     WHERE commune_to_now.is_new --Seulement ce qui est nouveau
     ;
-    --Même en cas de fusion, on ne stocke pas dans RAN le code INSEE précédent s'il ne change pas (cas de la commune déléguée chef lieu)
+
+    /* NOTE
+    Même en cas de fusion, on ne stocke pas dans RAN le code INSEE précédent s'il ne change pas (cas de la commune déléguée chef lieu)
     IF _municipality_to_now.code = _municipality_to_now.code_previous THEN
         _municipality_to_now.code_previous := NULL;
     END IF;
+     */
 
     IF _municipality_to_now.distribution = 1 THEN
         RAISE NOTICE 'Cas de (fusion de commune / création commune nouvelle) géré pour maj GEO de RAN ZA : %, % / %, % -> %, %'
@@ -1118,35 +1121,22 @@ BEGIN
             , _municipality_to_now.code
             , _municipality_to_now.name;
 
-        /* maj des libellés
-        -- new normalized label, as L6-label
-        zone_address.lb_ach_nn := address_label_normalize_municipality(_municipality_to_now.code, _municipality_to_now.name);
-        -- TODO what about lb_nn ???
-        -- remains merged municipality as L5-label
-        IF zone_address.co_insee_commune != _municipality_to_now.code THEN
-            zone_address.lb_l5_nn := zone_address.lb_ach_nn;
+        -- rename municipality
+        IF _municipality_to_now.code_previous IS NOT NULL THEN
+            -- merged municipality (save name into L5 as old municipality)
+            IF _municipality_to_now.code != _municipality_to_now.code_previous THEN
+                -- keep eventualy previuous code (if not already merged)
+                IF zone_address.co_insee_commune_precedente IS NULL THEN
+                    zone_address.co_insee_commune_precedente := zone_address.co_insee_commune;
+                END IF;
+                zone_address.lb_l5_nn := zone_address.lb_ach_nn;
+            END IF;
         END IF;
-         */
 
-        -- keep eventualy previuous code (if already merged)
-        IF zone_address.co_insee_commune_precedente IS NULL THEN
-            zone_address.co_insee_commune_precedente := zone_address.co_insee_commune;
-        END IF;
         zone_address.co_insee_commune := _municipality_to_now.code;
+        zone_address.lb_ach_nn := fr.normalize_municipality_name(_municipality_to_now.code, _municipality_to_now.name);
         zone_address.co_insee_departement :=            fr.get_department_code_from_municipality_code(zone_address.co_insee_commune);
         zone_address.dt_reference_commune := _municipality_to_now.date_geography;
-
-        /* NOTE : pour une MAJ des libellés
-         *
-         * 1) Y a t il vraiment un intérêt ?
-         * 2) Demander les règles de maj :
-         *  lb_nn -> libellé de la commune nouvelle ?
-         *  lb_ach_nn -> libellé de la commune nouvelle ?
-         *  lb_l5_nn -> libellé de la commune déléguée = lb_ach_nn si lb_l5_nn pas déjà renseigné ?
-         * 3) Il faut gérer correctement le diff RAN pour mettre à jour, en sauvegardant les valeurs d'origines RAN dans une colonne dédiée, tel que fait avec co_insee_commune_ran / co_insee_commune_precedente_ran
-         * 4) Il faut ignorer les différence due à la normalisation du libellé, le mieux étant d'appliquer les règles officielles de normalisation (quelles sont elles ?) :
-         * public.removeMotsOutils(REPLACE(public.upperNoSpecialsCharsOnlyAlfaNum(_municipality_to_now.libgeo), 'SAINT', 'ST')) != public.removeMotsOutils(REPLACE(zone_address.lb_nn, 'SAINT', 'ST'))
-         */
 
     ELSIF _municipality_to_now.distribution < 1 AND _municipality_to_now.distribution > 0 THEN
         RAISE NOTICE 'Cas de rétablissement de commune géré pour maj GEO de RAN ZA : %, % / %, % -> %, %'
@@ -1156,6 +1146,7 @@ BEGIN
             , zone_address.lb_nn
             , _municipality_to_now.code
             , _municipality_to_now.name;
+
         zone_address.co_insee_commune := zone_address.co_insee_commune_precedente;
         zone_address.co_insee_departement := fr.get_department_code_from_municipality_code(zone_address.co_insee_commune);
         zone_address.co_insee_commune_precedente := NULL;
@@ -1199,6 +1190,8 @@ BEGIN
             , za_to_now.co_insee_commune_precedente
             , za_to_now.dt_reference_commune
             , za_to_now.co_insee_departement
+            , za_to_now.lb_ach_nn
+            , za_to_now.lb_l5_nn
             --Si modification effective hormis la date de référence
             , CASE
                 WHEN za_to_now.co_insee_commune != za.co_insee_commune
@@ -1218,16 +1211,18 @@ BEGIN
         WHERE za_to_now.dt_reference_commune != za.dt_reference_commune
     )
     LOOP
-        UPDATE fr.laposte_zone_address
+        UPDATE fr.laposte_zone_address za
         SET co_insee_commune = _zone_address_to_now.co_insee_commune
             , co_insee_commune_precedente = _zone_address_to_now.co_insee_commune_precedente
             , dt_reference_commune = _zone_address_to_now.dt_reference_commune
             , dt_reference = _zone_address_to_now.dt_reference
             , co_insee_departement = _zone_address_to_now.co_insee_departement
+            , lb_l5_nn = _zone_address_to_now.lb_l5_nn
+            , lb_ach_nn = _zone_address_to_now.lb_ach_nn
         WHERE za.co_cea = _zone_address_to_now.co_cea;
 
         --Si modification effective hormis la date de référence
-        IF _zone_address_to_now.modification = TRUE THEN
+        IF _zone_address_to_now.modification THEN
             UPDATE fr.laposte_address
             SET dt_reference_za = _zone_address_to_now.dt_reference
                 , dt_reference = GREATEST(dt_reference, _zone_address_to_now.dt_reference)
@@ -1237,8 +1232,8 @@ BEGIN
             UPDATE fr.laposte_street street
             SET co_insee_commune = _zone_address_to_now.co_insee_commune
             FROM fr.laposte_address address
-            WHERE adress.co_cea_determinant = street.co_cea
-            AND adress.co_cea_za = _zone_address_to_now.co_cea --Voies de la ZA
+            WHERE address.co_cea_determinant = street.co_cea
+            AND address.co_cea_za = _zone_address_to_now.co_cea --Voies de la ZA
             AND street.co_insee_commune != _zone_address_to_now.co_insee_commune; --Qui ont un code INSEE commune différent (à priori forcément vrai);
         END IF;
 
@@ -1354,6 +1349,8 @@ BEGIN
         END IF;
     END LOOP;
     RETURN _exists;
+EXCEPTION WHEN OTHERS THEN
+    RETURN FALSE;
 END
 $func$ LANGUAGE plpgsql;
 
@@ -1413,6 +1410,9 @@ DECLARE
 BEGIN
     IF where_in IS NOT NULL AND date_geography_metadata = 'dtrgeo' THEN
         RAISE 'Veuillez préciser un nom de métadonnées dtrgeo spécifique à la condition where';
+    END IF;
+    IF NOT table_exists(schema_name, table_name) THEN
+        RAISE 'Table (%.%) non trouvée', schema_name, table_name;
     END IF;
 
     _query_where := NULLIF(CONCAT_WS(' AND ', _query_where, where_in), '');
@@ -1569,7 +1569,7 @@ BEGIN
                     ) AS commune_to_now
                     ON (NOT $4 OR commune_to_now.is_new) --Uniquement ce qui est nouveau si on est en mode UPSERT
                 )')
-            WHEN base_level IN ('ZA', 'IRIS') THEN CONCAT(
+            WHEN base_level IN ('COM_CP', 'IRIS') THEN CONCAT(
                 'WITH distinct_commune AS (
                     SELECT LEFT(source.codgeo, 5) AS old_codgeo_com, ARRAY_AGG(DISTINCT source.codgeo) AS old_codgeos_subcom
                     FROM ', _full_table_name, ' AS source

@@ -184,7 +184,7 @@ BEGIN
     --v_first_time := TRUE;
     FOREACH _level IN ARRAY _levels LOOP
         _bigger_sublevel := fr.get_bigger_sublevel(level_in => _level, among_levels => ARRAY_APPEND(_levels, base_level));
-        IF _level = 'COM' AND _bigger_sublevel IN ('ZA', 'IRIS') THEN
+        IF _level = 'COM' AND _bigger_sublevel IN ('COM_CP', 'IRIS') THEN
             _query := CONCAT(
                 '(
                     SELECT
@@ -289,9 +289,9 @@ BEGIN
     END LOOP;
 
     _query := CONCAT('CREATE UNIQUE INDEX iux_', _tmp_table_name, '_pk ON ', _tmp_table_name, '(', _columns_onconflict, ')');
-    IF simulation = FALSE THEN EXECUTE _query; ELSE RAISE NOTICE '%', _query; END IF;
+    IF NOT simulation THEN EXECUTE _query; ELSE RAISE NOTICE '%', _query; END IF;
 
-    IF update_mode = FALSE THEN
+    IF NOT update_mode THEN
         _query := CONCAT(
             'UPDATE ', _tmp_table_name, ' AS destination
             SET already_exists = TRUE

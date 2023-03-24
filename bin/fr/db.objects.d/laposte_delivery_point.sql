@@ -143,8 +143,154 @@ END
 $proc$ LANGUAGE plpgsql;
 
 DO $$
+DECLARE
+    _query TEXT;
 BEGIN
     -- manage indexes
     CALL fr.set_laposte_delivery_point_index();
+
+    _query := '
+        SELECT
+            pdi.pdi_id
+            , pdi.pdi_etat
+            , pdi.pdi_visible
+            , pdi.pdi_id_rattachement
+            , pdi.pdi_dt_creation
+            , pdi.pdi_dt_modification
+            , pdi.pdi_source
+            , pdi.adresse_id AS pdi_co_adr
+            , pdi.adresse_x AS pdi_x_natif
+            , pdi.adresse_y AS pdi_y_natif
+            , pdi.geom AS pdi_coord
+            , ST_SetSRID(
+                ST_MakePoint(pdi.adresse_x, pdi.adresse_y)
+                , fr.get_srid_from_department_code(za.co_insee_departement)
+            ) AS pdi_coord_native
+            , pdi.adresse_geocode AS pdi_no_type_localisation_coord
+            , pdi.pdi_etablissement_regate
+            , pdi.pdi_etablissement_roc
+            , pdi.pdi_bureau_instance
+            , pdi.distri_etablissement_or
+            , pdi.distri_etablissement_os
+            , pdi.distri_etablissement_ip
+            , pdi.distri_etablissement_pr
+            , pdi.distri_etablissement_co
+            , pdi.ip_code_udb AS pdi_ip_code_udb
+            , pdi.pdi_id_batterie_cidex
+            , pdi.ip_id AS pdi_ip_id
+            , pdi.pdi_nature_code
+            , pdi.pdi_nature
+            , pdi.pdi_model
+            , (COALESCE(pdi.pdi_pre1, 0)
+                +COALESCE(pdi.pdi_pre2, 0)
+                +COALESCE(pdi.pdi_pre3, 0)
+                +COALESCE(pdi.pdi_pre4, 0)
+                +COALESCE(pdi.pdi_pre5, 0)
+                +COALESCE(pdi.pdi_pre6, 0)
+                +COALESCE(pdi.pdi_pre7, 0)
+                +COALESCE(pdi.pdi_pre8, 0)
+                +COALESCE(pdi.pdi_pre9, 0)
+                +COALESCE(pdi.pdi_pre10, 0)
+                +COALESCE(pdi.pdi_pre11, 0))
+                AS pdi_nb_pre
+            , (COALESCE(pdi.pdi_pre1, 0)
+                +COALESCE(pdi.pdi_pre3, 0)
+                +COALESCE(pdi.pdi_pre5, 0)
+                +COALESCE(pdi.pdi_pre7, 0)
+                +COALESCE(pdi.pdi_pre9, 0))
+                AS pdi_nb_pre_bal
+            , (COALESCE(pdi.pdi_pre2, 0)
+                +COALESCE(pdi.pdi_pre4, 0)
+                +COALESCE(pdi.pdi_pre6, 0)
+                +COALESCE(pdi.pdi_pre8, 0)
+                +COALESCE(pdi.pdi_pre10, 0))
+                AS pdi_nb_pre_mainp
+            , (COALESCE(pdi.pdi_pre1, 0)
+                +COALESCE(pdi.pdi_pre2, 0)
+                +COALESCE(pdi.pdi_pre3, 0)
+                +COALESCE(pdi.pdi_pre4, 0)
+                +COALESCE(pdi.pdi_pre5, 0)
+                +COALESCE(pdi.pdi_pre6, 0))
+                AS pdi_nb_pre_par
+            , COALESCE(pdi.ip_potentiel_ip, 0) AS pdi_nb_pre_potentiel_ip
+            , pdi.pdi_distance
+            , pdi.pdi_ind_presence_gardien
+            , pdi.pdi_ind_presence_presse
+            , pdi.pdi_ind_presence_plaque_rue
+            , pdi.pdi_ind_presence_num_rue
+            , pdi.pdi_ind_presence_tab_indicateur
+            , pdi.pdi_type_acces
+            , pdi.pdi_localisation
+            , COALESCE(pdi.pdi_nb_bal_normalisees, 0) AS pdi_nb_bal_normalisees
+            , COALESCE(pdi.pdi_nb_bal_non_normalisees, 0) AS pdi_nb_bal_non_normalisees
+            , COALESCE(pdi.pdi_nb_bal_etiquetees, 0) AS pdi_nb_bal_etiquetees
+            , COALESCE(pdi.ip_stop_pub, 0) AS pdi_nb_bal_stop_pub
+            , pdi.ip_comment AS pdi_ip_comment
+
+            --adresse du PDI
+            , adresse.co_cea_determinant AS co_adr
+            , adresse.dt_reference AS dt_reference_adr
+            , adresse.co_niveau
+            , adresse.co_cea_parent AS co_adr_parent
+            , adresse.co_cea_l3 AS co_adr_l3
+            , adresse.co_cea_numero AS co_adr_numero
+            , adresse.co_cea_voie AS co_adr_voie
+            , adresse.co_cea_za AS co_adr_za
+            , l3.lb_standard_nn AS lb_ligne3
+            , numero.no_voie AS no_numero
+            , numero.lb_ext AS lb_extension_numero
+            , voie.co_voie
+            , voie.lb_type AS lb_type_voie
+            , voie.lb_type_abrege AS lb_type_voie_abrege
+            , voie.lb_voie
+            , voie.lb_voie_normalise
+            , voie.lb_md AS lb_voie_mot_directeur
+            , voie.lb_desc AS lb_voie_desc
+            , za.co_postal AS co_postal
+            , za.lb_l5_nn AS lb_ligne5
+            , za.lb_in_ext_loc AS lb_localite
+            , za.lb_nn AS lb_localite_normalise
+            , za.lb_ach_nn AS lb_acheminement
+            , za.co_insee_commune
+            , za.co_insee_commune_precedente
+            , za.co_insee_departement
+            , adresse.fl_diffusable
+            , adresse.fl_active
+
+            --INFORMATIONS DE DISTRIBUTION
+            , CASE WHEN adresse.co_cea_determinant IS NOT NULL THEN TRUE ELSE FALSE END AS fl_distribuee
+
+            --COORDONNEES
+            --, coord.co_cea AS co_coord
+            --, ''RAN''::VARCHAR(10) AS co_source_best_coord
+            , coord.dt_reference AS adr_dt_reference_coord
+            , coord.gm_coord AS adr_coord
+            , coord.no_type_localisation AS adr_no_type_localisation_coord
+            , coord.va_x AS adr_x_natif
+            , coord.va_y AS adr_y_natif
+
+            --RAO
+            , rao.co_type AS rao_co_type
+            , rao.lb_libelle AS rao_lb_libelle
+
+            --SOURCE-ORGA
+            , org.code_regate AS rao_co_regate
+        FROM fr.laposte_delivery_point pdi
+            LEFT OUTER JOIN fr.laposte_address adresse ON adresse.co_cea_determinant = pdi.adresse_id
+            LEFT OUTER JOIN fr.laposte_zone_address za ON za.co_cea = adresse.co_cea_za
+            LEFT OUTER JOIN fr.laposte_street voie ON voie.co_cea = adresse.co_cea_voie
+            LEFT OUTER JOIN fr.laposte_housenumber numero ON numero.co_cea = adresse.co_cea_numero
+            LEFT OUTER JOIN fr.laposte_complement l3 ON l3.co_cea = adresse.co_cea_l3
+            LEFT OUTER JOIN fr.laposte_xy coord ON coord.co_cea = adresse.co_cea_determinant
+            LEFT OUTER JOIN fr.laposte_delivery_address rao ON rao.co_adr = adresse.co_cea_determinant
+            LEFT OUTER JOIN fr.laposte_organization org ON org.code = rao.co_roc_site::VARCHAR
+    ';
+
+    DROP VIEW IF EXISTS fr.delivery_point_view CASCADE;
+    EXECUTE CONCAT_WS(
+        ' '
+        , 'CREATE VIEW fr.delivery_point_view AS'
+        , _query
+    );
 END
 $$;

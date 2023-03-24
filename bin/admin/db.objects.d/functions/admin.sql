@@ -46,10 +46,17 @@ $func$ LANGUAGE plpgsql;
 
 -- add NOTICE with date/hour
 SELECT public.drop_all_functions_if_exists('public', 'log_info');
-CREATE OR REPLACE PROCEDURE public.log_info(message TEXT) AS
+CREATE OR REPLACE PROCEDURE public.log_info(
+    message TEXT
+    , stamped BOOLEAN DEFAULT TRUE
+) AS
 $proc$
 BEGIN
-    RAISE NOTICE '% %', TO_CHAR(clock_timestamp(), 'HH24:MI:SS.MS'), log_info.message;
+    IF stamped THEN
+        RAISE NOTICE '% %', TO_CHAR(clock_timestamp(), 'HH24:MI:SS.MS'), log_info.message;
+    ELSE
+        RAISE NOTICE '%', log_info.message;
+    END IF;
 END
 $proc$ LANGUAGE plpgsql;
 

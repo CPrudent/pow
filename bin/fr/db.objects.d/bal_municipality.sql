@@ -20,8 +20,8 @@ CREATE TABLE IF NOT EXISTS fr.bal_municipality (
 )
 ;
 
-SELECT drop_all_functions_if_exists('fr', 'setBalIndexMunicipality');
-CREATE OR REPLACE PROCEDURE fr.setBalIndexMunicipality()
+SELECT drop_all_functions_if_exists('fr', 'set_bal_municipality_index');
+CREATE OR REPLACE PROCEDURE fr.set_bal_municipality_index()
 AS
 $proc$
 BEGIN
@@ -37,6 +37,6 @@ $proc$ LANGUAGE plpgsql;
 DO $$
 BEGIN
     -- manage indexes
-    CALL fr.setBalIndexMunicipality();
+    CALL fr.set_bal_municipality_index();
 END
 $$;

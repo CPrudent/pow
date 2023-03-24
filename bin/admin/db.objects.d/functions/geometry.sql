@@ -111,7 +111,7 @@ BEGIN
 
     --Utile pour trouver l'élément à supprimer mais ralenti la suppression ?
     CREATE UNIQUE INDEX idx_tmp_remove_repeated_points_bc2a_point_id ON tmp_remove_repeated_points_bc2a (point_id);
-    CREATE INDEX idx_tmp_remove_repeated_points_bc2a_geom ON tmp_remove_repeated_points_bc2a USING gist(geom);
+    CREATE INDEX idx_tmp_remove_repeated_points_bc2a_geom ON tmp_remove_repeated_points_bc2a USING GIST(geom);
 
     WITH point_has_repeated_points AS (
         SELECT 	point_a.point_id
@@ -181,7 +181,7 @@ BEGIN
          */
     END LOOP;
 
-    SELECT ST_Collect(geom) INTO _return FROM tmp_remove_repeated_points_bc2a;
+    SELECT ST_Collect(t.geom) INTO _return FROM tmp_remove_repeated_points_bc2a t;
     RETURN _return;
 END
 $$ LANGUAGE plpgsql;
@@ -403,24 +403,24 @@ $$ LANGUAGE plpgsql;
 --> Découpage en 4
 SELECT  ST_SplitFour(
         -- extent COM_CP (France Métropolitaine) except Corse
-        (SELECT ST_Extent(gm_contour) AS geom FROM territoire WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94')
+        (SELECT ST_Extent(gm_contour) AS geom FROM territory WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94')
         )
 
 --> Découpage en 4 * 4 = 16
 SELECT  ST_SplitFour(ST_SplitFour(
-        (SELECT ST_Extent(gm_contour) AS geom FROM territoire WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94')
+        (SELECT ST_Extent(gm_contour) AS geom FROM territory WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94')
         ))
 
 WITH split16 AS (
     SELECT 	ST_SplitFour(ST_SplitFour(
-            (SELECT ST_Extent(gm_contour) AS geom FROM territoire WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94')
+            (SELECT ST_Extent(gm_contour) AS geom FROM territory WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94')
     )) AS bbox
 )
 SELECT
     split16.*
     , (
         SELECT COUNT(*)
-        FROM territoire WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94'
+        FROM territory WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94'
         AND gm_contour && split16.bbox
     )
 FROM split16
@@ -443,7 +443,7 @@ SELECT  ST_SplitFour(
         ST_SetSRID(
             ST_MakePolygon(
                 ST_ExteriorRing(
-                    (SELECT ST_Extent(gm_contour) AS geom FROM territoire WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94')
+                    (SELECT ST_Extent(gm_contour) AS geom FROM territory WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94')
                 )
             )
             , 3857
@@ -958,3 +958,4 @@ BEGIN
 	RETURN _return;
 END
 $func$ LANGUAGE plpgsql;
+

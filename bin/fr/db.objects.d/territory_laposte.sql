@@ -21,7 +21,6 @@ BEGIN
     INSERT INTO fr.territory_laposte (
         nivgeo
         , codgeo
-        --, libgeo
         , codgeo_pdc_ppdc_parent
         , codgeo_ppdc_pdc_parent
         , codgeo_dex_parent
@@ -65,8 +64,7 @@ BEGIN
 
     CREATE UNIQUE INDEX iux_territory_laposte_nivgeo_codgeo ON fr.territory_laposte (nivgeo, codgeo);
 
-    --Mise à jour GEO, qui déclenchera un init GeoSupra le SUPRA n'existant pas, qui déclenchera l'updateGeoSupra spécifique
-    --PERFORM fr.set_territory_laposte_to_now();
+    PERFORM fr.set_territory_laposte_to_now();
 
     RETURN TRUE;
 END $$ LANGUAGE plpgsql;
