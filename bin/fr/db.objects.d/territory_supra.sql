@@ -179,8 +179,9 @@ BEGIN
     IF NOT simulation THEN
         EXECUTE _query USING base_level;
     ELSE
-        RAISE NOTICE '%', _query;
+        RAISE NOTICE '% [$1=%]', _query, base_level;
     END IF;
+
     --v_first_time := TRUE;
     FOREACH _level IN ARRAY _levels LOOP
         _bigger_sublevel := fr.get_bigger_sublevel(level_in => _level, among_levels => ARRAY_APPEND(_levels, base_level));
@@ -233,7 +234,7 @@ BEGIN
                     --	RAISE NOTICE 'Traitement GEO SUPRA % -> % gardé "%" : %', _bigger_sublevel, _level, LEFT(_query, 30), TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS');
                     END IF;
                 ELSE
-                    RAISE NOTICE '% - % - %', _query, _level, base_level;
+                    RAISE NOTICE '% [$1=%, $2=%]', _query, _level, base_level;
                 END IF;
             END IF;
 
@@ -250,7 +251,7 @@ BEGIN
                             WHERE source.nivgeo = $1 AND source.codgeo_', _level, '_parent IS NOT NULL
                             GROUP BY source.codgeo_', _level, '_parent
                             ', CASE WHEN _columns_groupby IS NOT NULL THEN CONCAT(', ', _columns_groupby) END, '
-                        ) AS query_groupy
+                        ) AS query_groupby
                     )'
                 );
             ELSE
@@ -283,7 +284,7 @@ BEGIN
             GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
             RAISE NOTICE 'Traitement GEO SUPRA % -> % "%" : % : % inserted', _bigger_sublevel, _level, LEFT(_query, 30), TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS'), _nrows_affected;
         ELSE
-            RAISE NOTICE '% - % - %', _query, _bigger_sublevel, _level;
+            RAISE NOTICE '% [$1=%, $2=%]', _query, _bigger_sublevel, _level;
         END IF;
         --v_first_time := FALSE;
     END LOOP;
@@ -314,7 +315,7 @@ BEGIN
             GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
             RAISE NOTICE 'Traitement GEO SUPRA "%" : % : % updated', LEFT(_query, 30), TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS'), _nrows_affected;
         ELSE
-            RAISE NOTICE '% - %', _query, _levels;
+            RAISE NOTICE '% [$1=%]', _query, _levels;
         END IF;
 
         --On supprime les entrées sauf celles qui existent déjà dans le nouveau jeu de données à insérer
@@ -335,7 +336,7 @@ BEGIN
             GET DIAGNOSTICS _nrows_deleted = ROW_COUNT;
             RAISE NOTICE 'Traitement GEO SUPRA "%" : % : % deleted', LEFT(_query, 30), TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS'), _nrows_deleted;
         ELSE
-            RAISE NOTICE '% - %', _query, _levels;
+            RAISE NOTICE '% [$1=%]', _query, _levels;
         END IF;
 
         _query := CONCAT(
@@ -381,6 +382,7 @@ BEGIN
     END IF;
 
     RAISE NOTICE '% : Fin traitement GEO SUPRA % de %.% : % (% inserted - % deleted, % updated)', TO_CHAR(clock_timestamp(), 'HH24:MI:SS'), CONCAT_WS('/', base_level, supra_levels_filter), schema_name, table_name, CONCAT(CASE WHEN (_nrows_inserted-_nrows_deleted) >=0 THEN '+' ELSE '-' END, ABS(_nrows_inserted-_nrows_deleted)), _nrows_inserted, _nrows_deleted, _nrows_updated;
+
     RETURN TRUE;
 END
 $func$ LANGUAGE plpgsql;

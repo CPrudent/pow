@@ -518,7 +518,7 @@ BEGIN
     DROP INDEX IF EXISTS ix_territory_gm_contour;
 
     CALL public.log_info(
-        message => 'Commande SH de suivi : %', 'watch -d -c "cat ' || _dir_tmp || '/SET_TERRITORY_GEOMETRY.notice.log | grep -o -P ''[0-9]+ traités'' | grep -o -P ''[0-9]+'' | awk ''{ SUM += \$1} END { print SUM }''"';
+        message => 'Commande SH de suivi : %', 'watch -d -c "cat ' || _dir_tmp || '/SET_TERRITORY_GEOMETRY.notice.log | grep -o -P ''[0-9]+ traités'' | grep -o -P ''[0-9]+'' | awk ''{ SUM += \$1} END { print SUM }''"'
         , stamped => FALSE
     );
 

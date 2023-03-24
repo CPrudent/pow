@@ -183,6 +183,13 @@ _set_pg_env() {
         "$@" || return $ERROR_CODE
 
     # FIXME find solution to hidden passwords
+    # https://unix.stackexchange.com/questions/212329/hiding-password-in-shell-scripts
+
+    # https://www.postgresql.org/docs/current/libpq-pgpass.html
+    # ~/.pgpass
+    #  APACHE:5432:pow:fr:***
+    #  localhost:5432:pow:fr:***
+
     local _std=(admin public)
     in_array _std "$get_arg_schema_code" && {
         POW_PG_USERNAME=postgres
