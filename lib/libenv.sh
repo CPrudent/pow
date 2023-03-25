@@ -306,24 +306,24 @@ set_env() {
         --args_d 'schema_code:public' \
         "$@" || return $ERROR_CODE
 
-    local _schemas_str _schemas
-    execute_query \
-        --name GET_SCHEMAS \
-        --query "
-            SELECT ARRAY_TO_STRING(ARRAY_AGG(nspname), ' ')
-            FROM pg_namespace WHERE nspname !~ 'pg_.*|ext_.*|information_schema|topology'
-            " \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
-        --return _schemas_str &&
-    _schemas=($_schemas_str)
-    _schemas+=(admin)
-    in_array _schemas "$get_arg_schema_code" || {
-        log_error 'schéma non valide!'
-        return $ERROR_CODE
-    }
-
-    set_env_dirs --schema_code $get_arg_schema_code &&
-    set_env_pg --schema_code $get_arg_schema_code || {
+    set_env_pg --schema_code $get_arg_schema_code && {
+        local _schemas_str _schemas
+        execute_query \
+            --name GET_SCHEMAS \
+            --query "
+                SELECT ARRAY_TO_STRING(ARRAY_AGG(nspname), ' ')
+                FROM pg_namespace WHERE nspname !~ 'pg_.*|ext_.*|information_schema|topology'
+                " \
+            --psql_arguments 'tuples-only:pset=format=unaligned' \
+            --return _schemas_str &&
+        _schemas=($_schemas_str)
+        _schemas+=(admin)
+        in_array _schemas "$get_arg_schema_code" || {
+            log_error 'schéma non valide!'
+            false
+        }
+    } &&
+    set_env_dirs --schema_code $get_arg_schema_code || {
         log_error 'contexte POW'
         return $ERROR_CODE
     }
