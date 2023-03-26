@@ -20,7 +20,7 @@ bash_args \
     ' \
     "$@" || exit $ERROR_CODE
 
-set_env --schema_code public
+set_env --schema_name public
 
 cp $POW_DIR_ROOT/tests/data/test_spreadsheet.{xlsx,ods} $POW_DIR_TMP
 

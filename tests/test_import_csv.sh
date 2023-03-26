@@ -71,7 +71,7 @@ data2|2|2023-02-16
 data3|3|2023-02-17
 EOF
 
-set_env --schema_code public
+set_env --schema_name public
 
 # tests
 for ((_i=0; _i<${#TEST_IMPORT_CSV_FILES[@]}; _i++)); do

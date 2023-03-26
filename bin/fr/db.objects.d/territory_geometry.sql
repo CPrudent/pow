@@ -238,14 +238,15 @@ BEGIN
                     (ST_Dump(
                         -- GEOMETRY ST_VoronoiPolygons(g1 GEOMETRY, tolerance FLOAT8, extend_to GEOMETRY);
                         ST_VoronoiPolygons(
-                        (SELECT ST_Collect(geom) FROM tmp_geom_delivery_point)
-                        , 5
-                        --Etendue de la commune
-                        , _municipality_with_many_zipcodes.gm_contour_natif
-                        --, (SELECT geom FROM fr.admin_express_commune WHERE insee_com = '86281')
-                        --Alternative : étendue agrandie de l'ensemble des points
-                        --, (SELECT ST_Buffer(ST_Extend(geom, 10000) FROM tmp_geom_delivery_point)
-                    ))).geom
+                            (SELECT ST_Collect(geom) FROM tmp_geom_delivery_point)
+                            , 5
+                            --Etendue de la commune
+                            , _municipality_with_many_zipcodes.gm_contour_natif
+                            --, (SELECT geom FROM fr.admin_express_commune WHERE insee_com = '86281')
+                            --Alternative : étendue agrandie de l'ensemble des points
+                            --, (SELECT ST_Buffer(ST_Extend(geom, 10000) FROM tmp_geom_delivery_point)
+                        )
+                    )).geom
             );
             CREATE INDEX ix_tmp_geom_delivery_point_voronoi_geom ON tmp_geom_delivery_point_voronoi USING GIST(geom);
 

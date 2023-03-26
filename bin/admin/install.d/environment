@@ -45,7 +45,7 @@ set -o allexport &&
 source $POW_DIR_ROOT/lib/libenv.sh &&
 export BASH_ENV=$POW_DIR_ROOT/lib/bashenv.sh &&
 set +o allexport &&
-set_env --schema_code public
+set_env --schema_name public
 ###
 EOC
         {

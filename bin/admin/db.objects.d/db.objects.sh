@@ -40,7 +40,7 @@ bash_args \
 
 log_info "Mise à jour de la structure de la base de données"
 # superuser
-set_env --schema_code admin &&
+set_env --schema_name admin &&
 # need drop_all_functions_if_exists()
 execute_query \
     --name CREATE_DROP_FUNCTIONS \
@@ -62,7 +62,7 @@ for _schema in ${_schemas[@]}; do
                         --query "$POW_DIR_BATCH/../${_schema}/db.objects.d/actions/relocate.sql"
                 fi
             } &&
-            set_env --schema_code $_schema &&
+            set_env --schema_name $_schema &&
             {
                 if [ -f "$POW_DIR_BATCH/db.objects.d/db.objects.sql" ]; then
                     execute_query \
@@ -75,7 +75,7 @@ for _schema in ${_schemas[@]}; do
                     $POW_DIR_BATCH/constant.sh
                 fi
             } &&
-            set_env --schema_code admin &&
+            set_env --schema_name admin &&
             {
                 if ([ -f "$POW_DIR_BATCH/../${_schema}/db.objects.d/actions/relocate.sql" ] && [ "$get_arg_relocate" = yes ] && [ -f "$POW_DIR_BATCH/../${_schema}/db.objects.d/actions/purge_after_relocate.sql" ]); then
                     execute_query \

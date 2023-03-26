@@ -25,7 +25,7 @@ bash_args \
 # and use force to bypass this rule
 
 force="$get_arg_force"
-set_env --schema_code fr &&
+set_env --schema_name fr &&
 log_info "Définition des territoires français" &&
 #$POW_DIR_BATCH/territory_insee.sh --force $force &&
 $POW_DIR_BATCH/insee_administrative_cutting.sh --force $force &&

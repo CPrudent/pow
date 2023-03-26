@@ -87,7 +87,7 @@ url_data="https://www.insee.fr/${url_data}"
 year_data=$(basename "$url_data")
 rm --force "$years_list_path"
 
-set_env --schema_code fr &&
+set_env --schema_name fr &&
 io_todo \
     --force $get_arg_force \
     --type $co_type_import \

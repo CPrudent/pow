@@ -178,8 +178,8 @@ set_params_conf_file() {
 # initialize PostgreSQL's context (user, passwd, default_schema)
 _set_pg_env() {
     bash_args \
-        --args_p 'schema_code:code applicatif du schéma à utiliser' \
-        --args_d 'schema_code:public' \
+        --args_p 'schema_name:code applicatif du schéma à utiliser' \
+        --args_d 'schema_name:public' \
         "$@" || return $ERROR_CODE
 
     # FIXME find solution to hidden passwords
@@ -191,14 +191,14 @@ _set_pg_env() {
     #  localhost:5432:pow:fr:***
 
     local _std=(admin public)
-    in_array _std "$get_arg_schema_code" && {
+    in_array _std "$get_arg_schema_name" && {
         POW_PG_USERNAME=postgres
         POW_PG_PASSWORD=pgpow+123
         POW_PG_DEFAULT_SCHEMA=public
     } || {
-        POW_PG_USERNAME=$get_arg_schema_code
-        POW_PG_DEFAULT_SCHEMA=$get_arg_schema_code
-        case $get_arg_schema_code in
+        POW_PG_USERNAME=$get_arg_schema_name
+        POW_PG_DEFAULT_SCHEMA=$get_arg_schema_name
+        case $get_arg_schema_name in
         fr)     POW_PG_PASSWORD=luxor       ;;
         *)      return $ERROR_CODE          ;;
         esac
@@ -216,7 +216,7 @@ _set_pg_env() {
 set_env_pg() {
     bash_args \
         --args_p '
-            schema_code:code applicatif du schéma à utiliser;
+            schema_name:code applicatif du schéma à utiliser;
             host:Hostname du moteur PostgreSQL;
             port:Port IP du moteur PostgreSQL;
             reset:Réinitialise les valeurs par défaut;
@@ -229,7 +229,7 @@ set_env_pg() {
         --args_d '
             reset:no;
             print:no;
-            schema_code:public
+            schema_name:public
         ' \
         "$@" || return $ERROR_CODE
 
@@ -255,7 +255,7 @@ set_env_pg() {
         [ -z "$POW_PG_PORT" ] && POW_PG_PORT=$(get_conf PG_PORT)
     }
 
-    _set_pg_env --schema_code $get_arg_schema_code &&
+    _set_pg_env --schema_name $get_arg_schema_name &&
     export POW_PG_HOST POW_PG_PORT || {
         log_error 'contexte PostgreSQL'
         return $ERROR_CODE
@@ -267,24 +267,24 @@ set_env_pg() {
 # custom Host's environment (w/ given schema)
 set_env_dirs() {
     bash_args \
-        --args_p 'schema_code:code applicatif du schéma à utiliser' \
-        --args_d 'schema_code:public' \
+        --args_p 'schema_name:code applicatif du schéma à utiliser' \
+        --args_d 'schema_name:public' \
         "$@" || return $ERROR_CODE
 
     # define DIRs
     local _dir
     declare -A _dirs
 
-    _dirs[POW_DIR_BATCH]="$POW_DIR_ROOT/bin/$get_arg_schema_code"
+    _dirs[POW_DIR_BATCH]="$POW_DIR_ROOT/bin/$get_arg_schema_name"
     _dirs[POW_DIR_BATCH_ADMIN]="$POW_DIR_ROOT/bin/admin"
     _dirs[POW_DIR_BATCH_PUBLIC]="$POW_DIR_ROOT/bin/public"
 
-    _dirs[POW_DIR_IMPORT]="$POW_DIR_DATA/import/$get_arg_schema_code"
-    _dirs[POW_DIR_EXPORT]="$POW_DIR_DATA/export/$get_arg_schema_code"
-    _dirs[POW_DIR_TMP]="$POW_DIR_DATA/tmp/$get_arg_schema_code"
-    _dirs[POW_DIR_ARCHIVE]="$POW_DIR_DATA/archive/$get_arg_schema_code/$(date +%Y%m%d-%T)"
+    _dirs[POW_DIR_IMPORT]="$POW_DIR_DATA/import/$get_arg_schema_name"
+    _dirs[POW_DIR_EXPORT]="$POW_DIR_DATA/export/$get_arg_schema_name"
+    _dirs[POW_DIR_TMP]="$POW_DIR_DATA/tmp/$get_arg_schema_name"
+    _dirs[POW_DIR_ARCHIVE]="$POW_DIR_DATA/archive/$get_arg_schema_name/$(date +%Y%m%d-%T)"
     _dirs[POW_DIR_COMMON_GLOBAL]="$POW_DIR_DATA/common"
-    _dirs[POW_DIR_COMMON_GLOBAL_SCHEMA]="$POW_DIR_DATA/common/$get_arg_schema_code"
+    _dirs[POW_DIR_COMMON_GLOBAL_SCHEMA]="$POW_DIR_DATA/common/$get_arg_schema_name"
 
     #declare -p _dirs
     for _dir in ${!_dirs[@]}; do
@@ -302,20 +302,20 @@ set_env_dirs() {
 # custom POW's environment (w/ given schema)
 set_env() {
     bash_args \
-        --args_p 'schema_code:code applicatif du schéma à utiliser' \
-        --args_d 'schema_code:public' \
+        --args_p 'schema_name:code applicatif du schéma à utiliser' \
+        --args_d 'schema_name:public' \
         "$@" || return $ERROR_CODE
 
     # check for schema (from directory source)
     {
         _schemas=($(ls -1d "$POW_DIR_ROOT/bin/"* | xargs --max-args 1 basename))
-        in_array _schemas "$get_arg_schema_code" || {
+        in_array _schemas "$get_arg_schema_name" || {
             log_error 'schéma non valide!'
             false
         }
     } &&
-    set_env_pg --schema_code $get_arg_schema_code &&
-    set_env_dirs --schema_code $get_arg_schema_code || {
+    set_env_pg --schema_name $get_arg_schema_name &&
+    set_env_dirs --schema_name $get_arg_schema_name || {
         log_error 'contexte POW'
         return $ERROR_CODE
     }

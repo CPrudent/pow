@@ -5,7 +5,7 @@
     #--
     # build FR's constants
 
-# TODO check if current env is fr, else set_env --schema_code fr
+# TODO check if current env is fr, else set_env --schema_name fr
 
 execute_query \
     --name SET_CONSTANTS \

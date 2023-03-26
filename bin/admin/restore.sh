@@ -34,7 +34,7 @@ table_except_re=$get_arg_table_except_re
 dry_run=$get_arg_dry_run
 
 # superuser
-set_env --schema_code admin
+set_env --schema_name admin
 
 for _schema_name in ${SCHEMAS[@]}; do
     # particular schema requested

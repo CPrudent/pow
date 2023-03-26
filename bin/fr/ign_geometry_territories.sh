@@ -99,7 +99,7 @@ else
 	declare -a ITEMS=($get_arg_item)
 fi
 
-set_env --schema_code fr &&
+set_env --schema_name fr &&
 # get last import
 execute_query \
     --name "LAST_IO_${co_type_import}" \

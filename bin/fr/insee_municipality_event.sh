@@ -88,7 +88,7 @@ year_data=$(basename "$url_data")
 [ "$POW_DEBUG" = yes ] && { echo "year_data=$year_data"; }
 rm --force "$years_list_path" "$POW_DIR_TMP/$year_information"
 
-set_env --schema_code fr &&
+set_env --schema_name fr &&
 io_todo \
     --force $get_arg_force \
     --type $co_type_import \

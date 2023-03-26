@@ -61,7 +61,7 @@ year=$(date -d ${years[$year_id]} +%Y)
 }
 [ "$POW_DEBUG" = yes ] && { echo "year=$year (${years[$year_id]})"; }
 
-set_env --schema_code fr &&
+set_env --schema_name fr &&
 io_todo \
     --force $get_arg_force \
     --type $co_type_import \
