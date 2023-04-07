@@ -11,10 +11,16 @@ SCHEMAS_JOIN_PIPE=${SCHEMAS[@]}
 SCHEMAS_JOIN_PIPE=${SCHEMAS_JOIN_PIPE// /|}
 SCHEMAS_JOIN_PIPE+="|ALL"
 
+declare -a SOURCES=(BACKUP FILE)
+SOURCES_JOIN_PIPE=${SOURCES[@]}
+SOURCES_JOIN_PIPE=${SOURCES_JOIN_PIPE// /|}
+SOURCES_JOIN_PIPE+="|ALL"
+
 bash_args \
     --args_p '
         schema_name:Nom du schema à restaurer;
-        table_except_re:REGEX pour exclure des tables;
+        data_except_re:REGEX pour exclure des données;
+        sources:sources des données à restaurer;
         dry_run:Afficher les traitements sans les exécuter
     ' \
     --args_o '
@@ -22,16 +28,19 @@ bash_args \
     ' \
     --args_v '
         schema_name:'${SCHEMAS_JOIN_PIPE}';
+        sources:'${SOURCES_JOIN_PIPE}';
         dry_run:no|yes
     ' \
     --args_d '
+        sources:ALL;
         dry_run:no
     ' \
     "$@" || exit $ERROR_CODE
 
 schema_name=$get_arg_schema_name
-table_except_re=$get_arg_table_except_re
+data_except_re=$get_arg_data_except_re
 dry_run=$get_arg_dry_run
+sources=$get_arg_sources
 
 # superuser
 set_env --schema_name admin
@@ -41,6 +50,7 @@ for _schema_name in ${SCHEMAS[@]}; do
     [ "$schema_name" != ALL ] && [ "$_schema_name" != "$schema_name" ] && continue
 
     declare -a tables=()
+    declare -a files=()
 
     _create_schema=1
     case ${_schema_name} in
@@ -80,41 +90,75 @@ for _schema_name in ${SCHEMAS[@]}; do
             CREATE SCHEMA IF NOT EXISTS ran AUTHORIZATION ran;
             "
         tables=(l3 numero voie za adresse coord)
+        # NOTE convert fixed length to csv (adding header columns)
+        # head $POW_DIR_DATA/common/admin/hspraaaa.ai | awk -f $POW_DIR_DATA/common/admin/hspraaaa.awk
+        files=(hspraaaa.ai)
         ;;
     esac
 
     log_info 'Début de la restauration du schéma '${_schema_name}
-    for table in ${tables[@]}; do
-        #declare -p tables table
-        [ -n "$table_except_re" ] &&
-        [[ $table =~ $table_except_re ]] && {
-            log_info "table ($table) exclue..."
-            continue
-        }
-
-        log_info "table ($table) à restaurer..."
-        [ "$dry_run" = no ] && {
-            [ -f "$POW_DIR_DATA/common/admin/${_schema_name,,}.$table.backup" ] && {
-            {
-                if [ $_create_schema -eq 1 ]; then
-                    execute_query \
-                        --name "CREATE_SCHEMA_${_schema_name}" \
-                        --query "$_query_schema"
-                fi
-            } &&
-            # DON'T CARE about error due to missing role(s) like: apps_ciblage, ban, pnd, reex
-            restore_table \
-                --schema_name ${_schema_name,,} \
-                --table_name $table \
-                --restore_mode DROP \
-                --backup_before_restore no \
-                --input "$POW_DIR_DATA/common/admin/${_schema_name,,}.$table.backup" || true
-            } || {
-                log_error "Arrêt sur Données ${_schema_name} ($table)"
+    [[ $sources =~ ALL|BACKUP ]] && {
+        for table in ${tables[@]}; do
+            [ -n "$data_except_re" ] &&
+            [[ $table =~ $data_except_re ]] && {
+                log_info "table ($table) exclue..."
+                continue
             }
-        }
-    done
-    log_info "Fin de la restauration du  contexte ${_schema_name} avec succès"
+
+            log_info "table ($table) à restaurer..."
+            [ "$dry_run" = no ] && {
+                [ -f "$POW_DIR_DATA/common/admin/${_schema_name,,}.$table.backup" ] && {
+                    {
+                        if [ $_create_schema -eq 1 ]; then
+                            execute_query \
+                                --name "CREATE_SCHEMA_${_schema_name}" \
+                                --query "$_query_schema" &&
+                            _create_schema=0
+                        fi
+                    } &&
+                    # DON'T CARE about error due to missing role(s) like: apps_ciblage, ban, pnd, reex
+                    restore_table \
+                        --schema_name ${_schema_name,,} \
+                        --table_name $table \
+                        --restore_mode DROP \
+                        --backup_before_restore no \
+                        --input "$POW_DIR_DATA/common/admin/${_schema_name,,}.$table.backup" || true
+                } || {
+                    log_error "Arrêt sur Données ${_schema_name} ($table)"
+                }
+            }
+        done
+    }
+    [[ $sources =~ ALL|FILE ]] && {
+        for file in ${files[@]}; do
+            [ -n "$data_except_re" ] &&
+            [[ $file =~ $data_except_re ]] && {
+                log_info "fichier ($file) exclu..."
+                continue
+            }
+
+            log_info "fichier ($file) à restaurer..."
+            [ "$dry_run" = no ] && {
+                [ -f "$POW_DIR_DATA/common/admin/${_schema_name,,}.$file" ] && {
+                    {
+                        if [ $_create_schema -eq 1 ]; then
+                            execute_query \
+                                --name "CREATE_SCHEMA_${_schema_name}" \
+                                --query "$_query_schema"
+                        fi
+                    } &&
+                    import_file \
+                        --file_path "$POW_DIR_DATA/common/admin/${_schema_name,,}.$file" \
+                        --schema_name ${_schema_name,,} \
+                        --table_name "$(get_file_name --file_path \"$POW_DIR_DATA/common/admin/${_schema_name,,}.$file\")" \
+                        --load_mode OVERWRITE_TABLE
+                } || {
+                    log_error "Arrêt sur Données ${_schema_name} ($file)"
+                }
+            }
+        done
+    }
+    log_info "Fin de la restauration du schéma ${_schema_name} avec succès"
 done
 
 exit $SUCCESS_CODE

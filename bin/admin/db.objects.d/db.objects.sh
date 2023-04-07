@@ -19,6 +19,9 @@ _schemas+=(public)
 _schemas_join_pipe=${_schemas[@]}
 _schemas_join_pipe=${_schemas_join_pipe// /|}
 
+# TODO add reset option to delete all tables
+# https://stackoverflow.com/questions/3327312/how-can-i-drop-all-the-tables-in-a-postgresql-database
+
 bash_args \
     --args_p '
         schema_only:Limiter la mise à jour à un schéma;
