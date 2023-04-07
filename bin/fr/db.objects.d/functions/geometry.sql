@@ -63,7 +63,7 @@ BEGIN
         INTO _nterritories, _bbox_territory
         FROM fr.tmp_polygon_to_simp
         WHERE (bbox_in IS NULL OR geom && bbox_in)
-        AND ST_Srid(geom) = from_srid;
+        AND ST_SRID(geom) = from_srid;
 
         IF _nterritories = 0 THEN
             RAISE NOTICE 'ST_SimplifyTerritory % : 0 à traiter', subcall_name;

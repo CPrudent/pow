@@ -8,7 +8,7 @@ CREATE OR REPLACE FUNCTION convert_xy_to_point(
     coord TEXT
     , srid INTEGER
     , inverse BOOLEAN DEFAULT FALSE
-    )
+)
 RETURNS GEOMETRY(POINT) AS
 $func$
 DECLARE
@@ -29,14 +29,14 @@ $func$ LANGUAGE plpgsql;
 SELECT public.drop_all_functions_if_exists('public', 'convert_point_to_lat_lng');
 CREATE OR REPLACE FUNCTION public.convert_point_to_lat_lng(
     geom IN GEOMETRY(POINT)
-    )
+)
 RETURNS VARCHAR AS
 $$
 DECLARE
 BEGIN
     IF geom IS NULL THEN RETURN NULL; END IF;
-    IF NULLIF(ST_Srid(geom), 0) IS NULL THEN RAISE 'SRID indéfini'; END IF;
-    IF ST_Srid(geom) != 4326 THEN
+    IF NULLIF(ST_SRID(geom), 0) IS NULL THEN RAISE 'SRID indéfini'; END IF;
+    IF ST_SRID(geom) != 4326 THEN
         geom := ST_Transform(geom, 4326);
     END IF;
     RETURN CONCAT_WS(', ', ST_Y(geom), ST_X(geom));
@@ -54,7 +54,7 @@ SELECT public.drop_all_functions_if_exists('public', 'ST_DistanceExterior');
 CREATE OR REPLACE FUNCTION ST_DistanceExterior(
     point_in GEOMETRY(POINT)
     , geoms GEOMETRY(MULTIPOLYGON)
-    )
+)
 RETURNS DOUBLE PRECISION AS
 $func$
 DECLARE
@@ -80,7 +80,7 @@ SELECT public.drop_all_functions_if_exists('public', 'ST_RemoveRepeatedPoints');
 CREATE OR REPLACE FUNCTION public.ST_RemoveRepeatedPoints(
     geom IN GEOMETRY
     , tolerance FLOAT8
-    )
+)
 RETURNS GEOMETRY AS
 $$
 DECLARE
@@ -275,7 +275,7 @@ CREATE OR REPLACE FUNCTION public.ST_VoronoiPolygons(
     geom IN GEOMETRY
     , tolerance FLOAT8 DEFAULT 0.0
     , extent_to GEOMETRY DEFAULT NULL
-    )
+)
 RETURNS GEOMETRY AS
 $$
 BEGIN
@@ -374,28 +374,28 @@ improve ST_SplitFour()
 SELECT public.drop_all_functions_if_exists('public', 'ST_SplitFour');
 CREATE OR REPLACE FUNCTION public.ST_SplitFour(
     box2d_in IN BOX2D
-    )
+)
 RETURNS SETOF BOX2D AS
 $$
 DECLARE
-	_rectangle GEOMETRY(POLYGON);
-	_middle GEOMETRY(POINT);
-	_bottom_left GEOMETRY(POINT);
-	_top_left GEOMETRY(POINT);
-	_top_right GEOMETRY(POINT);
-	_bottom_right GEOMETRY(POINT);
+    _rectangle GEOMETRY(POLYGON);
+    _middle GEOMETRY(POINT);
+    _bottom_left GEOMETRY(POINT);
+    _top_left GEOMETRY(POINT);
+    _top_right GEOMETRY(POINT);
+    _bottom_right GEOMETRY(POINT);
 BEGIN
-	_rectangle := ST_MakePolygon(ST_ExteriorRing(box2d_in));
-	_middle := ST_Centroid(_rectangle);
-	SELECT (ST_DumpPoints(_rectangle)).geom INTO _bottom_left OFFSET 0 LIMIT 1;
-	SELECT (ST_DumpPoints(_rectangle)).geom INTO _top_left OFFSET 1 LIMIT 1;
-	SELECT (ST_DumpPoints(_rectangle)).geom INTO _top_right OFFSET 2 LIMIT 1;
-	SELECT (ST_DumpPoints(_rectangle)).geom INTO _bottom_right OFFSET 3 LIMIT 1;
+    _rectangle := ST_MakePolygon(ST_ExteriorRing(box2d_in));
+    _middle := ST_Centroid(_rectangle);
+    SELECT (ST_DumpPoints(_rectangle)).geom INTO _bottom_left OFFSET 0 LIMIT 1;
+    SELECT (ST_DumpPoints(_rectangle)).geom INTO _top_left OFFSET 1 LIMIT 1;
+    SELECT (ST_DumpPoints(_rectangle)).geom INTO _top_right OFFSET 2 LIMIT 1;
+    SELECT (ST_DumpPoints(_rectangle)).geom INTO _bottom_right OFFSET 3 LIMIT 1;
 
-	RETURN NEXT BOX2D(ST_Collect(_top_left, _middle));
-	RETURN NEXT BOX2D(ST_Collect(_top_right, _middle));
-	RETURN NEXT BOX2D(ST_Collect(_bottom_left, _middle));
-	RETURN NEXT BOX2D(ST_Collect(_bottom_right, _middle));
+    RETURN NEXT BOX2D(ST_Collect(_top_left, _middle));
+    RETURN NEXT BOX2D(ST_Collect(_top_right, _middle));
+    RETURN NEXT BOX2D(ST_Collect(_bottom_left, _middle));
+    RETURN NEXT BOX2D(ST_Collect(_bottom_right, _middle));
 END
 $$ LANGUAGE plpgsql;
 
@@ -428,12 +428,12 @@ FROM split16
 
 CREATE OR REPLACE FUNCTION public.ST_SplitFour(
     geom IN GEOMETRY
-    )
+)
 RETURNS SETOF GEOMETRY AS
 $$
 BEGIN
-	RETURN QUERY
-        SELECT ST_SetSrid(ST_MakePolygon(ST_ExteriorRing(ST_SplitFour(BOX2D(geom)))), ST_Srid(geom));
+    RETURN QUERY
+        SELECT ST_SetSrid(ST_MakePolygon(ST_ExteriorRing(ST_SplitFour(BOX2D(geom)))), ST_SRID(geom));
 END
 $$ LANGUAGE plpgsql;
 
@@ -455,10 +455,10 @@ SELECT  ST_SplitFour(
 SELECT public.drop_all_functions_if_exists('public', 'coordIsInSridBounds');
 -- from (x, y, SRID)
 CREATE OR REPLACE FUNCTION coordIsInSridBounds(
-    _x DOUBLE PRECISION
-    , _y DOUBLE PRECISION
+    x DOUBLE PRECISION
+    , y DOUBLE PRECISION
     , srid INTEGER
-    )
+)
 RETURNS BOOLEAN
 IMMUTABLE
 AS
@@ -469,19 +469,19 @@ BEGIN
         CASE srid
         -- France Métropolitaine, Monaco
         WHEN 2154 THEN
-            --(_x BETWEEN -357823.2365 AND 1313632.3628) AND (_y BETWEEN 6037008.6939 AND 7230727.3772)
+            --(x BETWEEN -357823.2365 AND 1313632.3628) AND (y BETWEEN 6037008.6939 AND 7230727.3772)
             -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'France métropolitaine hors Corse', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM ign.admin_express_commune WHERE insee_dep NOT LIKE '97%' AND insee_dep NOT IN ('2A', '2B')
             --> BOX(97038 6135116, 1084898 7112480)
-            (_x BETWEEN 97038 AND 1084898) AND (_y BETWEEN 6135116 AND 7112480)
+            (x BETWEEN 97038 AND 1084898) AND (y BETWEEN 6135116 AND 7112480)
             -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Corse', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM ign.admin_express_commune WHERE insee_dep IN ('2A', '2B')
             --> BOX(1154228 6044556, 1244436 6237452)
-            OR (_x BETWEEN 1154228 AND 1244436) AND (_y BETWEEN 6044556 AND 6237452)
+            OR (x BETWEEN 1154228 AND 1244436) AND (y BETWEEN 6044556 AND 6237452)
 
         /* Guadeloupe Martinique (971XX et 972XX)
             * + Saint-Barthélemy (977XX), île francophone des Caraïbes
             * + Saint-Martin (978XX). Fait partie des îles Leeward dans la mer des Caraïbes. Elle est divisée entre 2 pays distincts : sa partie nord, appelée Saint-Martin, est française, et sa partie sud, Sint Maarten, est néerlandaise.
             */
-        WHEN 4559 THEN (_x BETWEEN 428749.41 AND 1079045.02) AND (_y BETWEEN 1556673.78 AND 2058754.66)
+        WHEN 4559 THEN (x BETWEEN 428749.41 AND 1079045.02) AND (y BETWEEN 1556673.78 AND 2058754.66)
             -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Guadeloupe', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM ign.admin_express_commune WHERE insee_dep = '971'
             --> BOX(625198 1748873, 715444 1828464)
             -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Martinique', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM ign.admin_express_commune WHERE insee_dep = '972'
@@ -492,17 +492,17 @@ BEGIN
             --> NULL
 
         --Guyane française (973XX), région d'outre-mer située sur la côte nord-est de l'Amérique du Sud
-        WHEN 2972 THEN (_x BETWEEN 99415.20 AND 669342.50) AND (_y BETWEEN 233683.27 AND 981936.72)
+        WHEN 2972 THEN (x BETWEEN 99415.20 AND 669342.50) AND (y BETWEEN 233683.27 AND 981936.72)
             -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Guyane', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM ign.admin_express_commune WHERE insee_dep = '973'
             --> BOX(97207 231683, 433296 638175)
 
         --Ile de la Réunion (974XX)
-        WHEN 2975 THEN (_x BETWEEN -23344.18 AND 631069.19) AND (_y BETWEEN 7256163.66 AND 7978390.98)
+        WHEN 2975 THEN (x BETWEEN -23344.18 AND 631069.19) AND (y BETWEEN 7256163.66 AND 7978390.98)
             -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Réunion', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM ign.admin_express_commune WHERE insee_dep = '974'
             --> BOX(312668 7632101, 381239 7693275)
 
         --Mayotte (976XX), archipel de l'océan Indien situé entre Madagascar et la côte du Mozambique
-        WHEN 4471 THEN (_x BETWEEN 357748.31 AND 685530.19) AND (_y BETWEEN 8397670.97 AND 8746991.06)
+        WHEN 4471 THEN (x BETWEEN 357748.31 AND 685530.19) AND (y BETWEEN 8397670.97 AND 8746991.06)
             -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Mayotte', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM ign.admin_express_commune WHERE insee_dep = '976'
             --> BOX(499991 8560261, 534560 8605052)
 
@@ -519,7 +519,7 @@ $func$ LANGUAGE plpgsql;
 -- from POINT
 CREATE OR REPLACE FUNCTION coordIsInSridBounds(
     point_in GEOMETRY(POINT)
-    )
+)
 RETURNS BOOLEAN
 IMMUTABLE
 AS
@@ -626,13 +626,13 @@ CREATE OR REPLACE FUNCTION public.ST_ExtendLine(
      END : extend in direction of end of line
      */
     , direction VARCHAR DEFAULT 'BOTH'
-    )
+)
 RETURNS GEOMETRY(LINESTRING)
 AS $$
 DECLARE
-	_azimuth FLOAT;
-	_start_point GEOMETRY(POINT);
-	_end_point GEOMETRY(POINT);
+    _azimuth FLOAT;
+    _start_point GEOMETRY(POINT);
+    _end_point GEOMETRY(POINT);
 BEGIN
     _start_point := ST_StartPoint(line_in);
     _end_point := ST_EndPoint(line_in);
@@ -942,20 +942,20 @@ AND ST_GeometryType(ST_MakeValid(geom)) = 'ST_MultiPolygon'
 -- internal boundary
 SELECT drop_all_functions_if_exists('public', 'ST_InternalBoundary');
 CREATE OR REPLACE FUNCTION public.ST_InternalBoundary(
-	geom IN GEOMETRY(MULTIPOLYGON)
-    )
+    geom IN GEOMETRY(MULTIPOLYGON)
+)
 RETURNS GEOMETRY AS
 $func$
 DECLARE
-	_return GEOMETRY;
+    _return GEOMETRY;
 BEGIN
-	SELECT ST_Union(ST_Intersection(ST_Boundary(geom_a.geom), ST_Boundary(geom_b.geom)))
-	INTO _return
-	FROM ST_Dump(geom) AS geom_a
-	CROSS JOIN ST_Dump(geom) AS geom_b
-	WHERE geom_a.path != geom_b.path;
+    SELECT ST_Union(ST_Intersection(ST_Boundary(geom_a.geom), ST_Boundary(geom_b.geom)))
+    INTO _return
+    FROM ST_Dump(geom) AS geom_a
+    CROSS JOIN ST_Dump(geom) AS geom_b
+    WHERE geom_a.path != geom_b.path;
 
-	RETURN _return;
+    RETURN _return;
 END
 $func$ LANGUAGE plpgsql;
 

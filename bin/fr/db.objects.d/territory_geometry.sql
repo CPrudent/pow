@@ -131,7 +131,7 @@ BEGIN
             , tmp_municipality_with_many_zipcodes.nb_cp
             , tmp_municipality_with_many_zipcodes.premier_cp
             , commune_ign.geom AS gm_contour_natif
-            , ST_Srid(commune_ign.geom) AS srid
+            , ST_SRID(commune_ign.geom) AS srid
         FROM tmp_municipality_with_many_zipcodes
         INNER JOIN (
             SELECT
