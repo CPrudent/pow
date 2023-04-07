@@ -56,7 +56,9 @@ execute_query \
     if [ "$get_arg_postal_geom" = yes ]; then
         execute_query \
             --name SET_TERRITORY_GEOMETRY \
-            --query "CALL fr.set_territory_geometry()" && {
+            --query "CALL fr.set_territory_geometry(
+                dir_tmp => '$POW_DIR_TMP'
+            )" && {
             _error=$(grep '^ERREUR' $POW_DIR_ARCHIVE/SET_TERRITORY_GEOMETRY.notice.log)
             [ -n "$_error" ] && {
                 log_error "calcul des géométries : $_error"
@@ -89,7 +91,7 @@ execute_query \
 } &&
 execute_query \
     --name SET_TERRITORY_NEAR \
-    --query "SELECT fr.update_territory_near()" &&
+    --query "SELECT fr.update_territory_next()" &&
 vacuum \
     --schema_name fr \
     --table_name territory \

@@ -270,7 +270,7 @@ BEGIN
     ) THEN
         PERFORM public.update_territory();
         --Recalcul du voisinage, là ou il est indéfini suite MAJ geo
-        PERFORM public.update_territory_near(null_only => TRUE);
+        PERFORM public.update_territory_next(null_only => TRUE);
         RETURN TRUE;
     END IF;
     RETURN FALSE;
@@ -473,8 +473,9 @@ BEGIN
     RETURN TRUE;
 END $$ LANGUAGE plpgsql;
 
-SELECT drop_all_functions_if_exists('fr', 'update_territory_near');
-CREATE OR REPLACE FUNCTION fr.update_territory_near(
+-- eval next territories
+SELECT drop_all_functions_if_exists('fr', 'update_territory_next');
+CREATE OR REPLACE FUNCTION fr.update_territory_next(
     null_only BOOLEAN DEFAULT FALSE
 )
 RETURNS BOOLEAN
@@ -482,7 +483,7 @@ AS $$
 DECLARE
     _nrows_affected INTEGER;
 BEGIN
-    IF null_only = TRUE THEN
+    IF null_only THEN
         WITH initial_territory AS (
             SELECT nivgeo, codgeo, gm_contour
             FROM fr.territory
@@ -493,20 +494,20 @@ BEGIN
             AND nivgeo = ANY(fr.get_all_levels())
         )
         , extend_territory AS (
-            SELECT DISTINCT UNNEST(ARRAY[near_territory.codgeo, territory.codgeo]) AS codgeo, near_territory.nivgeo
+            SELECT DISTINCT UNNEST(ARRAY[next_territory.codgeo, territory.codgeo]) AS codgeo, next_territory.nivgeo
             FROM initial_territory AS territory
-            INNER JOIN fr.territory AS near_territory
-                ON near_territory.nivgeo = territory.nivgeo
-                AND near_territory.codgeo <> territory.codgeo
-                AND ST_Touches(near_territory.gm_contour, territory.gm_contour)
+            INNER JOIN fr.territory AS next_territory
+                ON next_territory.nivgeo = territory.nivgeo
+                AND next_territory.codgeo <> territory.codgeo
+                AND ST_Touches(next_territory.gm_contour, territory.gm_contour)
         )
         UPDATE fr.territory
         SET codgeo_voisins = (
-            SELECT ARRAY_AGG(near_territory.codgeo)
-            FROM fr.territory near_territory
-            WHERE near_territory.nivgeo = territory.nivgeo
-            AND near_territory.codgeo <> territory.codgeo
-            AND ST_Touches(near_territory.gm_contour, territory.gm_contour)
+            SELECT ARRAY_AGG(next_territory.codgeo)
+            FROM fr.territory next_territory
+            WHERE next_territory.nivgeo = territory.nivgeo
+            AND next_territory.codgeo <> territory.codgeo
+            AND ST_Touches(next_territory.gm_contour, territory.gm_contour)
         )
         FROM extend_territory
         WHERE territory.codgeo = extend_territory.codgeo
@@ -514,11 +515,11 @@ BEGIN
     ELSE
         UPDATE fr.territory
         SET codgeo_voisins = (
-            SELECT ARRAY_AGG(near_territory.codgeo)
-            FROM fr.territory AS near_territory
-            WHERE near_territory.nivgeo = territory.nivgeo
-            AND near_territory.codgeo <> territory.codgeo
-            AND ST_Touches(near_territory.gm_contour, territory.gm_contour)
+            SELECT ARRAY_AGG(next_territory.codgeo)
+            FROM fr.territory AS next_territory
+            WHERE next_territory.nivgeo = territory.nivgeo
+            AND next_territory.codgeo <> territory.codgeo
+            AND ST_Touches(next_territory.gm_contour, territory.gm_contour)
         )
         -- to avoid backup-levels (as COM_A_XXXXXX)
         WHERE nivgeo = ANY(fr.get_all_levels());

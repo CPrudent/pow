@@ -1,21 +1,25 @@
-SELECT drop_all_functions_if_exists('fr','ST_SimplifyTerritory');
+/***
+ * add GEOMETRY facilities
+ */
+
+SELECT drop_all_functions_if_exists('fr', 'ST_SimplifyTerritory');
 CREATE OR REPLACE PROCEDURE fr.ST_SimplifyTerritory(
     levels IN VARCHAR[]
-    ,from_srid IN INTEGER DEFAULT NULL
-    ,to_srid IN INTEGER DEFAULT 4326
-    ,bbox_in IN box2d DEFAULT NULL
-    ,tolerance INTEGER DEFAULT 100
-    ,bbox_split_over INTEGER DEFAULT 2000
-    ,subcall BOOLEAN DEFAULT FALSE
-    ,subcall_name VARCHAR DEFAULT NULL
+    , from_srid IN INTEGER DEFAULT NULL
+    , to_srid IN INTEGER DEFAULT 4326
+    , bbox_in IN box2d DEFAULT NULL
+    , tolerance INTEGER DEFAULT 100
+    , bbox_split_over INTEGER DEFAULT 2000
+    , subcall BOOLEAN DEFAULT FALSE
+    , subcall_name VARCHAR DEFAULT NULL
 )
 AS $$
 DECLARE
-    v_split_by_srid RECORD;
-    v_nb_row_affected INTEGER;
-    v_split RECORD;
-    v_nb_terr INTEGER;
-    v_bbox_terr BOX2D;
+    _split_by_srid RECORD;
+    _nrows_affected INTEGER;
+    _split RECORD;
+    _nterritories INTEGER;
+    _bbox_territory BOX2D;
 BEGIN
     IF NOT subcall THEN
         DROP TABLE IF EXISTS fr.tmp_polygon_to_simp;
@@ -36,52 +40,52 @@ BEGIN
     END IF;
 
     IF from_srid IS NULL THEN
-        FOR v_split_by_srid IN (
+        FOR _split_by_srid IN (
             SELECT DISTINCT ST_SRID(geom) AS srid
             FROM tmp_polygon_to_simp
             WHERE (bbox_in IS NULL OR geom && bbox_in)
         )
         LOOP
-            RAISE NOTICE 'ST_SimplifyTerritory : traitement SRID %', v_split_by_srid.srid;
+            RAISE NOTICE 'ST_SimplifyTerritory : traitement SRID %', _split_by_srid.srid;
             CALL fr.ST_SimplifyTerritory(
                 levels => levels
-                ,from_srid => v_split_by_srid.srid
-                ,to_srid => to_srid
-                ,bbox_in => bbox_in
-                ,tolerance => tolerance
-                ,bbox_split_over => bbox_split_over
-                ,subcall => TRUE
-                ,subcall_name => CONCAT_WS('.',subcall_name,v_split_by_srid.srid)
+                , from_srid => _split_by_srid.srid
+                , to_srid => to_srid
+                , bbox_in => bbox_in
+                , tolerance => tolerance
+                , bbox_split_over => bbox_split_over
+                , subcall => TRUE
+                , subcall_name => CONCAT_WS('.', subcall_name, _split_by_srid.srid)
             );
         END LOOP;
     ELSE
         SELECT COUNT(*), ST_Extent(geom)
-        INTO v_nb_terr, v_bbox_terr
+        INTO _nterritories, _bbox_territory
         FROM fr.tmp_polygon_to_simp
         WHERE (bbox_in IS NULL OR geom && bbox_in)
         AND ST_Srid(geom) = from_srid;
 
-        IF v_nb_terr = 0 THEN
+        IF _nterritories = 0 THEN
             RAISE NOTICE 'ST_SimplifyTerritory % : 0 à traiter', subcall_name;
             RETURN;
-        ELSIF v_nb_terr > bbox_split_over THEN
-            RAISE NOTICE 'ST_SimplifyTerritory % : % à traiter : découpage en quatre de l''étendue', subcall_name, v_nb_terr;
-            FOR v_split IN (
+        ELSIF _nterritories > bbox_split_over THEN
+            RAISE NOTICE 'ST_SimplifyTerritory % : % à traiter : découpage en quatre de l''étendue', subcall_name, _nterritories;
+            FOR _split IN (
                 SELECT bbox_terr, ROW_NUMBER() OVER () AS bbox_number
                 FROM (
-                    SELECT ST_SplitFour(v_bbox_terr) AS bbox_terr
+                    SELECT ST_SplitFour(_bbox_territory) AS bbox_terr
                 ) AS sous_requete
             )
             LOOP
                 CALL fr.ST_SimplifyTerritory(
                     levels => levels
-                    ,from_srid => from_srid
-                    ,to_srid => to_srid
-                    ,bbox_in => v_split.bbox_terr
-                    ,tolerance => tolerance
-                    ,bbox_split_over => bbox_split_over
-                    ,subcall => TRUE
-                    ,subcall_name => CONCAT_WS('.',subcall_name,v_split.bbox_number)
+                    , from_srid => from_srid
+                    , to_srid => to_srid
+                    , bbox_in => _split.bbox_terr
+                    , tolerance => tolerance
+                    , bbox_split_over => bbox_split_over
+                    , subcall => TRUE
+                    , subcall_name => CONCAT_WS('.', subcall_name, _split.bbox_number)
                 );
             END LOOP;
         ELSE
@@ -89,13 +93,21 @@ BEGIN
             CREATE /*TEMPORARY*/ TABLE fr.tmp_polygon_simp AS (
                 WITH polygon_to_line_string AS (
                     --plus rapide mais nécessite d'avoir un ensemble de multilinestring, et donc de faire au préalable un dumprings
-                    SELECT ST_SimplifyPreserveTopology(ST_Node(ST_Collect(ST_Boundary(tmp_polygon_to_simp.geom))),tolerance) as geom
+                    SELECT
+                        ST_SimplifyPreserveTopology(
+                            ST_Node(
+                                ST_Collect(
+                                    ST_Boundary(tmp_polygon_to_simp.geom)
+                                )
+                            )
+                            , tolerance
+                        ) AS geom
                     --équivalent en résultat, mais 10 fois plus lent :
-                    --SELECT ST_SimplifyPreserveTopology(ST_LineMerge(ST_Union(ST_Boundary(polygon_to_simp.geom))),500) as geom
+                    --SELECT ST_SimplifyPreserveTopology(ST_LineMerge(ST_Union(ST_Boundary(polygon_to_simp.geom))), 500) AS geom
                     FROM fr.tmp_polygon_to_simp
                     --On simplifie aussi les territoires qui sont autour des territoires à simplifier pour assurer une cohérence globale
                     --WHERE (bbox_in IS NULL OR geom && bbox_in)
-                    WHERE (bbox_in IS NULL OR geom && v_bbox_terr)
+                    WHERE (bbox_in IS NULL OR geom && _bbox_territory)
                     AND ST_SRID(geom) = from_srid
                 )
                 SELECT (ST_Dump(ST_Polygonize(ST_Node(geom)))).* FROM polygon_to_line_string
@@ -108,12 +120,12 @@ BEGIN
                 --Possibilités de similitudes entre polygones dans la même étendue
                 SELECT
                     polygon_to_simp.id AS polygon_to_simp_id
-                    ,polygon_simp.id AS polygon_simp_id
-                    ,(
+                    , polygon_simp.id AS polygon_simp_id
+                    , (
                         ST_Area(
                             ST_Intersection(
                                 ST_Envelope(polygon_simp.geom)
-                                ,ST_Envelope(polygon_to_simp.geom)
+                                , ST_Envelope(polygon_to_simp.geom)
                             )
                         ) * 2
                     ) /
@@ -127,30 +139,32 @@ BEGIN
                 --Le polygone simplifié correspondant pouvant alors
                 WHERE polygon_to_simp.path[1] = 0
             )
-            ,tmp2 AS (
+            , tmp2 AS (
                 --Meilleur polygone simplifié pour chaque polygone à simplifier
                 SELECT
                     polygon_to_simp_id
-                    ,FIRST(polygon_simp_id ORDER BY sim DESC) AS polygon_simp_id
-                    ,FIRST(sim ORDER BY sim DESC) AS sim
+                    , FIRST(polygon_simp_id ORDER BY sim DESC) AS polygon_simp_id
+                    , FIRST(sim ORDER BY sim DESC) AS sim
                 FROM tmp1
                 GROUP BY polygon_to_simp_id
             )
-            ,tmp3 AS (
+            , tmp3 AS (
                 --Meilleur polygone à simplifier pour chaque polygone simplifié
                 SELECT
                     FIRST(polygon_to_simp_id ORDER BY sim DESC) AS polygon_to_simp_id
-                    ,polygon_simp_id
-                    ,FIRST(sim ORDER BY sim DESC) AS sim
+                    , polygon_simp_id
+                    , FIRST(sim ORDER BY sim DESC) AS sim
                 FROM tmp2
                 GROUP BY polygon_simp_id
             )
             UPDATE fr.tmp_polygon_to_simp AS polygon_to_simp
             SET polygon_simp_id = tmp3.polygon_simp_id
-                ,polygon_simp_sim = tmp3.sim
-                ,polygon_simp_geom = (SELECT geom FROM fr.tmp_polygon_simp WHERE id = tmp3.polygon_simp_id)
-                ,polygon_simp_subcallname = subcall_name
-                ,polygon_simp_subcallbbox = bbox_in
+                , polygon_simp_sim = tmp3.sim
+                , polygon_simp_geom = (
+                    SELECT geom FROM fr.tmp_polygon_simp WHERE id = tmp3.polygon_simp_id
+                )
+                , polygon_simp_subcallname = subcall_name
+                , polygon_simp_subcallbbox = bbox_in
             FROM tmp3
             WHERE polygon_to_simp.id = tmp3.polygon_to_simp_id
             --Déjà simplifié sur une passe précédente
@@ -159,8 +173,8 @@ BEGIN
             AND (bbox_in IS NULL OR polygon_to_simp.geom && bbox_in)
             ;
 
-            GET DIAGNOSTICS v_nb_row_affected = ROW_COUNT;
-            RAISE NOTICE 'ST_SimplifyTerritory % : % traités', subcall_name, v_nb_row_affected;
+            GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+            RAISE NOTICE 'ST_SimplifyTerritory % : % traités', subcall_name, _nrows_affected;
         END IF;
     END IF;
 

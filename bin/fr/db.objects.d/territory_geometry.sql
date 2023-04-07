@@ -22,9 +22,20 @@
  9  Repositionné (PDI)
  */
 
+/*
+eval geometry of territories
+    PART/1
+        based level (COM_CP) : native geometry
+    PART/2
+        based level (COM_CP) : simplified geometry, as WGS-84 (4326)
+    PART/3
+        deal w/ holes
+    PART/4
+        apply SUPRA (geometry, area)
+ */
 SELECT drop_all_functions_if_exists('fr', 'set_territory_geometry');
 CREATE OR REPLACE PROCEDURE fr.set_territory_geometry(
-    simulation BOOLEAN DEFAULT FALSE
+    dir_tmp VARCHAR
 )
 AS
 $proc$
@@ -35,7 +46,7 @@ DECLARE
     _test_department VARCHAR(3) := NULL;        -- for test: '33'
     _nrows_affected INTEGER;
     _context TEXT;
-    _dir_tmp VARCHAR := '/data/app/pow/tmp/fr';
+
 BEGIN
     CALL public.log_info('Début du calcul des Contours');
 
@@ -45,7 +56,7 @@ BEGIN
 
     DROP INDEX IF EXISTS ix_territory_gm_contour_natif;
     CALL public.log_info(
-        message => 'Commande SH de suivi : %', 'watch -d -c "grep ''Contours CP avec commune partielle'' ' || _dir_tmp || '/SET_TERRITORY_GEOMETRY.notice.log | wc -l"'
+        message => 'Commande SH de suivi : %', 'watch -d -c "grep ''Contours CP avec commune partielle'' ' || dir_tmp || '/SET_TERRITORY_GEOMETRY.notice.log | wc -l"'
         , stamped => FALSE
     );
 
@@ -169,6 +180,7 @@ BEGIN
                 AND fl_diffusable
                 AND pdi_etat = 1
                 AND pdi_visible
+                -- at least street-center
                 AND pdi_no_type_localisation_coord >= 4
                 AND pdi_coord_native IS NOT NULL
                 /* TEST PDI très proches géographiquement :
@@ -180,7 +192,7 @@ BEGIN
             --geom NULL pouvant venir de ST_Transform_BC2A
             DELETE FROM tmp_geom_delivery_point WHERE geom IS NULL
             /* a voir : suppression des points hors commune, ou sur le contour commune
-            OR ST_ContainsProperly((SELECT ST_Buffer(geom, -200) FROM public.territoire_ign WHERE nivgeo = 'COM' AND codgeo = '27049'), geom) = FALSE
+            OR NOT ST_ContainsProperly((SELECT ST_Buffer(geom, -200) FROM fr.admin_express_commune WHERE insee_com = '27049'), geom)
             */
             ;
 
@@ -192,7 +204,8 @@ BEGIN
             IF _nof_zipcodes != _municipality_with_many_zipcodes.nb_cp THEN
                 --Il n'y en a aucun
                 IF _nof_zipcodes = 0 THEN
-                    RAISE NOTICE 'ERREUR : aucun CP avec des points adresses sur la commune %, alors qu''on en attendait plusieurs', _municipality_with_many_zipcodes.codgeo;
+                    RAISE NOTICE 'ERREUR : aucun CP avec des points adresses sur la commune %, alors qu''on en attendait plusieurs'
+                    , _municipality_with_many_zipcodes.codgeo;
                     /*TODO : Que faire ? on ne pourra afficher la commune au maillage CP
                         * ni remonter les contours COM_CP pour produire le contour COM, à moins d'attribuer le contour entier de la commune à un des CP
                         */
@@ -205,7 +218,10 @@ BEGIN
                     CONTINUE;
                 --Il n'y en a qu'un
                 ELSIF _nof_zipcodes = 1 THEN
-                    RAISE NOTICE 'ERREUR : un seul CP (%) avec des points adresses sur la commune %, alors qu''on en attendait %', _uniq_zipcode, _municipality_with_many_zipcodes.codgeo, _municipality_with_many_zipcodes.nb_cp;
+                    RAISE NOTICE 'ERREUR : un seul CP (%) avec des points adresses sur la commune %, alors qu''on en attendait %'
+                    , _uniq_zipcode
+                    , _municipality_with_many_zipcodes.codgeo
+                    , _municipality_with_many_zipcodes.nb_cp;
                     --On lui attribue le contour entier de la commune
                     UPDATE fr.territory
                     SET gm_contour_natif = _municipality_with_many_zipcodes.gm_contour_natif
@@ -215,7 +231,10 @@ BEGIN
                     CONTINUE;
                 --Il y en a plusieurs (mais plus ou moins)
                 ELSE
-                    RAISE NOTICE 'ERREUR : % CP avec des points adresses sur la commune %, alors qu''on en attendait %', _nof_zipcodes, _municipality_with_many_zipcodes.codgeo, _municipality_with_many_zipcodes.nb_cp;
+                    RAISE NOTICE 'ERREUR : % CP avec des points adresses sur la commune %, alors qu''on en attendait %'
+                    , _nof_zipcodes
+                    , _municipality_with_many_zipcodes.codgeo
+                    , _municipality_with_many_zipcodes.nb_cp;
                 END IF;
             END IF;
 
@@ -519,7 +538,7 @@ BEGIN
     DROP INDEX IF EXISTS ix_territory_gm_contour;
 
     CALL public.log_info(
-        message => 'Commande SH de suivi : %', 'watch -d -c "cat ' || _dir_tmp || '/SET_TERRITORY_GEOMETRY.notice.log | grep -o -P ''[0-9]+ traités'' | grep -o -P ''[0-9]+'' | awk ''{ SUM += \$1} END { print SUM }''"'
+        message => 'Commande SH de suivi : %', 'watch -d -c "cat ' || dir_tmp || '/SET_TERRITORY_GEOMETRY.notice.log | grep -o -P ''[0-9]+ traités'' | grep -o -P ''[0-9]+'' | awk ''{ SUM += \$1} END { print SUM }''"'
         , stamped => FALSE
     );
 
@@ -539,7 +558,8 @@ BEGIN
     -- PART/3 :
     --
 
-    -- \include_relative territoire_contour_correction.sql
+    CALL public.log_info('Fusion des trous');
+    CALL fr.set_territory_geometry_merge_hole();
 
     COMMIT;
 
@@ -582,4 +602,159 @@ SELECT gm_contour, codgeo_dep_parent FROM territory where nivgeo = 'ARR' limit 1
 SELECT * FROM territory WHERE nivgeo = 'COM_CP' AND gm_contour && (
 	SELECT ST_Extent(gm_contour) FROM territory WHERE nivgeo = 'COM_CP' AND libgeo ilike '%Mastribus%'
 )
+ */
+
+-- update geometry with holes
+SELECT drop_all_functions_if_exists('fr', 'set_territory_geometry_merge_hole');
+CREATE OR REPLACE PROCEDURE fr.set_territory_geometry_merge_hole(
+)
+AS
+$proc$
+DECLARE
+    _holes RECORD;
+    _new_geom GEOMETRY;
+BEGIN
+    FOR _holes IN (
+        WITH union_geom AS (
+            SELECT ST_Union(gm_contour) AS geom
+            FROM fr.territory
+            WHERE nivgeo = 'COM_CP'
+        )
+        , polygons AS (
+            SELECT (ST_Dump(geom)).* FROM union_geom
+        )
+        , rings AS (
+            SELECT
+                (ST_DumpRings(
+                    polygons.geom
+                )).*
+                , polygons.path AS polygon_path
+            FROM polygons
+        )
+        , rings_analyze AS (
+            SELECT
+                ROW_NUMBER() OVER() AS polygon_id
+                , (ROW_NUMBER() OVER (PARTITION BY polygon_path ORDER BY path)) = 1 AS is_exterior
+                , geom
+                , polygon_path
+                , ST_Area(ST_Transform(geom, 3857)) AS area
+            FROM rings
+        )
+        , hole_and_next_territory AS (
+            SELECT
+                rings_analyze.polygon_id
+                , rings_analyze.geom
+                , rings_analyze.area
+                , territory.codgeo
+                , territory.gm_contour
+                , ST_Length(ST_Intersection(territory.gm_contour, rings_analyze.geom)) AS common_length
+            FROM rings_analyze
+                LEFT OUTER JOIN fr.territory
+                    ON territory.nivgeo = 'COM_CP' AND ST_Intersects(territory.gm_contour, rings_analyze.geom)
+            WHERE NOT is_exterior
+        )
+        , hole_and_best_next_territory AS (
+            SELECT
+                polygon_id
+                , FIRST(geom) AS geom
+                , FIRST(area) AS area
+                , ARRAY_AGG(codgeo ORDER BY common_length DESC) AS codgeos_voisin
+                , FIRST(gm_contour ORDER BY common_length DESC) AS gm_contour
+            FROM hole_and_next_territory
+            --WHERE common_length > 0
+            GROUP BY polygon_id
+        )
+        SELECT *, ST_Collect(geom, gm_contour)
+        FROM hole_and_best_next_territory
+        ORDER BY area DESC
+    )
+    LOOP
+        IF _holes.area > 1000000 THEN
+            RAISE NOTICE 'Trou d une surface anormale grande (%), voisin de %, ignoré', _holes.area, _holes.codgeos_voisin;
+            CONTINUE;
+        END IF;
+
+        RAISE NOTICE 'Trou d une surface de %, voisin de %, unification avec le premier voisin', _holes.area, _holes.codgeos_voisin[1];
+        UPDATE fr.territory
+        SET gm_contour = ST_Multi(
+            ST_Union(
+                ST_Snap(
+                    gm_contour
+                    , _holes.geom
+                    , 0.000001
+                )
+                , ST_Snap(
+                    _holes.geom
+                    , gm_contour
+                    , 0.000001
+                )
+            )
+        )
+        WHERE territory.nivgeo = 'COM_CP'
+        AND territory.codgeo = _holes.codgeos_voisin[1]
+        RETURNING gm_contour INTO _new_geom;
+
+        --RAISE NOTICE 'Difference et Snap avec les voisins %', _holes.codgeos_voisin;
+        --Exemple de chevauchement et trou : {87006-87360, 87200-87360}
+        UPDATE fr.territory
+        SET gm_contour = ST_Multi(
+            -- Pas nécessaire ? ST_Snap(
+                ST_Difference(
+                    gm_contour
+                    , _new_geom
+                )
+            --	, _new_geom
+            --	, 0.000001
+            --)
+        )
+        WHERE territory.nivgeo = 'COM_CP'
+        AND territory.codgeo = ANY(_holes.codgeos_voisin)
+        AND territory.codgeo != _holes.codgeos_voisin[1]
+        AND ST_Overlaps(gm_contour, _new_geom);
+    END LOOP;
+END
+$proc$ LANGUAGE plpgsql;
+
+/* TEST
+
+CREATE TEMPORARY TABLE IF NOT EXISTS tmp_territory_backup AS (SELECT * FROM fr.territory WHERE nivgeo = 'COM_CP');
+
+WITH liste_voisins_trous AS (
+    SELECT UNNEST(
+    ARRAY[
+    '{27422-27430, 27691-27940, 27097-27700, 27016-27700, 27495-27700, 27249-27600, 27022-27600, 27635-27700, 27683-27700, 27332-27400}'
+    , '{66072-66800, 66005-66760, 66181-66800, 66025-66760, 66202-66120, 66167-66800, 66218-66760}'
+    , '{01453-01260, 01039-01350, 01415-01510, 01036-01260, 01138-01350}'
+    , '{25325-25530, 25596-25530, 25625-25510}'
+    , '{22166-22710}'
+    , '{78217-78680, 78029-78410, 78267-78440}'
+    , '{70323-70210, 70013-70210, 70419-70210, 88176-88240}'
+    , '{17486-17840, 17337-17190}'
+    , '{88153-88700, 88298-88700, 88527-88700}'
+    , '{52124-52400, 52504-52400, 52135-52400}'
+    , '{88153-88700, 88298-88700}'
+    , '{29040-29217, 29201-29810, 29282-29217}'
+    , '{88351-88370, 88048-88370}'
+    , '{31573-31590, 81140-81500, 81025-81500}'
+    , '{27014-27400, 27339-27400, 27003-27400}'
+    , '{19146-19460, 19255-19700}'
+    , '{59327-59167, 59375-59870, 59239-59148}'
+    , '{87006-87360, 87200-87360}'
+    , '{97414-97421, 97403-97414, 97416-97410, 97416-97432}'
+    ]) AS liste
+)
+SELECT liste_voisins_trous.liste
+    , ST_Collect(ARRAY[
+        ST_Transform(ST_Buffer(ST_Transform(ST_SetSRID(
+        ST_InternalBoundary((SELECT ST_Collect(gm_contour) FROM tmp_territoire_backup WHERE nivgeo = 'COM_CP' AND codgeo = ANY(liste_voisins_trous.liste::VARCHAR[])))
+        , 4326), 3857), 20), 4326)
+        , (SELECT ST_Collect(gm_contour) FROM tmp_territoire_backup WHERE nivgeo = 'COM_CP' AND codgeo = ANY(liste_voisins_trous.liste::VARCHAR[]))
+    ]) AS avant
+    , ST_Collect(ARRAY[
+        ST_Transform(ST_Buffer(ST_Transform(ST_SetSRID(
+        ST_InternalBoundary((SELECT ST_Collect(gm_contour) FROM territory WHERE nivgeo = 'COM_CP' AND codgeo = ANY(liste_voisins_trous.liste::VARCHAR[])))
+        , 4326), 3857), 20), 4326)
+        , (SELECT ST_Collect(gm_contour) FROM territory WHERE nivgeo = 'COM_CP' AND codgeo = ANY(liste_voisins_trous.liste::VARCHAR[]))
+    ]) AS apres
+FROM liste_voisins_trous
  */
