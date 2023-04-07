@@ -3,8 +3,8 @@
 ## initialize a PostgreSQL's db for a country with hierarchized territories (as geometry), and all addresses
 
 ###
-> this is a fork of :thumbsup: LAPOSTE/BCAA project, which aims to facilitate FR-business targeting with choropleth maps\
-the idea is to generalize the core of geographic tools developed, to store any addresses & territories of country (if possible!)
+> this is a fork of :thumbsup: LAPOSTE/BCAA project, which aims to facilitate postal FR-business targeting with choropleth maps\
+the idea is to generalize the core of geometry tools developed, to store any addresses & territories of country (if possible!)
 
 ## 
 
