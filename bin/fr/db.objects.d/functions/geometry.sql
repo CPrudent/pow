@@ -71,17 +71,17 @@ BEGIN
         ELSIF _nterritories > bbox_split_over THEN
             RAISE NOTICE 'ST_SimplifyTerritory % : % à traiter : découpage en quatre de l''étendue', subcall_name, _nterritories;
             FOR _split IN (
-                SELECT bbox_terr, ROW_NUMBER() OVER () AS bbox_number
+                SELECT bbox_territory, ROW_NUMBER() OVER () AS bbox_number
                 FROM (
-                    SELECT ST_SplitFour(_bbox_territory) AS bbox_terr
-                ) AS sous_requete
+                    SELECT ST_SplitFour(_bbox_territory) AS bbox_territory
+                ) AS t
             )
             LOOP
                 CALL fr.ST_SimplifyTerritory(
                     levels => levels
                     , from_srid => from_srid
                     , to_srid => to_srid
-                    , bbox_in => _split.bbox_terr
+                    , bbox_in => _split.bbox_territory
                     , tolerance => tolerance
                     , bbox_split_over => bbox_split_over
                     , subcall => TRUE

@@ -27,7 +27,7 @@ eval geometry of territories
     PART/1
         based level (COM_CP) : native geometry
     PART/2
-        based level (COM_CP) : simplified geometry, as WGS-84 (4326)
+        based level (COM_CP) : simplified geometry, as (WGS-84 Long/Lat SRID 4326)
     PART/3
         deal w/ holes
     PART/4
@@ -51,7 +51,7 @@ BEGIN
     CALL public.log_info('Début du calcul des Contours');
 
     --
-    -- PART/1 : initialize native geometry (COM_CP first, then SUPRA)
+    -- PART/1 : initialize native geometry (based level, as COM_CP)
     --
 
     DROP INDEX IF EXISTS ix_territory_gm_contour_natif;
@@ -532,7 +532,7 @@ BEGIN
     COMMIT;
 
     --
-    -- PART/2 : simplified geometry (COM_CP)
+    -- PART/2 : initialize simplified geometry (based level, as COM_CP)
     --
 
     DROP INDEX IF EXISTS ix_territory_gm_contour;
@@ -555,7 +555,7 @@ BEGIN
     COMMIT;
 
     --
-    -- PART/3 :
+    -- PART/3 : merge holes
     --
 
     CALL public.log_info('Fusion des trous');
@@ -567,6 +567,7 @@ BEGIN
     -- PART/4 : eval area (COM_CP first), then SUPRA for (simplified geometry, area)
     --
 
+    -- unit= hm2 (1/100 km2)
     UPDATE fr.territory
     SET superficie = ROUND(ST_Area(ST_Transform(gm_contour_natif, 4326)::GEOGRAPHY)/10000)
     WHERE territory.nivgeo = 'COM_CP';
@@ -669,6 +670,7 @@ BEGIN
         ORDER BY area DESC
     )
     LOOP
+        -- gt 1 km2
         IF _holes.area > 1000000 THEN
             RAISE NOTICE 'Trou d une surface anormale grande (%), voisin de %, ignoré', _holes.area, _holes.codgeos_voisin;
             CONTINUE;
