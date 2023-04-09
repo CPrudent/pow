@@ -91,12 +91,24 @@ for _schema_name in ${SCHEMAS[@]}; do
             "
         tables=(l3 numero voie za adresse coord)
         # NOTE convert fixed length to csv (adding header columns)
-        # head $POW_DIR_DATA/common/admin/hspraaaa.ai | awk -f $POW_DIR_DATA/common/admin/hspraaaa.awk
-        files=(hspraaaa.ai)
+        # awk -f $POW_DIR_DATA/common/admin/perennite.awk < $POW_DIR_DATA/common/admin/hspraaaa.ai > $POW_DIR_DATA/common/admin/perennite.csv
+        files=(perennite.csv)
         ;;
     esac
 
-    log_info 'Début de la restauration du schéma '${_schema_name}
+    [ -n "$_query_schema" ] && {
+        _query_schema="
+            DO \$\$
+            BEGIN
+            $_query_schema
+            END \$\$;
+        "
+    }
+
+    _info='Début de la restauration du schéma '${_schema_name}
+    [ "$sources" != ALL ] && _info+=" ($sources)"
+    log_info "$_info"
+
     [[ $sources =~ ALL|BACKUP ]] && {
         for table in ${tables[@]}; do
             [ -n "$data_except_re" ] &&
@@ -115,16 +127,18 @@ for _schema_name in ${SCHEMAS[@]}; do
                                 --query "$_query_schema" &&
                             _create_schema=0
                         fi
-                    } &&
-                    # DON'T CARE about error due to missing role(s) like: apps_ciblage, ban, pnd, reex
-                    restore_table \
-                        --schema_name ${_schema_name,,} \
-                        --table_name $table \
-                        --restore_mode DROP \
-                        --backup_before_restore no \
-                        --input "$POW_DIR_DATA/common/admin/${_schema_name,,}.$table.backup" || true
+                    } && {
+                        # DON'T CARE about error due to missing role(s) like: apps_ciblage, ban, pnd, reex
+                        restore_table \
+                            --schema_name ${_schema_name,,} \
+                            --table_name $table \
+                            --restore_mode DROP \
+                            --backup_before_restore no \
+                            --input "$POW_DIR_DATA/common/admin/${_schema_name,,}.$table.backup" || true
+                    }
                 } || {
                     log_error "Arrêt sur Données ${_schema_name} ($table)"
+                    exit $ERROR_CODE
                 }
             }
         done
@@ -139,7 +153,7 @@ for _schema_name in ${SCHEMAS[@]}; do
 
             log_info "fichier ($file) à restaurer..."
             [ "$dry_run" = no ] && {
-                [ -f "$POW_DIR_DATA/common/admin/${_schema_name,,}.$file" ] && {
+                [ -f "$POW_DIR_DATA/common/admin/$file" ] && {
                     {
                         if [ $_create_schema -eq 1 ]; then
                             execute_query \
@@ -148,12 +162,14 @@ for _schema_name in ${SCHEMAS[@]}; do
                         fi
                     } &&
                     import_file \
-                        --file_path "$POW_DIR_DATA/common/admin/${_schema_name,,}.$file" \
+                        --file_path "$POW_DIR_DATA/common/admin/$file" \
                         --schema_name ${_schema_name,,} \
-                        --table_name "$(get_file_name --file_path \"$POW_DIR_DATA/common/admin/${_schema_name,,}.$file\")" \
+                        --table_name "$(get_file_name --file_path \"$POW_DIR_DATA/common/admin/$file\")" \
+                        --rowid no \
                         --load_mode OVERWRITE_TABLE
                 } || {
                     log_error "Arrêt sur Données ${_schema_name} ($file)"
+                    exit $ERROR_CODE
                 }
             }
         done
