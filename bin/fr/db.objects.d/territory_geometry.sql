@@ -36,6 +36,8 @@ eval geometry of territories
 SELECT drop_all_functions_if_exists('fr', 'set_territory_geometry');
 CREATE OR REPLACE PROCEDURE fr.set_territory_geometry(
     dir_tmp VARCHAR
+    , location_min INT DEFAULT 4
+    , department_test VARCHAR DEFAULT NULL
 )
 AS
 $proc$
@@ -43,7 +45,6 @@ DECLARE
     _municipality_with_many_zipcodes RECORD;
     _uniq_zipcode CHAR(5);
     _nof_zipcodes INTEGER;
-    _test_department VARCHAR(3) := NULL;        -- for test: '33'
     _nrows_affected INTEGER;
     _context TEXT;
 
@@ -56,7 +57,7 @@ BEGIN
 
     DROP INDEX IF EXISTS ix_territory_gm_contour_natif;
     CALL public.log_info(
-        message => 'Commande SH de suivi : %', 'watch -d -c "grep ''Contours CP avec commune partielle'' ' || dir_tmp || '/SET_TERRITORY_GEOMETRY.notice.log | wc -l"'
+        message => 'Commande SH de suivi : watch -d -c "grep ''Contours CP avec commune partielle'' ' || dir_tmp || '/SET_TERRITORY_GEOMETRY.notice.log | wc -l"'
         , stamped => FALSE
     );
 
@@ -67,7 +68,7 @@ BEGIN
             territory.codgeo_com_parent AS codgeo
             , COUNT(*) AS nb_cp
             , FIRST(territory.codgeo_cp_parent) AS premier_cp
-        FROM territory
+        FROM fr.territory
         WHERE territory.nivgeo = 'COM_CP'
         --ayant une commune IGN = un contour commune IGN
         AND EXISTS (
@@ -86,7 +87,7 @@ BEGIN
             ) AS commune_ign
             WHERE commune_ign.codgeo = territory.codgeo_com_parent
         )
-        AND (_test_department IS NULL OR territory.codgeo_dep_parent = _test_department)
+        AND (department_test IS NULL OR territory.codgeo_dep_parent = department_test)
         GROUP BY territory.codgeo_com_parent
         HAVING COUNT(*) > 1
     );
@@ -96,7 +97,9 @@ BEGIN
     UPDATE fr.territory
     SET gm_contour_natif = NULL
     WHERE nivgeo = 'COM_CP'
-    AND (_test_department IS NULL OR territory.codgeo_dep_parent = _test_department);
+    -- TEST only evaluated for the department (others being reseted)
+    --AND (department_test IS NULL OR territory.codgeo_dep_parent = department_test)
+    ;
 
     CALL public.log_info('Init des contours COM/CP de communes entières');
     UPDATE fr.territory
@@ -122,7 +125,7 @@ BEGIN
     AND NOT EXISTS (
         SELECT 1 FROM tmp_municipality_with_many_zipcodes WHERE tmp_municipality_with_many_zipcodes.codgeo = territory.codgeo_com_parent
     )
-    AND (_test_department IS NULL OR territory.codgeo_dep_parent = _test_department)
+    AND (department_test IS NULL OR territory.codgeo_dep_parent = department_test)
     ;
 
     FOR _municipality_with_many_zipcodes IN (
@@ -180,8 +183,8 @@ BEGIN
                 AND fl_diffusable
                 AND pdi_etat = 1
                 AND pdi_visible
-                -- at least street-center
-                AND pdi_no_type_localisation_coord >= 4
+                -- at least street-center (=4)
+                AND pdi_no_type_localisation_coord >= location_min
                 AND pdi_coord_native IS NOT NULL
                 /* TEST PDI très proches géographiquement :
                 AND pdi_id IN (10652325, 24672957)
@@ -480,7 +483,7 @@ BEGIN
         END;
     END LOOP;
 
-    CALL public.log_info('Indexation Territoire : Contours natifs (COM_CP)');
+    CALL public.log_info('Indexation Territoire : Contour natif (COM_CP)');
     CREATE INDEX IF NOT EXISTS ix_territory_gm_contour_natif ON fr.territory USING GIST(gm_contour_natif) WHERE nivgeo = 'COM_CP';
 
     FOR _municipality_with_many_zipcodes IN (
@@ -526,11 +529,10 @@ BEGIN
         AND NOT ST_Equals(territory.gm_contour_natif, snap_territory_around.gm_contour_natif);
 
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-        CALL public.log_info(CONCAT('ST_Snap autour de ', _municipality_with_many_zipcodes.codgeo, ' : #', _nrows_affected, 'traités'));
+        CALL public.log_info(CONCAT('ST_Snap autour de ', _municipality_with_many_zipcodes.codgeo, ' : #', _nrows_affected, ' traités'));
     END LOOP;
 
     COMMIT;
-
     --
     -- PART/2 : initialize simplified geometry (based level, as COM_CP)
     --
@@ -538,14 +540,14 @@ BEGIN
     DROP INDEX IF EXISTS ix_territory_gm_contour;
 
     CALL public.log_info(
-        message => 'Commande SH de suivi : %', 'watch -d -c "cat ' || dir_tmp || '/SET_TERRITORY_GEOMETRY.notice.log | grep -o -P ''[0-9]+ traités'' | grep -o -P ''[0-9]+'' | awk ''{ SUM += \$1} END { print SUM }''"'
+        message => 'Commande SH de suivi : watch -d -c "cat ' || dir_tmp || '/SET_TERRITORY_GEOMETRY.notice.log | grep -o -P ''[0-9]+ traités'' | grep -o -P ''[0-9]+'' | awk ''{ SUM += \$1} END { print SUM }''"'
         , stamped => FALSE
     );
 
     UPDATE fr.territory SET gm_contour = NULL;
 
     CALL public.log_info('Calcul des contours simplifiés');
-    CALL ST_SimplifyTerritory(
+    CALL fr.ST_SimplifyTerritory(
         levels => ARRAY['COM_CP']
         , to_srid => 4326
         , bbox_split_over => 1000
@@ -562,15 +564,18 @@ BEGIN
     CALL fr.set_territory_geometry_merge_hole();
 
     COMMIT;
+    -- for TEST only
+    RETURN;
 
     --
     -- PART/4 : eval area (COM_CP first), then SUPRA for (simplified geometry, area)
     --
 
     -- unit= hm2 (1/100 km2)
+    -- see: https://gis.stackexchange.com/questions/169422/how-does-st-area-in-postgis-work
     UPDATE fr.territory
     SET superficie = ROUND(ST_Area(ST_Transform(gm_contour_natif, 4326)::GEOGRAPHY)/10000)
-    WHERE territory.nivgeo = 'COM_CP';
+    WHERE nivgeo = 'COM_CP';
 
     DROP INDEX IF EXISTS public.ix_territory_gm_contour;
 
@@ -583,7 +588,7 @@ BEGIN
         , update_mode => TRUE
     );
 
-    CALL public.log_info('Indexation Territoire : Contours');
+    CALL public.log_info('Indexation Territoire : Contour simplifié');
     CREATE INDEX IF NOT EXISTS ix_territory_gm_contour ON fr.territory USING GIST(nivgeo, gm_contour);
 
     COMMIT;
@@ -665,12 +670,13 @@ BEGIN
             --WHERE common_length > 0
             GROUP BY polygon_id
         )
-        SELECT *, ST_Collect(geom, gm_contour)
+        -- ST_Collect not used!
+        SELECT * --, ST_Collect(geom, gm_contour)
         FROM hole_and_best_next_territory
         ORDER BY area DESC
     )
     LOOP
-        -- gt 1 km2
+        -- gt 1 km2, why ?
         IF _holes.area > 1000000 THEN
             RAISE NOTICE 'Trou d une surface anormale grande (%), voisin de %, ignoré', _holes.area, _holes.codgeos_voisin;
             CONTINUE;

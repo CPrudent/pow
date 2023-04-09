@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS fr.territory (
     , codgeo_pdc_ppdc_parent CHARACTER(6)
     , codgeo_ppdc_pdc_parent CHARACTER(6)
     , codgeo_dex_parent CHARACTER(6)
-    , codgeo_voisins VARCHAR[] NULL
+    , codgeo_voisins VARCHAR[]
 );
 
 ALTER TABLE fr.territory SET (
@@ -39,7 +39,7 @@ AS $$
 DECLARE
     _date_ign TIMESTAMP := (public.get_last_io(type_in => 'IGN_ADMINEXPRESS')).dt_data_end;
     _date_insee TIMESTAMP := (public.get_last_io(type_in => 'INSEE_DECOUPAGE_COMMUNAL')).dt_data_end;
-    _date_ran TIMESTAMP := (public.get_last_io(type_in => 'RAN_ADRESSE')).dt_data_end;
+    _date_ran TIMESTAMP := (public.get_last_io(type_in => 'LAPOSTE_ADDRESS')).dt_data_end;
 
 BEGIN
     /*

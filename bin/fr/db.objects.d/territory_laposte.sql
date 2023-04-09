@@ -46,9 +46,9 @@ BEGIN
             SELECT
                 cp_has_best_site.codgeo_postal
                 , cp_has_best_site.codgeo_pdc_ppdc_parent
-                , site_source_orga.code_regate_rattachement_eog AS codgeo_regate_pdc_ppdc_parent
-                , site_source_orga.code_rattachement_eog AS codgeo_ppdc_pdc_parent
-                , site_source_orga.code_animation_fonct_nationale AS codgeo_dex_parent
+                , site_source_orga.code_regate AS codgeo_regate_pdc_ppdc_parent
+                , site_source_orga.code_rattachement_ppdc_pdc AS codgeo_ppdc_pdc_parent
+                , site_source_orga.code_rattachement_dexc AS codgeo_dex_parent
             FROM cp_has_best_site
             LEFT OUTER JOIN fr.laposte_organization AS site_source_orga
                 ON site_source_orga.code = cp_has_best_site.codgeo_pdc_ppdc_parent
@@ -102,7 +102,7 @@ BEGIN
     SET libgeo = codgeo
     WHERE nivgeo = 'CP';
 
-    --Zones Postales : libellés SOURCE-ORGA (avec métier COURRIER, ELP) sinon sites manquants du RLP (réseau, enseigne)
+    --Zones Postales : libellés SOURCE-ORGA (avec métiers COURRIER, ELP) sinon sites manquants du RLP (réseau, enseigne)
     UPDATE fr.territory_laposte
     SET libgeo =
         --On retire le mot "PARIS" qui est en préfixe du libellé de chaque DEX, sauf pour celle qui vraiment de Paris

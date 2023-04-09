@@ -42,7 +42,7 @@ BEGIN
     IF from_srid IS NULL THEN
         FOR _split_by_srid IN (
             SELECT DISTINCT ST_SRID(geom) AS srid
-            FROM tmp_polygon_to_simp
+            FROM fr.tmp_polygon_to_simp
             WHERE (bbox_in IS NULL OR geom && bbox_in)
         )
         LOOP
