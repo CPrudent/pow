@@ -27,6 +27,9 @@
 \include_relative laposte_complement.sql
 \include_relative laposte_xy.sql
 \include_relative laposte_delivery_point.sql
+\include_relative laposte_delivery_address.sql
+\include_relative laposte_organization.sql
+\include_relative laposte_address_redirect.sql
 
 -- POW
 \include_relative constant.sql

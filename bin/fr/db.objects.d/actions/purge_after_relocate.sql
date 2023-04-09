@@ -19,13 +19,13 @@ BEGIN
         IF schema_exists(_schema_name) THEN
             _query := CONCAT(
                 'SELECT COUNT(*) FROM pg_tables WHERE schemaname = '
-                , quote_ident(_schema_name)
+                , quote_literal(_schema_name)
             );
             EXECUTE _query USING _schema_name INTO _ntables;
             IF _ntables = 0 THEN
                 _query := CONCAT(
                     'DROP SCHEMA '
-                    , quote_ident(_schema_name)
+                    , _schema_name
                     , ' CASCADE'
                 );
                 EXECUTE _query;

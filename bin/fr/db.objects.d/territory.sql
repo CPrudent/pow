@@ -531,102 +531,102 @@ END $$ LANGUAGE plpgsql;
 
 /*
 select * from (
-	select row_number() over (partition by nivgeo order by codgeo) as rang_nivgeo, *
-	from fr.territory
+    select row_number() over (partition by nivgeo order by codgeo) as rang_nivgeo, *
+    from fr.territory
 ) as sr where rang_nivgeo = 1
 
 select * from fr.territory where libgeo is null
 
 select * from fr.territory
 where (nivgeo = 'COM_CP' and (
-	codgeo_com_parent is null
-	OR codgeo_epci_parent is null
-	OR codgeo_cv_parent is null
-	OR codgeo_arr_parent is null
-	OR codgeo_dep_parent is null
-	OR codgeo_reg_parent is null
-	OR codgeo_metropole_dom_tom_parent is null
-	OR codgeo_pays_parent is null
-	OR codgeo_cp_parent is null
-	OR codgeo_ppdc_pdc_parent is null
-	OR codgeo_dec_parent is null
+    codgeo_com_parent is null
+    OR codgeo_epci_parent is null
+    OR codgeo_cv_parent is null
+    OR codgeo_arr_parent is null
+    OR codgeo_dep_parent is null
+    OR codgeo_reg_parent is null
+    OR codgeo_metropole_dom_tom_parent is null
+    OR codgeo_pays_parent is null
+    OR codgeo_cp_parent is null
+    OR codgeo_ppdc_pdc_parent is null
+    OR codgeo_dec_parent is null
 ))
 OR (nivgeo = 'COM' and (
-	codgeo_epci_parent is null
-	OR codgeo_cv_parent is null
-	OR codgeo_arr_parent is null
-	OR codgeo_dep_parent is null
-	OR codgeo_reg_parent is null
-	OR codgeo_metropole_dom_tom_parent is null
-	OR codgeo_pays_parent is null
+    codgeo_epci_parent is null
+    OR codgeo_cv_parent is null
+    OR codgeo_arr_parent is null
+    OR codgeo_dep_parent is null
+    OR codgeo_reg_parent is null
+    OR codgeo_metropole_dom_tom_parent is null
+    OR codgeo_pays_parent is null
 ))
 OR (nivgeo = 'EPCI' and (
-	codgeo_dep_parent is null
-	OR codgeo_reg_parent is null
-	OR codgeo_metropole_dom_tom_parent is null
-	OR codgeo_pays_parent is null
+    codgeo_dep_parent is null
+    OR codgeo_reg_parent is null
+    OR codgeo_metropole_dom_tom_parent is null
+    OR codgeo_pays_parent is null
 ))
 OR (nivgeo = 'CV' and (
-	codgeo_arr_parent is null
-	OR codgeo_dep_parent is null
-	OR codgeo_reg_parent is null
-	OR codgeo_metropole_dom_tom_parent is null
-	OR codgeo_pays_parent is null
+    codgeo_arr_parent is null
+    OR codgeo_dep_parent is null
+    OR codgeo_reg_parent is null
+    OR codgeo_metropole_dom_tom_parent is null
+    OR codgeo_pays_parent is null
 ))
 OR (nivgeo = 'ARR' and (
-	codgeo_dep_parent is null
-	OR codgeo_reg_parent is null
-	OR codgeo_metropole_dom_tom_parent is null
-	OR codgeo_pays_parent is null
+    codgeo_dep_parent is null
+    OR codgeo_reg_parent is null
+    OR codgeo_metropole_dom_tom_parent is null
+    OR codgeo_pays_parent is null
 ))
 OR (nivgeo = 'DEP' and (
-	codgeo_reg_parent is null
-	OR codgeo_metropole_dom_tom_parent is null
-	OR codgeo_pays_parent is null
+    codgeo_reg_parent is null
+    OR codgeo_metropole_dom_tom_parent is null
+    OR codgeo_pays_parent is null
 ))
 OR (nivgeo = 'REG' and (
-	codgeo_metropole_dom_tom_parent is null
-	OR codgeo_pays_parent is null
+    codgeo_metropole_dom_tom_parent is null
+    OR codgeo_pays_parent is null
 ))
 OR (nivgeo = 'CP' and (
-	codgeo_ppdc_pdc_parent is null
-	OR codgeo_dec_parent is null
-	OR codgeo_metropole_dom_tom_parent is null
-	OR codgeo_pays_parent is null
+    codgeo_ppdc_pdc_parent is null
+    OR codgeo_dec_parent is null
+    OR codgeo_metropole_dom_tom_parent is null
+    OR codgeo_pays_parent is null
 ))
 OR (nivgeo = 'PPDC_PDC' and (
-	codgeo_dec_parent is null
-	OR codgeo_metropole_dom_tom_parent is null
-	OR codgeo_pays_parent is null
+    codgeo_dec_parent is null
+    OR codgeo_metropole_dom_tom_parent is null
+    OR codgeo_pays_parent is null
 ))
 OR (nivgeo = 'DEC' and (
-	codgeo_metropole_dom_tom_parent is null
-	OR codgeo_pays_parent is null
+    codgeo_metropole_dom_tom_parent is null
+    OR codgeo_pays_parent is null
 ))
 
 --Comparaison RAN - INSEE - IGN
 SELECT
-	COALESCE(millesime_a.nivgeo, millesime_b.nivgeo, millesime_c.nivgeo) AS nivgeo
-	, COALESCE(millesime_a.codgeo, millesime_b.codgeo, millesime_c.codgeo) AS codgeo
-	, COALESCE(millesime_a.libgeo, millesime_b.libgeo, millesime_c.libgeo) AS libgeo
-	, CASE
-		WHEN millesime_a.codgeo IS NOT NULL AND millesime_b.codgeo IS NOT NULL AND millesime_c.codgeo IS NOT NULL THEN 'RAN+INSEE+IGN'
-		WHEN millesime_a.codgeo IS NOT NULL AND millesime_b.codgeo IS NOT NULL THEN 'RAN+INSEE'
-		WHEN millesime_a.codgeo IS NOT NULL AND millesime_c.codgeo IS NOT NULL THEN 'RAN+IGN'
-		WHEN millesime_a.codgeo IS NOT NULL THEN 'RAN'
-		WHEN millesime_b.codgeo IS NOT NULL THEN 'INSEE'
-		WHEN millesime_c.codgeo IS NOT NULL THEN 'IGN'
-	END AS presence
+    COALESCE(millesime_a.nivgeo, millesime_b.nivgeo, millesime_c.nivgeo) AS nivgeo
+    , COALESCE(millesime_a.codgeo, millesime_b.codgeo, millesime_c.codgeo) AS codgeo
+    , COALESCE(millesime_a.libgeo, millesime_b.libgeo, millesime_c.libgeo) AS libgeo
+    , CASE
+        WHEN millesime_a.codgeo IS NOT NULL AND millesime_b.codgeo IS NOT NULL AND millesime_c.codgeo IS NOT NULL THEN 'RAN+INSEE+IGN'
+        WHEN millesime_a.codgeo IS NOT NULL AND millesime_b.codgeo IS NOT NULL THEN 'RAN+INSEE'
+        WHEN millesime_a.codgeo IS NOT NULL AND millesime_c.codgeo IS NOT NULL THEN 'RAN+IGN'
+        WHEN millesime_a.codgeo IS NOT NULL THEN 'RAN'
+        WHEN millesime_b.codgeo IS NOT NULL THEN 'INSEE'
+        WHEN millesime_c.codgeo IS NOT NULL THEN 'IGN'
+    END AS presence
 FROM territory AS millesime_a
 FULL OUTER JOIN territoire_insee AS millesime_b
-	ON millesime_a.codgeo = millesime_b.codgeo
-	AND millesime_a.nivgeo = millesime_b.nivgeo
+    ON millesime_a.codgeo = millesime_b.codgeo
+    AND millesime_a.nivgeo = millesime_b.nivgeo
 FULL OUTER JOIN territoire_ign AS millesime_c
-	ON millesime_a.codgeo = millesime_c.codgeo
-	AND millesime_a.nivgeo = millesime_c.nivgeo
-WHERE (millesime_a.codgeo IS NULL OR millesime_b.codgeo IS NULL OR millesime_c.codgeo IS NULL)
-AND (millesime_b.codgeo IS NULL OR public.getEnvDepLimit() IS NULL OR public.getCodeInseeDepartementFromCodeInseeCommune(millesime_b.codgeo) = public.getEnvDepLimit())
-AND (millesime_c.codgeo IS NULL OR public.getEnvDepLimit() IS NULL OR public.getCodeInseeDepartementFromCodeInseeCommune(millesime_c.codgeo) = public.getEnvDepLimit())
-AND (millesime_a.codgeo IS NULL OR millesime_a.nivgeo NOT IN ('CV', 'CP', 'COM_CP', 'PPDC_PDC', 'DEC', 'METROPOLE_DOM_TOM', 'PAYS'))
-
+    ON millesime_a.codgeo = millesime_c.codgeo
+    AND millesime_a.nivgeo = millesime_c.nivgeo
+WHERE
+    (millesime_a.codgeo IS NULL OR millesime_b.codgeo IS NULL OR millesime_c.codgeo IS NULL)
+    AND (millesime_b.codgeo IS NULL OR public.getEnvDepLimit() IS NULL OR public.getCodeInseeDepartementFromCodeInseeCommune(millesime_b.codgeo) = public.getEnvDepLimit())
+    AND (millesime_c.codgeo IS NULL OR public.getEnvDepLimit() IS NULL OR public.getCodeInseeDepartementFromCodeInseeCommune(millesime_c.codgeo) = public.getEnvDepLimit())
+    AND (millesime_a.codgeo IS NULL OR millesime_a.nivgeo NOT IN ('CV', 'CP', 'COM_CP', 'PPDC_PDC', 'DEC', 'METROPOLE_DOM_TOM', 'PAYS'))
 */

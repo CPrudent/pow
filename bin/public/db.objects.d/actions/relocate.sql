@@ -32,8 +32,8 @@ BEGIN
         , table_name => 'source_orga_laposte'
     ) THEN
         IF table_exists('fr', 'source_orga_laposte') THEN
-            ALTER TABLE fr.source_orga_laposte RENAME TO bcaa_organization;
-            ALTER TABLE fr.bcaa_organization OWNER TO fr;
+            ALTER TABLE fr.source_orga_laposte RENAME TO laposte_organization;
+            ALTER TABLE fr.laposte_organization OWNER TO fr;
         END IF;
     END IF;
 END $RELOCATE$;

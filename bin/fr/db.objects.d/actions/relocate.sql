@@ -33,8 +33,8 @@ BEGIN
                 END IF;
             ELSIF _schema_name = 'divers' THEN
                 IF table_exists('fr', 'source_orga') THEN
-                    ALTER TABLE fr.source_orga RENAME TO laposte_organization;
-                    ALTER TABLE fr.laposte_organization OWNER TO fr;
+                    ALTER TABLE fr.source_orga RENAME TO laposte_organization_all;
+                    ALTER TABLE fr.laposte_organization_all OWNER TO fr;
                 END IF;
                 IF table_exists('fr', 'source_orga_complement') THEN
                     ALTER TABLE fr.source_orga_complement RENAME TO laposte_organization_fix;
@@ -69,6 +69,10 @@ BEGIN
                 IF table_exists('fr', 'coord') THEN
                     ALTER TABLE fr.coord RENAME TO laposte_xy;
                     ALTER TABLE fr.laposte_xy OWNER TO fr;
+                END IF;
+                IF table_exists('fr', 'perennite') THEN
+                    ALTER TABLE fr.perennite RENAME TO laposte_address_redirect;
+                    ALTER TABLE fr.laposte_address_redirect OWNER TO fr;
                 END IF;
             END IF;
         END IF;

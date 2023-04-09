@@ -9,7 +9,7 @@ CREATE OR REPLACE FUNCTION public.alter_column_drop_not_null(
     , table_name TEXT
     , column_name TEXT
     , simulation BOOLEAN DEFAULT FALSE
-    )
+)
 RETURNS BOOLEAN AS
 $func$
 DECLARE
@@ -44,7 +44,7 @@ CREATE OR REPLACE FUNCTION public.alter_column_drop_default(
     , table_name TEXT
     , column_name TEXT
     , simulation BOOLEAN DEFAULT FALSE
-    )
+)
 RETURNS BOOLEAN AS
 $func$
 DECLARE
@@ -79,7 +79,7 @@ CREATE OR REPLACE FUNCTION public.alter_table_change_schema(
     , schema_name_to TEXT
     , table_name TEXT
     , simulation BOOLEAN DEFAULT FALSE
-    )
+)
 RETURNS BOOLEAN AS
 $func$
 DECLARE
@@ -108,7 +108,7 @@ CREATE OR REPLACE FUNCTION public.alter_tables_change_schema(
     schema_name_from TEXT
     , schema_name_to TEXT
     , simulation BOOLEAN DEFAULT FALSE
-    )
+)
 RETURNS BOOLEAN AS
 $func$
 DECLARE
