@@ -20,6 +20,7 @@ DECLARE
     _split RECORD;
     _nterritories INTEGER;
     _bbox_territory BOX2D;
+    _message VARCHAR;
 BEGIN
     IF NOT subcall THEN
         DROP TABLE IF EXISTS fr.tmp_polygon_to_simp;
@@ -46,7 +47,8 @@ BEGIN
             WHERE (bbox_in IS NULL OR geom && bbox_in)
         )
         LOOP
-            RAISE NOTICE 'ST_SimplifyTerritory : traitement SRID %', _split_by_srid.srid;
+            CALL public.log_info(CONCAT('ST_SimplifyTerritory : traitement SRID ', _split_by_srid.srid));
+
             CALL fr.ST_SimplifyTerritory(
                 levels => levels
                 , from_srid => _split_by_srid.srid
@@ -66,10 +68,10 @@ BEGIN
         AND ST_SRID(geom) = from_srid;
 
         IF _nterritories = 0 THEN
-            RAISE NOTICE 'ST_SimplifyTerritory % : 0 à traiter', subcall_name;
+            CALL public.log_info(CONCAT('ST_SimplifyTerritory ', subcall_name, ' : 0 à traiter'));
             RETURN;
         ELSIF _nterritories > bbox_split_over THEN
-            RAISE NOTICE 'ST_SimplifyTerritory % : % à traiter : découpage en quatre de l''étendue', subcall_name, _nterritories;
+            CALL public.log_info(CONCAT('ST_SimplifyTerritory ', subcall_name, ' : ', _nterritories, ' à traiter : découpage en quatre de l''étendue'));
             FOR _split IN (
                 SELECT bbox_territory, ROW_NUMBER() OVER () AS bbox_number
                 FROM (
@@ -174,7 +176,10 @@ BEGIN
             ;
 
             GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-            RAISE NOTICE 'ST_SimplifyTerritory % : % traités', subcall_name, _nrows_affected;
+            _message := ' traité';
+            IF _nrows_affected > 1 THEN _message := _message || 's'; END IF;
+            CALL public.log_info(CONCAT('ST_SimplifyTerritory ', subcall_name, ' : ', _nrows_affected, _message));
+
         END IF;
     END IF;
 
