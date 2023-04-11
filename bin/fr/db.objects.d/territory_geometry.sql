@@ -169,48 +169,50 @@ BEGIN
                 TRUNCATE TABLE tmp_geom_delivery_point;
                 DROP INDEX IF EXISTS ix_tmp_geom_delivery_point_geom;
 
-                /*
-                 no actives PDI (ok IGN: +IGN) for these municipalities (w/ 2 zipcodes)
-                 last column is the number of addresses (not delivered?)
-                    +IGN   2   01104-01200   2017-11-18   01200 (CHEZERY FORENS)            1
-                    +IGN   2   01269-01460   2017-11-18   01460 (NANTUA)                    5
-                    +IGN   2   01313-01630   2017-11-18   01630 (PREVESSIN MOENS)           0
-                    +IGN   2   04074-04270   2017-11-18   04270 (ENTRAGES)                  33
-                    +IGN   2   04109-04310   2017-11-18   04310 (MALLEFOUGASSE AUGES)       0
-                    +IGN   2   04204-04270   2017-11-18   04270 (SENEZ)                     1
-                    +IGN   2   05133-05240   2017-11-18   05240 (ST CHAFFREY)               0
-                    +IGN   2   07140-07300   2017-11-18   07300 (LEMPS)                     0
-                    +IGN   2   07198-07800   2017-11-18   07800 (ROMPON)                    6
-                    +IGN   2   13019-13170   2017-11-18   13170 (CABRIES)                   0
-                    +IGN   2   13102-13700   2018-07-07   13700 (ST VICTORET)               0
-                    +IGN   2   18101-18350   2017-11-18   18350 (GERMIGNY L EXEMPT)         0
-                    +IGN   2   18134-36260   2017-11-18   36260 (LURY SUR ARNON)            0
-                    +IGN   2   24364-24120   2020-04-04   24120 (COLY ST AMAND)             191
-                    +IGN   2   26067-26340   2017-11-18   26340 (CHALANCON)                 0
-                    +IGN   2   2A249-20100   2017-11-18   20100 (PROPRIANO)                 0
-                    +IGN   2   2B043-20226   2017-11-18   20226 (BRANDO)                    0
-                    +IGN   2   2B049-20260   2017-11-18   20260 (CALENZANA)                 2
-                    +IGN   2   2B314-20217   2017-11-18   20217 (SANTO PIETRO DI TENDA)     2
-                    +IGN   2   32121-32130   2017-11-18   32130 (ENDOUFIELLE)               0
-                    +IGN   2   34209-34450   2017-11-18   34450 (PORTIRAGNES)               0
-                    +IGN   2   44074-44620   2017-11-18   44620 (INDRE)                     0
-                    +IGN   2   45269-45380   2017-11-18   45380 (ST AY)                     0
-                    +IGN   2   73013-73530   2017-11-18   73530 (ALBIEZ MONTROND)           0
-                    +IGN   2   73227-73600   2022-10-15   73600 (COURCHEVEL)                0
-                    +IGN   2   74208-74480   2018-03-17   74480 (PASSY)                     0
-                    +IGN   2   91665-91140   2017-11-18   91140 (LA VILLE DU BOIS)          0
-                    +IGN   2   95120-95760   2017-11-18   95760 (BUTRY SUR OISE)            0
-                    +IGN   2   97101-97142   2017-11-18   97142 (LES ABYMES)                181
-                    +IGN   2   97301-97353   2017-11-18   97353 (REGINA)                    13
-                 no GEOMETRY (ko IGN: -IGN)
-                 particular case: 27676 : 01/01/2023 : Les Trois Lacs est rétablie (IGN not up todate!)
-                    -IGN   1   27676-27700   2022-12-11   27700 (LES TROIS LACS)            509
-                    -IGN   1   27676-27940   2022-12-11   27940 (LES TROIS LACS)            415
-                    -IGN   1   97501-97500   2017-11-18   97500 (ST PIERRE ET MIQUELON)     6
-                    -IGN   1   97502-97500   2017-11-18   97500 (ST PIERRE ET MIQUELON)     30
-                    -IGN   1   97701-97133   2017-11-18   97133 (ST BARTHELEMY)             1281
-                    -IGN   1   97801-97150   2017-11-18   97150 (ST MARTIN)                 7045
-                 */
+            /*
+            exec: 4/2023 with IGN of 3/2023
+
+            no actives PDI (ok IGN: +IGN) for these municipalities (w/ 2 zipcodes)
+            last 3 columns are: number of addresses, nof OFF points, nof ON points
+                +IGN  2  01104-01200  2017-11-18  01200 (CHEZERY FORENS)        1  0  0
+                +IGN  2  01269-01460  2017-11-18  01460 (NANTUA)                5  0  0
+                +IGN  2  01313-01630  2017-11-18  01630 (PREVESSIN MOENS)       0  0  0
+                +IGN  2  04074-04270  2017-11-18  04270 (ENTRAGES)              33  0  0
+                +IGN  2  04109-04310  2017-11-18  04310 (MALLEFOUGASSE AUGES)   0  0  0
+                +IGN  2  04204-04270  2017-11-18  04270 (SENEZ)                 1  0  0
+                +IGN  2  05133-05240  2017-11-18  05240 (ST CHAFFREY)           0  0  0
+                +IGN  2  07140-07300  2017-11-18  07300 (LEMPS)                 0  0  0
+                +IGN  2  07198-07800  2017-11-18  07800 (ROMPON)                6  3  0
+                +IGN  2  13019-13170  2017-11-18  13170 (CABRIES)               0  0  0
+                +IGN  2  13102-13700  2018-07-07  13700 (ST VICTORET)           0  0  0
+                +IGN  2  18101-18350  2017-11-18  18350 (GERMIGNY L EXEMPT)     0  0  0
+                +IGN  2  18134-36260  2017-11-18  36260 (LURY SUR ARNON)        0  0  0
+                +IGN  2  24364-24120  2020-04-04  24120 (COLY ST AMAND)         191  0  0
+                +IGN  2  26067-26340  2017-11-18  26340 (CHALANCON)             0  0  0
+                +IGN  2  2A249-20100  2017-11-18  20100 (PROPRIANO)             0  0  0
+                +IGN  2  2B043-20226  2017-11-18  20226 (BRANDO)                0  0  0
+                +IGN  2  2B049-20260  2017-11-18  20260 (CALENZANA)             2  1  0
+                +IGN  2  2B314-20217  2017-11-18  20217 (SANTO PIETRO DI TENDA) 2  19  0
+                +IGN  2  32121-32130  2017-11-18  32130 (ENDOUFIELLE)           0  0  0
+                +IGN  2  34209-34450  2017-11-18  34450 (PORTIRAGNES)           0  0  0
+                +IGN  2  44074-44620  2017-11-18  44620 (INDRE)                 0  0  0
+                +IGN  2  45269-45380  2017-11-18  45380 (ST AY)                 0  0  0
+                +IGN  2  73013-73530  2017-11-18  73530 (ALBIEZ MONTROND)       0  0  0
+                +IGN  2  73227-73600  2022-10-15  73600 (COURCHEVEL)            0  0  0
+                +IGN  2  74208-74480  2018-03-17  74480 (PASSY)                 0  0  0
+                +IGN  2  91665-91140  2017-11-18  91140 (LA VILLE DU BOIS)      0  0  0
+                +IGN  2  95120-95760  2017-11-18  95760 (BUTRY SUR OISE)        0  0  0
+                +IGN  2  97101-97142  2017-11-18  97142 (LES ABYMES)            181  93  0
+                +IGN  2  97301-97353  2017-11-18  97353 (REGINA)                13  0  0
+            no GEOMETRY (ko IGN: -IGN)
+            particular case: 27676 : 01/01/2023 : Les Trois Lacs est rétablie (IGN not up todate!)
+                -IGN  1  27676-27700  2022-12-11  27700 (LES TROIS LACS)        509  14  448
+                -IGN  1  27676-27940  2022-12-11  27940 (LES TROIS LACS)        415  61  371
+                -IGN  1  97501-97500  2017-11-18  97500 (ST PIERRE ET MIQUELON) 6  0  0
+                -IGN  1  97502-97500  2017-11-18  97500 (ST PIERRE ET MIQUELON) 30  0  0
+                -IGN  1  97701-97133  2017-11-18  97133 (ST BARTHELEMY)         1281  0  1230
+                -IGN  1  97801-97150  2017-11-18  97150 (ST MARTIN)             7045  28  6727
+             */
                 INSERT INTO tmp_geom_delivery_point(
                     geom
                     , co_postal
