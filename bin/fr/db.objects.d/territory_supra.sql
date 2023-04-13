@@ -1,18 +1,20 @@
 /***
- * FR-TERRITORY : update SUPRA territories (by aggregating sublevel)
+ * FR-TERRITORY : update SUPRA territories
+ * by aggregating sublevel, hierarchy being available as column foreach levels
  */
 
 SELECT drop_all_functions_if_exists('fr', 'set_territory_supra');
 CREATE OR REPLACE FUNCTION fr.set_territory_supra(
     table_name IN VARCHAR
-    , columns_agg IN TEXT[] DEFAULT NULL     -- NULL for all else list of column(s)
-    , columns_groupby IN TEXT[] DEFAULT NULL -- idem
+    , columns_agg IN TEXT[] DEFAULT NULL            -- NULL for all else list of column(s)
+    , columns_groupby IN TEXT[] DEFAULT NULL        -- idem
     , where_in IN TEXT DEFAULT NULL
     , base_level IN VARCHAR DEFAULT 'COM'
-    , supra_levels_filter IN VARCHAR DEFAULT NULL
+    , supra_level_filter IN VARCHAR DEFAULT NULL    -- reduce SUPRA to this level only
     , schema_name IN VARCHAR DEFAULT 'public'
-    , update_mode IN BOOLEAN DEFAULT FALSE
+    , update_mode IN BOOLEAN DEFAULT FALSE          -- only update columns defined by columns_agg (w/ existing levels)
     , simulation IN BOOLEAN DEFAULT FALSE
+    , drop_temporary IN BOOLEAN DEFAULT TRUE
 )
 RETURNS BOOLEAN AS
 $func$
@@ -21,7 +23,6 @@ DECLARE
     _query_where TEXT;
     _query_join TEXT := 'source.nivgeo = destination.nivgeo AND source.codgeo = destination.codgeo';
     _query_row_equal TEXT;
-
     _tmp_table_name VARCHAR;
     _columns_insert TEXT;
     _columns_groupby TEXT;
@@ -32,22 +33,26 @@ DECLARE
     _column_information information_schema.columns%ROWTYPE;
     _column_type VARCHAR;
     _column_name TEXT;
-
     _nrows_deleted INTEGER := 0;
     _nrows_inserted INTEGER := 0;
     _nrows_updated INTEGER := 0;
     _nrows_affected INTEGER;
-
     _levels VARCHAR[];
     _level VARCHAR;
     _level2 VARCHAR;
     _bigger_sublevel VARCHAR;
-
     _self_use BOOLEAN := FALSE;
     _geometry_column_information RECORD;
-    --v_first_time BOOLEAN := TRUE;
     _start_time TIMESTAMP WITHOUT TIME ZONE;
+    _notice VARCHAR := 'Traitement GEO SUPRA ';
 BEGIN
+    CALL public.log_info(
+        message => CONCAT(
+            'Début ', _notice, ' ', CONCAT_WS('/', base_level, supra_level_filter)
+            , ' de ', schema_name, '.', table_name
+        )
+    );
+
     _query_where := NULLIF(where_in, '');
     FOREACH _column_name IN ARRAY get_table_columns(schema_name, table_name) LOOP
         IF _column_name IN ('nivgeo', 'codgeo', 'dtrgeo' , 'dt_reference_geo', 'libgeo', 'id_histo', 'nb_histo_use') THEN
@@ -109,6 +114,17 @@ BEGIN
         _columns_insert := CONCAT_WS(', ', _columns_insert, _column_name);
     END LOOP;
 
+    IF simulation THEN
+        RAISE NOTICE '_columns_select = %', _columns_select;
+        RAISE NOTICE '_columns_insert = %', _columns_insert;
+        RAISE NOTICE '_columns_select_on_groupby = %', _columns_select_on_groupby;
+        RAISE NOTICE '_columns_groupby = %', _columns_groupby;
+        RAISE NOTICE '_query_row_equal = %', _query_row_equal;
+        RAISE NOTICE '_query_join = %', _query_join;
+        RAISE NOTICE '_levels = %', _levels;
+        RAISE NOTICE '_self_use = %', _self_use;
+    END IF;
+
     _levels = fr.get_levels(
         order_in => 'ASC'
         , among_levels => _levels --en cas de self use, on ordonne les niveaux
@@ -125,7 +141,7 @@ BEGIN
             --Ceux qui sont différents du niveau de base
             _level != base_level
             --Et si filtre sur niveau, dont le niveau filtré est un sous-découpage
-            AND (supra_levels_filter IS NULL OR fr.is_level_below(supra_levels_filter, _level))
+            AND (supra_level_filter IS NULL OR fr.is_level_below(supra_level_filter, _level))
         )
         THEN
             _levels := ARRAY_REMOVE(_levels, _level);
@@ -157,6 +173,12 @@ BEGIN
         END LOOP;
     END IF;
 
+    IF simulation THEN
+        RAISE NOTICE 'columns_groupby = %', columns_groupby;
+        RAISE NOTICE 'columns_agg = %', columns_agg;
+        RAISE NOTICE '_levels = %', _levels;
+    END IF;
+
     _tmp_table_name := CONCAT('tmp_supra_', MD5(CONCAT(table_name, _columns_insert)));
     _query := CONCAT(
         'CREATE TEMPORARY TABLE IF NOT EXISTS ', _tmp_table_name, '_base AS (SELECT nivgeo, codgeo, ', _columns_insert, ' FROM ', schema_name, '.', table_name, ' LIMIT 0) WITH NO DATA;
@@ -165,26 +187,31 @@ BEGIN
         TRUNCATE TABLE ', _tmp_table_name, ';
         DROP INDEX IF EXISTS ix_', _tmp_table_name, '_base_pk;
         DROP INDEX IF EXISTS ix_', _tmp_table_name, '_pk;
-        INSERT INTO ', _tmp_table_name, '_base
-        (
+        INSERT INTO ', _tmp_table_name, '_base (
             nivgeo, codgeo, ', _columns_insert, '
         )
         (
-                SELECT nivgeo, codgeo, ', _columns_insert, ' FROM ', schema_name, '.', table_name, ' AS source
-                WHERE source.nivgeo = $1'
-                , CASE WHEN _query_where IS NOT NULL THEN CONCAT(' AND ', _query_where) END,
+            SELECT nivgeo, codgeo, ', _columns_insert, '
+            FROM ', schema_name, '.', table_name, ' AS source
+            WHERE source.nivgeo = $1'
+            , CASE WHEN _query_where IS NOT NULL THEN CONCAT(' AND ', _query_where) END,
         ');
         CREATE UNIQUE INDEX iux_', _tmp_table_name, '_base_pk ON ', _tmp_table_name, '_base(', _columns_onconflict, ')'
     );
     IF NOT simulation THEN
         EXECUTE _query USING base_level;
     ELSE
-        RAISE NOTICE '% [$1=%]', _query, base_level;
+        RAISE NOTICE '[$1=%]', base_level;
+        RAISE NOTICE '%', _query;
     END IF;
 
-    --v_first_time := TRUE;
     FOREACH _level IN ARRAY _levels LOOP
         _bigger_sublevel := fr.get_bigger_sublevel(level_in => _level, among_levels => ARRAY_APPEND(_levels, base_level));
+        IF simulation THEN
+            RAISE NOTICE ' _level : %', _level;
+            RAISE NOTICE ' _bigger_sublevel : %', _bigger_sublevel;
+        END IF;
+
         IF _level = 'COM' AND _bigger_sublevel IN ('COM_CP', 'IRIS') THEN
             _query := CONCAT(
                 '(
@@ -203,7 +230,13 @@ BEGIN
             IF _bigger_sublevel != base_level THEN
                 _query := 'SELECT fr.get_bigger_sublevel(level_in => $1, among_levels => ARRAY[$2';
                 FOREACH _level2 IN ARRAY _levels LOOP
+                    IF simulation THEN
+                        RAISE NOTICE '_level2 = %', _level2;
+                    END IF;
                     IF fr.is_level_below(_level2, _level) THEN
+                        IF simulation THEN
+                            RAISE NOTICE '_level2 % is below _level %', _level2, _level;
+                        END IF;
                         _query := CONCAT(_query, ',
                             CASE WHEN
                                 --premier test rapide : dans le cas du calcul de DEP à partir du niveau CV, comparé au niveau de base COM : le nombre de communes ayant un département parent est le même que le nombre de communes ayant un département parent ET un canton ville parent
@@ -228,13 +261,26 @@ BEGIN
                     _start_time := clock_timestamp();
                     EXECUTE _query INTO _level2 USING _level, base_level;
                     IF _level2 != _bigger_sublevel THEN
-                        RAISE NOTICE 'Traitement GEO SUPRA % -> % remplacé par % -> % "%" : %', _bigger_sublevel, _level, _level2, _level, LEFT(_query, 30), TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS');
+                        CALL public.log_info(
+                            message => CONCAT(
+                                _notice
+                                , _bigger_sublevel, ' -> ', _level
+                                , ' remplacé par '
+                                , _level2, ' -> ', _level
+                                , ' "', LEFT(_query, 30), '" : '
+                                , TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS')
+                            )
+                        );
+                        -- ALL IS HERE!
                         _bigger_sublevel := _level2;
+
+                        --RAISE NOTICE 'Traitement GEO SUPRA % -> % remplacé par % -> % "%" : %', _bigger_sublevel, _level, _level2, _level, LEFT(_query, 30), TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS');
                     --ELSE
                     --	RAISE NOTICE 'Traitement GEO SUPRA % -> % gardé "%" : %', _bigger_sublevel, _level, LEFT(_query, 30), TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS');
                     END IF;
                 ELSE
-                    RAISE NOTICE '% [$1=%, $2=%]', _query, _level, base_level;
+                    RAISE NOTICE '[$1=%, $2=%]', _level, base_level;
+                    RAISE NOTICE '%', _query;
                 END IF;
             END IF;
 
@@ -271,8 +317,7 @@ BEGIN
             END IF;
         END IF;
         _query := CONCAT(
-            'INSERT INTO ', _tmp_table_name, '
-            (
+            'INSERT INTO ', _tmp_table_name, ' (
                 nivgeo
                 , codgeo
                 , ', _columns_insert, '
@@ -282,11 +327,21 @@ BEGIN
             _start_time := clock_timestamp();
             EXECUTE _query USING _bigger_sublevel, _level;
             GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-            RAISE NOTICE 'Traitement GEO SUPRA % -> % "%" : % : % inserted', _bigger_sublevel, _level, LEFT(_query, 30), TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS'), _nrows_affected;
+            CALL public.log_info(
+                message => CONCAT(
+                    _notice
+                    , _bigger_sublevel, ' -> ', _level
+                    , ' "', LEFT(_query, 30), '" : '
+                    , TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS')
+                    , ' ', _nrows_affected, ' inserted'
+                )
+            );
+
+            --RAISE NOTICE 'Traitement GEO SUPRA % -> % "%" : % : % inserted', _bigger_sublevel, _level, LEFT(_query, 30), TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS'), _nrows_affected;
         ELSE
-            RAISE NOTICE '% [$1=%, $2=%]', _query, _bigger_sublevel, _level;
+            RAISE NOTICE '[$1=%, $2=%]', _bigger_sublevel, _level;
+            RAISE NOTICE '%', _query;
         END IF;
-        --v_first_time := FALSE;
     END LOOP;
 
     _query := CONCAT('CREATE UNIQUE INDEX iux_', _tmp_table_name, '_pk ON ', _tmp_table_name, '(', _columns_onconflict, ')');
@@ -313,9 +368,19 @@ BEGIN
             _start_time := clock_timestamp();
             EXECUTE _query USING _levels;
             GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-            RAISE NOTICE 'Traitement GEO SUPRA "%" : % : % updated', LEFT(_query, 30), TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS'), _nrows_affected;
+            CALL public.log_info(
+                message => CONCAT(
+                    _notice
+                    , ' "', LEFT(_query, 30), '" : '
+                    , TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS')
+                    , ' ', _nrows_affected, ' updated'
+                )
+            );
+
+            --RAISE NOTICE 'Traitement GEO SUPRA "%" : % : % updated', LEFT(_query, 30), TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS'), _nrows_affected;
         ELSE
-            RAISE NOTICE '% [$1=%]', _query, _levels;
+            RAISE NOTICE '[$1=%]', _levels;
+            RAISE NOTICE '%', _query;
         END IF;
 
         --On supprime les entrées sauf celles qui existent déjà dans le nouveau jeu de données à insérer
@@ -327,21 +392,30 @@ BEGIN
                 SELECT 1
                 FROM ', _tmp_table_name, ' AS destination
                 WHERE ', _query_join, '
-                AND already_exists = TRUE
+                AND already_exists
             )'
         );
         IF NOT simulation THEN
             _start_time := clock_timestamp();
             EXECUTE _query USING _levels;
             GET DIAGNOSTICS _nrows_deleted = ROW_COUNT;
-            RAISE NOTICE 'Traitement GEO SUPRA "%" : % : % deleted', LEFT(_query, 30), TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS'), _nrows_deleted;
+            CALL public.log_info(
+                message => CONCAT(
+                    _notice
+                    , ' "', LEFT(_query, 30), '" : '
+                    , TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS')
+                    , ' ', _nrows_deleted, ' deleted'
+                )
+            );
+
+            --RAISE NOTICE 'Traitement GEO SUPRA "%" : % : % deleted', LEFT(_query, 30), TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS'), _nrows_deleted;
         ELSE
-            RAISE NOTICE '% [$1=%]', _query, _levels;
+            RAISE NOTICE '[$1=%]', _levels;
+            RAISE NOTICE '%', _query;
         END IF;
 
         _query := CONCAT(
-            'INSERT INTO ', schema_name, '.', table_name, '
-            (
+            'INSERT INTO ', schema_name, '.', table_name, ' (
                 nivgeo
                 , codgeo
                 , ', _columns_insert, '
@@ -363,7 +437,6 @@ BEGIN
             WHERE ', _query_join, '
             AND NOT(', _query_row_equal, ')
             ', CASE WHEN _query_where IS NOT NULL THEN CONCAT(' AND ', _query_where) END
-
         );
     END IF;
     IF NOT simulation THEN
@@ -376,12 +449,40 @@ BEGIN
             GET DIAGNOSTICS _nrows_updated = ROW_COUNT;
             _nrows_affected := _nrows_updated;
         END IF;
-        RAISE NOTICE 'Traitement GEO SUPRA "%" : % : % affected', LEFT(_query, 30), TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS'), _nrows_affected;
+        CALL public.log_info(
+            message => CONCAT(
+                _notice
+                , ' "', LEFT(_query, 30), '" : '
+                , TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS')
+                , ' ', _nrows_affected, ' affected'
+            )
+        );
+
+        --RAISE NOTICE 'Traitement GEO SUPRA "%" : % : % affected', LEFT(_query, 30), TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS'), _nrows_affected;
     ELSE
         RAISE NOTICE '%', _query;
     END IF;
 
-    RAISE NOTICE '% : Fin traitement GEO SUPRA % de %.% : % (% inserted - % deleted, % updated)', TO_CHAR(clock_timestamp(), 'HH24:MI:SS'), CONCAT_WS('/', base_level, supra_levels_filter), schema_name, table_name, CONCAT(CASE WHEN (_nrows_inserted-_nrows_deleted) >=0 THEN '+' ELSE '-' END, ABS(_nrows_inserted-_nrows_deleted)), _nrows_inserted, _nrows_deleted, _nrows_updated;
+    CALL public.log_info(
+        message => CONCAT(
+            'Fin ', _notice, ' ', CONCAT_WS('/', base_level, supra_level_filter)
+            , ' de ', schema_name, '.', table_name
+            , ' '
+            , CONCAT(
+                CASE WHEN (_nrows_inserted-_nrows_deleted) >=0 THEN '+' ELSE '-' END
+                , ABS(_nrows_inserted-_nrows_deleted)
+            )
+            , ' (', _nrows_inserted, ' inserted - ', _nrows_deleted, ' deleted, ', _nrows_updated, ' updated)'
+        )
+    );
+    --RAISE NOTICE '% : Fin traitement GEO SUPRA % de %.% : % (% inserted - % deleted, % updated)', TO_CHAR(clock_timestamp(), 'HH24:MI:SS'), CONCAT_WS('/', base_level, supra_level_filter), schema_name, table_name, CONCAT(CASE WHEN (_nrows_inserted-_nrows_deleted) >=0 THEN '+' ELSE '-' END, ABS(_nrows_inserted-_nrows_deleted)), _nrows_inserted, _nrows_deleted, _nrows_updated;
+
+    IF drop_temporary THEN
+        _query := 'DROP TABLE ' || _tmp_table_name || '_base';
+        EXECUTE _query;
+        _query := 'DROP TABLE ' || _tmp_table_name;
+        EXECUTE _query;
+    END IF;
 
     RETURN TRUE;
 END
