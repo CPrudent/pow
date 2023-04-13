@@ -356,17 +356,10 @@ BEGIN
     FROM com_groupby_epci
     WHERE com_groupby_epci.codgeo = territory.codgeo AND territory.nivgeo = 'EPCI';
 
-    -- set name (COM & COM_GLOBALE_ARM levels) from IGN, else RAN
+    -- set name (COM & COM_GLOBALE_ARM levels) from IGN ...
     RAISE NOTICE 'Libellés des territoires : COM, COM_GLOBALE_ARM';
     UPDATE fr.territory
-    SET libgeo = COALESCE(
-            commune_ign.libgeo
-            , (
-                SELECT STRING_AGG(DISTINCT za.lb_ach_nn, ' + ') AS libgeo
-                FROM fr.laposte_zone_address AS za
-                WHERE za.co_insee_commune = territory.codgeo
-            )
-        )
+    SET libgeo = commune_ign.libgeo
     FROM (
             SELECT
                 'COM' AS nivgeo
@@ -396,6 +389,22 @@ BEGIN
     WHERE territory.nivgeo IN ('COM', 'COM_GLOBALE_ARM')
     AND commune_ign.nivgeo = territory.nivgeo
     AND commune_ign.codgeo = territory.codgeo;
+    -- ... and from RAN (Polynésie française: 987* & Nouvelle Calédonie: 988*)
+    UPDATE fr.territory
+    SET libgeo = commune_ran.libgeo
+    FROM (
+        SELECT DISTINCT
+            za.co_insee_commune codgeo
+            , CASE
+                WHEN lb_l5_nn IS NOT NULL THEN INITCAP(lb_l5_nn)
+                ELSE INITCAP(lb_ach_nn)
+            END libgeo
+        FROM fr.laposte_zone_address AS za
+        WHERE za.co_insee_commune '^98'
+    ) AS commune_ran
+    WHERE territory.nivgeo IN ('COM')
+    AND commune_ran.codgeo = territory.codgeo
+    ;
 
     -- set name, type (EPCI level) from DGCL/BANATIC
     RAISE NOTICE 'Libellés des territoires : EPCI';

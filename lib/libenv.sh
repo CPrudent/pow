@@ -308,7 +308,7 @@ set_env() {
 
     # check for schema (from directory source)
     {
-        _schemas=($(ls -1d "$POW_DIR_ROOT/bin/"* | xargs --max-args 1 basename))
+        local _schemas=($(ls -1d "$POW_DIR_ROOT/bin/"* | xargs --max-args 1 basename))
         in_array _schemas "$get_arg_schema_name" || {
             log_error 'schéma non valide!'
             false
