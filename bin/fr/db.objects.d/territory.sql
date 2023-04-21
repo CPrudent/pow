@@ -242,7 +242,7 @@ BEGIN
             ON TRUE
     );
 
-    CREATE UNIQUE INDEX IF NOT EXISTS iux_territory_codgeo_za ON fr.territory (codgeo) WHERE nivgeo = 'COM_CP';
+    CREATE UNIQUE INDEX IF NOT EXISTS iux_territory_codgeo_com_cp ON fr.territory (codgeo) WHERE nivgeo = 'COM_CP';
 
     -- initialize SUPRA levels
     PERFORM fr.set_territory_supra(
@@ -400,7 +400,7 @@ BEGIN
                 ELSE INITCAP(lb_ach_nn)
             END libgeo
         FROM fr.laposte_zone_address AS za
-        WHERE za.co_insee_commune '^98'
+        WHERE za.co_insee_commune ~ '^98'
     ) AS commune_ran
     WHERE territory.nivgeo IN ('COM')
     AND commune_ran.codgeo = territory.codgeo

@@ -3,10 +3,18 @@
  */
 
 CREATE TABLE IF NOT EXISTS fr.constant (
-    list CHARACTER VARYING NOT NULL
+    usecase CHARACTER VARYING NOT NULL
     , key VARCHAR NOT NULL
     , value VARCHAR
 );
+
+DO $$
+BEGIN
+    IF column_exists('fr', 'constant', 'list') THEN
+        ALTER TABLE fr.constant RENAME COLUMN "list" TO usecase;
+        DROP INDEX IF EXISTS ix_constant_list_key;
+    END IF;
+END $$;
 
 -- build LAPOSTE municipality : list of normalized label exceptions
 SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_municipality_normalized_label_exception');
@@ -18,7 +26,7 @@ BEGIN
         RAISE 'Données LAPOSTE non présentes';
     END IF;
 
-    DELETE FROM fr.constant WHERE list = 'LAPOSTE_MUNICIPALITY_EXCEPTION';
+    DELETE FROM fr.constant WHERE usecase = 'LAPOSTE_MUNICIPALITY_EXCEPTION';
     INSERT INTO fr.constant (
         SELECT
             'LAPOSTE_MUNICIPALITY_EXCEPTION'
@@ -59,7 +67,7 @@ BEGIN
                 1
         ) t
         WHERE
-            -- except municipalities w/ districts (Lyon, Marseille et Paris) and Polynésie
+            -- except municipalities w/ districts (Lyon, Marseille et Paris) and (Polynésie, Nouvelle Calédonie)
             co_insee_commune !~ '^(98|693|751|132)'
     );
 END;
@@ -143,7 +151,7 @@ BEGIN
         RAISE 'Données LAPOSTE non présentes';
     END IF;
 
-    DELETE FROM fr.constant WHERE list = 'LAPOSTE_STREET_FIRSTNAME';
+    DELETE FROM fr.constant WHERE usecase = 'LAPOSTE_STREET_FIRSTNAME';
     INSERT INTO fr.constant (
         SELECT DISTINCT
             'LAPOSTE_STREET_FIRSTNAME'
@@ -161,4 +169,4 @@ BEGIN
 END;
 $proc$ LANGUAGE plpgsql;
 
-CREATE INDEX IF NOT EXISTS ix_constant_list_key ON fr.constant (list, key);
+CREATE INDEX IF NOT EXISTS ix_constant_usecase_key ON fr.constant (usecase, key);
