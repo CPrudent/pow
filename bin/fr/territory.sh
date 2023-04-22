@@ -44,8 +44,8 @@ $POW_DIR_BATCH/banatic_setof_municipalities.sh --force $force && {
             --query "
                 DROP TABLE IF EXISTS fr.territory_za;
                 CREATE TABLE fr.territory_za AS (
-                    SELECT codgeo, gm_contour, superficie
-                    FROM fr.territory WHERE nivgeo = 'COM_CP'
+                    SELECT codgeo, superficie, gm_contour
+                    FROM fr.territory WHERE nivgeo = fr.get_bigger_sublevel('CP')
                 );
             "
     fi
@@ -57,7 +57,6 @@ execute_query \
         execute_query \
             --name SET_TERRITORY_GEOMETRY \
             --query "CALL fr.set_territory_geometry(
-                dir_tmp => '$POW_DIR_TMP'
             )" && {
             _error=$(grep '^ERREUR' $POW_DIR_ARCHIVE/SET_TERRITORY_GEOMETRY.notice.log)
             [ -n "$_error" ] && {
@@ -75,13 +74,13 @@ execute_query \
                     , superficie = territory_za.superficie
                 FROM fr.territory_za
                 WHERE territory.codgeo = territory_za.codgeo
-                AND territory.nivgeo = 'COM_CP';
+                AND territory.nivgeo = fr.get_bigger_sublevel('CP');
 
                 DROP INDEX IF EXISTS fr.ix_territory_gm_contour;
                 SELECT fr.set_territory_supra(
                     schema_name => 'fr'
                     , table_name => 'territory'
-                    , base_level => 'COM_CP'
+                    , base_level => fr.get_bigger_sublevel('CP')
                     , columns_agg => ARRAY['gm_contour', 'superficie']
                     , update_mode => TRUE
                 );

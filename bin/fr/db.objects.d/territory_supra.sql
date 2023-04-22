@@ -1,6 +1,8 @@
 /***
  * FR-TERRITORY : update SUPRA territories
- * by aggregating sublevel, hierarchy being available as column foreach levels
+ *
+ * by aggregating sublevel
+ * hierarchy being available as column (codgeo_<level>_parent) foreach levels
  */
 
 SELECT drop_all_functions_if_exists('fr', 'set_territory_supra');
@@ -222,6 +224,20 @@ BEGIN
                     FROM ', _tmp_table_name, CASE WHEN _bigger_sublevel = base_level THEN '_base' END, ' AS source
                     WHERE source.nivgeo = $1
                     GROUP BY LEFT(source.codgeo, 5)
+                    ', CASE WHEN _columns_groupby IS NOT NULL THEN CONCAT(', ', _columns_groupby) END, '
+                )'
+            );
+        ELSIF _level = 'COM' AND _bigger_sublevel IN ('ZA') THEN
+            _query := CONCAT(
+                '(
+                    SELECT
+                        $2::VARCHAR AS nivgeo
+                        , za.co_insee_commune AS codgeo
+                        , ', _columns_select, '
+                    FROM ', _tmp_table_name, CASE WHEN _bigger_sublevel = base_level THEN '_base' END, ' AS source
+                    JOIN fr.laposte_zone_address za ON source.codgeo = za.co_cea
+                    WHERE source.nivgeo = $1
+                    GROUP BY source.codgeo
                     ', CASE WHEN _columns_groupby IS NOT NULL THEN CONCAT(', ', _columns_groupby) END, '
                 )'
             );

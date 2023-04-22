@@ -9,7 +9,7 @@
  */
 
 /* NOTE
- * type localisation (RAN/PDI)
+ * type of location (LAPOSTE RAN/GEOPAD)
  *
  1  Centre commune          Coordonnées du barycentre de la surface communale
  2  Mairie                  Coordonnées de la mairie de la commune
@@ -21,6 +21,35 @@
  8  Projection plaque       Coordonnées de la plaque du numéro, donc l'entrée dans la voie
  9  Repositionné (PDI)
  */
+
+-- oldies
+SELECT drop_all_functions_if_exists('fr', 'set_zone_address_geometry');
+
+-- check validity of subsection
+SELECT drop_all_functions_if_exists('fr', 'check_municipality_subsection');
+CREATE OR REPLACE PROCEDURE fr.check_municipality_subsection(
+    subsection VARCHAR                      -- ZA or COM_CP
+    , check_level BOOLEAN DEFAULT TRUE
+    , check_territory BOOLEAN DEFAULT TRUE
+)
+AS
+$proc$
+BEGIN
+    IF NOT subsection = ANY(ARRAY['ZA', 'COM_CP']) THEN
+        RAISE 'argument subsection % non valide, choix possibles {ZA, COM_CP}', subsection;
+    END IF;
+    IF check_level AND NOT EXISTS(
+        SELECT 1 FROM public.territory_level WHERE level = subsection
+    ) THEN
+        RAISE 'manque niveau % dans public.territory_level', subsection;
+    END IF;
+    IF check_territory AND NOT EXISTS(
+        SELECT 1 FROM fr.territory WHERE nivgeo = subsection
+    ) THEN
+        RAISE 'manque niveaux % dans fr.territory', subsection;
+    END IF;
+END
+$proc$ LANGUAGE plpgsql;
 
 SELECT drop_all_functions_if_exists('fr', 'set_municipality_subsection_geometry');
 CREATE OR REPLACE PROCEDURE fr.set_municipality_subsection_geometry(
@@ -38,16 +67,7 @@ DECLARE
     _context TEXT;
     _message VARCHAR;
 BEGIN
-    IF NOT subsection = ANY(ARRAY['ZA', 'COM_CP']) THEN
-        RAISE 'argument subsection % non valide, choix possibles {ZA, COM_CP}', subsection;
-    END IF;
-    -- TODO exists level ?
-    IF NOT EXISTS(
-        SELECT 1 FROM fr.territory WHERE nivgeo = subsection
-    ) THEN
-        RAISE 'manque niveaux % dans fr.territory', subsection;
-    END IF;
-
+    CALL fr.check_municipality_subsection(subsection => subsection);
     CALL public.log_info('Reset des contours natifs ' || subsection);
     UPDATE fr.territory
     SET gm_contour_natif = NULL
@@ -131,7 +151,7 @@ BEGIN
             codgeo_dep_parent = department_test
         );
 
-    -- many subsections
+    -- many subsections : divide contour between each subsection (VORONOI w/ delivery points)
     FOR _municipality_with_many_subsections IN (
         SELECT
             tmp_municipality_with_many_subsections.co_insee_commune
@@ -243,7 +263,7 @@ BEGIN
                             END;
 
                     CONTINUE;
-                -- less or more
+                -- less or more : need to evaluate contour for each
                 ELSE
                     RAISE NOTICE 'INFO : % % avec des points adresses sur la commune %, alors qu''on en attendait %'
                         , _nof
@@ -291,7 +311,8 @@ BEGIN
                     INNER JOIN tmp_geom_delivery_point_voronoi
                         ON ST_Within(tmp_geom_delivery_point.geom, tmp_geom_delivery_point_voronoi.geom)
                 GROUP BY
-                    tmp_geom_delivery_point_voronoi.voronoi_id, tmp_geom_delivery_point.subsection_id
+                    tmp_geom_delivery_point_voronoi.voronoi_id
+                    , tmp_geom_delivery_point.subsection_id
             )
             , voronoi_has_best_subsection AS (
                 SELECT
@@ -324,7 +345,7 @@ BEGIN
                     SELECT
                         ROW_NUMBER() OVER() AS geom_id
                         --On considère qu'une géométrie est absorbante si sa superficie
-                        --est au moins supérieure à la moitiée de celle de la plus grande géométrie du CP
+                        --est au moins supérieure à la moitié de celle de la plus grande géométrie du CP
                         , ST_Area(geom) > ((MAX(ST_Area(geom)) OVER(PARTITION BY subsection_id))/2) AS est_absorbante
                         , geom
                         , subsection_id
@@ -468,411 +489,11 @@ END
 $proc$ LANGUAGE plpgsql;
 
 /*
--- replaced by: set_municipality_subsection_geometry(subsection => 'ZA')
-SELECT drop_all_functions_if_exists('fr', 'set_zone_address_geometry');
-CREATE OR REPLACE PROCEDURE fr.set_zone_address_geometry(
-    location_min INT DEFAULT 4
-    , department_test VARCHAR DEFAULT NULL
-)
-AS
-$proc$
-DECLARE
-    _municipality_with_many RECORD;
-    _uniq CHAR(10);
-    _nof INTEGER;
-    _nrows_affected INTEGER;
-    _context TEXT;
-    _message VARCHAR;
-BEGIN
-    CALL public.log_info('Identification des Communes multi-ZA');
-
-    DROP TABLE IF EXISTS fr.territory_za;
-    CREATE TABLE fr.territory_za AS (
-        SELECT
-            co_cea
-            , co_insee_commune
-            , NULL::GEOMETRY gm_contour_natif
-            , NULL::GEOMETRY gm_contour
-        FROM fr.laposte_zone_address
-        WHERE
-            fl_active
-    );
-    CREATE UNIQUE INDEX iux_territory_za_cea ON fr.territory_za (co_cea);
-    CREATE INDEX ix_territory_za_co_insee_commune ON fr.territory_za (co_insee_commune);
-
-    DROP TABLE IF EXISTS tmp_municipality_with_many;
-    CREATE TEMPORARY TABLE tmp_municipality_with_many AS (
-        SELECT
-            za.co_insee_commune
-            , COUNT(*) AS nb_za
-            , FIRST(za.co_cea) AS first_za      -- ZA which have more PDI ?
-        FROM fr.territory_za za
-        WHERE
-        --ayant une commune IGN = un contour commune IGN
-        EXISTS (
-            SELECT 1 FROM (
-                SELECT
-                    insee_com AS codgeo
-                FROM
-                    fr.admin_express_commune
-                WHERE
-                    insee_com NOT IN ('75056', '13055', '69123')
-                UNION
-                SELECT
-                    insee_arm
-                FROM
-                    fr.admin_express_arrondissement_municipal
-            ) AS commune_ign
-            WHERE commune_ign.codgeo = za.co_insee_commune
-        )
-        AND (
-            department_test IS NULL
-            OR
-            fr.get_department_code_from_municipality_code(za.co_insee_commune) = department_test
-        )
-        GROUP BY za.co_insee_commune
-        HAVING COUNT(DISTINCT co_cea) > 1
-    );
-    CREATE UNIQUE INDEX ON tmp_municipality_with_many (co_insee_commune);
-
-    -- ZA same as COM
-    CALL public.log_info('Init des contours de communes entières');
-    UPDATE fr.territory_za
-    SET gm_contour_natif = commune_ign.geom
-    FROM (
-        SELECT
-            insee_com AS codgeo
-            , geom
-        FROM
-            fr.admin_express_commune
-        WHERE
-            insee_com NOT IN ('75056', '13055', '69123')
-        UNION
-        SELECT
-            insee_arm
-            , geom
-        FROM
-            fr.admin_express_arrondissement_municipal
-    ) AS commune_ign
-    WHERE
-        co_insee_commune = commune_ign.codgeo
-    --Qui n'est pas multi-cp
-    AND NOT EXISTS (
-        SELECT 1 FROM tmp_municipality_with_many
-        WHERE tmp_municipality_with_many.co_insee_commune = territory_za.co_insee_commune
-    )
-    AND (department_test IS NULL OR fr.get_department_code_from_municipality_code(co_insee_commune) = department_test)
-    ;
-
-    -- ZA only part of COM (which is shared into many ZA)
-    FOR _municipality_with_many IN (
-        SELECT
-            tmp_municipality_with_many.co_insee_commune
-            , tmp_municipality_with_many.nb_za
-            , tmp_municipality_with_many.first_za
-            , commune_ign.geom AS gm_contour_natif
-            , ST_SRID(commune_ign.geom) AS srid
-        FROM tmp_municipality_with_many
-        INNER JOIN (
-            SELECT
-                insee_com AS codgeo
-                , geom
-            FROM
-                fr.admin_express_commune
-            WHERE
-                insee_com NOT IN ('75056', '13055', '69123')
-            UNION
-            SELECT
-                insee_arm
-                , geom
-            FROM
-                fr.admin_express_arrondissement_municipal
-        ) AS commune_ign ON commune_ign.codgeo = tmp_municipality_with_many.co_insee_commune
-        ORDER BY 1
-    )
-    LOOP
-        BEGIN
-            CALL public.log_info('Init des contours avec commune partielle : ' || _municipality_with_many.co_insee_commune);
-
-            -- set of all delivery points (PDI) for the current municipality
-            CREATE TEMPORARY TABLE IF NOT EXISTS tmp_geom_delivery_point(
-                geom GEOMETRY
-                , co_cea CHAR(10)
-                , no_type_localisation INTEGER
-            );
-            TRUNCATE TABLE tmp_geom_delivery_point;
-            DROP INDEX IF EXISTS ix_tmp_geom_delivery_point_geom;
-
-            INSERT INTO tmp_geom_delivery_point(
-                geom
-                , co_cea
-                , no_type_localisation
-            )
-            (
-                SELECT
-                    ST_Transform(pdi_coord_native, _municipality_with_many.srid) AS geom
-                    , co_adr_za
-                    , pdi_no_type_localisation_coord AS no_type_localisation
-                FROM fr.delivery_point_view
-                WHERE co_insee_commune = _municipality_with_many.co_insee_commune
-                AND fl_active
-                AND fl_diffusable
-                AND pdi_etat = 1
-                AND pdi_visible
-                -- at least street-center (=4)
-                AND pdi_no_type_localisation_coord >= location_min
-                AND pdi_coord_native IS NOT NULL
-                /* TEST PDI très proches géographiquement :
-                AND pdi_id IN (10652325, 24672957)
-                AND pdi_coord && (SELECT ST_Extent(ST_Buffer(pdi_coord, 100)) AS etendue FROM pdi_view WHERE pdi_id = 10652325)
-                */
-            );
-
-            SELECT COUNT(DISTINCT co_cea), NULLIF(UNIQUE_AGG(co_cea), 'INIT_VALUE')
-            INTO _nof, _uniq
-            FROM tmp_geom_delivery_point;
-
-            --Le nombre de ZA avec des points adresses est différent du nombre attendu
-            IF _nof != _municipality_with_many.nb_za THEN
-                --Il n'y en a aucun
-                IF _nof = 0 THEN
-                    RAISE NOTICE 'ERREUR : aucune ZA avec des points adresses sur la commune %, alors qu''on en attendait plusieurs'
-                    , _municipality_with_many.co_insee_commune;
-                    /*TODO : Que faire ? on ne pourra afficher la commune au maillage CP
-                        * ni remonter les contours COM_CP pour produire le contour COM, à moins d'attribuer le contour entier de la commune à un des CP
-                        */
-                    --On attribue le contour entier de la commune à la première ZA
-                    UPDATE fr.territory_za
-                    SET gm_contour_natif = _municipality_with_many.gm_contour_natif
-                    WHERE
-                        co_cea = _municipality_with_many.first_za;
-
-                    CONTINUE;
-                --Il n'y en a qu'un
-                ELSIF _nof = 1 THEN
-                    RAISE NOTICE 'ERREUR : une seule ZA (%) avec des points adresses sur la commune %, alors qu''on en attendait %'
-                    , _uniq
-                    , _municipality_with_many.co_insee_commune
-                    , _municipality_with_many.nb_za;
-                    --On lui attribue le contour entier de la commune
-                    UPDATE fr.territory_za
-                    SET gm_contour_natif = _municipality_with_many.gm_contour_natif
-                    WHERE
-                        co_cea = _uniq;
-
-                    CONTINUE;
-                --Il y en a plusieurs (mais plus ou moins)
-                ELSE
-                    RAISE NOTICE 'ERREUR : % ZA avec des points adresses sur la commune %, alors qu''on en attendait %'
-                    , _nof
-                    , _municipality_with_many.co_insee_commune
-                    , _municipality_with_many.nb_za;
-                END IF;
-            END IF;
-
-            CREATE INDEX ix_tmp_geom_delivery_point_geom ON tmp_geom_delivery_point USING GIST(geom);
-
-            -- delimit polygons (Voronoi) for the set of points
-            CREATE TEMPORARY TABLE IF NOT EXISTS tmp_geom_delivery_point_voronoi(
-                voronoi_id SERIAL
-                , geom GEOMETRY(POLYGON)
-                , co_cea CHAR(10)
-            );
-            TRUNCATE TABLE tmp_geom_delivery_point_voronoi;
-            DROP INDEX IF EXISTS ix_tmp_geom_delivery_point_voronoi_geom;
-            INSERT INTO tmp_geom_delivery_point_voronoi (geom) (
-                /* Génération des polygones de Voronoi
-                * pour l'ensemble des point adresse de la commune
-                * dans la limite (jusqu'à l'étendue) du contour de la commune
-                */
-                SELECT
-                    (ST_Dump(
-                        -- GEOMETRY ST_VoronoiPolygons(g1 GEOMETRY, tolerance FLOAT8, extend_to GEOMETRY);
-                        ST_VoronoiPolygons(
-                            (SELECT ST_Collect(geom) FROM tmp_geom_delivery_point)
-                            , 5
-                            --Etendue de la commune
-                            , _municipality_with_many.gm_contour_natif
-                        )
-                    )).geom
-            );
-            CREATE INDEX ix_tmp_geom_delivery_point_voronoi_geom ON tmp_geom_delivery_point_voronoi USING GIST(geom);
-
-            -- remains to affect ZA to each polygon
-            WITH
-            voronoi_has_za AS (
-                SELECT
-                    tmp_geom_delivery_point_voronoi.voronoi_id
-                    , tmp_geom_delivery_point.co_cea
-                    , COUNT(*) AS nb_pdi
-                    , SUM(no_type_localisation) AS sum_no_type_localisation
-                FROM tmp_geom_delivery_point
-                    INNER JOIN tmp_geom_delivery_point_voronoi
-                        ON ST_Within(tmp_geom_delivery_point.geom, tmp_geom_delivery_point_voronoi.geom)
-                GROUP BY
-                    tmp_geom_delivery_point_voronoi.voronoi_id, tmp_geom_delivery_point.co_cea
-            )
-            , voronoi_has_best_za AS (
-                SELECT
-                    voronoi_id
-                    , FIRST(co_cea ORDER BY sum_no_type_localisation DESC) AS co_cea
-                FROM voronoi_has_za
-                GROUP BY voronoi_id
-            )
-            UPDATE tmp_geom_delivery_point_voronoi
-            SET co_cea = voronoi_has_best_za.co_cea
-            FROM voronoi_has_best_za
-            WHERE voronoi_has_best_za.voronoi_id = tmp_geom_delivery_point_voronoi.voronoi_id
-            ;
-
-            WITH
-            set_of_contour_by_za AS (
-                WITH
-                set_of_contours_delimited_by_municipality AS (
-                    SELECT
-                        (ST_Dump(
-                            ST_Intersection(
-                                _municipality_with_many.gm_contour_natif
-                                , ST_Union(geom)
-                            )
-                        )).geom
-                        , co_cea
-                    FROM tmp_geom_delivery_point_voronoi
-                    GROUP BY co_cea
-                )
-                , list_of_contours_with_included_flag AS (
-                    SELECT
-                        ROW_NUMBER() OVER() AS geom_id
-                        --On considère qu'une géométrie est absorbante si sa superficie
-                        --est au moins supérieure à la moitiée de celle de la plus grande géométrie du CP
-                        , ST_Area(geom) > ((MAX(ST_Area(geom)) OVER(PARTITION BY co_cea))/2) AS est_absorbante
-                        , geom
-                        , co_cea
-                    FROM set_of_contours_delimited_by_municipality
-                )
-                , list_of_contours_with_included_id AS (
-                    SELECT
-                        list_of_contours_with_included_flag.geom_id
-                        , list_of_contours_with_included_flag.co_cea
-                        , COALESCE(
-                            (
-                                SELECT t.geom_id
-                                FROM list_of_contours_with_included_flag AS t
-                                --Une géométrie ne doit pas s'absorber elle même
-                                WHERE list_of_contours_with_included_flag.geom_id != t.geom_id
-                                --Une géométrie ne doit pas absorber une géométrie "absorbante"
-                                AND NOT list_of_contours_with_included_flag.est_absorbante
-                                AND (
-                                    --Une géométrie en absorbe une autre si elle la contient entièrement
-                                    ST_Within(list_of_contours_with_included_flag.geom, ST_MakePolygon(ST_ExteriorRing(t.geom)))
-                                    --Une géométrie en absorbe une autre si elles se touchent
-                                    OR (
-                                        ST_Touches(list_of_contours_with_included_flag.geom, t.geom)
-                                        --Et que la géométrie absorbante est plus grande que celle absorbée
-                                        --Note : sinon on risque d'avoir une boucle infinie dans la recherche récursive suivante
-                                        AND ST_Area(t.geom) > ST_Area(list_of_contours_with_included_flag.geom)::NUMERIC
-                                    )
-                                )
-                                --Dans le cas où la géométrie aurait plusieurs géométries absorbantes, elle se fait absorber par la plus grande
-                                ORDER BY ST_Area(t.geom) DESC
-                                LIMIT 1
-                            )
-                        ) AS geom_id_absorbante
-                    FROM list_of_contours_with_included_flag
-                )
-                , list_of_contours_with_final_za AS (
-                    SELECT
-                        list_of_contours_with_included_flag.geom
-                        , (
-                            WITH RECURSIVE search_graph(geom_id, co_cea, geom_id_absorbante, depth) AS (
-                                SELECT g.geom_id, g.co_cea, g.geom_id_absorbante, 1
-                                FROM list_of_contours_with_included_id g
-                                WHERE g.geom_id = list_of_contours_with_included_flag.geom_id
-                                UNION ALL
-                                SELECT g.geom_id, g.co_cea, g.geom_id_absorbante, sg.depth + 1
-                                FROM list_of_contours_with_included_id g, search_graph sg
-                                WHERE g.geom_id = sg.geom_id_absorbante
-                            )
-                            SELECT co_cea FROM search_graph ORDER BY depth DESC LIMIT 1
-                        ) AS co_cea
-                        FROM list_of_contours_with_included_flag
-                )
-                --SELECT * FROM list_of_contours_with_final_za
-                SELECT ST_Union(geom) AS geom, co_cea
-                FROM list_of_contours_with_final_za
-                GROUP BY co_cea
-            )
-            UPDATE fr.territory_za
-            SET gm_contour_natif = set_of_contour_by_za.geom
-            FROM set_of_contour_by_za
-            WHERE
-                territory_za.co_cea = set_of_contour_by_za.co_cea;
-
-        EXCEPTION WHEN OTHERS THEN
-            GET STACKED DIAGNOSTICS _context = PG_EXCEPTION_CONTEXT;
-            RAISE '% : Erreur sur traitement commune % : % (%)', TO_CHAR(clock_timestamp(), 'HH24:MI:SS'), _municipality_with_many.co_insee_commune, SQLERRM, _context;
-        END;
-    END LOOP;
-
-    FOR _municipality_with_many IN (
-        SELECT
-            tmp_municipality_with_many.co_insee_commune
-            , tmp_municipality_with_many.nb_za
-        FROM tmp_municipality_with_many
-        ORDER BY tmp_municipality_with_many.co_insee_commune
-    )
-    LOOP
-        /* NOTE
-        GEOMETRY ST_Snap(GEOMETRY input, GEOMETRY reference, FLOAT tolerance);
-        Snaps the vertices and segments of a geometry to another Geometry's vertices.
-        The result geometry is the input geometry with the vertices snapped.
-        */
-
-        WITH
-        contour_of_municipality_with_many_za AS (
-            SELECT ST_Union(gm_contour_natif) AS gm_contour_natif
-            FROM fr.territory_za
-            WHERE
-                co_insee_commune = _municipality_with_many.co_insee_commune
-        )
-        , snap_territory_around AS (
-            SELECT
-                territory_around.co_insee_commune
-                , ST_Snap(
-                    territory_around.gm_contour_natif
-                    , contour_of_municipality_with_many_za.gm_contour_natif
-                    , 1.0
-                ) AS gm_contour_natif
-            FROM contour_of_municipality_with_many_za
-            INNER JOIN fr.territory_za AS territory_around
-                -- ZA with common border (ST_Touches) from another municipality
-                ON territory_around.gm_contour_natif && contour_of_municipality_with_many_za.gm_contour_natif
-                AND territory_around.co_insee_commune != _municipality_with_many.co_insee_commune
-        )
-        UPDATE fr.territory_za
-        SET gm_contour_natif = snap_territory_around.gm_contour_natif
-        FROM snap_territory_around
-        WHERE territory_za.co_insee_commune = snap_territory_around.co_insee_commune
-        -- If no snapping occurs then the input geometry is returned unchanged.
-        AND NOT ST_Equals(territory_za.gm_contour_natif, snap_territory_around.gm_contour_natif);
-
-        GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-        _message := ' traité';
-        IF _nrows_affected > 1 THEN _message := _message || 's'; END IF;
-        CALL public.log_info(CONCAT('ST_Snap autour de ', _municipality_with_many.co_insee_commune, ' : #', _nrows_affected, _message));
-    END LOOP;
-
-    COMMIT;
-END
-$proc$ LANGUAGE plpgsql;
- */
-
-/*
 eval geometry of territories
     PART/1
-        based level (COM_CP) : native geometry
+        based level (COM_CP|ZA) : native geometry
     PART/2
-        based level (COM_CP) : simplified geometry, as (WGS-84 Long/Lat SRID 4326)
+        based level (COM_CP|ZA) : simplified geometry, as (WGS-84 Long/Lat SRID 4326)
     PART/3
         deal w/ holes
     PART/4
@@ -880,8 +501,8 @@ eval geometry of territories
  */
 SELECT drop_all_functions_if_exists('fr', 'set_territory_geometry');
 CREATE OR REPLACE PROCEDURE fr.set_territory_geometry(
-    dir_tmp VARCHAR
-    , part_todo INT DEFAULT 1 | 2 | 4 | 8
+    part_todo INT DEFAULT 1 | 2 | 4 | 8
+    , subsection VARCHAR DEFAULT 'ZA'
     , location_min INT DEFAULT 4
     , department_test VARCHAR DEFAULT NULL
 )
@@ -895,6 +516,7 @@ DECLARE
     _context TEXT;
     _message VARCHAR;
 BEGIN
+    CALL fr.check_municipality_subsection(subsection => subsection);
     CALL public.log_info('Début du calcul des Contours');
 
     --
@@ -903,7 +525,7 @@ BEGIN
     IF part_todo & 1 = 1 THEN
         DROP INDEX IF EXISTS ix_territory_gm_contour_natif;
         CALL public.log_info(
-            message => 'Commande SH de suivi : watch -d -c "grep ''contours avec commune partielle'' ' || dir_tmp || '/SET_TERRITORY_GEOMETRY.notice.log | wc -l"'
+            message => 'Commande SH de suivi : watch -d -c "grep ''contours avec commune partielle'' $POW_DIR_TMP/SET_TERRITORY_GEOMETRY.notice.log | wc -l"'
             , stamped => FALSE
         );
 
@@ -1432,19 +1054,19 @@ BEGIN
          */
 
         CALL fr.set_municipality_subsection_geometry(
-            subsection => 'ZA'
+            subsection => subsection
             , location_min => location_min
         );
     END IF;
 
     --
-    -- PART/2 : initialize simplified geometry for based level (as COM_CP)
+    -- PART/2 : initialize simplified geometry for based level (subsection)
     --
     IF part_todo & 2 = 2 THEN
         DROP INDEX IF EXISTS ix_territory_gm_contour;
 
         CALL public.log_info(
-            message => 'Commande SH de suivi : watch -d -c "cat ' || dir_tmp || '/SET_TERRITORY_GEOMETRY.notice.log | grep -o -P ''[0-9]+ traité'' | grep -o -P ''[0-9]+'' | awk ''{ SUM += \$1} END { print SUM }''"'
+            message => 'Commande SH de suivi : watch -d -c "cat $POW_DIR_TMP/SET_TERRITORY_GEOMETRY.notice.log | grep -o -P ''[0-9]+ traité'' | grep -o -P ''[0-9]+'' | awk ''{ SUM += \$1} END { print SUM }''"'
             , stamped => FALSE
         );
 
@@ -1453,7 +1075,7 @@ BEGIN
 
         CALL public.log_info('Calcul des contours reprojetés (WGS84) simplifiés');
         CALL fr.ST_SimplifyTerritory(
-            levels => ARRAY['COM_CP']
+            levels => ARRAY[subsection]
             , to_srid => 4326
             , bbox_split_over => 1000
             , tolerance => 100
@@ -1473,14 +1095,14 @@ BEGIN
     END IF;
 
     --
-    -- PART/4 : eval area (COM_CP first), then SUPRA for (simplified geometry, area)
+    -- PART/4 : eval area (subsection first), then SUPRA for (simplified geometry, area)
     --
     IF part_todo & 8 = 8 THEN
         -- unit= hm2 (1/100 km2)
         -- see: https://gis.stackexchange.com/questions/169422/how-does-st-area-in-postgis-work
         UPDATE fr.territory
         SET superficie = ROUND(ST_Area(ST_Transform(gm_contour_natif, 4326)::GEOGRAPHY)/10000)
-        WHERE nivgeo = 'COM_CP';
+        WHERE nivgeo = subsection;
 
         DROP INDEX IF EXISTS public.ix_territory_gm_contour;
 
@@ -1488,7 +1110,7 @@ BEGIN
         PERFORM fr.set_territory_supra(
             schema_name => 'fr'
             , table_name => 'territory'
-            , base_level => 'COM_CP'
+            , base_level => subsection
             , columns_agg => ARRAY['gm_contour', 'superficie']
             , update_mode => TRUE
         );
