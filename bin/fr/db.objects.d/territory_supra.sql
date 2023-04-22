@@ -237,7 +237,7 @@ BEGIN
                     FROM ', _tmp_table_name, CASE WHEN _bigger_sublevel = base_level THEN '_base' END, ' AS source
                     JOIN fr.laposte_zone_address za ON source.codgeo = za.co_cea
                     WHERE source.nivgeo = $1
-                    GROUP BY source.codgeo
+                    GROUP BY za.co_insee_commune
                     ', CASE WHEN _columns_groupby IS NOT NULL THEN CONCAT(', ', _columns_groupby) END, '
                 )'
             );

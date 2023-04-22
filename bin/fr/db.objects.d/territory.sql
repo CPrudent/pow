@@ -139,7 +139,7 @@ BEGIN
             SELECT
                 co_cea
                 , dt_reference
-                , CONCAT_WS('-',
+                , CONCAT_WS('-'
                     , CASE WHEN co_insee_commune ~ '^98[78]' THEN lb_ach_nn ELSE lb_l5_nn END
                     , co_postal
                     , CASE WHEN co_insee_commune ~ '^98[78]' THEN lb_l5_nn ELSE lb_ach_nn END

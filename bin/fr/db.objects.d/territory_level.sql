@@ -159,12 +159,12 @@ BEGIN
         , sublevels =
         CASE level
             WHEN subsection                 THEN NULL
-                WHEN 'CP'                   THEN ARRAY['COM_CP']
+                WHEN 'CP'                   THEN ARRAY[subsection]
                     WHEN 'PDC_PPDC'         THEN ARRAY['CP']
                         WHEN 'PPDC_PDC'     THEN ARRAY['PDC_PPDC']
                             WHEN 'DEX'      THEN ARRAY['PPDC_PDC']
         WHEN 'IRIS'                         THEN NULL
-                WHEN 'COM'                  THEN ARRAY['COM_CP', 'IRIS']
+                WHEN 'COM'                  THEN ARRAY[subsection, 'IRIS']
                     WHEN 'COM_GLOBALE_ARM'  THEN ARRAY['COM']
                         WHEN 'EPCI'         THEN ARRAY['COM']
                         WHEN 'CV'           THEN ARRAY['COM']
@@ -180,6 +180,21 @@ BEGIN
     ;
 END
 $proc$ LANGUAGE plpgsql;
+
+-- exists level
+SELECT public.drop_all_functions_if_exists('fr', 'exists_level');
+CREATE OR REPLACE FUNCTION fr.exists_level(
+    level_in IN VARCHAR
+)
+RETURNS BOOLEAN AS
+$func$
+DECLARE
+    _exists INT;
+BEGIN
+    SELECT 1 INTO _exists FROM public.territory_level WHERE country = 'FR' AND level = level_in;
+    RETURN FOUND;
+END
+$func$ LANGUAGE plpgsql;
 
 -- is level A a sublevel of level B
 SELECT public.drop_all_functions_if_exists('fr', 'is_level_below');
@@ -238,7 +253,9 @@ BEGIN
             WHEN fr.is_level_below(level_b, level_a) THEN level_b
             WHEN fr.is_level_below('COM', level_a) AND fr.is_level_below('COM', level_b) THEN 'COM'
             WHEN fr.is_level_below('CP', level_a) AND fr.is_level_below('CP', level_b) THEN 'CP'
-            ELSE 'COM_CP'
+            ELSE
+                -- base level (ZA|COM_CP)
+                fr.get_bigger_sublevel('CP')
         END;
     END IF;
 END
