@@ -51,9 +51,21 @@ BEGIN
 END
 $proc$ LANGUAGE plpgsql;
 
+/*
+calculate geometry of municipalities
+    PART/1
+        reset
+    PART/2
+        w/ only 1 subsection
+    PART/3
+        w/ many subsections
+    PART/4
+        w/ many subsections : snap
+ */
 SELECT drop_all_functions_if_exists('fr', 'set_municipality_subsection_geometry');
 CREATE OR REPLACE PROCEDURE fr.set_municipality_subsection_geometry(
-    subsection VARCHAR                      -- ZA or COM_CP
+    part_todo INT DEFAULT 1 | 2 | 4 | 8
+    , subsection VARCHAR                        -- ZA or COM_CP
     , location_min INT DEFAULT 4
     , department_test VARCHAR DEFAULT NULL
 )
@@ -68,13 +80,15 @@ DECLARE
     _message VARCHAR;
 BEGIN
     CALL fr.check_municipality_subsection(subsection => subsection);
-    CALL public.log_info('Reset des contours natifs ' || subsection);
-    UPDATE fr.territory
-    SET gm_contour_natif = NULL
-    WHERE nivgeo = subsection
-    -- TEST only evaluated for the department (others being reseted)
-    AND (department_test IS NULL OR territory.codgeo_dep_parent = department_test)
-    ;
+    IF part_todo & 1 = 1 THEN
+        -- reset
+        CALL public.log_info('Reset des contours natifs ' || subsection);
+        UPDATE fr.territory
+        SET gm_contour_natif = NULL
+        WHERE nivgeo = subsection
+        -- TEST only evaluated for the department (others being reseted)
+        AND (department_test IS NULL OR territory.codgeo_dep_parent = department_test);
+    END IF;
 
     CALL public.log_info('Identification des Communes multi-' || subsection);
     DROP TABLE IF EXISTS tmp_municipality_with_many_subsections;
@@ -117,50 +131,12 @@ BEGIN
     );
     CREATE UNIQUE INDEX ON tmp_municipality_with_many_subsections (co_insee_commune);
 
-    -- only 1 subsection : same contour as municipality
-    CALL public.log_info('Init des contours de communes entières');
-    UPDATE fr.territory
-    SET gm_contour_natif = commune_ign.geom
-    FROM (
-        SELECT
-            insee_com AS codgeo
-            , geom
-        FROM
-            fr.admin_express_commune
-        WHERE
-            insee_com NOT IN ('75056', '13055', '69123')
-        UNION
-        SELECT
-            insee_arm
-            , geom
-        FROM
-            fr.admin_express_arrondissement_municipal
-    ) AS commune_ign
-    WHERE
-        nivgeo = subsection
-        AND
-        codgeo_com_parent = commune_ign.codgeo
-        AND
-        NOT EXISTS (
-            SELECT 1 FROM tmp_municipality_with_many_subsections
-            WHERE tmp_municipality_with_many_subsections.co_insee_commune = territory.codgeo_com_parent
-        )
-        AND (
-            department_test IS NULL
-            OR
-            codgeo_dep_parent = department_test
-        );
-
-    -- many subsections : divide contour between each subsection (VORONOI w/ delivery points)
-    FOR _municipality_with_many_subsections IN (
-        SELECT
-            tmp_municipality_with_many_subsections.co_insee_commune
-            , tmp_municipality_with_many_subsections.nb_subsections
-            , tmp_municipality_with_many_subsections.first_subsection
-            , commune_ign.geom AS gm_contour_natif
-            , ST_SRID(commune_ign.geom) AS srid
-        FROM tmp_municipality_with_many_subsections
-        INNER JOIN (
+    IF part_todo & 2 = 2 THEN
+        -- only 1 subsection : same contour as municipality
+        CALL public.log_info('Init des contours de communes entières');
+        UPDATE fr.territory
+        SET gm_contour_natif = commune_ign.geom
+        FROM (
             SELECT
                 insee_com AS codgeo
                 , geom
@@ -174,322 +150,367 @@ BEGIN
                 , geom
             FROM
                 fr.admin_express_arrondissement_municipal
-        ) AS commune_ign ON commune_ign.codgeo = tmp_municipality_with_many_subsections.co_insee_commune
-        ORDER BY 1
-    )
-    LOOP
-        BEGIN
-            CALL public.log_info('Init des contours avec commune partielle : ' || _municipality_with_many_subsections.co_insee_commune);
-
-            -- set of all delivery points (PDI) for the current municipality
-            CREATE TEMPORARY TABLE IF NOT EXISTS tmp_geom_delivery_point(
-                geom GEOMETRY
-                , subsection_id VARCHAR
-                , no_type_localisation INTEGER
-            );
-            TRUNCATE TABLE tmp_geom_delivery_point;
-            DROP INDEX IF EXISTS ix_tmp_geom_delivery_point_geom;
-
-            INSERT INTO tmp_geom_delivery_point(
-                geom
-                , subsection_id
-                , no_type_localisation
-            )
-            (
-                SELECT
-                    ST_Transform(pdi_coord_native, _municipality_with_many_subsections.srid)
-                    , CASE
-                        WHEN subsection = 'ZA' THEN co_adr_za
-                        WHEN subsection = 'COM_CP' THEN co_postal
-                    END
-                    , pdi_no_type_localisation_coord
-                FROM fr.delivery_point_view
-                WHERE
-                    co_insee_commune = _municipality_with_many_subsections.co_insee_commune
-                    AND fl_active
-                    AND fl_diffusable
-                    AND pdi_etat = 1
-                    AND pdi_visible
-                    -- at least street-center (=4)
-                    AND pdi_no_type_localisation_coord >= location_min
-                    AND pdi_coord_native IS NOT NULL
-            );
-
-            SELECT COUNT(DISTINCT subsection_id), NULLIF(UNIQUE_AGG(subsection_id), 'INIT_VALUE')
-            INTO _nof, _uniq
-            FROM tmp_geom_delivery_point;
-
-            -- number of subsections different from waited one
-            IF _nof != _municipality_with_many_subsections.nb_subsections THEN
-                IF _nof = 0 THEN
-                    RAISE NOTICE 'INFO : 0 % avec des points adresses sur la commune %, alors qu''on en attendait plusieurs'
-                        , subsection
-                        , _municipality_with_many_subsections.co_insee_commune;
-                    -- set contour of municipality to first subsection
-                    UPDATE fr.territory
-                    SET gm_contour_natif = _municipality_with_many_subsections.gm_contour_natif
-                    WHERE
-                        nivgeo = subsection
-                        AND
-                        codgeo = CASE
-                            WHEN subsection = 'ZA' THEN
-                                _municipality_with_many_subsections.first_subsection
-                            WHEN subsection = 'COM_CP' THEN
-                                CONCAT_WS('-'
-                                    , _municipality_with_many_subsections.co_insee_commune
-                                    , _municipality_with_many_subsections.first_subsection
-                                )
-                            END;
-
-                    CONTINUE;
-                ELSIF _nof = 1 THEN
-                    RAISE NOTICE 'INFO : 1 % (%) avec des points adresses sur la commune %, alors qu''on en attendait %'
-                        , subsection
-                        , _uniq
-                        , _municipality_with_many_subsections.co_insee_commune
-                        , _municipality_with_many_subsections.nb_subsections;
-                    -- set contour of municipality to uniq subsection
-                    UPDATE fr.territory
-                    SET gm_contour_natif = _municipality_with_many_subsections.gm_contour_natif
-                    WHERE
-                        codgeo = CASE
-                            WHEN subsection = 'ZA' THEN
-                                _uniq
-                            WHEN subsection = 'COM_CP' THEN
-                                CONCAT_WS('-'
-                                    , _municipality_with_many_subsections.co_insee_commune
-                                    , _uniq
-                                )
-                            END;
-
-                    CONTINUE;
-                -- less or more : need to evaluate contour for each
-                ELSE
-                    RAISE NOTICE 'INFO : % % avec des points adresses sur la commune %, alors qu''on en attendait %'
-                        , _nof
-                        , subsection
-                        , _municipality_with_many_subsections.co_insee_commune
-                        , _municipality_with_many_subsections.nb_subsections;
-                END IF;
-            END IF;
-
-            CREATE INDEX ix_tmp_geom_delivery_point_geom ON tmp_geom_delivery_point USING GIST(geom);
-
-            -- delimit polygons (Voronoi) for the set of points
-            CREATE TEMPORARY TABLE IF NOT EXISTS tmp_geom_delivery_point_voronoi(
-                voronoi_id SERIAL
-                , geom GEOMETRY(POLYGON)
-                , subsection_id VARCHAR
-            );
-            TRUNCATE TABLE tmp_geom_delivery_point_voronoi;
-            DROP INDEX IF EXISTS ix_tmp_geom_delivery_point_voronoi_geom;
-            INSERT INTO tmp_geom_delivery_point_voronoi (geom) (
-                /*
-                 generate Voronoi's polygons, w/ delivery points
-                 extend_to contour of municipality
-                 */
-                SELECT
-                    (ST_Dump(
-                        -- GEOMETRY ST_VoronoiPolygons(g1 GEOMETRY, tolerance FLOAT8, extend_to GEOMETRY);
-                        ST_VoronoiPolygons(
-                            (SELECT ST_Collect(geom) FROM tmp_geom_delivery_point)
-                            , 5
-                            , _municipality_with_many_subsections.gm_contour_natif
-                        )
-                    )).geom
-            );
-            CREATE INDEX ix_tmp_geom_delivery_point_voronoi_geom ON tmp_geom_delivery_point_voronoi USING GIST(geom);
-
-            -- remains to affect subsection to each polygon
-            WITH
-            voronoi_has_subsection AS (
-                SELECT
-                    tmp_geom_delivery_point_voronoi.voronoi_id
-                    , tmp_geom_delivery_point.subsection_id
-                    , SUM(no_type_localisation) AS sum_no_type_localisation
-                FROM tmp_geom_delivery_point
-                    INNER JOIN tmp_geom_delivery_point_voronoi
-                        ON ST_Within(tmp_geom_delivery_point.geom, tmp_geom_delivery_point_voronoi.geom)
-                GROUP BY
-                    tmp_geom_delivery_point_voronoi.voronoi_id
-                    , tmp_geom_delivery_point.subsection_id
-            )
-            , voronoi_has_best_subsection AS (
-                SELECT
-                    voronoi_id
-                    , FIRST(subsection_id ORDER BY sum_no_type_localisation DESC) AS subsection_id
-                FROM voronoi_has_subsection
-                GROUP BY voronoi_id
-            )
-            UPDATE tmp_geom_delivery_point_voronoi
-            SET subsection_id = voronoi_has_best_subsection.subsection_id
-            FROM voronoi_has_best_subsection
-            WHERE voronoi_has_best_subsection.voronoi_id = tmp_geom_delivery_point_voronoi.voronoi_id;
-
-            WITH
-            set_of_contour_by_subsection AS (
-                WITH
-                set_of_contours_delimited_by_municipality AS (
-                    SELECT
-                        (ST_Dump(
-                            ST_Intersection(
-                                _municipality_with_many_subsections.gm_contour_natif
-                                , ST_Union(geom)
-                            )
-                        )).geom
-                        , subsection_id
-                    FROM tmp_geom_delivery_point_voronoi
-                    GROUP BY subsection_id
-                )
-                , list_of_contours_with_included_flag AS (
-                    SELECT
-                        ROW_NUMBER() OVER() AS geom_id
-                        --On considère qu'une géométrie est absorbante si sa superficie
-                        --est au moins supérieure à la moitié de celle de la plus grande géométrie du CP
-                        , ST_Area(geom) > ((MAX(ST_Area(geom)) OVER(PARTITION BY subsection_id))/2) AS est_absorbante
-                        , geom
-                        , subsection_id
-                    FROM set_of_contours_delimited_by_municipality
-                )
-                , list_of_contours_with_included_id AS (
-                    SELECT
-                        list_of_contours_with_included_flag.geom_id
-                        , list_of_contours_with_included_flag.subsection_id
-                        , COALESCE(
-                            (
-                                SELECT t.geom_id
-                                FROM list_of_contours_with_included_flag AS t
-                                --Une géométrie ne doit pas s'absorber elle même
-                                WHERE list_of_contours_with_included_flag.geom_id != t.geom_id
-                                --Une géométrie ne doit pas absorber une géométrie "absorbante"
-                                AND NOT list_of_contours_with_included_flag.est_absorbante
-                                AND (
-                                    --Une géométrie en absorbe une autre si elle la contient entièrement
-                                    ST_Within(list_of_contours_with_included_flag.geom, ST_MakePolygon(ST_ExteriorRing(t.geom)))
-                                    --Une géométrie en absorbe une autre si elles se touchent
-                                    OR (
-                                        ST_Touches(list_of_contours_with_included_flag.geom, t.geom)
-                                        --Et que la géométrie absorbante est plus grande que celle absorbée
-                                        --Note : sinon on risque d'avoir une boucle infinie dans la recherche récursive suivante
-                                        AND ST_Area(t.geom) > ST_Area(list_of_contours_with_included_flag.geom)::NUMERIC
-                                    )
-                                )
-                                --Dans le cas où la géométrie aurait plusieurs géométries absorbantes, elle se fait absorber par la plus grande
-                                ORDER BY ST_Area(t.geom) DESC
-                                LIMIT 1
-                            )
-                        ) AS geom_id_absorbante
-                    FROM list_of_contours_with_included_flag
-                )
-                , list_of_contours_with_final_subsection AS (
-                    SELECT
-                        list_of_contours_with_included_flag.geom
-                        , (
-                            WITH RECURSIVE search_graph(geom_id, subsection_id, geom_id_absorbante, depth) AS (
-                                SELECT g.geom_id, g.subsection_id, g.geom_id_absorbante, 1
-                                FROM list_of_contours_with_included_id g
-                                WHERE g.geom_id = list_of_contours_with_included_flag.geom_id
-                                UNION ALL
-                                SELECT g.geom_id, g.subsection_id, g.geom_id_absorbante, sg.depth + 1
-                                FROM list_of_contours_with_included_id g, search_graph sg
-                                WHERE g.geom_id = sg.geom_id_absorbante
-                            )
-                            SELECT subsection_id FROM search_graph ORDER BY depth DESC LIMIT 1
-                        ) AS subsection_id
-                        FROM list_of_contours_with_included_flag
-                )
-                --SELECT * FROM list_of_contours_with_final_subsection
-                SELECT ST_Union(geom) AS geom, subsection_id
-                FROM list_of_contours_with_final_subsection
-                GROUP BY subsection_id
-            )
-            UPDATE fr.territory
-            SET gm_contour_natif = set_of_contour_by_subsection.geom
-            FROM set_of_contour_by_subsection
-            WHERE
-                nivgeo = subsection
-                AND
-                codgeo = CASE
-                    WHEN subsection = 'ZA' THEN
-                        set_of_contour_by_subsection.subsection_id
-                    WHEN subsection = 'COM_CP' THEN
-                        CONCAT_WS('-'
-                            , _municipality_with_many_subsections.co_insee_commune
-                            , set_of_contour_by_subsection.subsection_id
-                        )
-                    END;
-
-        EXCEPTION WHEN OTHERS THEN
-            GET STACKED DIAGNOSTICS _context = PG_EXCEPTION_CONTEXT;
-            RAISE '% : Erreur sur traitement % pour la commune % : % (%)'
-                , TO_CHAR(clock_timestamp(), 'HH24:MI:SS')
-                , subsection
-                , _municipality_with_many_subsections.co_insee_commune
-                , SQLERRM
-                , _context;
-        END;
-    END LOOP;
-
-    FOR _municipality_with_many_subsections IN (
-        SELECT
-            co_insee_commune
-            , nb_subsections
-        FROM tmp_municipality_with_many_subsections
-        ORDER BY co_insee_commune
-    )
-    LOOP
-        /* NOTE
-        GEOMETRY ST_Snap(GEOMETRY input, GEOMETRY reference, FLOAT tolerance);
-        Snaps the vertices and segments of a geometry to another Geometry's vertices.
-        The result geometry is the input geometry with the vertices snapped.
-        */
-
-        WITH
-        contour_of_municipality_with_many_subsections AS (
-            SELECT ST_Union(gm_contour_natif) AS gm_contour_natif
-            FROM fr.territory
-            WHERE
-                nivgeo = subsection
-                AND
-                codgeo_com_parent = _municipality_with_many_subsections.co_insee_commune
-        )
-        , snap_territory_around AS (
-            SELECT
-                territory_around.codgeo_com_parent co_insee_commune
-                , ST_Snap(
-                    territory_around.gm_contour_natif
-                    , contour_of_municipality_with_many_subsections.gm_contour_natif
-                    , 1.0
-                ) AS gm_contour_natif
-            FROM contour_of_municipality_with_many_subsections
-            INNER JOIN fr.territory AS territory_around
-                -- subsection with common border (ST_Touches) from another municipality
-                ON territory_around.nivgeo = subsection
-                AND territory_around.gm_contour_natif && contour_of_municipality_with_many_subsections.gm_contour_natif
-                AND territory_around.codgeo_com_parent != _municipality_with_many_subsections.co_insee_commune
-        )
-        UPDATE fr.territory
-        SET gm_contour_natif = snap_territory_around.gm_contour_natif
-        FROM snap_territory_around
+        ) AS commune_ign
         WHERE
             nivgeo = subsection
             AND
-            codgeo_com_parent = snap_territory_around.co_insee_commune
-            -- If no snapping occurs then the input geometry is returned unchanged.
-            AND NOT ST_Equals(territory.gm_contour_natif, snap_territory_around.gm_contour_natif);
+            codgeo_com_parent = commune_ign.codgeo
+            AND
+            NOT EXISTS (
+                SELECT 1 FROM tmp_municipality_with_many_subsections
+                WHERE tmp_municipality_with_many_subsections.co_insee_commune = territory.codgeo_com_parent
+            )
+            AND (
+                department_test IS NULL
+                OR
+                codgeo_dep_parent = department_test
+            );
+    END IF;
 
-        GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-        _message := ' traité';
-        IF _nrows_affected > 1 THEN _message := _message || 's'; END IF;
-        CALL public.log_info(CONCAT('ST_Snap autour de ', _municipality_with_many_subsections.co_insee_commune, ' : #', _nrows_affected, _message));
-    END LOOP;
+    IF part_todo & 4 = 4 THEN
+        -- many subsections : divide contour between each subsection (VORONOI w/ delivery points)
+        FOR _municipality_with_many_subsections IN (
+            SELECT
+                tmp_municipality_with_many_subsections.co_insee_commune
+                , tmp_municipality_with_many_subsections.nb_subsections
+                , tmp_municipality_with_many_subsections.first_subsection
+                , commune_ign.geom AS gm_contour_natif
+                , ST_SRID(commune_ign.geom) AS srid
+            FROM tmp_municipality_with_many_subsections
+            INNER JOIN (
+                SELECT
+                    insee_com AS codgeo
+                    , geom
+                FROM
+                    fr.admin_express_commune
+                WHERE
+                    insee_com NOT IN ('75056', '13055', '69123')
+                UNION
+                SELECT
+                    insee_arm
+                    , geom
+                FROM
+                    fr.admin_express_arrondissement_municipal
+            ) AS commune_ign ON commune_ign.codgeo = tmp_municipality_with_many_subsections.co_insee_commune
+            ORDER BY 1
+        )
+        LOOP
+            BEGIN
+                CALL public.log_info('Init des contours avec commune partielle : ' || _municipality_with_many_subsections.co_insee_commune);
+
+                -- set of all delivery points (PDI) for the current municipality
+                CREATE TEMPORARY TABLE IF NOT EXISTS tmp_geom_delivery_point(
+                    geom GEOMETRY
+                    , subsection_id VARCHAR
+                    , no_type_localisation INTEGER
+                );
+                TRUNCATE TABLE tmp_geom_delivery_point;
+                DROP INDEX IF EXISTS ix_tmp_geom_delivery_point_geom;
+
+                INSERT INTO tmp_geom_delivery_point(
+                    geom
+                    , subsection_id
+                    , no_type_localisation
+                )
+                (
+                    SELECT
+                        ST_Transform(pdi_coord_native, _municipality_with_many_subsections.srid)
+                        , CASE
+                            WHEN subsection = 'ZA' THEN co_adr_za
+                            WHEN subsection = 'COM_CP' THEN co_postal
+                        END
+                        , pdi_no_type_localisation_coord
+                    FROM fr.delivery_point_view
+                    WHERE
+                        co_insee_commune = _municipality_with_many_subsections.co_insee_commune
+                        AND fl_active
+                        AND fl_diffusable
+                        AND pdi_etat = 1
+                        AND pdi_visible
+                        -- at least street-center (=4)
+                        AND pdi_no_type_localisation_coord >= location_min
+                        AND pdi_coord_native IS NOT NULL
+                );
+
+                SELECT COUNT(DISTINCT subsection_id), NULLIF(UNIQUE_AGG(subsection_id), 'INIT_VALUE')
+                INTO _nof, _uniq
+                FROM tmp_geom_delivery_point;
+
+                -- number of subsections different from waited one
+                IF _nof != _municipality_with_many_subsections.nb_subsections THEN
+                    IF _nof = 0 THEN
+                        RAISE NOTICE 'INFO : 0 % avec des points adresses sur la commune %, alors qu''on en attendait plusieurs'
+                            , subsection
+                            , _municipality_with_many_subsections.co_insee_commune;
+                        -- set contour of municipality to first subsection
+                        UPDATE fr.territory
+                        SET gm_contour_natif = _municipality_with_many_subsections.gm_contour_natif
+                        WHERE
+                            nivgeo = subsection
+                            AND
+                            codgeo = CASE
+                                WHEN subsection = 'ZA' THEN
+                                    _municipality_with_many_subsections.first_subsection
+                                WHEN subsection = 'COM_CP' THEN
+                                    CONCAT_WS('-'
+                                        , _municipality_with_many_subsections.co_insee_commune
+                                        , _municipality_with_many_subsections.first_subsection
+                                    )
+                                END;
+
+                        CONTINUE;
+                    ELSIF _nof = 1 THEN
+                        RAISE NOTICE 'INFO : 1 % (%) avec des points adresses sur la commune %, alors qu''on en attendait %'
+                            , subsection
+                            , _uniq
+                            , _municipality_with_many_subsections.co_insee_commune
+                            , _municipality_with_many_subsections.nb_subsections;
+                        -- set contour of municipality to uniq subsection
+                        UPDATE fr.territory
+                        SET gm_contour_natif = _municipality_with_many_subsections.gm_contour_natif
+                        WHERE
+                            codgeo = CASE
+                                WHEN subsection = 'ZA' THEN
+                                    _uniq
+                                WHEN subsection = 'COM_CP' THEN
+                                    CONCAT_WS('-'
+                                        , _municipality_with_many_subsections.co_insee_commune
+                                        , _uniq
+                                    )
+                                END;
+
+                        CONTINUE;
+                    -- less or more : need to evaluate contour for each
+                    ELSE
+                        RAISE NOTICE 'INFO : % % avec des points adresses sur la commune %, alors qu''on en attendait %'
+                            , _nof
+                            , subsection
+                            , _municipality_with_many_subsections.co_insee_commune
+                            , _municipality_with_many_subsections.nb_subsections;
+                    END IF;
+                END IF;
+
+                CREATE INDEX ix_tmp_geom_delivery_point_geom ON tmp_geom_delivery_point USING GIST(geom);
+
+                -- delimit polygons (Voronoi) for the set of points
+                CREATE TEMPORARY TABLE IF NOT EXISTS tmp_geom_delivery_point_voronoi(
+                    voronoi_id SERIAL
+                    , geom GEOMETRY(POLYGON)
+                    , subsection_id VARCHAR
+                );
+                TRUNCATE TABLE tmp_geom_delivery_point_voronoi;
+                DROP INDEX IF EXISTS ix_tmp_geom_delivery_point_voronoi_geom;
+                INSERT INTO tmp_geom_delivery_point_voronoi (geom) (
+                    /*
+                    generate Voronoi's polygons, w/ delivery points
+                    extend_to contour of municipality
+                    */
+                    SELECT
+                        (ST_Dump(
+                            -- GEOMETRY ST_VoronoiPolygons(g1 GEOMETRY, tolerance FLOAT8, extend_to GEOMETRY);
+                            ST_VoronoiPolygons(
+                                (SELECT ST_Collect(geom) FROM tmp_geom_delivery_point)
+                                , 5
+                                , _municipality_with_many_subsections.gm_contour_natif
+                            )
+                        )).geom
+                );
+                CREATE INDEX ix_tmp_geom_delivery_point_voronoi_geom ON tmp_geom_delivery_point_voronoi USING GIST(geom);
+
+                -- remains to affect subsection to each polygon
+                WITH
+                voronoi_has_subsection AS (
+                    SELECT
+                        tmp_geom_delivery_point_voronoi.voronoi_id
+                        , tmp_geom_delivery_point.subsection_id
+                        , SUM(no_type_localisation) AS sum_no_type_localisation
+                    FROM tmp_geom_delivery_point
+                        INNER JOIN tmp_geom_delivery_point_voronoi
+                            ON ST_Within(tmp_geom_delivery_point.geom, tmp_geom_delivery_point_voronoi.geom)
+                    GROUP BY
+                        tmp_geom_delivery_point_voronoi.voronoi_id
+                        , tmp_geom_delivery_point.subsection_id
+                )
+                , voronoi_has_best_subsection AS (
+                    SELECT
+                        voronoi_id
+                        , FIRST(subsection_id ORDER BY sum_no_type_localisation DESC) AS subsection_id
+                    FROM voronoi_has_subsection
+                    GROUP BY voronoi_id
+                )
+                UPDATE tmp_geom_delivery_point_voronoi
+                SET subsection_id = voronoi_has_best_subsection.subsection_id
+                FROM voronoi_has_best_subsection
+                WHERE voronoi_has_best_subsection.voronoi_id = tmp_geom_delivery_point_voronoi.voronoi_id;
+
+                WITH
+                set_of_contour_by_subsection AS (
+                    WITH
+                    set_of_contours_delimited_by_municipality AS (
+                        SELECT
+                            (ST_Dump(
+                                ST_Intersection(
+                                    _municipality_with_many_subsections.gm_contour_natif
+                                    , ST_Union(geom)
+                                )
+                            )).geom
+                            , subsection_id
+                        FROM tmp_geom_delivery_point_voronoi
+                        GROUP BY subsection_id
+                    )
+                    , list_of_contours_with_included_flag AS (
+                        SELECT
+                            ROW_NUMBER() OVER() AS geom_id
+                            --On considère qu'une géométrie est absorbante si sa superficie
+                            --est au moins supérieure à la moitié de celle de la plus grande géométrie du CP
+                            , ST_Area(geom) > ((MAX(ST_Area(geom)) OVER(PARTITION BY subsection_id))/2) AS est_absorbante
+                            , geom
+                            , subsection_id
+                        FROM set_of_contours_delimited_by_municipality
+                    )
+                    , list_of_contours_with_included_id AS (
+                        SELECT
+                            list_of_contours_with_included_flag.geom_id
+                            , list_of_contours_with_included_flag.subsection_id
+                            , COALESCE(
+                                (
+                                    SELECT t.geom_id
+                                    FROM list_of_contours_with_included_flag AS t
+                                    --Une géométrie ne doit pas s'absorber elle même
+                                    WHERE list_of_contours_with_included_flag.geom_id != t.geom_id
+                                    --Une géométrie ne doit pas absorber une géométrie "absorbante"
+                                    AND NOT list_of_contours_with_included_flag.est_absorbante
+                                    AND (
+                                        --Une géométrie en absorbe une autre si elle la contient entièrement
+                                        ST_Within(list_of_contours_with_included_flag.geom, ST_MakePolygon(ST_ExteriorRing(t.geom)))
+                                        --Une géométrie en absorbe une autre si elles se touchent
+                                        OR (
+                                            ST_Touches(list_of_contours_with_included_flag.geom, t.geom)
+                                            --Et que la géométrie absorbante est plus grande que celle absorbée
+                                            --Note : sinon on risque d'avoir une boucle infinie dans la recherche récursive suivante
+                                            AND ST_Area(t.geom) > ST_Area(list_of_contours_with_included_flag.geom)::NUMERIC
+                                        )
+                                    )
+                                    --Dans le cas où la géométrie aurait plusieurs géométries absorbantes, elle se fait absorber par la plus grande
+                                    ORDER BY ST_Area(t.geom) DESC
+                                    LIMIT 1
+                                )
+                            ) AS geom_id_absorbante
+                        FROM list_of_contours_with_included_flag
+                    )
+                    , list_of_contours_with_final_subsection AS (
+                        SELECT
+                            list_of_contours_with_included_flag.geom
+                            , (
+                                WITH RECURSIVE search_graph(geom_id, subsection_id, geom_id_absorbante, depth) AS (
+                                    SELECT g.geom_id, g.subsection_id, g.geom_id_absorbante, 1
+                                    FROM list_of_contours_with_included_id g
+                                    WHERE g.geom_id = list_of_contours_with_included_flag.geom_id
+                                    UNION ALL
+                                    SELECT g.geom_id, g.subsection_id, g.geom_id_absorbante, sg.depth + 1
+                                    FROM list_of_contours_with_included_id g, search_graph sg
+                                    WHERE g.geom_id = sg.geom_id_absorbante
+                                )
+                                SELECT subsection_id FROM search_graph ORDER BY depth DESC LIMIT 1
+                            ) AS subsection_id
+                            FROM list_of_contours_with_included_flag
+                    )
+                    --SELECT * FROM list_of_contours_with_final_subsection
+                    SELECT ST_Union(geom) AS geom, subsection_id
+                    FROM list_of_contours_with_final_subsection
+                    GROUP BY subsection_id
+                )
+                UPDATE fr.territory
+                SET gm_contour_natif = set_of_contour_by_subsection.geom
+                FROM set_of_contour_by_subsection
+                WHERE
+                    nivgeo = subsection
+                    AND
+                    codgeo = CASE
+                        WHEN subsection = 'ZA' THEN
+                            set_of_contour_by_subsection.subsection_id
+                        WHEN subsection = 'COM_CP' THEN
+                            CONCAT_WS('-'
+                                , _municipality_with_many_subsections.co_insee_commune
+                                , set_of_contour_by_subsection.subsection_id
+                            )
+                        END;
+
+            EXCEPTION WHEN OTHERS THEN
+                GET STACKED DIAGNOSTICS _context = PG_EXCEPTION_CONTEXT;
+                RAISE '% : Erreur sur traitement % pour la commune % : % (%)'
+                    , TO_CHAR(clock_timestamp(), 'HH24:MI:SS')
+                    , subsection
+                    , _municipality_with_many_subsections.co_insee_commune
+                    , SQLERRM
+                    , _context;
+            END;
+        END LOOP;
+    END IF;
+
+    IF part_todo & 8 = 8 THEN
+        -- snap
+        FOR _municipality_with_many_subsections IN (
+            SELECT
+                co_insee_commune
+                , nb_subsections
+            FROM tmp_municipality_with_many_subsections
+            ORDER BY co_insee_commune
+        )
+        LOOP
+            /* NOTE
+            GEOMETRY ST_Snap(GEOMETRY input, GEOMETRY reference, FLOAT tolerance);
+            Snaps the vertices and segments of a geometry to another Geometry's vertices.
+            The result geometry is the input geometry with the vertices snapped.
+            */
+
+            WITH
+            contour_of_municipality_with_many_subsections AS (
+                SELECT ST_Union(gm_contour_natif) AS gm_contour_natif
+                FROM fr.territory
+                WHERE
+                    nivgeo = subsection
+                    AND
+                    codgeo_com_parent = _municipality_with_many_subsections.co_insee_commune
+            )
+            , snap_territory_around AS (
+                SELECT
+                    territory_around.codgeo_com_parent co_insee_commune
+                    , ST_Snap(
+                        territory_around.gm_contour_natif
+                        , contour_of_municipality_with_many_subsections.gm_contour_natif
+                        , 1.0
+                    ) AS gm_contour_natif
+                FROM contour_of_municipality_with_many_subsections
+                INNER JOIN fr.territory AS territory_around
+                    -- subsection with common border (ST_Touches) from another municipality
+                    ON territory_around.nivgeo = subsection
+                    AND territory_around.gm_contour_natif && contour_of_municipality_with_many_subsections.gm_contour_natif
+                    AND territory_around.codgeo_com_parent != _municipality_with_many_subsections.co_insee_commune
+            )
+            UPDATE fr.territory
+            SET gm_contour_natif = snap_territory_around.gm_contour_natif
+            FROM snap_territory_around
+            WHERE
+                nivgeo = subsection
+                AND
+                codgeo_com_parent = snap_territory_around.co_insee_commune
+                -- If no snapping occurs then the input geometry is returned unchanged.
+                AND NOT ST_Equals(territory.gm_contour_natif, snap_territory_around.gm_contour_natif);
+
+            GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+            _message := ' traité';
+            IF _nrows_affected > 1 THEN _message := _message || 's'; END IF;
+            CALL public.log_info(CONCAT('ST_Snap autour de ', _municipality_with_many_subsections.co_insee_commune, ' : #', _nrows_affected, _message));
+        END LOOP;
+    END IF;
 
     COMMIT;
 END
 $proc$ LANGUAGE plpgsql;
 
 /*
-eval geometry of territories
+calculate geometry of territories
     PART/1
         based level (COM_CP|ZA) : native geometry
     PART/2
