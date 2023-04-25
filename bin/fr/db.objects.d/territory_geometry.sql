@@ -65,7 +65,7 @@ calculate geometry of municipalities
 SELECT drop_all_functions_if_exists('fr', 'set_municipality_subsection_geometry');
 CREATE OR REPLACE PROCEDURE fr.set_municipality_subsection_geometry(
     part_todo INT DEFAULT 1 | 2 | 4 | 8
-    , subsection VARCHAR                        -- ZA or COM_CP
+    , subsection VARCHAR DEFAULT 'ZA'
     , location_min INT DEFAULT 4
     , department_test VARCHAR DEFAULT NULL
 )
@@ -80,6 +80,18 @@ DECLARE
     _message VARCHAR;
 BEGIN
     CALL fr.check_municipality_subsection(subsection => subsection);
+
+    -- FIXME: not snap part/4 if ZA (empty zones), but geometries seem OK
+    IF (
+        (subsection = 'ZA') AND (
+            ((part_todo = 15) AND (department_test IS NULL))
+            OR
+            ((part_todo != 8) AND (part_todo & 8 = 8) AND (department_test IS NOT NULL))
+        )
+    ) THEN
+        part_todo = part_todo # 8;
+    END IF;
+
     IF part_todo & 1 = 1 THEN
         -- reset
         CALL public.log_info('Reset des contours natifs ' || subsection);
@@ -450,6 +462,10 @@ BEGIN
 
     IF part_todo & 8 = 8 THEN
         -- snap
+        /* NOTE
+        be careful: this part needs all municipalities
+        test w/ a department can't be OK for municipalities near another department !
+         */
         FOR _municipality_with_many_subsections IN (
             SELECT
                 co_insee_commune
@@ -483,10 +499,34 @@ BEGIN
                     ) AS gm_contour_natif
                 FROM contour_of_municipality_with_many_subsections
                 INNER JOIN fr.territory AS territory_around
-                    -- subsection with common border (ST_Touches) from another municipality
                     ON territory_around.nivgeo = subsection
-                    AND territory_around.gm_contour_natif && contour_of_municipality_with_many_subsections.gm_contour_natif
+                    AND
+                    -- subsection with common border (+/-) from another municipality
+                    /* NOTE
+                    ST_Overlaps
+                    https://gis.stackexchange.com/questions/422759/efficient-combination-of-st-intersects-and-not-st-touches
+                    ST_Overlaps(
+                        territory_around.gm_contour_natif
+                        , contour_of_municipality_with_many_subsections.gm_contour_natif
+                    )
+                    or
+                    DE9IM, faster!
+                     */
+                    territory_around.gm_contour_natif && contour_of_municipality_with_many_subsections.gm_contour_natif
+                    /* NOTE
+                    error w/o DE9IM filter: 17240, 17282 -> 2 empty zones
+                    17240226IS in 2 parts
+                     */
+                    AND ST_Relate(
+                        territory_around.gm_contour_natif
+                        , contour_of_municipality_with_many_subsections.gm_contour_natif
+                        , '2********'
+                    )
                     AND territory_around.codgeo_com_parent != _municipality_with_many_subsections.co_insee_commune
+                    /* FIXME
+                    department = '17'
+                    w/ DE9IM filter, error empty zone for 172822223X
+                     */
             )
             UPDATE fr.territory
             SET gm_contour_natif = snap_territory_around.gm_contour_natif
