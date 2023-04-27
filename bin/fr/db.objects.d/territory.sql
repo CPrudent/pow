@@ -34,7 +34,7 @@ ALTER TABLE fr.territory SET (
 
 SELECT drop_all_functions_if_exists('fr', 'set_territory');
 CREATE OR REPLACE FUNCTION fr.set_territory(
-    subsection VARCHAR DEFAULT 'ZA'
+    municipality_subsection VARCHAR DEFAULT 'ZA'
 )
 RETURNS BOOLEAN
 AS $$
@@ -60,6 +60,8 @@ BEGIN
     --On considère cette table de même à jour
     PERFORM public.set_table_metadata('public', 'territory', CONCAT('{"dtrgeo":"', TO_CHAR(public.getDateMajCommuneToNow(), 'DD/MM/YYYY'), '"}'));
      */
+    --
+    PERFORM fr.set_zone_address_to_now();
 
     /*
     SELECT dt_fin_donnees INTO v_dtrgeo_source FROM historique_import WHERE co_type = 'IGN_ADMINEXPRESS' AND co_etat = 'SUCCES';
@@ -74,11 +76,11 @@ BEGIN
      */
 
     CALL fr.check_municipality_subsection(
-        subsection => subsection
+        municipality_subsection => municipality_subsection
         , check_territory => FALSE
     );
 
-    CALL public.log_info('Calcul des Territoires (niveau de base: ' || subsection || ')');
+    CALL public.log_info('Calcul des Territoires (niveau de base: ' || municipality_subsection || ')');
 
     CALL public.log_info('Purge Données');
     TRUNCATE TABLE fr.territory;
@@ -131,7 +133,7 @@ BEGIN
                 , co_insee_commune
             FROM fr.laposte_zone_address AS za
             WHERE
-                subsection = 'COM_CP'
+                municipality_subsection = 'COM_CP'
             GROUP BY co_postal, co_insee_commune
 
             UNION
@@ -148,7 +150,7 @@ BEGIN
                 , co_insee_commune
             FROM fr.laposte_zone_address AS za
             WHERE
-                subsection = 'ZA'
+                municipality_subsection = 'ZA'
                 AND
                 fl_active
                 -- exclude MONACO
@@ -160,7 +162,7 @@ BEGIN
          on met la valeur Z... là où la parenté n'est pas connue, mais où elle devrait toujours l'être. cela est aussi utile à la remontée de données où on ne souhaite pas exclure les données dont la parenté n'est pas connue
          */
         SELECT
-            subsection AS nivgeo
+            municipality_subsection AS nivgeo
             , sub.codgeo
             , sub.dt_reference_geo
             , COALESCE(
@@ -281,9 +283,9 @@ BEGIN
     CALL public.log_info('Création Index niveau de base');
     _query := CONCAT(
         'CREATE UNIQUE INDEX IF NOT EXISTS iux_territory_codgeo_'
-        , LOWER(subsection)
+        , LOWER(municipality_subsection)
         , ' ON fr.territory (codgeo) WHERE nivgeo = '
-        , quote_literal(subsection)
+        , quote_literal(municipality_subsection)
     );
     EXECUTE _query;
 
@@ -291,7 +293,7 @@ BEGIN
     PERFORM fr.set_territory_supra(
         table_name => 'territory'
         , schema_name => 'fr'
-        , base_level => subsection
+        , base_level => municipality_subsection
     );
 
     PERFORM fr.update_territory();

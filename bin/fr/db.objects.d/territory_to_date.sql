@@ -1037,7 +1037,7 @@ $func$
 DECLARE
     --_territory_to_date_t territory_to_date_t%ROWTYPE;
     _territory_to_date_t territory_to_date_t;
-    _date_address DATE := (public.get_last_io(type_in => 'RAN_ADRESSE')).dt_data_end;
+    _date_address DATE := (public.get_last_io(type_in => 'LAPOSTE_ADDRESS')).dt_data_end;
     _municipalities RECORD;
     _municipality VARCHAR;
     _return BOOLEAN := TRUE;
@@ -1180,7 +1180,7 @@ RETURNS BOOLEAN AS
 $func$
 DECLARE
     _zone_address_to_now RECORD;
-    _date_address DATE := (public.get_last_io(type_in => 'RAN_ADRESSE')).dt_data_end;
+    _date_address DATE := (public.get_last_io(type_in => 'LAPOSTE_ADDRESS')).dt_data_end;
     _laposte_updated BOOLEAN DEFAULT FALSE;
 BEGIN
     FOR _zone_address_to_now IN (

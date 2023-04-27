@@ -7,12 +7,12 @@
  */
 SELECT public.drop_all_functions_if_exists('fr', 'set_territory_level');
 CREATE OR REPLACE PROCEDURE fr.set_territory_level(
-    subsection VARCHAR DEFAULT 'ZA'
+    municipality_subsection VARCHAR DEFAULT 'ZA'
 ) AS
 $proc$
 BEGIN
     CALL fr.check_municipality_subsection(
-        subsection => subsection
+        municipality_subsection => municipality_subsection
         , check_level => FALSE
         , check_territory => FALSE
     );
@@ -25,7 +25,7 @@ BEGIN
     )
     (
         SELECT 'FR', UNNEST(ARRAY[
-            subsection
+            municipality_subsection
                 , 'CP'
                     , 'PDC_PPDC'
                         , 'PPDC_PDC'
@@ -46,10 +46,10 @@ BEGIN
     UPDATE public.territory_level
     SET name =
         CASE level
-            WHEN subsection                 THEN
+            WHEN municipality_subsection                 THEN
                                                 CASE
-                                                WHEN subsection = 'ZA'     THEN 'Zone d''Adresse'
-                                                WHEN subsection = 'COM_CP' THEN 'Croisement Commune & Code Postal'
+                                                WHEN municipality_subsection = 'ZA'     THEN 'Zone d''Adresse'
+                                                WHEN municipality_subsection = 'COM_CP' THEN 'Croisement Commune & Code Postal'
                                                 END
                 WHEN 'CP'                   THEN 'Code Postal'
                     WHEN 'PDC_PPDC'			THEN 'Zone de distribution du Courrier'
@@ -70,10 +70,10 @@ BEGIN
 
         , name_short =
         CASE level
-            WHEN subsection                 THEN
+            WHEN municipality_subsection                 THEN
                                                 CASE
-                                                WHEN subsection = 'ZA'     THEN 'Zone Adresse'
-                                                WHEN subsection = 'COM_CP' THEN 'Commune/CP'
+                                                WHEN municipality_subsection = 'ZA'     THEN 'Zone Adresse'
+                                                WHEN municipality_subsection = 'COM_CP' THEN 'Commune/CP'
                                                 END
                 WHEN 'CP'                   THEN 'Code Postal'
                     WHEN 'PDC_PPDC'			THEN 'Zone distri. courrier'
@@ -93,10 +93,10 @@ BEGIN
         END
         , name_plural =
         CASE level
-            WHEN subsection                 THEN
+            WHEN municipality_subsection                 THEN
                                                 CASE
-                                                WHEN subsection = 'ZA'     THEN 'Zones d''Adresses'
-                                                WHEN subsection = 'COM_CP' THEN 'Croisements Communes & Code Postaux'
+                                                WHEN municipality_subsection = 'ZA'     THEN 'Zones d''Adresses'
+                                                WHEN municipality_subsection = 'COM_CP' THEN 'Croisements Communes & Code Postaux'
                                                 END
                 WHEN 'CP'                   THEN 'Code Postaux'
                     WHEN 'PDC_PPDC'         THEN 'Zones de distribution du Courrier'
@@ -116,10 +116,10 @@ BEGIN
         END
         , article =
         CASE level
-            WHEN subsection                 THEN
+            WHEN municipality_subsection                 THEN
                                                 CASE
-                                                WHEN subsection = 'ZA'     THEN 'la'
-                                                WHEN subsection = 'COM_CP' THEN 'le'
+                                                WHEN municipality_subsection = 'ZA'     THEN 'la'
+                                                WHEN municipality_subsection = 'COM_CP' THEN 'le'
                                                 END
                 WHEN 'CP'                   THEN 'le'
                     WHEN 'PDC_PPDC'         THEN 'la'
@@ -139,7 +139,7 @@ BEGIN
         END
         , hierarchy =
         CASE level
-            WHEN subsection                 THEN 110
+            WHEN municipality_subsection                 THEN 110
                 WHEN 'CP'                   THEN 210
                     WHEN 'PDC_PPDC'			THEN 310
                         WHEN 'PPDC_PDC'     THEN 410
@@ -158,13 +158,13 @@ BEGIN
         END
         , sublevels =
         CASE level
-            WHEN subsection                 THEN NULL
-                WHEN 'CP'                   THEN ARRAY[subsection]
+            WHEN municipality_subsection                 THEN NULL
+                WHEN 'CP'                   THEN ARRAY[municipality_subsection]
                     WHEN 'PDC_PPDC'         THEN ARRAY['CP']
                         WHEN 'PPDC_PDC'     THEN ARRAY['PDC_PPDC']
                             WHEN 'DEX'      THEN ARRAY['PPDC_PDC']
         WHEN 'IRIS'                         THEN NULL
-                WHEN 'COM'                  THEN ARRAY[subsection, 'IRIS']
+                WHEN 'COM'                  THEN ARRAY[municipality_subsection, 'IRIS']
                     WHEN 'COM_GLOBALE_ARM'  THEN ARRAY['COM']
                         WHEN 'EPCI'         THEN ARRAY['COM']
                         WHEN 'CV'           THEN ARRAY['COM']

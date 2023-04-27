@@ -664,7 +664,9 @@ BEGIN
     --
     IF part_todo & 4 = 4 THEN
         CALL public.log_info('Fusion des trous');
-        CALL fr.set_territory_geometry_merge_hole();
+        CALL fr.set_territory_geometry_merge_hole(
+            municipality_subsection => municipality_subsection
+        );
 
         COMMIT;
     END IF;
@@ -725,6 +727,7 @@ SELECT * FROM fr.territory WHERE nivgeo = 'COM_CP' AND gm_contour && (
 SELECT drop_all_functions_if_exists('fr', 'set_territory_geometry_merge_hole');
 CREATE OR REPLACE PROCEDURE fr.set_territory_geometry_merge_hole(
     municipality_subsection VARCHAR DEFAULT 'ZA'
+    , simulation BOOLEAN DEFAULT FALSE
 )
 AS
 $proc$
@@ -801,42 +804,45 @@ BEGIN
         END IF;
 
         RAISE NOTICE 'Trou d une surface de %, voisin de %, unification avec le premier voisin', _holes.area, _holes.codgeos_voisin[1];
-        UPDATE fr.territory
-        SET gm_contour = ST_Multi(
-            ST_Union(
-                ST_Snap(
-                    gm_contour
-                    , _holes.geom
-                    , 0.000001
-                )
-                , ST_Snap(
-                    _holes.geom
-                    , gm_contour
-                    , 0.000001
+
+        IF NOT simulation THEN
+            UPDATE fr.territory
+            SET gm_contour = ST_Multi(
+                ST_Union(
+                    ST_Snap(
+                        gm_contour
+                        , _holes.geom
+                        , 0.000001
+                    )
+                    , ST_Snap(
+                        _holes.geom
+                        , gm_contour
+                        , 0.000001
+                    )
                 )
             )
-        )
-        WHERE territory.nivgeo = municipality_subsection
-        AND territory.codgeo = _holes.codgeos_voisin[1]
-        RETURNING gm_contour INTO _new_geom;
+            WHERE territory.nivgeo = municipality_subsection
+            AND territory.codgeo = _holes.codgeos_voisin[1]
+            RETURNING gm_contour INTO _new_geom;
 
-        --RAISE NOTICE 'Difference et Snap avec les voisins %', _holes.codgeos_voisin;
-        --Exemple de chevauchement et trou : {87006-87360, 87200-87360}
-        UPDATE fr.territory
-        SET gm_contour = ST_Multi(
-            -- Pas nécessaire ? ST_Snap(
-                ST_Difference(
-                    gm_contour
-                    , _new_geom
-                )
-            --	, _new_geom
-            --	, 0.000001
-            --)
-        )
-        WHERE territory.nivgeo = municipality_subsection
-        AND territory.codgeo = ANY(_holes.codgeos_voisin)
-        AND territory.codgeo != _holes.codgeos_voisin[1]
-        AND ST_Overlaps(gm_contour, _new_geom);
+            --RAISE NOTICE 'Difference et Snap avec les voisins %', _holes.codgeos_voisin;
+            --Exemple de chevauchement et trou : {87006-87360, 87200-87360}
+            UPDATE fr.territory
+            SET gm_contour = ST_Multi(
+                -- Pas nécessaire ? ST_Snap(
+                    ST_Difference(
+                        gm_contour
+                        , _new_geom
+                    )
+                --	, _new_geom
+                --	, 0.000001
+                --)
+            )
+            WHERE territory.nivgeo = municipality_subsection
+            AND territory.codgeo = ANY(_holes.codgeos_voisin)
+            AND territory.codgeo != _holes.codgeos_voisin[1]
+            AND ST_Overlaps(gm_contour, _new_geom);
+        END IF;
     END LOOP;
 END
 $proc$ LANGUAGE plpgsql;

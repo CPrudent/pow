@@ -21,7 +21,7 @@ BEGIN
     INTO _name_normalized
     FROM fr.constant
     WHERE
-        list = 'LAPOSTE_MUNICIPALITY_EXCEPTION'
+        usecase = 'LAPOSTE_MUNICIPALITY_EXCEPTION'
         AND
         key = code
         ;

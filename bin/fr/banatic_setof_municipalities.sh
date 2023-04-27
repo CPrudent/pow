@@ -151,7 +151,7 @@ execute_query \
             ON fr.banatic_siren_insee(siren);
         CREATE UNIQUE INDEX iux_banatic_siren_insee_insee
             ON fr.banatic_siren_insee(insee);
-        "
+        " &&
 rm \
     "$POW_DIR_IMPORT/banatic_listof_epci_${years[$year_id]}.txt" \
     "$POW_DIR_IMPORT/banatic_setof_epci_${years[$year_id]}.txt" \

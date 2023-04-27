@@ -22,7 +22,7 @@ CREATE INDEX IF NOT EXISTS ix_io_history_co_type ON public.io_history(co_type);
 
 COMMENT ON TABLE public.io_history IS 'Historique des Entrées/Sorties';
 SELECT set_column_comment('public', 'io_history', 'id', 'Identifiant de l''Entrée/Sortie');
-SELECT set_column_comment('public', 'io_history', 'co_type', 'Code du type de l''Entrée/Sortie, exemple : GEOPAD_PDI, RAN_ADRESSE, etc ...');
+SELECT set_column_comment('public', 'io_history', 'co_type', 'Code du type de l''Entrée/Sortie, exemple : LAPOSTE_ADDRESS, etc ...');
 SELECT set_column_comment('public', 'io_history', 'dt_exec_begin', 'Début d''exécution');
 SELECT set_column_comment('public', 'io_history', 'dt_exec_end', 'Fin d''exécution');
 SELECT set_column_comment('public', 'io_history', 'co_status', 'Etat : EN_COURS, SUCCES OU ERREUR');
@@ -90,6 +90,7 @@ DECLARE
     _date_io TIMESTAMP;
     _io_history public.io_history%ROWTYPE;
 BEGIN
+    _io_history.id := 0;
     FOREACH _io IN ARRAY _ios LOOP
         -- IO already exists?
         _date_io := (public.get_last_io(type_in => _io)).dt_data_end;
@@ -162,12 +163,11 @@ BEGIN
 
             -- SERIAL not called
             SELECT
-                MAX(id) +1
+                COALESCE(MAX(id), 0) +1
             INTO
                 _io_history.id
             FROM
-                public.io_history
-                ;
+                public.io_history;
 
             -- common values
             _io_history.co_type := _io;
@@ -179,4 +179,10 @@ BEGIN
             INSERT INTO public.io_history VALUES (_io_history.*);
         END IF;
     END LOOP;
+
+    -- reset sequence
+    IF _io_history.id > 0 THEN
+        --ALTER SEQUENCE io_history_id_seq RESTART WITH _io_history.id +1;
+        PERFORM setval('io_history_id_seq', _io_history.id +1);
+    END IF;
 END $$;

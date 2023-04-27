@@ -35,7 +35,6 @@ $POW_DIR_BATCH/ign_geometry_territories.sh --force $force &&
 execute_query \
     --name SET_TERRITORY_LAPOSTE \
     --query "SELECT fr.set_territory_laposte()" &&
-exit $SUCCESS_CODE
 $POW_DIR_BATCH/banatic_setof_municipalities.sh --force $force && {
     if [ "$get_arg_postal_geom" = no ]; then
         table_exists --schema_name fr --table_name territory &&
