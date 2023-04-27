@@ -733,6 +733,7 @@ AS
 $proc$
 DECLARE
     _holes RECORD;
+    _old_geom GEOMETRY;
     _new_geom GEOMETRY;
 BEGIN
     FOR _holes IN (
@@ -806,6 +807,36 @@ BEGIN
         RAISE NOTICE 'Trou d une surface de %, voisin de %, unification avec le premier voisin', _holes.area, _holes.codgeos_voisin[1];
 
         IF NOT simulation THEN
+            SELECT ST_Multi(
+                ST_Union(
+                    ST_Snap(
+                        gm_contour
+                        , _holes.geom
+                        , 0.000001
+                    )
+                    , ST_Snap(
+                        _holes.geom
+                        , gm_contour
+                        , 0.000001
+                    )
+                )
+            )
+            INTO _new_geom
+            FROM fr.territory
+            WHERE territory.nivgeo = municipality_subsection
+            AND territory.codgeo = _holes.codgeos_voisin[1];
+
+            IF ST_GeometryType(_new_geom) != 'ST_MultiPolygon' THEN
+                RAISE NOTICE 'ERREUR géométrie non Multi % : %', municipality_subsection, _holes.codgeos_voisin[1];
+                CONTINUE;
+            END IF;
+
+            UPDATE fr.territory
+            SET gm_contour = _new_geom
+            WHERE territory.nivgeo = municipality_subsection
+            AND territory.codgeo = _holes.codgeos_voisin[1];
+
+            /*
             UPDATE fr.territory
             SET gm_contour = ST_Multi(
                 ST_Union(
@@ -824,6 +855,7 @@ BEGIN
             WHERE territory.nivgeo = municipality_subsection
             AND territory.codgeo = _holes.codgeos_voisin[1]
             RETURNING gm_contour INTO _new_geom;
+             */
 
             --RAISE NOTICE 'Difference et Snap avec les voisins %', _holes.codgeos_voisin;
             --Exemple de chevauchement et trou : {87006-87360, 87200-87360}
