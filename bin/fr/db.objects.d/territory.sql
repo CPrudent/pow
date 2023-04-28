@@ -183,8 +183,15 @@ BEGIN
                 , RPAD(dep_parent.codgeo, 5, 'Z') --canton ville fictif dans le département pour les communes n'ayant pas d'arrondissement pour faciliter la remontée de données
                 --, 'ZZZZZ'
             ) AS codgeo_cv_parent
-            --EPCI DGCL BANATIC :
-            , COALESCE(banatic_setof_epci.siren_membre, fr.banatic_siren_insee.siren) AS codgeo_epci_parent
+            --EPCI DGCL BANATIC
+            /* NOTE
+            Seules quatre communes ne sont pas membres d’un EPCI à fiscalité propre. Il s'agit des quatre îles mono-communales qui bénéficient d'une dérogation :
+            29083 Île-de-Sein
+            29155 Ouessant
+            22016 Île-de-Bréhat
+            85113 L'Île-d'Yeu
+             */
+            , banatic_setof_epci.n_siren AS codgeo_epci_parent
             , /*COALESCE(*/dep_parent.codgeo/*, 'ZZZ')*/ AS codgeo_dep_parent
             , /*COALESCE(*/reg_parent.codgeo/*, 'ZZ')*/ AS codgeo_reg_parent
             , CASE
