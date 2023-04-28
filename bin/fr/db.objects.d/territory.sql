@@ -163,15 +163,15 @@ BEGIN
          */
         SELECT
             municipality_subsection AS nivgeo
-            , sub.codgeo
-            , sub.dt_reference_geo
+            , subsection.codgeo
+            , subsection.dt_reference_geo
             , COALESCE(
-                sub.libgeo
+                subsection.libgeo
                 , CASE
                     WHEN commune_ign.codgeo IS NOT NULL THEN
-                        CONCAT(sub.co_postal, ' ', REPLACE(REPLACE(commune_ign.libgeo, 'œ', 'oe'), 'Œ', 'Oe'))
+                        CONCAT(subsection.co_postal, ' ', REPLACE(REPLACE(commune_ign.libgeo, 'œ', 'oe'), 'Œ', 'Oe'))
                 END) AS libgeo
-            , sub.co_insee_commune AS codgeo_com_parent
+            , subsection.co_insee_commune AS codgeo_com_parent
             , commune_insee.com AS codgeo_com_globale_arm_parent
             , COALESCE(
                 commune_insee.arr
@@ -184,7 +184,7 @@ BEGIN
                 --, 'ZZZZZ'
             ) AS codgeo_cv_parent
             --EPCI DGCL BANATIC :
-            , banatic_setof_epci.n_siren AS codgeo_epci_parent
+            , COALESCE(banatic_setof_epci.siren_membre, fr.banatic_siren_insee.siren) AS codgeo_epci_parent
             , /*COALESCE(*/dep_parent.codgeo/*, 'ZZZ')*/ AS codgeo_dep_parent
             , /*COALESCE(*/reg_parent.codgeo/*, 'ZZ')*/ AS codgeo_reg_parent
             , CASE
@@ -193,15 +193,15 @@ BEGIN
                 /*ELSE 'ZZZ'*/
             END AS codgeo_metropole_dom_tom_parent
             , 'FR' AS codgeo_pays_parent
-            , sub.co_postal AS codgeo_cp_parent
+            , subsection.co_postal AS codgeo_cp_parent
             , territory_laposte.codgeo_pdc_ppdc_parent
             , territory_laposte.codgeo_ppdc_pdc_parent
             , territory_laposte.codgeo_dex_parent
-        FROM set_of_subsection sub
+        FROM set_of_subsection subsection
             -- INSEE municipalities
             LEFT OUTER JOIN fr.insee_administrative_cutting_municipality_and_district
             AS commune_insee
-            ON commune_insee.codgeo = sub.co_insee_commune
+            ON commune_insee.codgeo = subsection.co_insee_commune
             -- IGN municipalities
             LEFT OUTER JOIN (
                 SELECT
@@ -225,10 +225,10 @@ BEGIN
                     ON arm.insee_com = com.insee_com
             )
             AS commune_ign
-            ON commune_ign.codgeo = sub.co_insee_commune
+            ON commune_ign.codgeo = subsection.co_insee_commune
             -- LAPOSTE territories
             LEFT OUTER JOIN fr.territory_laposte
-            ON territory_laposte.nivgeo = 'CP' AND territory_laposte.codgeo = sub.co_postal
+            ON territory_laposte.nivgeo = 'CP' AND territory_laposte.codgeo = subsection.co_postal
             -- BANATIC EPCI
             LEFT OUTER JOIN fr.banatic_siren_insee
                 /* NOTE
@@ -245,7 +245,7 @@ BEGIN
                     COALESCE(
                         commune_ign.codgeo_dep_parent --source à priori la plus à jour
                         , commune_insee.dep --source alternative
-                        , fr.get_department_code_from_municipality_code(sub.co_insee_commune) --génère des départements fictifs pour les communes fictives (collectivités d'outre mer)
+                        , fr.get_department_code_from_municipality_code(subsection.co_insee_commune) --génère des départements fictifs pour les communes fictives (collectivités d'outre mer)
                     ) AS codgeo
                     , CASE
                         WHEN commune_ign.codgeo_dep_parent IS NOT NULL THEN 'IGN'
