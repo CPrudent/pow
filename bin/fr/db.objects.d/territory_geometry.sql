@@ -6,6 +6,8 @@
  to read:
  http://postgis.net/workshops/postgis-intro/geometries.html
  https://postgis.net/docs/reference.html
+ https://en.wikipedia.org/wiki/DE-9IM
+ https://postgis.net/workshops/postgis-intro/de9im.html
  */
 
 /* NOTE
@@ -21,9 +23,6 @@
  8  Projection plaque       Coordonnées de la plaque du numéro, donc l'entrée dans la voie
  9  Repositionné (PDI)
  */
-
--- oldies
-SELECT drop_all_functions_if_exists('fr', 'set_zone_address_geometry');
 
 -- check validity of municipality_subsection
 SELECT drop_all_functions_if_exists('fr', 'check_municipality_subsection');
@@ -453,7 +452,7 @@ BEGIN
         -- snap
         /* NOTE
         be careful: this part needs all municipalities
-        test w/ a department can't be OK for municipalities near another department !
+        test w/ a department can be KO for municipalities near another missing department !
          */
         FOR _municipality_with_many_subsections IN (
             SELECT
@@ -505,8 +504,9 @@ BEGIN
                     territory_around.gm_contour_natif && contour_of_municipality_with_many_subsections.gm_contour_natif
                     /* NOTE
                     error w/o DE9IM filter: 17240, 17282 -> 2 empty zones
-                    17240226IS in 2 parts
+                    (due to 17240226IS in 2 parts)
                      */
+                    -- for 2 overlapping polygonal geometries: dim[interior(a) ∩ interior(b)] = 2
                     AND ST_Relate(
                         territory_around.gm_contour_natif
                         , contour_of_municipality_with_many_subsections.gm_contour_natif
