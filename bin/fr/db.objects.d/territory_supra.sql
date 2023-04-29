@@ -227,6 +227,10 @@ BEGIN
                     ', CASE WHEN _columns_groupby IS NOT NULL THEN CONCAT(', ', _columns_groupby) END, '
                 )'
             );
+        /* NOTE
+        need to get INSEE code from another source (for active ZA only), due to merge of municipalities : ZA's codgeo is composed by CONCAT (INSEE, postal) codes
+        but is this necessary ? below query can do it, no ?
+         */
         ELSIF _level = 'COM' AND _bigger_sublevel IN ('ZA') THEN
             _query := CONCAT(
                 '(
