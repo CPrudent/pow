@@ -535,6 +535,7 @@ BEGIN
 END $$ LANGUAGE plpgsql;
 
 -- eval next territories
+SELECT drop_all_functions_if_exists('fr', 'update_territory_near');
 SELECT drop_all_functions_if_exists('fr', 'update_territory_next');
 CREATE OR REPLACE FUNCTION fr.update_territory_next(
     null_only BOOLEAN DEFAULT FALSE
@@ -552,15 +553,20 @@ BEGIN
             WHERE codgeo_voisins IS NULL
             AND gm_contour IS NOT NULL
             -- to avoid backup-levels (as COM_A_XXXXXX)
-            AND nivgeo = ANY(fr.get_all_levels())
+            AND nivgeo = ANY(fr.get_levels())
         )
         , extend_territory AS (
-            SELECT DISTINCT UNNEST(ARRAY[next_territory.codgeo, territory.codgeo]) AS codgeo, next_territory.nivgeo
+            SELECT DISTINCT
+                UNNEST(ARRAY[next_territory.codgeo, territory.codgeo]) AS codgeo
+                , next_territory.nivgeo
             FROM initial_territory AS territory
             INNER JOIN fr.territory AS next_territory
                 ON next_territory.nivgeo = territory.nivgeo
                 AND next_territory.codgeo <> territory.codgeo
-                AND ST_Touches(next_territory.gm_contour, territory.gm_contour)
+                --AND ST_Touches(next_territory.gm_contour, territory.gm_contour)
+                AND ST_Intersects(territory.gm_contour, next_territory.gm_contour)
+                -- for 2 next polygonal geometries: dim[boundary(a) ∩ boundary(b)] = 1
+                AND ST_Relate(territory.gm_contour, next_territory.gm_contour, '****1****')
         )
         UPDATE fr.territory
         SET codgeo_voisins = (
@@ -568,8 +574,10 @@ BEGIN
             FROM fr.territory next_territory
             WHERE next_territory.nivgeo = territory.nivgeo
             AND next_territory.codgeo <> territory.codgeo
-            AND ST_Touches(next_territory.gm_contour, territory.gm_contour)
-        )
+            --AND ST_Touches(next_territory.gm_contour, territory.gm_contour)
+            AND ST_Intersects(territory.gm_contour, next_territory.gm_contour)
+            -- for 2 next polygonal geometries: dim[boundary(a) ∩ boundary(b)] = 1
+            AND ST_Relate(territory.gm_contour, next_territory.gm_contour, '****1****')        )
         FROM extend_territory
         WHERE territory.codgeo = extend_territory.codgeo
         AND territory.nivgeo = extend_territory.nivgeo;
@@ -580,10 +588,13 @@ BEGIN
             FROM fr.territory AS next_territory
             WHERE next_territory.nivgeo = territory.nivgeo
             AND next_territory.codgeo <> territory.codgeo
-            AND ST_Touches(next_territory.gm_contour, territory.gm_contour)
+            --AND ST_Touches(next_territory.gm_contour, territory.gm_contour)
+            AND ST_Intersects(territory.gm_contour, next_territory.gm_contour)
+            -- for 2 next polygonal geometries: dim[boundary(a) ∩ boundary(b)] = 1
+            AND ST_Relate(territory.gm_contour, next_territory.gm_contour, '****1****')
         )
         -- to avoid backup-levels (as COM_A_XXXXXX)
-        WHERE nivgeo = ANY(fr.get_all_levels());
+        WHERE nivgeo = ANY(fr.get_levels());
     END IF;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     RAISE NOTICE 'Calcul voisinage de territoires #%', _nrows_affected;
