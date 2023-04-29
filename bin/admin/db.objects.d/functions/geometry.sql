@@ -959,3 +959,36 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+
+/*
+ * seuil de 1 millième d'unité (du SRID donné des géométries à comparer) par défaut
+ * si 3857, en mètre
+ * si 4326, en degré
+ * ...
+ */
+SELECT public.drop_all_functions_if_exists('public', 'ST_Equals_with_Threshold');
+CREATE OR REPLACE FUNCTION public.ST_Equals_with_Threshold(
+    geom1 IN GEOMETRY
+    , geom2 IN GEOMETRY
+    , distance IN NUMERIC DEFAULT 0.001
+)
+RETURNS BOOLEAN AS
+$func$
+BEGIN
+	RETURN (ST_Distance(geom1, geom2) <= distance);
+END
+$func$ LANGUAGE plpgsql;
+
+/*
+ * souci du ST_Equals sur 2 adresses de géométrie très proche, ici de même type de localisation et de code de projection
+
+								ST_Distance(geom_ran, geom_ign)
+"07019224N6"	8	8	"1"	"1"	"2.79396772384644e-09"
+"81124224SM"	4	4	"1"	"1"	"8.38190317153931e-09"
+"8312622US4"	8	8	"1"	"1"	"4.65661287307739e-09"
+
+								ST_Equals		ST_Equals_with_Threshold(geom_ran, geom_ign)	ST_Equals_with_Threshold(geom_ran, geom_ign, 10^-9)
+"07019224N6"	8	8	"1"	"1"	false			true											false
+"81124224SM"	4	4	"1"	"1"	false			true											false
+"8312622US4"	8	8	"1"	"1"	false			true											false
+ */
