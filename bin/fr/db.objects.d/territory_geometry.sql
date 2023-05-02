@@ -51,7 +51,7 @@ END
 $proc$ LANGUAGE plpgsql;
 
 /*
-calculate geometry of municipalities
+calculate native geometry of subsection(s) of municipalities
     PART/1
         reset
     PART/2
@@ -551,6 +551,10 @@ calculate geometry of territories
         deal w/ holes
     PART/4
         apply SUPRA (geometry, area)
+
+    TODO
+    PART/5
+        native geometry for other levels when available (administrative cuttings, w/ IGN)
  */
 SELECT drop_all_functions_if_exists('fr', 'set_territory_geometry');
 CREATE OR REPLACE PROCEDURE fr.set_territory_geometry(

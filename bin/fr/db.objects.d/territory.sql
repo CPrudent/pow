@@ -87,11 +87,6 @@ BEGIN
     CALL public.log_info('Purge Index');
     PERFORM public.drop_table_indexes('fr', 'territory');
 
-    /* NOTE
-     Ajout des territoires du niveau le plus bas : COM_CP = croisement CP et COMMUNE, issu de RAN + RAO + INSEE + IGN
-     croisement CP et COMMUNE :
-     une commune peut être sous-découpée en CP, et un CP peut être la composition de plusieurs communes entières ou non
-     */
     CALL public.log_info('Insertion Données');
     INSERT INTO fr.territory (
         nivgeo
@@ -535,7 +530,6 @@ BEGIN
 END $$ LANGUAGE plpgsql;
 
 -- eval next territories
-SELECT drop_all_functions_if_exists('fr', 'update_territory_near');
 SELECT drop_all_functions_if_exists('fr', 'update_territory_next');
 CREATE OR REPLACE FUNCTION fr.update_territory_next(
     null_only BOOLEAN DEFAULT FALSE
@@ -702,3 +696,583 @@ WHERE
     AND (millesime_c.codgeo IS NULL OR public.getEnvDepLimit() IS NULL OR public.getCodeInseeDepartementFromCodeInseeCommune(millesime_c.codgeo) = public.getEnvDepLimit())
     AND (millesime_a.codgeo IS NULL OR millesime_a.nivgeo NOT IN ('CV', 'CP', 'COM_CP', 'PPDC_PDC', 'DEC', 'METROPOLE_DOM_TOM', 'PAYS'))
 */
+
+-- push values of territory (as changes) to public
+SELECT drop_all_functions_if_exists('fr', 'push_territory_properties_to_public');
+CREATE OR REPLACE PROCEDURE fr.push_territory_properties_to_public(
+    force BOOLEAN DEFAULT FALSE
+)
+AS
+$proc$
+DECLARE
+    _upsert INT := 1;
+    _delete INT := 0;
+    _nrows_affected INT;
+BEGIN
+    CALL public.log_info('Préparation des changements (propriétés)');
+    DROP TABLE IF EXISTS tmp_fr_territory_changes;
+    CREATE TEMPORARY TABLE tmp_fr_territory_changes AS (
+        WITH
+        territory_public AS (
+            SELECT
+                level
+                , code
+                , name
+                , attributs
+                , population
+                , area
+                , codes_adjoining
+                , geom_native
+                , geom_world
+            FROM public.territory
+            WHERE country = 'FR'
+        )
+        , territory_fr AS (
+            SELECT
+                nivgeo
+                , codgeo
+                , libgeo
+                , CASE
+                    WHEN nivgeo = 'EPCI' AND typgeo IS NOT NULL THEN (CONCAT('"TYPE" => "', typgeo, '"'))::HSTORE
+                    WHEN nivgeo = 'COM' AND z.l6_norm IS NOT NULL THEN (CONCAT('"L6_NORM" => "', z.l6_norm, '"'))::HSTORE
+                    WHEN nivgeo = 'ZA' AND y.l5_norm IS NOT NULL THEN (CONCAT('"L5_NORM" => "', y.l5_norm, '"'))::HSTORE
+                END attributs
+                , population
+                , superficie
+                , codgeo_voisins
+                , gm_contour_natif
+                , gm_contour
+            FROM fr.territory t
+                LEFT OUTER JOIN LATERAL (
+                    SELECT DISTINCT
+                        co_insee_commune
+                        , CASE WHEN co_insee_commune ~ '^98' THEN lb_l5_nn ELSE lb_ach_nn END l6_norm
+                    FROM fr.laposte_zone_address
+                ) z ON t.nivgeo = 'COM' AND t.codgeo = z.co_insee_commune
+                LEFT OUTER JOIN LATERAL (
+                    SELECT DISTINCT
+                        co_cea
+                        , CASE
+                            WHEN co_insee_commune ~ '^98' AND lb_ach_nn IS NOT NULL THEN lb_ach_nn
+                            WHEN co_insee_commune !~ '^98' AND lb_l5_nn IS NOT NULL THEN lb_l5_nn
+                        END l5_norm
+                    FROM fr.laposte_zone_address
+                ) y ON t.nivgeo = 'ZA' AND t.codgeo = y.co_cea
+            WHERE
+                -- exclude MONACO !
+                codgeo !~ '^99'
+        )
+        , changes AS (
+            (
+                SELECT '-' change, level, code FROM territory_public
+                EXCEPT
+                SELECT '-', nivgeo, codgeo FROM territory_fr
+            )
+            UNION
+            (
+                SELECT '+', nivgeo, codgeo FROM territory_fr
+                EXCEPT
+                SELECT '+', level, code FROM territory_public
+            )
+            UNION
+            SELECT '!', territory_public.level, territory_public.code
+            FROM territory_public
+                JOIN territory_fr ON (territory_public.level, territory_public.code) = (territory_fr.nivgeo, territory_fr.codgeo)
+            WHERE
+                (territory_public.name IS DISTINCT FROM territory_fr.libgeo)
+                OR
+                ((territory_public.level = 'EPCI') AND (
+                    ((territory_public.attributs ? 'TYPE') AND NOT (territory_fr.attributs ? 'TYPE'))
+                    OR
+                    (NOT (territory_public.attributs ? 'TYPE') AND (territory_fr.attributs ? 'TYPE'))
+                    OR
+                    ((territory_public.attributs ? 'TYPE') AND (territory_fr.attributs ? 'TYPE') AND (territory_public.attributs -> 'TYPE' IS DISTINCT FROM territory_fr.attributs -> 'TYPE'))
+                    )
+                )
+                OR
+                ((territory_public.level = 'COM') AND (
+                    ((territory_public.attributs ? 'L6_NORM') AND NOT (territory_fr.attributs ? 'L6_NORM'))
+                    OR
+                    (NOT (territory_public.attributs ? 'L6_NORM') AND (territory_fr.attributs ? 'L6_NORM'))
+                    OR
+                    ((territory_public.attributs ? 'L6_NORM') AND (territory_fr.attributs ? 'L6_NORM') AND (territory_public.attributs -> 'L6_NORM' IS DISTINCT FROM territory_fr.attributs -> 'L6_NORM'))
+                    )
+                )
+                OR
+                ((territory_public.level = 'ZA') AND (
+                    ((territory_public.attributs ? 'L5_NORM') AND NOT (territory_fr.attributs ? 'L5_NORM'))
+                    OR
+                    (NOT (territory_public.attributs ? 'L5_NORM') AND (territory_fr.attributs ? 'L5_NORM'))
+                    OR
+                    ((territory_public.attributs ? 'L5_NORM') AND (territory_fr.attributs ? 'L5_NORM') AND (territory_public.attributs -> 'L5_NORM' IS DISTINCT FROM territory_fr.attributs -> 'L5_NORM'))
+                    )
+                )
+                OR
+                (territory_public.population IS DISTINCT FROM territory_fr.population)
+                OR
+                (territory_public.area IS DISTINCT FROM territory_fr.superficie)
+                OR
+                (CARDINALITY(territory_public.codes_adjoining) != CARDINALITY(territory_fr.codgeo_voisins))
+                OR
+                (territory_public.codes_adjoining IS DISTINCT FROM territory_fr.codgeo_voisins)
+                OR
+                (NOT ST_Equals(territory_public.geom_native, territory_fr.gm_contour_natif))
+                OR
+                (NOT ST_Equals(territory_public.geom_world, territory_fr.gm_contour))
+        )
+
+        -- insert/update territories
+        SELECT
+            _upsert xact
+            , c.level
+            , c.code
+            , territory_fr.libgeo name
+            , attributs
+            , population
+            , superficie area
+            , codgeo_voisins codes_adjoining
+            , gm_contour_natif geom_native
+            , gm_contour geom_world
+        FROM
+            changes c
+                JOIN territory_fr ON (c.level, c.code) = (territory_fr.nivgeo, territory_fr.codgeo)
+        WHERE
+            c.change = ANY('{+,!}')
+
+        UNION
+
+        -- delete old territories
+        SELECT
+            _delete
+            , c.level
+            , c.code
+            , name
+            , attributs
+            , population
+            , area
+            , codes_adjoining
+            , geom_native
+            , geom_world
+        FROM
+            changes c
+                JOIN territory_public ON (c.level, c.code) = (territory_public.level, territory_public.code)
+        WHERE
+            c.change = '-'
+    )
+    ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info('CHANGE: ', _nrows_affected);
+
+    CALL public.log_info('Mise à jour des ajouts/modifications');
+    INSERT INTO public.territory
+        SELECT
+            'FR' country
+            , t.level
+            , t.code
+            , name
+            , attributs
+            , population
+            , area
+            , codes_adjoining
+            , geom_native
+            , geom_world
+        FROM
+            tmp_fr_territory_changes t
+                JOIN public.territory_level l ON l.country = 'FR' AND t.level = l.level
+        WHERE
+            xact = _upsert
+        ORDER BY
+            l.hierarchy
+    ON CONFLICT(country, level, code) DO UPDATE
+        SET
+            name = EXCLUDED.name
+            , attributs = EXCLUDED.attributs
+            , population = EXCLUDED.population
+            , area = EXCLUDED.area
+            , codes_adjoining = EXCLUDED.codes_adjoining
+            , geom_native = EXCLUDED.geom_native
+            , geom_world = EXCLUDED.geom_world
+    ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info('INSERT/UPDATE: ', _nrows_affected);
+
+    CALL public.log_info('Mise à jour des suppressions');
+    DELETE FROM public.territory t
+    USING tmp_fr_territory_changes c
+    WHERE
+        xact = _delete
+        AND
+        country = 'FR'
+        AND
+        (t.level, t.code) = (c.level, c.code)
+
+    ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info('DELETE: ', _nrows_affected);
+END
+$proc$ LANGUAGE plpgsql;
+
+-- push links of territory (as changes) to public
+SELECT drop_all_functions_if_exists('fr', 'push_territory_links_to_public');
+CREATE OR REPLACE PROCEDURE fr.push_territory_links_to_public(
+    force BOOLEAN DEFAULT FALSE
+)
+AS
+$proc$
+DECLARE
+    _nrows_affected INT;
+    _change RECORD;
+BEGIN
+    CALL public.log_info('Préparation des changements (liens)');
+    DROP TABLE IF EXISTS tmp_fr_territory_changes;
+    CREATE TEMPORARY TABLE tmp_fr_territory_changes AS (
+        WITH
+        territory_public AS (
+            SELECT
+                t.level
+                , t.code
+                , tp.level level_parent
+                , tp.code code_parent
+            FROM public.territory t
+                JOIN public.territory_parent p ON t.id = p.id_territory
+                JOIN public.territory tp ON tp.id = p.id_parent
+            WHERE
+                t.country = 'FR'
+        )
+        , territory_fr AS (
+            -- ZA/COM
+            SELECT
+                nivgeo
+                , codgeo
+                , 'COM' nivgeo_parent
+                , codgeo_com_parent codgeo_parent
+            FROM
+                fr.territory t
+            WHERE
+                nivgeo = 'ZA'
+                AND
+                codgeo_com_parent IS NOT NULL
+
+            UNION
+
+            -- COM/COM_GLOBALE_ARM
+            SELECT
+                nivgeo
+                , codgeo
+                , 'COM_GLOBALE_ARM' nivgeo_parent
+                , codgeo_com_globale_arm_parent codgeo_parent
+            FROM
+                fr.territory t
+            WHERE
+                nivgeo = 'COM'
+                AND
+                codgeo_com_globale_arm_parent IS NOT NULL
+
+            UNION
+
+            -- COM/ARR
+            SELECT
+                nivgeo
+                , codgeo
+                , 'ARR' nivgeo_parent
+                , codgeo_arr_parent codgeo_parent
+            FROM
+                fr.territory t
+            WHERE
+                nivgeo = 'COM'
+                AND
+                codgeo_arr_parent IS NOT NULL
+
+            UNION
+
+            -- COM/CV
+            SELECT
+                nivgeo
+                , codgeo
+                , 'CV' nivgeo_parent
+                , codgeo_cv_parent codgeo_parent
+            FROM
+                fr.territory t
+            WHERE
+                nivgeo = 'COM'
+                AND
+                codgeo_cv_parent IS NOT NULL
+
+            UNION
+
+            -- COM/EPCI
+            SELECT
+                nivgeo
+                , codgeo
+                , 'EPCI' nivgeo_parent
+                , codgeo_epci_parent codgeo_parent
+            FROM
+                fr.territory t
+            WHERE
+                nivgeo = 'COM'
+                AND
+                codgeo_epci_parent IS NOT NULL
+
+            UNION
+
+            -- ARR/DEP
+            SELECT
+                nivgeo
+                , codgeo
+                , 'DEP' nivgeo_parent
+                , codgeo_dep_parent codgeo_parent
+            FROM
+                fr.territory t
+            WHERE
+                nivgeo = 'ARR'
+                AND
+                codgeo_dep_parent IS NOT NULL
+
+            UNION
+
+            -- CV/DEP
+            SELECT
+                nivgeo
+                , codgeo
+                , 'DEP' nivgeo_parent
+                , codgeo_dep_parent codgeo_parent
+            FROM
+                fr.territory t
+            WHERE
+                nivgeo = 'CV'
+                AND
+                codgeo_dep_parent IS NOT NULL
+
+            UNION
+
+            -- DEP/REG
+            SELECT
+                nivgeo
+                , codgeo
+                , 'REG' nivgeo_parent
+                , codgeo_reg_parent codgeo_parent
+            FROM
+                fr.territory t
+            WHERE
+                nivgeo = 'DEP'
+                AND
+                codgeo_reg_parent IS NOT NULL
+
+            UNION
+
+            -- REG/METROPOLE_DOM_TOM
+            SELECT DISTINCT
+                'REG' nivgeo
+                , codgeo_reg_parent codgeo
+                , 'METROPOLE_DOM_TOM' nivgeo_parent
+                , codgeo_metropole_dom_tom_parent codgeo_parent
+            FROM
+                fr.territory t
+            WHERE
+                nivgeo = 'COM'
+                AND
+                codgeo_metropole_dom_tom_parent IS NOT NULL
+
+            UNION
+
+            --METROPOLE_DOM_TOM/PAYS
+            SELECT
+                nivgeo
+                , codgeo
+                , 'PAYS' nivgeo_parent
+                , codgeo_pays_parent codgeo_parent
+            FROM
+                fr.territory t
+            WHERE
+                nivgeo = 'METROPOLE_DOM_TOM'
+                AND
+                codgeo_pays_parent IS NOT NULL
+
+            UNION
+
+            -- ZA/CP
+            SELECT
+                nivgeo
+                , codgeo
+                , 'CP' nivgeo_parent
+                , codgeo_cp_arent codgeo_parent
+            FROM
+                fr.territory t
+            WHERE
+                nivgeo = 'ZA'
+                AND
+                codgeo_cp_parent IS NOT NULL
+
+            UNION
+
+            -- CP/PDC_PPDC
+            SELECT
+                nivgeo
+                , codgeo
+                , 'PDC_PPDC' nivgeo_parent
+                , codgeo_pdc_ppdc_parent codgeo_parent
+            FROM
+                fr.territory t
+            WHERE
+                nivgeo = 'CP'
+                AND
+                codgeo_pdc_ppdc_parent IS NOT NULL
+
+            UNION
+
+            -- PDC_PPDC/PPDC_PDC
+            SELECT
+                nivgeo
+                , codgeo
+                , 'PPDC_PDC' nivgeo_parent
+                , codgeo_ppdc_pdc_parent codgeo_parent
+            FROM
+                fr.territory t
+            WHERE
+                nivgeo = 'PDC_PPDC'
+                AND
+                codgeo_ppdc_pdc_parent IS NOT NULL
+
+            UNION
+
+            -- PPDC_PDC/DEX
+            SELECT
+                nivgeo
+                , codgeo
+                , 'DEX' nivgeo_parent
+                , codgeo_dex_parent codgeo_parent
+            FROM
+                fr.territory t
+            WHERE
+                nivgeo = 'PPDC_PDC'
+                AND
+                codgeo_dex_parent IS NOT NULL
+        )
+        , changes AS (
+            (
+                SELECT '-' change, level, code, level_parent, code_parent FROM territory_public
+                EXCEPT
+                SELECT '-', nivgeo, codgeo, nivgeo_parent, codgeo_parent FROM territory_fr
+            )
+            UNION
+            (
+                SELECT '+', nivgeo, codgeo, nivgeo_parent, codgeo_parent FROM territory_fr
+                EXCEPT
+                SELECT '+', level, code, level_parent, code_parent FROM territory_public
+            )
+        )
+        SELECT ROW_NUMBER() OVER () id, * FROM changes
+    )
+    ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info('CHANGE: ', _nrows_affected);
+
+    CALL public.log_info('Contrôle des changements (liens)');
+    FOR _change IN (
+        WITH
+        no_valid_change AS (
+            SELECT c.*
+            FROM tmp_fr_territory_changes c
+                JOIN public.territory t ON t.country = 'FR' AND (c.level, c.code) = (t.level, t.code)
+                JOIN public.territory_parent p ON t.id = p.id_territory
+                JOIN public.territory tp ON p.id_parent = tp.id
+            WHERE
+                NOT EXISTS(
+                    SELECT 1
+                    FROM tmp_fr_territory_changes c2
+                    WHERE
+                        c2.change = CASE WHEN c.change = '+' THEN '-' ELSE '+' END
+                        AND
+                        (c2.level, c2.code, c2.level_parent) = (c.level, c.code, c.level_parent)
+                        AND
+                        c2.code_parent IS DISTINCT FROM c.code_parent
+                )
+        )
+        SELECT * FROM no_valid_change ORDER BY 2, 3, 4
+    )
+    LOOP
+        RAISE NOTICE 'ERREUR changement lien : %', _change;
+        DELETE FROM tmp_fr_territory_changes
+        WHERE
+            change = _change.change
+            AND
+            level = _change.level
+            AND
+            code = _change.code
+            AND
+            level_parent = _change.level_parent
+            AND
+            code_parent = _change.code_parent
+            ;
+    END LOOP;
+
+    CALL public.log_info('Mise à jour des changements (liens) : ajout');
+    INSERT INTO public.territory_parent
+        WITH
+        from_territory AS (
+            SELECT
+                c.id
+                , t.id id_territory
+            FROM tmp_fr_territory_changes c
+                JOIN public.territory t ON t.country = 'FR' AND (c.level, c.code) = (t.level, t.code)
+            WHERE change = '+'
+        )
+        , to_territory AS (
+            SELECT
+                c.id
+                , t.id id_parent
+            FROM tmp_fr_territory_changes c
+                JOIN public.territory t ON t.country = 'FR' AND (c.level_parent, c.code_parent) = (t.level, t.code)
+            WHERE change = '+'
+        )
+        SELECT f.id_territory, t.id_parent
+        FROM from_territory f
+            JOIN to_territory t ON f.id = t.id
+        ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info('INSERT: ', _nrows_affected);
+
+    CALL public.log_info('Mise à jour des changements (liens) : suppression');
+    WITH
+    from_territory AS (
+        SELECT
+            c.id
+            , t.id id_territory
+        FROM tmp_fr_territory_changes c
+            JOIN public.territory t ON t.country = 'FR' AND (c.level, c.code) = (t.level, t.code)
+        WHERE change = '-'
+    )
+    , to_territory AS (
+        SELECT
+            c.id
+            , t.id id_parent
+        FROM tmp_fr_territory_changes c
+            JOIN public.territory t ON t.country = 'FR' AND (c.level_parent, c.code_parent) = (t.level, t.code)
+        WHERE change = '-'
+    )
+    DELETE FROM public.territory_parent tp
+    USING from_territory f, to_territory t
+    WHERE
+        tp.id_territory = f.id_territory
+        AND
+        tp.id_parent = t.id_parent
+    ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info('DELETE: ', _nrows_affected);
+END
+$proc$ LANGUAGE plpgsql;
+
+-- push territory (as changes) to public
+SELECT drop_all_functions_if_exists('fr', 'push_territory_to_public');
+CREATE OR REPLACE PROCEDURE fr.push_territory_to_public(
+    force BOOLEAN DEFAULT FALSE
+)
+AS
+$proc$
+BEGIN
+    CALL fr.push_territory_properties_to_public();
+    CALL fr.push_territory_links_to_public();
+
+    COMMIT;
+END
+$proc$ LANGUAGE plpgsql;

@@ -27,7 +27,6 @@ ALTER TABLE public.territory SET (
  * FR-attributs
  *
  * ZA
- *  L5=>name of old municipality
  *  L5_normalized=>normalized name
  * COM
  *  L6_normalized=>normalized name
@@ -50,3 +49,35 @@ BEGIN
     CALL public.set_territory_index();
 END
 $$;
+
+SELECT drop_all_functions_if_exists('public', 'set_territory');
+CREATE OR REPLACE PROCEDURE public.set_territory(
+    force BOOLEAN DEFAULT FALSE
+)
+AS
+$proc$
+DECLARE
+    _schema_name VARCHAR;
+    _procedure_name VARCHAR := 'push_territory_to_public';
+    _query TEXT;
+BEGIN
+    FOR _schema_name IN (
+        SELECT schema_name FROM information_schema.schemata
+        WHERE
+            schema_name ~ '^..$'
+    )
+    LOOP
+        IF procedure_exists(_schema_name, _procedure_name) THEN
+            _query := CONCAT(
+                'CALL '
+                , _schema_name
+                , '.'
+                , _procedure_name
+                , '()'
+            );
+
+            EXECUTE _query;
+        END IF;
+    END LOOP;
+END
+$proc$ LANGUAGE plpgsql;

@@ -2,13 +2,64 @@
  * add EXISTS facilities
  */
 
+-- test if role exists
+SELECT public.drop_all_functions_if_exists('public', 'role_exists');
+CREATE OR REPLACE FUNCTION public.role_exists(
+    role_name IN VARCHAR
+)
+RETURNS BOOLEAN AS
+$func$
+DECLARE
+    _role pg_catalog.pg_authid%ROWTYPE;
+BEGIN
+    SELECT * INTO STRICT _role
+    FROM pg_catalog.pg_authid
+    WHERE rolname = role_name;
+    RETURN TRUE;
+EXCEPTION WHEN NO_DATA_FOUND THEN
+    RETURN FALSE;
+END
+$func$ LANGUAGE plpgsql;
+
+-- test if extension exists
+SELECT public.drop_all_functions_if_exists('public', 'extension_exists');
+CREATE OR REPLACE FUNCTION public.extension_exists(
+    extension_name IN VARCHAR
+)
+RETURNS BOOLEAN AS
+$func$
+DECLARE
+    _extension pg_catalog.pg_extension%ROWTYPE;
+BEGIN
+    SELECT * INTO STRICT _extension
+    FROM pg_catalog.pg_extension
+    WHERE extname = extension_name;
+    RETURN TRUE;
+EXCEPTION WHEN NO_DATA_FOUND THEN
+    RETURN FALSE;
+END
+$func$ LANGUAGE plpgsql;
+
+-- test if schema exists
+SELECT public.drop_all_functions_if_exists('public', 'schema_exists');
+CREATE OR REPLACE FUNCTION public.schema_exists(
+    schema_name IN VARCHAR
+)
+RETURNS BOOLEAN AS
+$func$
+BEGIN
+    PERFORM 1 FROM pg_namespace WHERE nspname = schema_name;
+    RETURN FOUND;
+END
+$func$ LANGUAGE plpgsql;
+
 -- test if table exists
 SELECT public.drop_all_functions_if_exists('public', 'table_exists');
 CREATE OR REPLACE FUNCTION public.table_exists(
     schema_name TEXT
     , table_name TEXT
     , temporary_mode BOOLEAN DEFAULT FALSE
-    )
+)
 RETURNS BOOLEAN AS
 $func$
 BEGIN
@@ -67,7 +118,7 @@ SELECT public.drop_all_functions_if_exists('public', 'view_exists');
 CREATE FUNCTION public.view_exists(
     schema_name TEXT
     , view_name TEXT
-    )
+)
 RETURNS BOOLEAN AS
 $func$
 BEGIN
@@ -85,7 +136,7 @@ SELECT public.drop_all_functions_if_exists('public', 'index_exists');
 CREATE FUNCTION public.index_exists(
     schema_name TEXT
     , index_name TEXT
-    )
+)
 RETURNS BOOLEAN AS
 $func$
 BEGIN
@@ -104,7 +155,7 @@ CREATE FUNCTION public.column_exists(
     schema_name TEXT
     , table_name TEXT
     , column_name TEXT
-    )
+)
 RETURNS BOOLEAN AS
 $func$
 BEGIN
@@ -123,7 +174,7 @@ SELECT public.drop_all_functions_if_exists('public', 'function_exists');
 CREATE FUNCTION public.function_exists(
     schema_name TEXT
     , function_name TEXT
-    )
+)
 RETURNS BOOLEAN AS
 $func$
 BEGIN
@@ -136,54 +187,20 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
--- test if extension exists
-SELECT public.drop_all_functions_if_exists('public', 'extension_exists');
-CREATE OR REPLACE FUNCTION public.extension_exists(
-    extension_name IN VARCHAR
-    )
+-- test if function exists
+SELECT public.drop_all_functions_if_exists('public', 'procedure_exists');
+CREATE FUNCTION public.procedure_exists(
+    schema_name TEXT
+    , procedure_name TEXT
+)
 RETURNS BOOLEAN AS
 $func$
 DECLARE
-    _extension pg_catalog.pg_extension%ROWTYPE;
+    _exists BOOLEAN;
 BEGIN
-    SELECT * INTO STRICT _extension
-    FROM pg_catalog.pg_extension
-    WHERE extname = extension_name;
-    RETURN TRUE;
-EXCEPTION WHEN NO_DATA_FOUND THEN
-    RETURN FALSE;
-END
-$func$ LANGUAGE plpgsql;
+    SELECT TO_REGPROC(CONCAT_WS('.', schema_name, procedure_name)) IS NOT NULL INTO _exists;
 
--- test if role exists
-SELECT public.drop_all_functions_if_exists('public', 'role_exists');
-CREATE OR REPLACE FUNCTION public.role_exists(
-    role_name IN VARCHAR
-    )
-RETURNS BOOLEAN AS
-$func$
-DECLARE
-    _role pg_catalog.pg_authid%ROWTYPE;
-BEGIN
-    SELECT * INTO STRICT _role
-    FROM pg_catalog.pg_authid
-    WHERE rolname = role_name;
-    RETURN TRUE;
-EXCEPTION WHEN NO_DATA_FOUND THEN
-    RETURN FALSE;
-END
-$func$ LANGUAGE plpgsql;
-
--- test if schema exists
-SELECT public.drop_all_functions_if_exists('public', 'schema_exists');
-CREATE OR REPLACE FUNCTION public.schema_exists(
-    schema_name IN VARCHAR
-    )
-RETURNS BOOLEAN AS
-$func$
-BEGIN
-    PERFORM 1 FROM pg_namespace WHERE nspname = schema_name;
-    RETURN FOUND;
+    RETURN _exists;
 END
 $func$ LANGUAGE plpgsql;
 
@@ -192,7 +209,7 @@ SELECT public.drop_all_functions_if_exists('public', 'type_exists');
 CREATE OR REPLACE FUNCTION public.type_exists(
     schema_name IN VARCHAR
     , type_name IN VARCHAR
-    )
+)
 RETURNS BOOLEAN AS
 $func$
 BEGIN
