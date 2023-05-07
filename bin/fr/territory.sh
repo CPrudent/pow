@@ -89,7 +89,7 @@ execute_query \
 } &&
 execute_query \
     --name SET_TERRITORY_NEAR \
-    --query "SELECT fr.update_territory_next()" &&
+    --query "SELECT fr.set_territory_next()" &&
 vacuum \
     --schema_name fr \
     --table_name territory \

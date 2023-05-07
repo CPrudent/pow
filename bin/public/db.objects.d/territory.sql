@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS public.territory (
     , area INT
     , codes_adjoining VARCHAR[]                 -- list of nearing territories (same level)
     , attributs HSTORE                          -- more attributs
-    , date_geography DATE /*NOT*/ NULL
+    , date_last DATE
     , geom_native GEOMETRY                      -- native geography (local)
     , geom_world GEOMETRY(MULTIPOLYGON, 4326)   -- WGS84-proj & simplified geography
 )
@@ -22,6 +22,13 @@ CREATE TABLE IF NOT EXISTS public.territory (
 ALTER TABLE public.territory SET (
 	autovacuum_enabled = FALSE
 );
+
+DO $$
+BEGIN
+    IF column_exists('public', 'territory', 'date_geography') THEN
+        ALTER TABLE public.territory RENAME COLUMN date_geography TO date_last;
+    END IF;
+END $$;
 
 /*
  * FR-attributs

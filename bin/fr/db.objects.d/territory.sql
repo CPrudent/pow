@@ -531,7 +531,8 @@ END $$ LANGUAGE plpgsql;
 
 -- eval next territories
 SELECT drop_all_functions_if_exists('fr', 'update_territory_next');
-CREATE OR REPLACE FUNCTION fr.update_territory_next(
+SELECT drop_all_functions_if_exists('fr', 'set_territory_next');
+CREATE OR REPLACE FUNCTION fr.set_territory_next(
     null_only BOOLEAN DEFAULT FALSE
 )
 RETURNS BOOLEAN
@@ -705,11 +706,9 @@ CREATE OR REPLACE PROCEDURE fr.push_territory_properties_to_public(
 AS
 $proc$
 DECLARE
-    _upsert INT := 1;
-    _delete INT := 0;
     _nrows_affected INT;
 BEGIN
-    CALL public.log_info('Préparation des changements (propriétés)');
+    CALL public.log_info('Préparation des changements (valeurs)');
     DROP TABLE IF EXISTS tmp_fr_territory_changes;
     CREATE TEMPORARY TABLE tmp_fr_territory_changes AS (
         WITH
@@ -748,6 +747,11 @@ BEGIN
                         co_insee_commune
                         , CASE WHEN co_insee_commune ~ '^98' THEN lb_l5_nn ELSE lb_ach_nn END l6_norm
                     FROM fr.laposte_zone_address
+                    WHERE
+                        -- avoid duplicate code !
+                        ((co_insee_commune ~ '^98') AND (lb_l5_nn IS NOT NULL))
+                        OR
+                        (co_insee_commune !~ '^98')
                 ) z ON t.nivgeo = 'COM' AND t.codgeo = z.co_insee_commune
                 LEFT OUTER JOIN LATERAL (
                     SELECT DISTINCT
@@ -823,7 +827,7 @@ BEGIN
 
         -- insert/update territories
         SELECT
-            _upsert xact
+            c.change
             , c.level
             , c.code
             , territory_fr.libgeo name
@@ -843,44 +847,99 @@ BEGIN
 
         -- delete old territories
         SELECT
-            _delete
+            c.change
             , c.level
             , c.code
-            , name
-            , attributs
-            , population
-            , area
-            , codes_adjoining
-            , geom_native
-            , geom_world
+            , tp.name
+            , tp.attributs
+            , tp.population
+            , tp.area
+            , tp.codes_adjoining
+            , tp.geom_native
+            , tp.geom_world
         FROM
             changes c
-                JOIN territory_public ON (c.level, c.code) = (territory_public.level, territory_public.code)
+                JOIN territory_public tp ON (c.level, c.code) = (tp.level, tp.code)
         WHERE
             c.change = '-'
     )
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info('CHANGE: ', _nrows_affected);
+    CALL public.log_info(CONCAT('CHANGE: ', _nrows_affected));
+
+    CALL public.log_info('Historique des modifications/suppressions (valeurs)');
+    INSERT INTO public.territory_history (
+            id_territory
+            , date_change
+            , change
+            , kind
+            , values
+        )
+        SELECT
+            t.id
+            , TIMEOFDAY()::DATE
+            , c.change
+            , 'VALUE'
+            , ROW_TO_JSON(t.*)::JSONB
+        FROM
+            tmp_fr_territory_changes c
+                JOIN public.territory t ON t.country = 'FR' AND (c.level, c.code) = (t.level, t.code)
+        WHERE c.change = '!'
+        ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info(CONCAT('UPDATE: ', _nrows_affected));
+    INSERT INTO public.territory_history (
+            id_territory
+            , date_change
+            , change
+            , kind
+            , values
+        )
+        SELECT
+            t.id
+            , TIMEOFDAY()::DATE
+            , c.change
+            , 'VALUE'
+            , ROW_TO_JSON(t.*)::JSONB
+        FROM
+            tmp_fr_territory_changes c
+                JOIN public.territory t ON t.country = 'FR' AND (c.level, c.code) = (t.level, t.code)
+        WHERE c.change = '-'
+        ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info(CONCAT('DELETE: ', _nrows_affected));
 
     CALL public.log_info('Mise à jour des ajouts/modifications');
-    INSERT INTO public.territory
-        SELECT
-            'FR' country
-            , t.level
-            , t.code
+    INSERT INTO public.territory (
+            country
+            , level
+            , code
             , name
             , attributs
             , population
             , area
             , codes_adjoining
+            , date_last
             , geom_native
             , geom_world
+        )
+        SELECT
+            'FR' country
+            , c.level
+            , c.code
+            , c.name
+            , c.attributs
+            , c.population
+            , c.area
+            , c.codes_adjoining
+            , TIMEOFDAY()::DATE
+            , c.geom_native
+            , c.geom_world
         FROM
-            tmp_fr_territory_changes t
-                JOIN public.territory_level l ON l.country = 'FR' AND t.level = l.level
+            tmp_fr_territory_changes c
+                JOIN public.territory_level l ON l.country = 'FR' AND c.level = l.level
         WHERE
-            xact = _upsert
+            c.change = ANY('{+,!}')
         ORDER BY
             l.hierarchy
     ON CONFLICT(country, level, code) DO UPDATE
@@ -894,21 +953,21 @@ BEGIN
             , geom_world = EXCLUDED.geom_world
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info('INSERT/UPDATE: ', _nrows_affected);
+    CALL public.log_info(CONCAT('INSERT/UPDATE: ', _nrows_affected));
 
     CALL public.log_info('Mise à jour des suppressions');
     DELETE FROM public.territory t
     USING tmp_fr_territory_changes c
     WHERE
-        xact = _delete
+        c.change = '-'
         AND
-        country = 'FR'
+        t.country = 'FR'
         AND
         (t.level, t.code) = (c.level, c.code)
 
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info('DELETE: ', _nrows_affected);
+    CALL public.log_info(CONCAT('DELETE: ', _nrows_affected));
 END
 $proc$ LANGUAGE plpgsql;
 
@@ -1095,7 +1154,7 @@ BEGIN
                 nivgeo
                 , codgeo
                 , 'CP' nivgeo_parent
-                , codgeo_cp_arent codgeo_parent
+                , codgeo_cp_parent codgeo_parent
             FROM
                 fr.territory t
             WHERE
@@ -1165,8 +1224,11 @@ BEGIN
     )
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info('CHANGE: ', _nrows_affected);
+    CALL public.log_info(CONCAT('CHANGE: ', _nrows_affected));
 
+    /*
+     * no good check: merge of municipalities deletes some (w/o new creation)
+     *
     CALL public.log_info('Contrôle des changements (liens)');
     FOR _change IN (
         WITH
@@ -1205,6 +1267,7 @@ BEGIN
             code_parent = _change.code_parent
             ;
     END LOOP;
+     */
 
     CALL public.log_info('Mise à jour des changements (liens) : ajout');
     INSERT INTO public.territory_parent
@@ -1230,7 +1293,31 @@ BEGIN
             JOIN to_territory t ON f.id = t.id
         ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info('INSERT: ', _nrows_affected);
+    CALL public.log_info(CONCAT('INSERT: ', _nrows_affected));
+
+    CALL public.log_info('Historique des suppressions (liens)');
+    INSERT INTO public.territory_history (
+            id_territory
+            , date_change
+            , change
+            , kind
+            , values
+        )
+        SELECT
+            t.id
+            , TIMEOFDAY()::DATE
+            , c.change
+            , 'LINK'
+            , ROW_TO_JSON(tp.*)::JSONB
+        FROM
+            tmp_fr_territory_changes c
+                JOIN public.territory t ON t.country = 'FR' AND (c.level, c.code) = (t.level, t.code)
+                JOIN public.territory t2 ON t.country = 'FR' AND (c.level_parent, c.code_parent) = (t2.level, t2.code)
+                JOIN public.territory_parent tp ON t.id = tp.id_territory AND t2.id = tp.id_parent
+        WHERE c.change = '-'
+        ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info(CONCAT('DELETE: ', _nrows_affected));
 
     CALL public.log_info('Mise à jour des changements (liens) : suppression');
     WITH
@@ -1253,12 +1340,14 @@ BEGIN
     DELETE FROM public.territory_parent tp
     USING from_territory f, to_territory t
     WHERE
+        f.id = t.id
+        AND
         tp.id_territory = f.id_territory
         AND
         tp.id_parent = t.id_parent
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info('DELETE: ', _nrows_affected);
+    CALL public.log_info(CONCAT('DELETE: ', _nrows_affected));
 END
 $proc$ LANGUAGE plpgsql;
 
@@ -1272,7 +1361,5 @@ $proc$
 BEGIN
     CALL fr.push_territory_properties_to_public();
     CALL fr.push_territory_links_to_public();
-
-    COMMIT;
 END
 $proc$ LANGUAGE plpgsql;
