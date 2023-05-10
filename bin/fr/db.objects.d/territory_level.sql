@@ -46,7 +46,7 @@ BEGIN
     UPDATE public.territory_level
     SET name =
         CASE level
-            WHEN municipality_subsection                 THEN
+            WHEN municipality_subsection    THEN
                                                 CASE
                                                 WHEN municipality_subsection = 'ZA'     THEN 'Zone d''Adresse'
                                                 WHEN municipality_subsection = 'COM_CP' THEN 'Croisement Commune & Code Postal'
@@ -70,7 +70,7 @@ BEGIN
 
         , name_short =
         CASE level
-            WHEN municipality_subsection                 THEN
+            WHEN municipality_subsection    THEN
                                                 CASE
                                                 WHEN municipality_subsection = 'ZA'     THEN 'Zone Adresse'
                                                 WHEN municipality_subsection = 'COM_CP' THEN 'Commune/CP'
@@ -93,7 +93,7 @@ BEGIN
         END
         , name_plural =
         CASE level
-            WHEN municipality_subsection                 THEN
+            WHEN municipality_subsection    THEN
                                                 CASE
                                                 WHEN municipality_subsection = 'ZA'     THEN 'Zones d''Adresses'
                                                 WHEN municipality_subsection = 'COM_CP' THEN 'Croisements Communes & Code Postaux'
@@ -116,7 +116,7 @@ BEGIN
         END
         , article =
         CASE level
-            WHEN municipality_subsection                 THEN
+            WHEN municipality_subsection    THEN
                                                 CASE
                                                 WHEN municipality_subsection = 'ZA'     THEN 'la'
                                                 WHEN municipality_subsection = 'COM_CP' THEN 'le'
@@ -139,7 +139,7 @@ BEGIN
         END
         , hierarchy =
         CASE level
-            WHEN municipality_subsection                 THEN 110
+            WHEN municipality_subsection    THEN 110
                 WHEN 'CP'                   THEN 210
                     WHEN 'PDC_PPDC'			THEN 310
                         WHEN 'PPDC_PDC'     THEN 410
@@ -158,7 +158,7 @@ BEGIN
         END
         , sublevels =
         CASE level
-            WHEN municipality_subsection                 THEN NULL
+            WHEN municipality_subsection    THEN NULL
                 WHEN 'CP'                   THEN ARRAY[municipality_subsection]
                     WHEN 'PDC_PPDC'         THEN ARRAY['CP']
                         WHEN 'PPDC_PDC'     THEN ARRAY['PDC_PPDC']
