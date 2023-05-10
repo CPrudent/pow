@@ -134,7 +134,6 @@ see: https://stackoverflow.com/questions/49626115/postgresql-array-remove-for-el
 extension 'intarray' nice but only for int-arrays
  */
 SELECT drop_all_functions_if_exists('public', 'array_remove');
-
 CREATE OR REPLACE FUNCTION array_remove(
     ANYARRAY
     , ANYARRAY
@@ -144,8 +143,62 @@ $$
 	SELECT ARRAY(SELECT UNNEST($1) EXCEPT SELECT UNNEST($2))
 $$ LANGUAGE SQL;
 
-/* TESTS
+/* TEST
 SELECT array_remove(ARRAY[1, 3, 5, 7], ARRAY[1,7]) -> {3,5}
 SELECT array_remove(ARRAY[1, 3, 5, 7], ARRAY[2,7]) -> {5,1,3}
 SELECT array_remove(ARRAY[1, 3, 3, 7], ARRAY[3,8,null]) -> {7,1}
+ */
+
+-- https://gist.github.com/ryanguill/6c0e82dc7dee9d025bd27ad2abc274b9
+SELECT drop_all_functions_if_exists('public', 'array_merge');
+/*
+CREATE OR REPLACE FUNCTION array_merge(
+    a1 ANYARRAY
+    , a2 ANYARRAY
+)
+RETURNS ANYARRAY AS
+$$
+    SELECT ARRAY_AGG(x ORDER BY x)
+    FROM (
+        SELECT DISTINCT UNNEST($1 || $2) AS x
+    ) s;
+$$ LANGUAGE SQL STRICT;
+ */
+/* TEST
+but:
+SELECT array_merge(NULL::INT[], ARRAY[2, 4, 8]) -> NULL
+ */
+CREATE OR REPLACE FUNCTION array_merge(
+    a1 ANYARRAY
+    , a2 ANYARRAY
+)
+RETURNS ANYARRAY AS
+$$
+DECLARE
+    _array VARCHAR[];
+BEGIN
+    SELECT ARRAY_AGG(x ORDER BY x)
+    INTO _array::ANYARRAY
+    FROM (
+        SELECT DISTINCT
+            UNNEST(
+                CASE
+                WHEN COALESCE(CARDINALITY(a1), 0) > 0 AND COALESCE(CARDINALITY(a2), 0) > 0 THEN a1 || a2
+                WHEN COALESCE(CARDINALITY(a1), 0) = 0 AND COALESCE(CARDINALITY(a2), 0) > 0 THEN a2
+                WHEN COALESCE(CARDINALITY(a1), 0) > 0 AND COALESCE(CARDINALITY(a2), 0) = 0 THEN a1
+                ELSE NULL
+                END
+            ) AS x
+    ) t;
+
+    RETURN _array;
+END
+$$ LANGUAGE plpgsql;
+
+/* TEST
+SELECT array_merge(ARRAY[1, 3, 5, 7], ARRAY[2,7]) -> {1,2,3,5,7}
+SELECT array_merge(ARRAY[1, 3, 5], ARRAY[2, 4, 8]) -> {1,2,3,4,5,8}
+SELECT array_merge(ARRAY[]::INT[], ARRAY[2, 4, 8]) -> {2,4,8}
+SELECT array_merge(NULL::INT[], ARRAY[2, 4, 8]) -> {2,4,8}
+SELECT array_merge(ARRAY[2, 4, 8], NULL) -> {2,4,8}
  */

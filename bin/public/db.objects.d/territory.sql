@@ -236,6 +236,65 @@ FROM get_territory_from_query(
 )
  */
 
+-- list of linked territories from territory given by query, (UP or DOWN, as parents or childs)
+SELECT public.drop_all_functions_if_exists('public', 'get_linked_territory_query');
+CREATE OR REPLACE FUNCTION public.get_linked_territory_query(
+    country VARCHAR
+    , query TEXT
+    , to_levels VARCHAR[]
+    , direction VARCHAR DEFAULT 'UP'
+)
+RETURNS TEXT AS
+$func$
+DECLARE
+    _query TEXT;
+    _from_alias VARCHAR := public.get_alias_from_query(query);
+BEGIN
+    _query := CONCAT('
+        WITH
+        list_of_territory_links AS (
+            WITH
+            RECURSIVE parents(id_territory, id_parent, depth) AS (
+                SELECT _parent.id_territory, _parent.id_parent, 1
+                FROM (', query, ') ', _from_alias
+                    , ' JOIN public.territory_parent _parent ON ', _from_alias, '.id = _parent.'
+                , CASE WHEN direction = 'UP' THEN 'id_territory'
+                ELSE 'id_parent'
+                END
+                , ' WHERE ', _from_alias, '.country = ''', UPPER(country), '''
+                UNION
+                SELECT _parent.id_territory, _parent.id_parent, parents.depth '
+                , CASE WHEN direction = 'UP' THEN '+1'
+                ELSE '-1'
+                END
+                , ' FROM public.territory_parent _parent
+                    JOIN parents ON '
+                , CASE WHEN direction = 'UP' THEN '_parent.id_territory = parents.id_parent'
+                ELSE '_parent.id_parent = parents.id_territory'
+                END
+                , ')
+
+            SELECT * FROM parents
+        )
+        , linked_territory_ids AS (
+            SELECT
+                ARRAY_AGG(DISTINCT id_territory) a1
+                , ARRAY_AGG(DISTINCT id_parent) a2
+            FROM
+                list_of_territory_links
+        )
+        SELECT territory.*
+        FROM public.territory JOIN (
+            SELECT UNNEST(array_merge(a1, a2)) id FROM linked_territory_ids
+            ) t ON territory.id = t.id
+        WHERE
+            territory.level = ANY(''{', ARRAY_TO_STRING(to_levels, ','), '}''::VARCHAR[])'
+    );
+
+    RETURN _query;
+END
+$func$ LANGUAGE plpgsql;
+
 SELECT public.drop_all_functions_if_exists('public', 'get_territory_query_to_level');
 CREATE OR REPLACE FUNCTION public.get_territory_query_to_level(
     country VARCHAR
@@ -246,39 +305,85 @@ RETURNS TEXT AS
 $func$
 DECLARE
     _query TEXT;
+    _usecase VARCHAR;
     _to_common_level VARCHAR;
-    _from_alias VARCHAR := public.get_alias_from_query(query);
     _from_level VARCHAR := public.get_level_from_query(query);
+
+    /*
+    _from_alias VARCHAR := public.get_alias_from_query(query);
     _to_alias VARCHAR;
+     */
 BEGIN
     IF _from_level = to_level THEN
         RETURN get_territory_query_to_level.query;
     END IF;
 
-    IF (
-        public.is_level_below(country, _from_level, to_level)
-        OR
-        public.is_level_below(country, to_level, _from_level)) THEN
-        _to_alias := public.get_alias_from_level(to_level);
-        -- NOTE this solution needs to declare all links (territory_parent)
-        -- COM -> DEP (and not only COM -> CV & CV -> DEP)
-        _query := CONCAT(
-            public.get_territory_query(country, to_level),'
-            AND EXISTS (
-                ', query, '
-                AND EXISTS (
-                    SELECT 1
-                    FROM public.territory _from
-                        JOIN public.territory_parent _parent ON _from.id = _parent.id_territory
-                        JOIN public.territory _to ON _to.id = _parent.id_parent
-                    WHERE
-                        _from.level = ''', _from_level, '''
-                        AND _from.code = ', _from_alias, '.code
-                        AND _to.level = ''', to_level, '''
-                        AND _to.code = ', _to_alias, '.code
-                )
-            )'
+    _usecase :=
+        CASE
+        WHEN public.is_level_below(country, _from_level, to_level) THEN
+            'UP'
+        WHEN public.is_level_below(country, to_level, _from_level) THEN
+            'DOWN'
+        ELSE
+            -- no direct/indirect links, has to find common level
+            'COMMON'
+        END;
+
+    IF _usecase = 'COMMON' THEN
+        _to_common_level := public.get_common_level(country, _from_level, to_level);
+        _query := public.get_territory_query_to_level(
+            country
+            , public.get_territory_query_to_level(country, query, _to_common_level)
+            , to_level
         );
+    ELSE
+        _query := public.get_linked_territory_query(
+            country
+            , query
+            , ARRAY[to_level]::VARCHAR[]
+            , _usecase
+        );
+    END IF;
+
+    RETURN _query;
+
+    /*
+        _query := CONCAT('
+            WITH
+            territory_parents_id AS (
+                WITH
+                RECURSIVE parents(id_territory, id_parent, depth) AS (
+                    SELECT _parent.id_territory, _parent.id_parent, 1
+                    FROM ', query, '
+                        JOIN public.territory_parent _parent ON ', _from_alias, '.id = _parent.id_territory
+                    WHERE
+                        _from.country = ', UPPER(country), '
+
+                    UNION
+
+                    SELECT _parent.id_territory, _parent.id_parent, parents.depth +1
+                    FROM public.territory_parent _parent
+                        JOIN parents ON _parent.id_territory = parents.id_parent
+                )
+
+                SELECT * FROM parents
+            )
+            , territory_parents AS (
+                SELECT
+                    ARRAY_AGG(DISTINCT id_territory) a1
+                    , ARRAY_AGG(DISTINCT id_parent) a2
+                FROM
+                    territory_parents_id
+            )
+            SELECT territory.*
+            FROM public.territory JOIN (
+                SELECT UNNEST(array_merge(a1, a2)) id FROM territory_parents
+                ) t ON territory.id = t.id
+            WHERE
+                territory.level = ''', to_level, '''
+            '
+            );
+
         RETURN _query;
     ELSE
         _to_common_level := public.get_common_level(country, _from_level, to_level);
@@ -288,5 +393,6 @@ BEGIN
             , to_level
         );
     END IF;
+     */
 END
 $func$ LANGUAGE plpgsql;
