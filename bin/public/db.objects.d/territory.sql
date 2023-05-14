@@ -312,11 +312,6 @@ DECLARE
     _usecase VARCHAR;
     _to_common_level VARCHAR;
     _from_level VARCHAR := COALESCE(from_level, public.get_level_from_query(query));
-
-    /*
-    _from_alias VARCHAR := public.get_alias_from_query(query);
-    _to_alias VARCHAR;
-     */
 BEGIN
     IF _from_level = to_level THEN
         RETURN get_query_territory_extended_to_level.query;
@@ -325,8 +320,10 @@ BEGIN
     _usecase :=
         CASE
         WHEN public.is_level_below(country, _from_level, to_level) THEN
+            -- parent links
             'UP'
         WHEN public.is_level_below(country, to_level, _from_level) THEN
+            -- child links
             'DOWN'
         ELSE
             -- no direct/indirect links, has to find common level
@@ -342,6 +339,7 @@ BEGIN
             , _to_common_level
         );
     ELSE
+        -- parent/child links
         _query := public.get_query_linked_territory(
             country
             , query
@@ -351,53 +349,119 @@ BEGIN
     END IF;
 
     RETURN _query;
+END
+$func$ LANGUAGE plpgsql;
 
-    /*
-        _query := CONCAT('
-            WITH
-            territory_parents_id AS (
-                WITH
-                RECURSIVE parents(id_territory, id_parent, depth) AS (
-                    SELECT _parent.id_territory, _parent.id_parent, 1
-                    FROM ', query, '
-                        JOIN public.territory_parent _parent ON ', _from_alias, '.id = _parent.id_territory
-                    WHERE
-                        _from.country = ', UPPER(country), '
+/* TEST
+-- UP
+SELECT * FROM get_territory_from_query(get_query_territory_extended_to_level('fr', get_query_territory('fr', 'COM', '84007'), 'EPCI'));
+-- DOWN
+SELECT * FROM get_territory_from_query(get_query_territory_extended_to_level('fr', get_query_territory('fr', 'EPCI', '248400251'), 'COM'));
+-- COMMON
+SELECT * FROM get_territory_from_query(get_query_territory_extended_to_level('fr', get_query_territory('fr', 'EPCI', '248400251'), 'DEP'));
+SELECT * FROM get_territory_from_query(get_query_territory_extended_to_level('fr', get_query_territory('fr', 'DEP', '84'), 'EPCI'));
+ */
 
-                    UNION
+CREATE OR REPLACE FUNCTION public.get_query_territory_extended_to_level(
+    country VARCHAR
+    , queries TEXT[]
+    , to_level VARCHAR
+)
+RETURNS TEXT AS
+$func$
+DECLARE
+    _from_levels VARCHAR[];
+    _to_common_level VARCHAR;
+    _from_territories RECORD;
+    _from_queries_extended_to_common_level TEXT[];
+    _to_alias VARCHAR;
+    _query TEXT;
+BEGIN
+    IF ARRAY_LENGTH(queries, 1) = 1 THEN
+        RETURN public.get_query_territory_extended_to_level(country, queries[1], to_level);
+    END IF;
 
-                    SELECT _parent.id_territory, _parent.id_parent, parents.depth +1
-                    FROM public.territory_parent _parent
-                        JOIN parents ON _parent.id_territory = parents.id_parent
-                )
+    SELECT ARRAY_AGG(public.get_level_from_query(query))
+    INTO _from_levels
+    FROM UNNEST(queries) AS query;
+    _to_common_level := public.get_common_level(country, _from_levels);
 
-                SELECT * FROM parents
+    FOR _from_territories IN (
+        SELECT
+            from_territories.query
+            , public.get_level_from_query(from_territories.query) AS level
+        FROM UNNEST(queries) WITH ORDINALITY AS from_territories(query, i)
+    )
+    LOOP
+        _from_queries_extended_to_common_level := ARRAY_APPEND(
+            _from_queries_extended_to_common_level
+            , public.get_query_territory_extended_to_level(
+                country
+                , _from_territories.query
+                , _to_common_level
             )
-            , territory_parents AS (
-                SELECT
-                    ARRAY_AGG(DISTINCT id_territory) a1
-                    , ARRAY_AGG(DISTINCT id_parent) a2
-                FROM
-                    territory_parents_id
-            )
-            SELECT territory.*
-            FROM public.territory JOIN (
-                SELECT UNNEST(array_merge(a1, a2)) id FROM territory_parents
-                ) t ON territory.id = t.id
-            WHERE
-                territory.level = ''', to_level, '''
-            '
-            );
+        );
+    END LOOP;
 
+    _to_alias := public.get_alias_from_level(_to_common_level);
+    _query := CONCAT(
+        'SELECT * FROM ('
+        , ARRAY_TO_STRING(
+            _from_queries_extended_to_common_level
+            , ' UNION '
+        )
+        , ') AS ', _to_alias, ' WHERE TRUE'
+    );
+    IF _to_common_level = to_level THEN
         RETURN _query;
     ELSE
-        _to_common_level := public.get_common_level(country, _from_level, to_level);
         RETURN public.get_query_territory_extended_to_level(
             country
-            , public.get_query_territory_extended_to_level(country, query, _to_common_level)
+            , _query
             , to_level
         );
     END IF;
-     */
 END
 $func$ LANGUAGE plpgsql;
+
+/* TEST
+SELECT * FROM get_territory_from_query(get_query_territory_extended_to_level('fr', ARRAY[get_query_territory('fr', 'COM', '84007'), get_query_territory('fr', 'COM', '84033')], 'EPCI'));
+ */
+
+CREATE OR REPLACE FUNCTION public.get_query_territory_extended_to_level(
+    country VARCHAR
+    , queries TEXT[]
+    , to_levels VARCHAR[]
+)
+RETURNS TEXT AS
+$func$
+DECLARE
+    _query TEXT;
+    _to_level VARCHAR;
+    _queries TEXT[];
+BEGIN
+    FOREACH _to_level IN ARRAY to_levels
+    LOOP
+        _queries := ARRAY_APPEND(_queries
+            , CONCAT('('
+                , public.get_query_territory_extended_to_level(country, queries, _to_level)
+                , ')'
+            )
+        );
+    END LOOP;
+    _query := CONCAT(
+        'SELECT * FROM ('
+        , ARRAY_TO_STRING(
+            _queries
+            , ' UNION '
+        )
+        , ') AS _x_ WHERE TRUE'
+    );
+
+    RETURN _query;
+END
+$func$ LANGUAGE plpgsql;
+
+/* TEST
+SELECT * FROM get_territory_from_query(get_query_territory_extended_to_level('fr', ARRAY[get_query_territory('fr', 'COM', '84007'), get_query_territory('fr', 'COM', '84033')], ARRAY['EPCI', 'DEP', 'COM']));
+ */
