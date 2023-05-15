@@ -8,3 +8,8 @@
 \include_relative territory_parent.sql
 \include_relative territory_history.sql
 \include_relative territory_level.sql
+
+\include_relative address.sql
+\include_relative address_street.sql
+\include_relative address_housenumber.sql
+\include_relative address_complement.sql
