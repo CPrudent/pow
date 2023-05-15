@@ -9,7 +9,7 @@ SELECT public.drop_all_functions_if_exists('public', 'array_append_if_not_exists
 CREATE OR REPLACE FUNCTION public.array_append_if_not_exists(
     array_in ANYARRAY
     , item ANYELEMENT
-    )
+)
 RETURNS ANYARRAY LANGUAGE plpgsql IMMUTABLE STRICT AS
 $$
 BEGIN
@@ -21,7 +21,7 @@ BEGIN
 END
 $$;
 
-/* TESTS
+/* TEST
 SELECT array_append_if_not_exists(ARRAY[1,2,3,4], 4) -> "{1,2,3,4}"
 SELECT array_append_if_not_exists(ARRAY[1,2,3,4], 5) -> "{1,2,3,4,5}"
  */
@@ -31,7 +31,7 @@ SELECT public.drop_all_functions_if_exists('public', 'array_distinct');
 CREATE OR REPLACE FUNCTION public.array_distinct(
     array_in ANYARRAY
     , remove_nulls BOOLEAN DEFAULT TRUE
-    )
+)
 RETURNS ANYARRAY AS 
 $$
 DECLARE
@@ -52,7 +52,7 @@ BEGIN
 END
 $$ LANGUAGE plpgsql;
 
-/* TESTS
+/* TEST
 SELECT array_distinct(ARRAY[1,1,2,3,4]) -> "{1,2,3,4}"
  */
 
@@ -61,21 +61,21 @@ SELECT public.drop_all_functions_if_exists('public', 'array_shift');
 CREATE OR REPLACE FUNCTION public.array_shift(
     array_in ANYARRAY
     , nvalues_to_shift INTEGER DEFAULT 1
-    )
+)
 RETURNS VARCHAR[] AS
 $$
 DECLARE
-	out_array array_in%TYPE;
+    out_array array_in%TYPE;
 BEGIN
-	WITH list AS (SELECT val FROM UNNEST(array_in) AS val OFFSET nvalues_to_shift)
-	SELECT ARRAY_AGG(list.val) INTO out_array
-	FROM list;
-	
-	RETURN out_array;
+    WITH list AS (SELECT val FROM UNNEST(array_in) AS val OFFSET nvalues_to_shift)
+    SELECT ARRAY_AGG(list.val) INTO out_array
+    FROM list;
+
+    RETURN out_array;
 END
 $$ LANGUAGE plpgsql;
 
-/* TESTS
+/* TEST
 SELECT array_shift(ARRAY[1,2,3,4]) --> "{2,3,4}"
 SELECT array_shift(ARRAY[1,2,3,4], 3) --> "{4}"
 SELECT array_shift(ARRAY[1,2,3,4], 5) --> NULL
@@ -100,7 +100,7 @@ CREATE AGGREGATE public.array_agg_distinct(
 );
  */
 
-/* TESTS
+/* TEST
 WITH tests AS (
     SELECT NULL::INTEGER AS val
     UNION ALL
@@ -137,7 +137,7 @@ SELECT drop_all_functions_if_exists('public', 'array_remove');
 CREATE OR REPLACE FUNCTION array_remove(
     ANYARRAY
     , ANYARRAY
-    )
+)
 RETURNS ANYARRAY AS
 $$
 	SELECT ARRAY(SELECT UNNEST($1) EXCEPT SELECT UNNEST($2))

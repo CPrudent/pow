@@ -5,30 +5,30 @@
 -- clean address label (upcase, no special chars, only alphanum)
 SELECT public.drop_all_functions_if_exists('public', 'clean_address_label');
 CREATE OR REPLACE FUNCTION clean_address_label(
-    label_in CHARACTER VARYING
-    )
+    address_label CHARACTER VARYING
+)
 RETURNS CHARACTER VARYING AS
 $func$
 BEGIN
-    label_in := TRANSLATE(UPPER(label_in), 'ÀÁÂÃÄÅÇÊÉÈËÌÍÎÏÌÑÒÓÔÕÖÙÚÛÜÝŸ', 'AAAAAACEEEEIIIIINOOOOOUUUUYY');
-    label_in := REPLACE(label_in, 'Œ', 'OE');
-    label_in := REPLACE(label_in, 'Æ', 'AE');
+    address_label := TRANSLATE(UPPER(address_label), 'ÀÁÂÃÄÅÇÊÉÈËÌÍÎÏÌÑÒÓÔÕÖÙÚÛÜÝŸ', 'AAAAAACEEEEIIIIINOOOOOUUUUYY');
+    address_label := REPLACE(address_label, 'Œ', 'OE');
+    address_label := REPLACE(address_label, 'Æ', 'AE');
     --exemples : '"’-&°
-    label_in := TRIM(REGEXP_REPLACE(label_in, '[^A-Z0-9]+', ' ', 'g'));
-    return label_in;
+    address_label := TRIM(REGEXP_REPLACE(address_label, '[^A-Z0-9]+', ' ', 'g'));
+    RETURN address_label;
 END
 $func$ LANGUAGE plpgsql;
 
 -- transform label to code
 SELECT public.drop_all_functions_if_exists('public', 'label_to_code');
 CREATE OR REPLACE FUNCTION label_to_code(
-    label_in CHARACTER VARYING
+    address_label CHARACTER VARYING
     )
 RETURNS CHARACTER VARYING AS
 $func$
 DECLARE
 BEGIN
-	return LOWER(REPLACE(clean_address_label(label_in), ' ', '_'));
+	RETURN LOWER(REPLACE(clean_address_label(address_label), ' ', '_'));
 END
 $func$ LANGUAGE plpgsql;
 
