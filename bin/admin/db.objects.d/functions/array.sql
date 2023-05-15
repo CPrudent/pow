@@ -7,8 +7,8 @@ DROP AGGREGATE IF EXISTS public.array_agg_distinct(ANYELEMENT) CASCADE;
 -- add new item in an array (if not already present)
 SELECT public.drop_all_functions_if_exists('public', 'array_append_if_not_exists');
 CREATE OR REPLACE FUNCTION public.array_append_if_not_exists(
-    array_in IN ANYARRAY
-    , item IN ANYELEMENT
+    array_in ANYARRAY
+    , item ANYELEMENT
     )
 RETURNS ANYARRAY LANGUAGE plpgsql IMMUTABLE STRICT AS
 $$
@@ -29,7 +29,7 @@ SELECT array_append_if_not_exists(ARRAY[1,2,3,4], 5) -> "{1,2,3,4,5}"
 -- return array w/ distincts values
 SELECT public.drop_all_functions_if_exists('public', 'array_distinct');
 CREATE OR REPLACE FUNCTION public.array_distinct(
-    array_in IN ANYARRAY
+    array_in ANYARRAY
     , remove_nulls BOOLEAN DEFAULT TRUE
     )
 RETURNS ANYARRAY AS 
@@ -59,8 +59,8 @@ SELECT array_distinct(ARRAY[1,1,2,3,4]) -> "{1,2,3,4}"
 -- shift(s) array
 SELECT public.drop_all_functions_if_exists('public', 'array_shift');
 CREATE OR REPLACE FUNCTION public.array_shift(
-    array_in IN ANYARRAY
-    , nvalues_to_shift IN INTEGER DEFAULT 1
+    array_in ANYARRAY
+    , nvalues_to_shift INTEGER DEFAULT 1
     )
 RETURNS VARCHAR[] AS
 $$

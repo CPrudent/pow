@@ -7,16 +7,16 @@
 
 SELECT drop_all_functions_if_exists('fr', 'set_territory_supra');
 CREATE OR REPLACE FUNCTION fr.set_territory_supra(
-    table_name IN VARCHAR
-    , columns_agg IN TEXT[] DEFAULT NULL            -- NULL for all else list of column(s)
-    , columns_groupby IN TEXT[] DEFAULT NULL        -- idem
-    , where_in IN TEXT DEFAULT NULL
-    , base_level IN VARCHAR DEFAULT 'COM'
-    , supra_level_filter IN VARCHAR DEFAULT NULL    -- reduce SUPRA to this level only
-    , schema_name IN VARCHAR DEFAULT 'public'
-    , update_mode IN BOOLEAN DEFAULT FALSE          -- only update columns defined by columns_agg (w/ existing levels)
-    , simulation IN BOOLEAN DEFAULT FALSE
-    , drop_temporary IN BOOLEAN DEFAULT TRUE
+    table_name VARCHAR
+    , columns_agg TEXT[] DEFAULT NULL            -- NULL for all else list of column(s)
+    , columns_groupby TEXT[] DEFAULT NULL        -- idem
+    , where_in TEXT DEFAULT NULL
+    , base_level VARCHAR DEFAULT 'COM'
+    , supra_level_filter VARCHAR DEFAULT NULL    -- reduce SUPRA to this level only
+    , schema_name VARCHAR DEFAULT 'public'
+    , update_mode BOOLEAN DEFAULT FALSE          -- only update columns defined by columns_agg (w/ existing levels)
+    , simulation BOOLEAN DEFAULT FALSE
+    , drop_temporary BOOLEAN DEFAULT TRUE
 )
 RETURNS BOOLEAN AS
 $func$
@@ -72,7 +72,7 @@ BEGIN
                  A moins d'être sûr qu'il s'agit bien d'une parenté (et on considère COM_GLOBALE_ARM comme le niveau COM)
                  On ne la retient que si le parent est parent de plus d'un enfant pour éviter de proposer des parentés absurdes (exemple : CP de COM, alors que CP = COM)
                  */
-                _columns_select_on_groupby := CONCAT_WS(', ', _columns_select_on_groupby, CONCAT('CASE WHEN fr.is_level_below(CASE WHEN $2::VARCHAR = ''COM_GLOBALE_ARM'' THEN ''COM'' ELSE $2::VARCHAR END, ''', _level, ''') OR COUNT(', _column_name, ') OVER(PARTITION BY nivgeo, ', _column_name, ') > 1 THEN ', _column_name, ' END'));
+                _columns_select_on_groupby := CONCAT_WS(', ', _columns_select_on_groupby, CONCAT('CASE WHEN public.is_level_below(''fr'', CASE WHEN $2::VARCHAR = ''COM_GLOBALE_ARM'' THEN ''COM'' ELSE $2::VARCHAR END, ''', _level, ''') OR COUNT(', _column_name, ') OVER(PARTITION BY nivgeo, ', _column_name, ') > 1 THEN ', _column_name, ' END'));
                 _columns_update_set := CONCAT_WS(', ', _columns_update_set, CONCAT(_column_name, ' = source.', _column_name));
             ELSIF _column_name IN ('dt_reference', 'dt_reference_data') OR (_column_name = ANY(columns_groupby)) THEN
                 _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('source.', _column_name));
@@ -127,8 +127,9 @@ BEGIN
         RAISE NOTICE '_self_use = %', _self_use;
     END IF;
 
-    _levels = fr.get_levels(
-        order_in => 'ASC'
+    _levels = public.get_levels(
+        country => 'fr'
+        , order_in => 'ASC'
         , among_levels => _levels --en cas de self use, on ordonne les niveaux
         , subfilter => base_level
     );
@@ -143,7 +144,7 @@ BEGIN
             --Ceux qui sont différents du niveau de base
             _level != base_level
             --Et si filtre sur niveau, dont le niveau filtré est un sous-découpage
-            AND (supra_level_filter IS NULL OR fr.is_level_below(supra_level_filter, _level))
+            AND (supra_level_filter IS NULL OR public.is_level_below('fr', supra_level_filter, _level))
         )
         THEN
             _levels := ARRAY_REMOVE(_levels, _level);
@@ -208,7 +209,11 @@ BEGIN
     END IF;
 
     FOREACH _level IN ARRAY _levels LOOP
-        _bigger_sublevel := fr.get_bigger_sublevel(level_in => _level, among_levels => ARRAY_APPEND(_levels, base_level));
+        _bigger_sublevel := public.get_bigger_sublevel(
+            country => 'fr'
+            , level_in => _level
+            , among_levels => ARRAY_APPEND(_levels, base_level)
+        );
         IF simulation THEN
             RAISE NOTICE ' _level : %', _level;
             RAISE NOTICE ' _bigger_sublevel : %', _bigger_sublevel;
@@ -248,12 +253,12 @@ BEGIN
         ELSE
             --On prend le niveau le plus grand, représentant le mieux le niveau à calculer, en le comparant à ce qu'on pourrait obtenir avec le niveau de base
             IF _bigger_sublevel != base_level THEN
-                _query := 'SELECT fr.get_bigger_sublevel(level_in => $1, among_levels => ARRAY[$2';
+                _query := 'SELECT public.get_bigger_sublevel(country => ''fr'', level_in => $1, among_levels => ARRAY[$2';
                 FOREACH _level2 IN ARRAY _levels LOOP
                     IF simulation THEN
                         RAISE NOTICE '_level2 = %', _level2;
                     END IF;
-                    IF fr.is_level_below(_level2, _level) THEN
+                    IF public.is_level_below('fr', _level2, _level) THEN
                         IF simulation THEN
                             RAISE NOTICE '_level2 % is below _level %', _level2, _level;
                         END IF;

@@ -28,7 +28,7 @@ $func$ LANGUAGE plpgsql;
 -- convert POINT to '(y, x)'
 SELECT public.drop_all_functions_if_exists('public', 'convert_point_to_lat_lng');
 CREATE OR REPLACE FUNCTION public.convert_point_to_lat_lng(
-    geom IN GEOMETRY(POINT)
+    geom GEOMETRY(POINT)
 )
 RETURNS VARCHAR AS
 $$
@@ -78,7 +78,7 @@ see: https://postgis.net/docs/ST_RemoveRepeatedPoints.html
  */
 SELECT public.drop_all_functions_if_exists('public', 'ST_RemoveRepeatedPoints');
 CREATE OR REPLACE FUNCTION public.ST_RemoveRepeatedPoints(
-    geom IN GEOMETRY
+    geom GEOMETRY
     , tolerance FLOAT8
 )
 RETURNS GEOMETRY AS
@@ -272,7 +272,7 @@ see: https://postgis.net/docs/ST_VoronoiPolygons.html
  */
 SELECT public.drop_all_functions_if_exists('public', 'ST_VoronoiPolygons');
 CREATE OR REPLACE FUNCTION public.ST_VoronoiPolygons(
-    geom IN GEOMETRY
+    geom GEOMETRY
     , tolerance FLOAT8 DEFAULT 0.0
     , extent_to GEOMETRY DEFAULT NULL
 )
@@ -373,7 +373,7 @@ improve ST_SplitFour()
  */
 SELECT public.drop_all_functions_if_exists('public', 'ST_SplitFour');
 CREATE OR REPLACE FUNCTION public.ST_SplitFour(
-    box2d_in IN BOX2D
+    box2d_in BOX2D
 )
 RETURNS SETOF BOX2D AS
 $$
@@ -427,7 +427,7 @@ FROM split16
  */
 
 CREATE OR REPLACE FUNCTION public.ST_SplitFour(
-    geom IN GEOMETRY
+    geom GEOMETRY
 )
 RETURNS SETOF GEOMETRY AS
 $$
@@ -618,7 +618,7 @@ SELECT COUNT(*) FROM geopad.pdi WHERE adresse_id IS NULL AND agg_adresse_id IS N
 -- extend line
 SELECT public.drop_all_functions_if_exists('public', 'ST_ExtendLine');
 CREATE OR REPLACE FUNCTION public.ST_ExtendLine(
-    line_in IN GEOMETRY(LINESTRING)
+    line_in GEOMETRY(LINESTRING)
     , length_in FLOAT
     /*
      BOTH : extend 2 sides
@@ -735,9 +735,9 @@ AND pdi.lb_voie IN ('RUE MICHEL DE MONTAIGNE', 'RUE ADRIEN PLANQUE')
 -- correct bad geometry
 SELECT public.drop_all_functions_if_exists('public', 'ST_MakeValid2');
 CREATE OR REPLACE FUNCTION public.ST_MakeValid2(
-    geom IN GEOMETRY
+    geom GEOMETRY
     -- supply if known, to avoid new verification
-    , is_valid IN BOOLEAN DEFAULT NULL
+    , is_valid BOOLEAN DEFAULT NULL
 )
 RETURNS GEOMETRY
 AS $$
@@ -942,7 +942,7 @@ AND ST_GeometryType(ST_MakeValid(geom)) = 'ST_MultiPolygon'
 -- internal boundary
 SELECT drop_all_functions_if_exists('public', 'ST_InternalBoundary');
 CREATE OR REPLACE FUNCTION public.ST_InternalBoundary(
-    geom IN GEOMETRY(MULTIPOLYGON)
+    geom GEOMETRY(MULTIPOLYGON)
 )
 RETURNS GEOMETRY AS
 $func$
@@ -968,9 +968,9 @@ $func$ LANGUAGE plpgsql;
  */
 SELECT public.drop_all_functions_if_exists('public', 'ST_Equals_with_Threshold');
 CREATE OR REPLACE FUNCTION public.ST_Equals_with_Threshold(
-    geom1 IN GEOMETRY
-    , geom2 IN GEOMETRY
-    , distance IN NUMERIC DEFAULT 0.001
+    geom1 GEOMETRY
+    , geom2 GEOMETRY
+    , distance NUMERIC DEFAULT 0.001
 )
 RETURNS BOOLEAN AS
 $func$

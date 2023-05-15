@@ -39,7 +39,7 @@ SELECT public.drop_all_functions_if_exists('public', 'get_all_io');
 CREATE OR REPLACE FUNCTION public.get_all_io(
     type_in TEXT
     , date_end TIMESTAMP
-    , status_in IN VARCHAR DEFAULT 'SUCCES'
+    , status_in VARCHAR DEFAULT 'SUCCES'
 )
 RETURNS SETOF public.io_history AS
 $func$

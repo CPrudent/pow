@@ -329,7 +329,7 @@ CREATE OR REPLACE FUNCTION fr.update_territory()
 RETURNS BOOLEAN
 AS $$
 DECLARE
-    _levels VARCHAR[] := fr.get_levels();
+    _levels VARCHAR[] := public.get_levels('fr');
     _level VARCHAR;
 BEGIN
     -- set population (COM level)
@@ -477,7 +477,7 @@ BEGIN
     UPDATE fr.territory
     SET libgeo = territory_laposte.libgeo
     FROM fr.territory_laposte
-    WHERE fr.is_level_below('CP', territory.nivgeo)
+    WHERE public.is_level_below('fr', 'CP', territory.nivgeo)
     AND territory_laposte.nivgeo = territory.nivgeo
     AND territory_laposte.codgeo = territory.codgeo;
 
@@ -548,7 +548,7 @@ BEGIN
             WHERE codgeo_voisins IS NULL
             AND gm_contour IS NOT NULL
             -- to avoid backup-levels (as COM_A_XXXXXX)
-            AND nivgeo = ANY(fr.get_levels())
+            AND nivgeo = ANY(public.get_levels('fr'))
         )
         , extend_territory AS (
             SELECT DISTINCT
@@ -589,7 +589,7 @@ BEGIN
             AND ST_Relate(territory.gm_contour, next_territory.gm_contour, '****1****')
         )
         -- to avoid backup-levels (as COM_A_XXXXXX)
-        WHERE nivgeo = ANY(fr.get_levels());
+        WHERE nivgeo = ANY(public.get_levels('fr'));
     END IF;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     RAISE NOTICE 'Calcul voisinage de territoires #%', _nrows_affected;

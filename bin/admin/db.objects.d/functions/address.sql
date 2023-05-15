@@ -35,7 +35,7 @@ $func$ LANGUAGE plpgsql;
 -- greatest gap into serie of number(s)
 SELECT drop_all_functions_if_exists('public', 'get_greatest_gap');
 CREATE OR REPLACE FUNCTION public.get_greatest_gap(
-    _numbers IN INTEGER[]
+    _numbers INTEGER[]
     )
 RETURNS INTEGER AS
 $func$

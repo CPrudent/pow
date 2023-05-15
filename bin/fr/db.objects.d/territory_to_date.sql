@@ -7,7 +7,7 @@
  */
 SELECT public.drop_all_functions_if_exists('fr', 'get_date_insee_municipality_event');
 CREATE OR REPLACE FUNCTION fr.get_date_insee_municipality_event(
-    minmax IN BOOLEAN DEFAULT FALSE
+    minmax BOOLEAN DEFAULT FALSE
 )
 RETURNS DATE AS
 $func$
@@ -77,7 +77,7 @@ SELECT fr.get_date_insee_municipality_event(minmax => TRUE)
  */
 SELECT public.drop_all_functions_if_exists('fr', 'get_date_wikipedia_municipality_event');
 CREATE OR REPLACE FUNCTION fr.get_date_wikipedia_municipality_event(
-    minmax IN BOOLEAN DEFAULT FALSE
+    minmax BOOLEAN DEFAULT FALSE
 )
 RETURNS DATE AS
 $func$
@@ -146,8 +146,8 @@ SELECT fr.get_date_wikipedia_municipality_event()
  */
 SELECT public.drop_all_functions_if_exists('fr', 'get_most_recent_municipality_to_date');
 CREATE OR REPLACE FUNCTION fr.get_most_recent_municipality_to_date(
-    date_geography_from IN DATE DEFAULT NULL    -- date from which apply updates
-    , date_geography_to IN DATE DEFAULT NOW()   -- date up to which apply updates
+    date_geography_from DATE DEFAULT NULL    -- date from which apply updates
+    , date_geography_to DATE DEFAULT NOW()   -- date up to which apply updates
 )
 RETURNS DATE AS
 $func$
@@ -170,16 +170,16 @@ $func$ LANGUAGE plpgsql;
  */
 SELECT public.drop_all_functions_if_exists('fr', 'get_municipality_to_date_from_insee');
 CREATE OR REPLACE FUNCTION fr.get_municipality_to_date_from_insee(
-    code IN VARCHAR
-    , date_geography_from IN DATE
-    , name IN VARCHAR DEFAULT NULL
-    , distribution IN NUMERIC DEFAULT 1
-    , information IN TEXT DEFAULT NULL
-    , codes_event IN INTEGER[] DEFAULT NULL     -- only if all events not treated (to date)
-    , date_geography_to IN DATE DEFAULT NOW()
-    , is_new IN BOOLEAN DEFAULT FALSE
-    , with_deleted IN BOOLEAN DEFAULT FALSE
-    , code_previous IN VARCHAR DEFAULT NULL
+    code VARCHAR
+    , date_geography_from DATE
+    , name VARCHAR DEFAULT NULL
+    , distribution NUMERIC DEFAULT 1
+    , information TEXT DEFAULT NULL
+    , codes_event INTEGER[] DEFAULT NULL     -- only if all events not treated (to date)
+    , date_geography_to DATE DEFAULT NOW()
+    , is_new BOOLEAN DEFAULT FALSE
+    , with_deleted BOOLEAN DEFAULT FALSE
+    , code_previous VARCHAR DEFAULT NULL
 )
 RETURNS SETOF public.territory_to_date_t AS
 $func$
@@ -544,14 +544,14 @@ having COUNT(*) > 1
  */
 SELECT public.drop_all_functions_if_exists('fr', 'get_municipality_to_date_from_wikipedia');
 CREATE OR REPLACE FUNCTION fr.get_municipality_to_date_from_wikipedia(
-    code IN VARCHAR
-    , date_geography_from IN DATE
-    , name IN VARCHAR DEFAULT NULL
-    , distribution IN NUMERIC DEFAULT 1
-    , information IN TEXT DEFAULT NULL
-    , date_geography_to IN DATE DEFAULT NOW()
-    , is_new IN BOOLEAN DEFAULT FALSE
-    , code_previous IN VARCHAR DEFAULT NULL
+    code VARCHAR
+    , date_geography_from DATE
+    , name VARCHAR DEFAULT NULL
+    , distribution NUMERIC DEFAULT 1
+    , information TEXT DEFAULT NULL
+    , date_geography_to DATE DEFAULT NOW()
+    , is_new BOOLEAN DEFAULT FALSE
+    , code_previous VARCHAR DEFAULT NULL
 )
 RETURNS SETOF public.territory_to_date_t AS
 $func$
@@ -721,19 +721,19 @@ OR millesime_last_to_now.codgeo IS NULL
  */
 SELECT public.drop_all_functions_if_exists('fr', 'get_municipality_to_date');
 CREATE OR REPLACE FUNCTION fr.get_municipality_to_date(
-    code IN VARCHAR
-    , date_geography_from IN DATE
-    , name IN VARCHAR DEFAULT NULL
-    , distribution IN NUMERIC DEFAULT 1
-    , information IN TEXT DEFAULT NULL
-    , check_exists IN BOOLEAN DEFAULT TRUE
-    , months_back_if_not_exists IN INTEGER DEFAULT 12
-    , date_geography_to IN DATE DEFAULT NOW()   -- date up to which apply updates
-                                                -- NOW() till today, NULL most as possible
-    , is_new IN BOOLEAN DEFAULT FALSE
-    , with_deleted IN BOOLEAN DEFAULT FALSE
-    , date_geography_from_first IN DATE DEFAULT NULL
-    , code_previous IN VARCHAR DEFAULT NULL
+    code VARCHAR
+    , date_geography_from DATE
+    , name VARCHAR DEFAULT NULL
+    , distribution NUMERIC DEFAULT 1
+    , information TEXT DEFAULT NULL
+    , check_exists BOOLEAN DEFAULT TRUE
+    , months_back_if_not_exists INTEGER DEFAULT 12
+    , date_geography_to DATE DEFAULT NOW()   -- date up to which apply updates
+                                             -- NOW() till today, NULL most as possible
+    , is_new BOOLEAN DEFAULT FALSE
+    , with_deleted BOOLEAN DEFAULT FALSE
+    , date_geography_from_first DATE DEFAULT NULL
+    , code_previous VARCHAR DEFAULT NULL
 )
 RETURNS SETOF public.territory_to_date_t AS
 $func$
@@ -1027,10 +1027,10 @@ SELECT fr.get_municipality_to_date(
 
 SELECT public.drop_all_functions_if_exists('fr', 'get_municipality_to_date_from_laposte');
 CREATE OR REPLACE FUNCTION fr.get_municipality_to_date_from_laposte(
-    code IN VARCHAR
-    , date_geography_from IN DATE
-    , distribution IN NUMERIC DEFAULT 1
-    , raise_notice IN BOOLEAN DEFAULT FALSE
+    code VARCHAR
+    , date_geography_from DATE
+    , distribution NUMERIC DEFAULT 1
+    , raise_notice BOOLEAN DEFAULT FALSE
 )
 RETURNS SETOF public.territory_to_date_t AS
 $func$
@@ -1284,7 +1284,7 @@ SELECT * FROM fr.laposte_zone_address WHERE co_insee_commune != co_insee_commune
  */
 SELECT drop_all_functions_if_exists('fr', 'set_data_with_geography_to_now');
 CREATE OR REPLACE PROCEDURE fr.set_data_with_geography_to_now(
-    execution_time IN INTERVAL DEFAULT NULL
+    execution_time INTERVAL DEFAULT NULL
 )
 AS
 $func$
@@ -1319,12 +1319,12 @@ $func$ LANGUAGE plpgsql;
 /*
  * test if exists 'level' value into a table
  */
-SELECT drop_all_functions_if_exists('fr', 'exists_level');
-CREATE OR REPLACE FUNCTION fr.exists_level(
+SELECT drop_all_functions_if_exists('fr', 'exists_data_with_level');
+CREATE OR REPLACE FUNCTION fr.exists_data_with_level(
     table_name VARCHAR
-    , levels IN VARCHAR[]
+    , levels VARCHAR[]
     , schema_name VARCHAR DEFAULT 'public'
-    , where_in IN VARCHAR DEFAULT NULL
+    , where_in VARCHAR DEFAULT NULL
 )
 RETURNS BOOLEAN AS
 $func$
@@ -1360,19 +1360,19 @@ $func$ LANGUAGE plpgsql;
  */
 SELECT drop_all_functions_if_exists('fr', 'set_territory_to_date');
 CREATE OR REPLACE FUNCTION fr.set_territory_to_date(
-    table_name IN VARCHAR
-    , columns_agg IN TEXT[] DEFAULT NULL                -- NULL for all else list of column(s)
-    , columns_groupby IN TEXT[] DEFAULT NULL            -- idem
-    , where_in IN TEXT DEFAULT NULL
-    , set_supra IN BOOLEAN DEFAULT TRUE
-    , schema_name IN VARCHAR DEFAULT 'public'
-    , check_exists IN BOOLEAN DEFAULT TRUE
-    , date_geography_to IN DATE DEFAULT NOW()
-    , date_geography_default_from IN DATE DEFAULT NULL  -- for first time update
-    , upsert_mode IN BOOLEAN DEFAULT FALSE
-    , simulation IN BOOLEAN DEFAULT FALSE
-    , base_level IN VARCHAR DEFAULT 'COM'
-    , date_geography_metadata IN VARCHAR DEFAULT 'dtrgeo'
+    table_name VARCHAR
+    , columns_agg TEXT[] DEFAULT NULL                -- NULL for all else list of column(s)
+    , columns_groupby TEXT[] DEFAULT NULL            -- idem
+    , where_in TEXT DEFAULT NULL
+    , set_supra BOOLEAN DEFAULT TRUE
+    , schema_name VARCHAR DEFAULT 'public'
+    , check_exists BOOLEAN DEFAULT TRUE
+    , date_geography_to DATE DEFAULT NOW()
+    , date_geography_default_from DATE DEFAULT NULL  -- for first time update
+    , upsert_mode BOOLEAN DEFAULT FALSE
+    , simulation BOOLEAN DEFAULT FALSE
+    , base_level VARCHAR DEFAULT 'COM'
+    , date_geography_metadata VARCHAR DEFAULT 'dtrgeo'
 )
 RETURNS BOOLEAN AS                                      -- FALSE if nothing to do
 $func$
@@ -1484,13 +1484,14 @@ BEGIN
         _columns_insert := CONCAT_WS(', ', _columns_insert, _column_name);
     END LOOP;
 
-    _levels = fr.get_levels(
-        order_in => 'ASC'
+    _levels = public.get_levels(
+        country => 'fr'
+        , order_in => 'ASC'
         , among_levels => _levels --en cas de self use, on ordonne les niveaux
         , subfilter => base_level
     );
 
-    IF NOT fr.exists_level(
+    IF NOT fr.exists_data_with_level(
         schema_name => schema_name
         , table_name => table_name
         , levels => ARRAY[base_level]
@@ -1698,7 +1699,7 @@ BEGIN
                 IF  --Ceux qui sont différents du niveau de base
                     _level != base_level
                 THEN
-                    IF NOT fr.exists_level(
+                    IF NOT fr.exists_data_with_level(
                             schema_name => schema_name
                             , table_name => table_name
                             , levels => ARRAY[_level]

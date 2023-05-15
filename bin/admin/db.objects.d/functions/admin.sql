@@ -93,8 +93,8 @@ $func$ LANGUAGE plpgsql;
 -- wait if VACUUM
 SELECT public.drop_all_functions_if_exists('public', 'wait_if_vacuum');
 CREATE OR REPLACE FUNCTION public.wait_if_vacuum(
-    table_name IN TEXT
-    , wait_seconds IN INTEGER DEFAULT 5
+    table_name TEXT
+    , wait_seconds INTEGER DEFAULT 5
     )
 RETURNS BOOLEAN AS
 $func$
@@ -105,8 +105,8 @@ END
 $func$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION public.wait_if_vacuum(
-    table_names IN TEXT[] DEFAULT NULL
-    , wait_seconds IN INTEGER DEFAULT 5
+    table_names TEXT[] DEFAULT NULL
+    , wait_seconds INTEGER DEFAULT 5
     )
 RETURNS BOOLEAN AS
 $func$
@@ -182,9 +182,9 @@ $func$ LANGUAGE plpgsql;
 
 SELECT public.drop_all_functions_if_exists('public', 'log_table_stat');
 CREATE OR REPLACE PROCEDURE public.log_table_stat(
-    log_name IN TEXT
-    , schema_name IN TEXT
-    , table_name IN TEXT
+    log_name TEXT
+    , schema_name TEXT
+    , table_name TEXT
     )
 AS
 $proc$

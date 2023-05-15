@@ -4,10 +4,10 @@
 
 SELECT drop_all_functions_if_exists('fr', 'ST_SimplifyTerritory');
 CREATE OR REPLACE PROCEDURE fr.ST_SimplifyTerritory(
-    levels IN VARCHAR[]
-    , from_srid IN INTEGER DEFAULT NULL
-    , to_srid IN INTEGER DEFAULT 4326
-    , bbox_in IN box2d DEFAULT NULL
+    levels VARCHAR[]
+    , from_srid INTEGER DEFAULT NULL
+    , to_srid INTEGER DEFAULT 4326
+    , bbox_in box2d DEFAULT NULL
     , tolerance INTEGER DEFAULT 100
     , bbox_split_over INTEGER DEFAULT 2000
     , subcall BOOLEAN DEFAULT FALSE

@@ -5,7 +5,7 @@
 -- test if role exists
 SELECT public.drop_all_functions_if_exists('public', 'role_exists');
 CREATE OR REPLACE FUNCTION public.role_exists(
-    role_name IN VARCHAR
+    role_name VARCHAR
 )
 RETURNS BOOLEAN AS
 $func$
@@ -24,7 +24,7 @@ $func$ LANGUAGE plpgsql;
 -- test if extension exists
 SELECT public.drop_all_functions_if_exists('public', 'extension_exists');
 CREATE OR REPLACE FUNCTION public.extension_exists(
-    extension_name IN VARCHAR
+    extension_name VARCHAR
 )
 RETURNS BOOLEAN AS
 $func$
@@ -43,7 +43,7 @@ $func$ LANGUAGE plpgsql;
 -- test if schema exists
 SELECT public.drop_all_functions_if_exists('public', 'schema_exists');
 CREATE OR REPLACE FUNCTION public.schema_exists(
-    schema_name IN VARCHAR
+    schema_name VARCHAR
 )
 RETURNS BOOLEAN AS
 $func$
@@ -207,8 +207,8 @@ $func$ LANGUAGE plpgsql;
 -- test if type exists
 SELECT public.drop_all_functions_if_exists('public', 'type_exists');
 CREATE OR REPLACE FUNCTION public.type_exists(
-    schema_name IN VARCHAR
-    , type_name IN VARCHAR
+    schema_name VARCHAR
+    , type_name VARCHAR
 )
 RETURNS BOOLEAN AS
 $func$
