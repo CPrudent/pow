@@ -121,7 +121,7 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
-/*
+/* TEST
 SELECT get_alias_from_level('COM') --> territory_COM
  */
 
@@ -149,8 +149,6 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
-
-SELECT public.drop_all_functions_if_exists('public','get_territory_query');
 SELECT public.drop_all_functions_if_exists('public','get_query_territory');
 CREATE OR REPLACE FUNCTION public.get_query_territory(
     country VARCHAR
@@ -176,8 +174,8 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
-/*
-SELECT level, code FROM get_territory_from_query(get_query_territory('EPCI'))
+/* TEST
+SELECT * FROM get_territory_from_query(get_query_territory('EPCI'))
  */
 
 CREATE OR REPLACE FUNCTION public.get_query_territory(
@@ -202,10 +200,10 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
-/*
-SELECT level, code FROM get_territory_from_query(get_query_territory('EPCI','245900758'))
-SELECT level, code FROM public.get_territory_from_query(public.get_query_territory('COM','84033'), true)
-SELECT level, code FROM public.get_territory_from_query(public.get_query_territory('COM','84033','2016-05-05'::DATE), true)
+/* TEST
+SELECT * FROM get_territory_from_query(get_query_territory('fr', 'EPCI', '245900758'))
+SELECT * FROM public.get_territory_from_query(public.get_query_territory('fr', 'COM', '84033'), true)
+SELECT * FROM public.get_territory_from_query(public.get_query_territory('fr', 'COM', '84033', '2016-05-05'::DATE), true)
  */
 
 CREATE OR REPLACE FUNCTION public.get_query_territory(
@@ -230,15 +228,14 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
-/*
-SELECT level, code, name
+/* TEST
+SELECT *
 FROM get_territory_from_query(
     get_query_territory('FR', 'COM', ARRAY['84033','84007'])
 )
  */
 
 -- list of linked territories from territory given by query, (UP or DOWN, as parents or childs)
-SELECT public.drop_all_functions_if_exists('public', 'get_linked_territory_query');
 SELECT public.drop_all_functions_if_exists('public', 'get_query_linked_territory');
 CREATE OR REPLACE FUNCTION public.get_query_linked_territory(
     country VARCHAR
@@ -297,7 +294,6 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
-SELECT public.drop_all_functions_if_exists('public', 'get_territory_query_to_level');
 SELECT public.drop_all_functions_if_exists('public', 'get_query_territory_extended_to_level');
 CREATE OR REPLACE FUNCTION public.get_query_territory_extended_to_level(
     country VARCHAR
