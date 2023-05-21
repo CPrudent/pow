@@ -15,3 +15,4 @@
 \include_relative address_housenumber.sql
 \include_relative address_complement.sql
 \include_relative address_cross_reference.sql
+\include_relative address_xy.sql

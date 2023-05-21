@@ -741,6 +741,8 @@ BEGIN
                 END no_type_localisation
                 , gm_coord
             FROM fr.laposte_xy
+            WHERE
+                gm_coord IS NOT NULL
         )
         , changes AS (
             (
