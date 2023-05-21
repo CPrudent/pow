@@ -40,6 +40,14 @@ SELECT add_to_search_path('ext_btree_gist');
 CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA ext_btree_gist;
 GRANT ALL PRIVILEGES ON SCHEMA ext_btree_gist TO public;
 
+/* NOTE
+indexes mix(BTREE, GIN)
+ */
+CREATE SCHEMA IF NOT EXISTS ext_btree_gin;
+SELECT add_to_search_path('ext_btree_gin');
+CREATE EXTENSION IF NOT EXISTS btree_gin WITH SCHEMA ext_btree_gin;
+GRANT ALL PRIVILEGES ON SCHEMA ext_btree_gin TO public;
+
 CREATE SCHEMA IF NOT EXISTS ext_fuzzystrmatch;
 SELECT add_to_search_path('ext_fuzzystrmatch');
 CREATE EXTENSION IF NOT EXISTS fuzzystrmatch WITH SCHEMA ext_fuzzystrmatch;

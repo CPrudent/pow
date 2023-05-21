@@ -21,6 +21,7 @@ AS
 $proc$
 BEGIN
     CREATE UNIQUE INDEX IF NOT EXISTS iux_address_cross_reference_id_address ON public.address_cross_reference (id_address, source);
+    CREATE UNIQUE INDEX IF NOT EXISTS iux_address_cross_reference_id_source ON public.address_cross_reference (source, id_source);
 END
 $proc$ LANGUAGE plpgsql;
 
