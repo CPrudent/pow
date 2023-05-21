@@ -200,10 +200,39 @@ BEGIN
 END
 $proc$ LANGUAGE plpgsql;
 
+-- push properties of address housenumber (as changes) to public
+SELECT drop_all_functions_if_exists('fr', 'push_address_housenumber_properties_to_public');
+CREATE OR REPLACE PROCEDURE fr.push_address_housenumber_properties_to_public(
+    force BOOLEAN DEFAULT FALSE
+)
+AS
+$proc$
+DECLARE
+    _nrows_affected INT;
+BEGIN
+    CALL public.log_info('Mise à jour du dictionnaire des Numéros');
+END
+$proc$ LANGUAGE plpgsql;
+
+-- push properties of address complement (as changes) to public
+SELECT drop_all_functions_if_exists('fr', 'push_address_complement_properties_to_public');
+CREATE OR REPLACE PROCEDURE fr.push_address_complement_properties_to_public(
+    force BOOLEAN DEFAULT FALSE
+)
+AS
+$proc$
+DECLARE
+    _nrows_affected INT;
+BEGIN
+    CALL public.log_info('Mise à jour du dictionnaire des L3');
+END
+$proc$ LANGUAGE plpgsql;
+
 -- push links of address (as changes) to public
 SELECT drop_all_functions_if_exists('fr', 'push_address_links_to_public');
 CREATE OR REPLACE PROCEDURE fr.push_address_links_to_public(
     force BOOLEAN DEFAULT FALSE
+    , drop_temporary BOOLEAN DEFAULT TRUE
 )
 AS
 $proc$
@@ -660,6 +689,157 @@ BEGIN
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('DELETE: ', _nrows_affected));
+
+    IF drop_temporary THEN
+        DROP TABLE IF EXISTS tmp_fr_address_changes;
+        DROP TABLE IF EXISTS tmp_fr_address_news;
+    END IF;
+END
+$proc$ LANGUAGE plpgsql;
+
+-- push properties of address xy (as changes) to public
+SELECT drop_all_functions_if_exists('fr', 'push_address_xy_properties_to_public');
+CREATE OR REPLACE PROCEDURE fr.push_address_xy_properties_to_public(
+    force BOOLEAN DEFAULT FALSE
+    , drop_temporary BOOLEAN DEFAULT TRUE
+)
+AS
+$proc$
+DECLARE
+    _nrows_affected INT;
+BEGIN
+    CALL public.log_info('Mise à jour des XY des Adresses');
+
+    CALL public.log_info('Préparation des changements');
+    DROP TABLE IF EXISTS tmp_fr_xy_changes;
+    CREATE TEMPORARY TABLE tmp_fr_xy_changes AS (
+        WITH
+        xy_public AS (
+            SELECT
+                cr.id_source code_address
+                , xy.kind
+                , xy.geom
+            FROM
+                public.address_xy xy
+                    JOIN public.address_cross_reference cr ON cr.id_address = xy.id_address AND cr.source = 'LAPOSTE'
+            WHERE
+                xy.source = 'LAPOSTE'
+        )
+        , xy_fr AS (
+            SELECT
+                co_cea
+                , CASE no_type_localisation
+                    WHEN '1' THEN 'MUNICIPALITY_CENTER'
+                    WHEN '2' THEN 'TOWN_HALL'
+                    WHEN '3' THEN 'AREA'
+                    WHEN '4' THEN 'STREET_CENTER'
+                    WHEN '5' THEN 'STREET_SECTION_CENTER'
+                    WHEN '6' THEN 'STREET_SECTION'
+                    WHEN '7' THEN 'PARCEL'
+                    WHEN '8' THEN 'ENTRANCE'
+                    ELSE          'UNKNOWN'
+                END no_type_localisation
+                , gm_coord
+            FROM fr.laposte_xy
+        )
+        , changes AS (
+            (
+                SELECT '-' change, code_address FROM xy_public
+                EXCEPT
+                SELECT '-', co_cea FROM xy_fr
+            )
+            UNION
+            (
+                SELECT '+', co_cea FROM xy_fr
+                EXCEPT
+                SELECT '+', code_address FROM xy_public
+            )
+            UNION
+            SELECT '!', xy_public.code_address
+            FROM xy_public
+                JOIN xy_fr ON xy_public.code_address = xy_fr.co_cea
+            WHERE
+                (xy_public.kind IS DISTINCT FROM xy_fr.no_type_localisation)
+                OR
+                (NOT ST_Equals(xy_public.geom, xy_fr.gm_coord))
+        )
+
+        -- insert/update addresses
+        SELECT
+            c.change
+            , c.code_address
+            , xy_fr.no_type_localisation kind
+            , xy_fr.gm_coord geom
+        FROM
+            changes c
+                JOIN xy_fr ON c.code_address = xy_fr.co_cea
+        WHERE
+            c.change = ANY('{+,!}')
+
+        UNION
+
+        -- delete old addresses
+        SELECT
+            c.change
+            , c.code_address
+            , xy_public.kind
+            , xy_public.geom
+        FROM
+            changes c
+                JOIN xy_public ON c.code_address = xy_public.code_address
+        WHERE
+            c.change = '-'
+    )
+    ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info(CONCAT('CHANGE: ', _nrows_affected));
+
+    CALL public.log_info('Mise à jour des ajouts/modifications');
+    INSERT INTO public.address_xy (
+            id_address
+            , kind
+            , source
+            , geom
+        )
+        SELECT
+            cr.id_address
+            , c.kind
+            , 'LAPOSTE'
+            , c.geom
+        FROM
+            tmp_fr_xy_changes c
+                JOIN public.address_cross_reference cr ON cr.id_source = xy.code_address AND cr.source = 'LAPOSTE'
+        WHERE
+            c.change = ANY('{+,!}')
+    ON CONFLICT(id_address, kind, source) DO UPDATE
+        SET
+            geom = EXCLUDED.geom
+    ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info(CONCAT('INSERT/UPDATE: ', _nrows_affected));
+
+    CALL public.log_info('Mise à jour des suppressions');
+    WITH
+    xy_deletes AS (
+        SELECT
+            cr1.id_address
+        FROM
+            tmp_fr_xy_changes c
+                JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
+        WHERE
+            change = '-'
+    )
+    DELETE FROM public.address_xy xy
+        USING xy_deletes d
+        WHERE
+            xy.id_address = d.id_address
+    ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info(CONCAT('DELETE: ', _nrows_affected));
+
+    IF drop_temporary THEN
+        DROP TABLE IF EXISTS tmp_fr_xy_changes;
+    END IF;
 END
 $proc$ LANGUAGE plpgsql;
 
