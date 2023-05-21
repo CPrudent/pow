@@ -39,3 +39,5 @@
 \include_relative territory_supra.sql
 \include_relative territory_geometry.sql
 \include_relative territory.sql
+\include_relative address.sql
+

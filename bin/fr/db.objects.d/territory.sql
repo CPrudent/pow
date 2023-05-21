@@ -530,7 +530,6 @@ BEGIN
 END $$ LANGUAGE plpgsql;
 
 -- eval next territories
-SELECT drop_all_functions_if_exists('fr', 'update_territory_next');
 SELECT drop_all_functions_if_exists('fr', 'set_territory_next');
 CREATE OR REPLACE FUNCTION fr.set_territory_next(
     null_only BOOLEAN DEFAULT FALSE
@@ -698,7 +697,7 @@ WHERE
     AND (millesime_a.codgeo IS NULL OR millesime_a.nivgeo NOT IN ('CV', 'CP', 'COM_CP', 'PPDC_PDC', 'DEC', 'METROPOLE_DOM_TOM', 'PAYS'))
 */
 
--- push values of territory (as changes) to public
+-- push properties of territory (as changes) to public
 SELECT drop_all_functions_if_exists('fr', 'push_territory_properties_to_public');
 CREATE OR REPLACE PROCEDURE fr.push_territory_properties_to_public(
     force BOOLEAN DEFAULT FALSE
@@ -1359,7 +1358,7 @@ CREATE OR REPLACE PROCEDURE fr.push_territory_to_public(
 AS
 $proc$
 BEGIN
-    CALL fr.push_territory_properties_to_public();
-    CALL fr.push_territory_links_to_public();
+    CALL fr.push_territory_properties_to_public(force);
+    CALL fr.push_territory_links_to_public(force);
 END
 $proc$ LANGUAGE plpgsql;

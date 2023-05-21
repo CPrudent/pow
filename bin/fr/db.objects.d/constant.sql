@@ -169,4 +169,40 @@ BEGIN
 END;
 $proc$ LANGUAGE plpgsql;
 
+-- build LAPOSTE extension (of housenumber), w/ abbreviated value
+SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_extension_of_housenumber');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_extension_of_housenumber()
+AS
+$proc$
+BEGIN
+    IF NOT table_exists('fr', 'laposte_housenumber') THEN
+        RAISE 'Données LAPOSTE non présentes';
+    END IF;
+
+    DELETE FROM fr.constant WHERE usecase = 'LAPOSTE_EXTENSION_HOUSENUMBER';
+    INSERT INTO fr.constant (
+        SELECT
+            'LAPOSTE_EXTENSION_HOUSENUMBER'
+            , t.*
+        FROM (
+            SELECT lb_ext, lb_abr_nn FROM (
+            SELECT DISTINCT lb_ext, lb_abr_nn FROM fr.laposte_housenumber
+            WHERE fl_active AND lb_ext IS NOT NULL ) t
+            ORDER BY
+                CASE
+                -- A .. Z
+                WHEN LENGTH(lb_ext) = 1   THEN ASCII(lb_ext) - ASCII('A') + 1
+                -- EXT before LETTER (BIS before B)
+                WHEN lb_ext = 'BIS'       THEN 2 - .1
+                WHEN lb_ext = 'TER'       THEN 3 - .1
+                WHEN lb_ext = 'QUATER'    THEN 4 - .1
+                WHEN lb_ext = 'QUINQUIES' THEN 5 - .1
+                WHEN lb_ext = 'SEXTO'     THEN 6 - .1
+                END
+        ) t
+    );
+END;
+$proc$ LANGUAGE plpgsql;
+
+
 CREATE INDEX IF NOT EXISTS ix_constant_usecase_key ON fr.constant (usecase, key);

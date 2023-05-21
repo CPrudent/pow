@@ -23,6 +23,7 @@ AS
 $proc$
 BEGIN
     CREATE UNIQUE INDEX IF NOT EXISTS iux_address_id ON public.address (id);
+    CREATE INDEX IF NOT EXISTS ix_address_id_parent ON public.address (id_parent);
     CREATE INDEX IF NOT EXISTS ix_address_id_territory ON public.address (id_territory);
     CREATE INDEX IF NOT EXISTS ix_address_id_street ON public.address (id_street);
     CREATE INDEX IF NOT EXISTS ix_address_id_housenumber ON public.address (id_housenumber);
@@ -35,3 +36,35 @@ BEGIN
     CALL public.set_address_index();
 END
 $$;
+
+SELECT drop_all_functions_if_exists('public', 'set_address');
+CREATE OR REPLACE PROCEDURE public.set_address(
+    force BOOLEAN DEFAULT FALSE
+)
+AS
+$proc$
+DECLARE
+    _schema_name VARCHAR;
+    _procedure_name VARCHAR := 'push_address_to_public';
+    _query TEXT;
+BEGIN
+    FOR _schema_name IN (
+        SELECT schema_name FROM information_schema.schemata
+        WHERE
+            schema_name ~ '^..$'
+    )
+    LOOP
+        IF procedure_exists(_schema_name, _procedure_name) THEN
+            _query := CONCAT(
+                'CALL '
+                , _schema_name
+                , '.'
+                , _procedure_name
+                , '()'
+            );
+
+            EXECUTE _query;
+        END IF;
+    END LOOP;
+END
+$proc$ LANGUAGE plpgsql;

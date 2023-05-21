@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS public.address_street (
     , name VARCHAR NOT NULL
     , name_normalized VARCHAR
     , typeof VARCHAR
+    , descriptors VARCHAR
 )
 ;
 
@@ -14,6 +15,13 @@ CREATE TABLE IF NOT EXISTS public.address_street (
 ALTER TABLE public.address_street SET (
 	autovacuum_enabled = FALSE
 );
+
+DO $$
+BEGIN
+    IF NOT column_exists('public', 'address_street', 'descriptors') THEN
+        ALTER TABLE public.address_street ADD COLUMN descriptors VARCHAR;
+    END IF;
+END $$;
 
 SELECT drop_all_functions_if_exists('public', 'set_address_street_index');
 CREATE OR REPLACE PROCEDURE public.set_address_street_index()

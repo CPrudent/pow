@@ -10,6 +10,8 @@
 \include_relative territory_level.sql
 
 \include_relative address.sql
+\include_relative address_history.sql
 \include_relative address_street.sql
 \include_relative address_housenumber.sql
 \include_relative address_complement.sql
+\include_relative address_cross_reference.sql
