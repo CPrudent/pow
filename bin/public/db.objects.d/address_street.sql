@@ -8,7 +8,6 @@ CREATE TABLE IF NOT EXISTS public.address_street (
     , name_normalized VARCHAR
     , typeof VARCHAR
     , descriptors VARCHAR
-    , country VARCHAR
 )
 ;
 
@@ -22,8 +21,10 @@ BEGIN
     IF NOT column_exists('public', 'address_street', 'descriptors') THEN
         ALTER TABLE public.address_street ADD COLUMN descriptors VARCHAR;
     END IF;
-    IF NOT column_exists('public', 'address_street', 'country') THEN
-        ALTER TABLE public.address_street ADD COLUMN country VARCHAR;
+    IF column_exists('public', 'address_street', 'country') THEN
+        DROP INDEX IF EXISTS ix_address_street_name;
+        DROP INDEX IF EXISTS ix_address_street_name_normalized;
+        ALTER TABLE public.address_street DROP COLUMN country;
     END IF;
 END $$;
 
@@ -33,8 +34,8 @@ AS
 $proc$
 BEGIN
     CREATE UNIQUE INDEX IF NOT EXISTS iux_address_street_id ON public.address_street (id);
-    CREATE INDEX IF NOT EXISTS ix_address_street_name ON public.address_street USING GIN(name GIN_TRGM_OPS, country);
-    CREATE INDEX IF NOT EXISTS ix_address_street_name_normalized ON public.address_street USING GIN(name_normalized GIN_TRGM_OPS, country);
+    CREATE INDEX IF NOT EXISTS ix_address_street_name ON public.address_street USING GIN(name GIN_TRGM_OPS);
+    CREATE INDEX IF NOT EXISTS ix_address_street_name_normalized ON public.address_street USING GIN(name_normalized GIN_TRGM_OPS);
 END
 $proc$ LANGUAGE plpgsql;
 

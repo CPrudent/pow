@@ -13,38 +13,42 @@ PART 3
  */
 
 /* NOTE
-dictionaries have to include country, else risk to propagate XX-country modification (or delete) to all
+no delete applied on dictionaries. It will be necessary to known usage of this item (notion of counts of reference: equal to 1, ok to delete else no!)
+a specific job could be built to purge item from dictionary, which not have usage!
  */
 
--- push properties of address street (as changes) to public
-SELECT drop_all_functions_if_exists('fr', 'push_address_street_properties_to_public');
-CREATE OR REPLACE PROCEDURE fr.push_address_street_properties_to_public(
+-- push properties of street dictionary (as changes) to public
+SELECT drop_all_functions_if_exists('fr', 'push_dictionary_street_to_public');
+CREATE OR REPLACE PROCEDURE fr.push_dictionary_street_to_public(
     force BOOLEAN DEFAULT FALSE
+    , drop_temporary BOOLEAN DEFAULT TRUE
 )
 AS
 $proc$
 DECLARE
     _nrows_affected INT;
+    _nb_rows INT[];
 BEGIN
     CALL public.log_info('Mise à jour du dictionnaire des Voies');
 
     CALL public.log_info('Préparation des changements');
-    DROP TABLE IF EXISTS tmp_fr_address_street_changes;
-    CREATE TEMPORARY TABLE tmp_fr_address_street_changes AS (
+    DROP TABLE IF EXISTS tmp_fr_street_changes;
+    CREATE TEMPORARY TABLE tmp_fr_street_changes AS (
         WITH
-        address_street_public AS (
+        street_public AS (
             SELECT
                 name
                 , name_normalized
                 , typeof
                 , descriptors
-                , country
             FROM
-                public.address_street
+                public.address_street d
+                    JOIN public.address a ON d.id = a.id_street
+                    JOIN public.territory t ON t.id = a.id_territory
             WHERE
-                country = 'FR'
+                t.country = 'FR'
         )
-        , address_street_fr AS (
+        , street_fr AS (
             /* NOTE
             367 faults (lb_type NULL) on restored LAPOSTE data (of 12/2022)
             e.g.
@@ -57,7 +61,6 @@ BEGIN
                 , ARRAY_AGG(DISTINCT lb_type) typeof
                 -- ignore different descriptors if typeof is null
                 , ARRAY_AGG(DISTINCT CASE WHEN lb_type IS NULL THEN NULL ELSE lb_desc END) descriptors
-                , 'FR' country
             FROM fr.laposte_street
             WHERE fl_active
             GROUP BY
@@ -65,63 +68,65 @@ BEGIN
         )
         , changes AS (
             (
-                SELECT '-' change, name FROM address_street_public
+                SELECT '-' change, name FROM street_public
                 EXCEPT
-                SELECT '-', name FROM address_street_fr
+                SELECT '-', name FROM street_fr
             )
             UNION
             (
-                SELECT '+', name FROM address_street_fr
+                SELECT '+', name FROM street_fr
                 EXCEPT
-                SELECT '+', name FROM address_street_public
+                SELECT '+', name FROM street_public
             )
             UNION
-            SELECT '!', address_street_public.name
-            FROM address_street_public
-                JOIN address_street_fr ON address_street_public.name = address_street_fr.name
+            SELECT '!', street_public.name
+            FROM street_public
+                JOIN street_fr ON street_public.name = street_fr.name
             WHERE
-                (address_street_public.name_normalized IS DISTINCT FROM address_street_fr.name_normalized)
+                (street_public.name_normalized IS DISTINCT FROM street_fr.name_normalized)
                 OR
-                (address_street_public.typeof IS DISTINCT FROM address_street_fr.typeof[1])
+                (street_public.typeof IS DISTINCT FROM street_fr.typeof[1])
                 OR
-                (address_street_public.descriptors IS DISTINCT FROM address_street_fr.descriptors[1])
+                (street_public.descriptors IS DISTINCT FROM street_fr.descriptors[1])
         )
 
-        -- insert/update addresses
+        -- insert/update
         SELECT
             c.change
-            , address_street_fr.name
-            , address_street_fr.name_normalized
-            , address_street_fr.typeof
-            , address_street_fr.descriptors
-            , address_street_fr.country
+            , street_fr.name
+            , street_fr.name_normalized
+            , street_fr.typeof
+            , street_fr.descriptors
         FROM
             changes c
-                JOIN address_street_fr ON c.name = address_street_fr.name
+                JOIN street_fr ON c.name = street_fr.name
         WHERE
             c.change = ANY('{+,!}')
 
         UNION
 
-        -- delete old territories
+        -- delete
         SELECT
             c.change
-            , address_street_public.name
-            , address_street_public.name_normalized
-            , address_street_public.typeof[1] typeof
-            , address_street_public.descriptors[1] descriptors
-            , address_street_public.country
+            , street_public.name
+            , street_public.name_normalized
+            , street_public.typeof[1] typeof
+            , street_public.descriptors[1] descriptors
         FROM
             changes c
-                JOIN address_street_public ON c.name = address_street_public.name
+                JOIN street_public ON c.name = street_public.name
         WHERE
             c.change = '-'
     )
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('CHANGE: ', _nrows_affected));
+    _nb_rows[1] := COUNT(*) FROM tmp_fr_street_changes WHERE change = '+';
+    _nb_rows[2] := COUNT(*) FROM tmp_fr_street_changes WHERE change = '!';
+    _nb_rows[3] := COUNT(*) FROM tmp_fr_street_changes WHERE change = '-';
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected, ' (+: ', _nb_rows[1], ', !: ', _nb_rows[2], ', -: ', _nb_rows[3], ')'));
 
-    CALL public.log_info('Historique des modifications/suppressions');
+    --CALL public.log_info('Historique des modifications/suppressions');
+    CALL public.log_info('Historique des modifications');
     INSERT INTO public.address_history (
             id
             , date_change
@@ -130,20 +135,21 @@ BEGIN
             , values
         )
         SELECT
-            s.id
+            a.id
             , TIMEOFDAY()::DATE
             , c.change
             , 'STREET'
-            , ROW_TO_JSON(s.*)::JSONB
+            , ROW_TO_JSON(d.*)::JSONB
         FROM
-            tmp_fr_address_street_changes c
-                JOIN public.address_street s ON s.name = c.name
-                JOIN public.address a ON a.id_street = s.id
+            tmp_fr_street_changes c
+                JOIN public.address_street d ON d.name = c.name
+                JOIN public.address a ON a.id_street = d.id
                 JOIN public.territory t ON t.id = a.id_territory
-        WHERE c.change = ANY('{-,!}') AND t.country = 'FR'
+        --WHERE c.change = ANY('{-,!}') AND t.country = 'FR'
+        WHERE c.change = '!' AND t.country = 'FR'
         ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('CHANGE: ', _nrows_affected));
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
 
     CALL public.log_info('Mise à jour des ajouts');
     INSERT INTO public.address_street (
@@ -151,80 +157,364 @@ BEGIN
             , name_normalized
             , typeof
             , descriptors
-            , country
         )
         SELECT
             c.name
             , c.name_normalized
             , c.typeof[1]
             , c.descriptors[1]
-            , c.country
         FROM
-            tmp_fr_address_street_changes c
+            tmp_fr_street_changes c
         WHERE
             c.change = '+'
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('INSERT: ', _nrows_affected));
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
 
     CALL public.log_info('Mise à jour des modifications');
     UPDATE public.address_street SET
-            name = c.name
-            , name_normalized = c.name_normalized
+            name_normalized = c.name_normalized
             , typeof = c.typeof[1]
             , descriptors = c.descriptors[1]
         FROM
-            tmp_fr_address_street_changes c
+            tmp_fr_street_changes c
         WHERE
             c.change = '!'
             AND
             address_street.name = c.name
-            AND
-            address_street.country = 'FR'
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('UPDATE: ', _nrows_affected));
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
 
+    /* no delete!
     CALL public.log_info('Mise à jour des suppressions');
-    DELETE FROM public.address_street s
-    USING tmp_fr_address_street_changes c
+    DELETE FROM public.address_street d
+    USING tmp_fr_street_changes c
     WHERE
         c.change = '-'
         AND
-        s.country = 'FR'
-        AND
-        s.name = c.name
+        d.name = c.name
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('DELETE: ', _nrows_affected));
+     */
+
+    IF drop_temporary THEN
+        DROP TABLE IF EXISTS tmp_fr_street_changes;
+    END IF;
 END
 $proc$ LANGUAGE plpgsql;
 
--- push properties of address housenumber (as changes) to public
-SELECT drop_all_functions_if_exists('fr', 'push_address_housenumber_properties_to_public');
-CREATE OR REPLACE PROCEDURE fr.push_address_housenumber_properties_to_public(
+-- push properties of housenumber dictionary (as changes) to public
+SELECT drop_all_functions_if_exists('fr', 'push_dictionary_housenumber_to_public');
+CREATE OR REPLACE PROCEDURE fr.push_dictionary_housenumber_to_public(
     force BOOLEAN DEFAULT FALSE
+    , drop_temporary BOOLEAN DEFAULT TRUE
 )
 AS
 $proc$
 DECLARE
     _nrows_affected INT;
+    _nb_rows INT[];
 BEGIN
     CALL public.log_info('Mise à jour du dictionnaire des Numéros');
+
+    CALL public.log_info('Préparation des changements');
+    DROP TABLE IF EXISTS tmp_fr_housenumber_changes;
+    CREATE TEMPORARY TABLE tmp_fr_housenumber_changes AS (
+        WITH
+        housenumber_public AS (
+            SELECT
+                number
+                , extension
+            FROM
+                public.address_housenumber d
+                    JOIN public.address a ON d.id = a.id_housenumber
+                    JOIN public.territory t ON t.id = a.id_territory
+            WHERE
+                t.country = 'FR'
+        )
+        , housenumber_fr AS (
+            SELECT DISTINCT
+                no_voie number
+                , lb_ext extension
+            FROM fr.laposte_housenumber
+            WHERE fl_active
+        )
+        , changes AS (
+            (
+                SELECT '-' change, number, extension FROM housenumber_public
+                EXCEPT
+                SELECT '-', number, extension FROM housenumber_fr
+            )
+            UNION
+            (
+                SELECT '+', number, extension FROM housenumber_fr
+                EXCEPT
+                SELECT '+', number, extension FROM housenumber_public
+            )
+        )
+
+        -- insert
+        SELECT
+            c.change
+            , housenumber_fr.number
+            , housenumber_fr.extension
+        FROM
+            changes c
+                JOIN housenumber_fr ON
+                (c.number, COALESCE(c.extension, 'NULL') = (housenumber_fr.number, COALESCE(housenumber_fr.extension, 'NULL'))
+        WHERE
+            c.change = '+'
+
+        UNION
+
+        -- delete
+        SELECT
+            c.change
+            , housenumber_public.number
+            , housenumber_public.extension
+        FROM
+            changes c
+                JOIN housenumber_public ON
+                (c.number, COALESCE(c.extension, 'NULL') = (housenumber_public.number, COALESCE(housenumber_public.extension, 'NULL'))
+        WHERE
+            c.change = '-'
+    )
+    ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    _nb_rows[1] := COUNT(*) FROM tmp_fr_housenumber_changes WHERE change = '+';
+    _nb_rows[2] := 0;
+    _nb_rows[3] := COUNT(*) FROM tmp_fr_housenumber_changes WHERE change = '-';
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected, ' (+: ', _nb_rows[1], ', !: ', _nb_rows[2], ', -: ', _nb_rows[3], ')'));
+
+    /*
+    CALL public.log_info('Historique des suppressions');
+    INSERT INTO public.address_history (
+            id
+            , date_change
+            , change
+            , kind
+            , values
+        )
+        SELECT
+            a.id
+            , TIMEOFDAY()::DATE
+            , c.change
+            , 'HOUSENUMBER'
+            , ROW_TO_JSON(d.*)::JSONB
+        FROM
+            tmp_fr_housenumber_changes c
+                JOIN public.address_housenumber d ON
+                    (d.number, COALESCE(d.extension, 'NULL') = (c.number, COALESCE(c.extension, 'NULL'))
+                JOIN public.address a ON a.id_housenumber = d.id
+                JOIN public.territory t ON t.id = a.id_territory
+        WHERE c.change = '-' AND t.country = 'FR'
+        ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+     */
+
+    CALL public.log_info('Mise à jour des ajouts');
+    INSERT INTO public.address_housenumber (
+            number
+            , extension
+        )
+        SELECT
+            c.number
+            , c.extension
+        FROM
+            tmp_fr_housenumber_changes c
+        WHERE
+            c.change = '+'
+    ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+
+    /*
+    CALL public.log_info('Mise à jour des suppressions');
+    DELETE FROM public.address_housenumber d
+    USING tmp_fr_housenumber_changes c
+    WHERE
+        c.change = '-'
+        AND
+        (d.number, COALESCE(d.extension, 'NULL') = (c.number, COALESCE(c.extension, 'NULL'))
+    ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+     */
+
+    IF drop_temporary THEN
+        DROP TABLE IF EXISTS tmp_fr_housenumber_changes;
+    END IF;
 END
 $proc$ LANGUAGE plpgsql;
 
--- push properties of address complement (as changes) to public
-SELECT drop_all_functions_if_exists('fr', 'push_address_complement_properties_to_public');
-CREATE OR REPLACE PROCEDURE fr.push_address_complement_properties_to_public(
+-- push properties of complement dictionary (as changes) to public
+SELECT drop_all_functions_if_exists('fr', 'push_dictionary_complement_to_public');
+CREATE OR REPLACE PROCEDURE fr.push_dictionary_complement_to_public(
     force BOOLEAN DEFAULT FALSE
+    , drop_temporary BOOLEAN DEFAULT TRUE
 )
 AS
 $proc$
 DECLARE
     _nrows_affected INT;
+    _nb_rows INT[];
 BEGIN
     CALL public.log_info('Mise à jour du dictionnaire des L3');
+
+    CALL public.log_info('Préparation des changements');
+    DROP TABLE IF EXISTS tmp_fr_complement_changes;
+    CREATE TEMPORARY TABLE tmp_fr_complement_changes AS (
+        WITH
+        complement_public AS (
+            SELECT
+                name
+                , name_normalized
+            FROM
+                public.address_complement d
+                    JOIN public.address a ON d.id = a.id_complement
+                    JOIN public.territory t ON t.id = a.id_territory
+            WHERE
+                t.country = 'FR'
+        )
+        , complement_fr AS (
+            SELECT DISTINCT
+                CONCAT_WS(' '
+                    , lb_type_groupe1_l3
+                    , lb_groupe1
+                    , lb_type_groupe2_l3
+                    , lb_groupe2
+                    , lb_type_groupe3_l3
+                    , lb_groupe3
+                ) name
+                , lb_standard_nn name_normalized
+            FROM fr.laposte_complement
+            WHERE fl_active
+        )
+        , changes AS (
+            (
+                SELECT '-' change, name FROM complement_public
+                EXCEPT
+                SELECT '-', name FROM complement_fr
+            )
+            UNION
+            (
+                SELECT '+', name FROM complement_fr
+                EXCEPT
+                SELECT '+', name FROM complement_public
+            )
+            UNION
+            SELECT '!', complement_public.name
+            FROM complement_public
+                JOIN complement_fr ON complement_public.name = complement_fr.name
+            WHERE
+                (complement_public.name_normalized IS DISTINCT FROM complement_fr.name_normalized)
+        )
+
+        -- insert/update
+        SELECT
+            c.change
+            , complement_fr.name
+            , complement_fr.name_normalized
+        FROM
+            changes c
+                JOIN complement_fr ON c.name = complement_fr.name
+        WHERE
+            c.change = ANY('{+,!}')
+
+        UNION
+
+        -- delete
+        SELECT
+            c.change
+            , complement_public.name
+            , complement_public.name_normalized
+        FROM
+            changes c
+                JOIN complement_public ON c.name = complement_public.name
+        WHERE
+            c.change = '-'
+    )
+    ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    _nb_rows[1] := COUNT(*) FROM tmp_fr_complement_changes WHERE change = '+';
+    _nb_rows[2] := COUNT(*) FROM tmp_fr_complement_changes WHERE change = '!';
+    _nb_rows[3] := COUNT(*) FROM tmp_fr_complement_changes WHERE change = '-';
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected, ' (+: ', _nb_rows[1], ', !: ', _nb_rows[2], ', -: ', _nb_rows[3], ')'));
+
+    --CALL public.log_info('Historique des modifications/suppressions');
+    CALL public.log_info('Historique des modifications');
+    INSERT INTO public.address_history (
+            id
+            , date_change
+            , change
+            , kind
+            , values
+        )
+        SELECT
+            a.id
+            , TIMEOFDAY()::DATE
+            , c.change
+            , 'COMPLEMENT'
+            , ROW_TO_JSON(d.*)::JSONB
+        FROM
+            tmp_fr_complement_changes c
+                JOIN public.address_complement d ON d.name = c.name
+                JOIN public.address a ON a.id_complement = d.id
+                JOIN public.territory t ON t.id = a.id_territory
+        --WHERE c.change = ANY('{-,!}') AND t.country = 'FR'
+        WHERE c.change = '!' AND t.country = 'FR'
+        ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+
+    CALL public.log_info('Mise à jour des ajouts');
+    INSERT INTO public.address_complement (
+            name
+            , name_normalized
+        )
+        SELECT
+            c.name
+            , c.name_normalized
+        FROM
+            tmp_fr_complement_changes c
+        WHERE
+            c.change = '+'
+    ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+
+    CALL public.log_info('Mise à jour des modifications');
+    UPDATE public.address_complement SET
+            name_normalized = c.name_normalized
+        FROM
+            tmp_fr_complement_changes c
+        WHERE
+            c.change = '!'
+            AND
+            address_complement.name = c.name
+    ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+
+    /* no delete!
+    CALL public.log_info('Mise à jour des suppressions');
+    DELETE FROM public.address_complement d
+    USING tmp_fr_complement_changes c
+    WHERE
+        c.change = '-'
+        AND
+        d.name = c.name
+    ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info(CONCAT('DELETE: ', _nrows_affected));
+     */
+
+    IF drop_temporary THEN
+        DROP TABLE IF EXISTS tmp_fr_complement_changes;
+    END IF;
 END
 $proc$ LANGUAGE plpgsql;
 
@@ -385,7 +675,7 @@ BEGIN
     )
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('CHANGE: ', _nrows_affected));
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
 
     CALL public.log_info('Indexation des changements');
     CREATE INDEX IF NOT EXISTS ix_tmp_fr_address_changes ON tmp_fr_address_changes(change, level);
@@ -411,7 +701,7 @@ BEGIN
         WHERE c.change = ANY('{-,!}')
         ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('CHANGE: ', _nrows_affected));
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
 
     /* NOTE
     have to add addresses in descending order, because of parent id
@@ -444,7 +734,7 @@ BEGIN
             level = 'VOIE'
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('VOIE: ', _nrows_affected));
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
 
     CALL public.log_info('Insertion');
     INSERT INTO public.address (
@@ -669,7 +959,7 @@ BEGIN
             a.id_address = u.id_address
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('UPDATE: ', _nrows_affected));
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
 
     CALL public.log_info('Mise à jour des suppressions');
     WITH
@@ -688,7 +978,7 @@ BEGIN
             a.id_address = d.id_address
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('DELETE: ', _nrows_affected));
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
 
     IF drop_temporary THEN
         DROP TABLE IF EXISTS tmp_fr_address_changes;
@@ -698,8 +988,8 @@ END
 $proc$ LANGUAGE plpgsql;
 
 -- push properties of address xy (as changes) to public
-SELECT drop_all_functions_if_exists('fr', 'push_address_xy_properties_to_public');
-CREATE OR REPLACE PROCEDURE fr.push_address_xy_properties_to_public(
+SELECT drop_all_functions_if_exists('fr', 'push_address_xy_to_public');
+CREATE OR REPLACE PROCEDURE fr.push_address_xy_to_public(
     force BOOLEAN DEFAULT FALSE
     , drop_temporary BOOLEAN DEFAULT TRUE
 )
@@ -794,7 +1084,7 @@ BEGIN
     )
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('CHANGE: ', _nrows_affected));
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
 
     CALL public.log_info('Mise à jour des ajouts/modifications');
     INSERT INTO public.address_xy (
@@ -818,7 +1108,7 @@ BEGIN
             geom = EXCLUDED.geom
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('INSERT/UPDATE: ', _nrows_affected));
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
 
     CALL public.log_info('Mise à jour des suppressions');
     WITH
@@ -837,7 +1127,7 @@ BEGIN
             xy.id_address = d.id_address
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('DELETE: ', _nrows_affected));
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
 
     IF drop_temporary THEN
         DROP TABLE IF EXISTS tmp_fr_xy_changes;
@@ -853,10 +1143,13 @@ CREATE OR REPLACE PROCEDURE fr.push_address_to_public(
 AS
 $proc$
 BEGIN
-    CALL fr.push_address_street_properties_to_public(force);
-    CALL fr.push_address_housenumber_properties_to_public(force);
-    CALL fr.push_address_complement_properties_to_public(force);
-
+    -- dictionaries (items of an address)
+    CALL fr.push_dictionary_street_to_public(force);
+    CALL fr.push_dictionary_housenumber_to_public(force);
+    CALL fr.push_dictionary_complement_to_public(force);
+    -- addresses (w/ cross reference to store LAPOSTE id, as CEA)
     CALL fr.push_address_links_to_public(force);
+    -- XY
+    CALL fr.push_address_xy_to_public(force);
 END
 $proc$ LANGUAGE plpgsql;
