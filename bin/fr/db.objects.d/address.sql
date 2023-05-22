@@ -37,10 +37,10 @@ BEGIN
         WITH
         street_public AS (
             SELECT
-                name
-                , name_normalized
-                , typeof
-                , descriptors
+                d.name
+                , d.name_normalized
+                , d.typeof
+                , d.descriptors
             FROM
                 public.address_street d
                     JOIN public.address a ON d.id = a.id_street
@@ -59,8 +59,8 @@ BEGIN
                 lb_voie name
                 , MIN(lb_voie_normalise) name_normalized
                 , ARRAY_AGG(DISTINCT lb_type) typeof
-                -- ignore different descriptors if typeof is null
-                , ARRAY_AGG(DISTINCT CASE WHEN lb_type IS NULL THEN NULL ELSE lb_desc END) descriptors
+                -- trick to ignore different descriptors if typeof is null (by order)
+                , ARRAY_AGG(DISTINCT lb_desc ORDER BY lb_desc DESC) descriptors
             FROM fr.laposte_street
             WHERE fl_active
             GROUP BY
@@ -95,8 +95,8 @@ BEGIN
             c.change
             , street_fr.name
             , street_fr.name_normalized
-            , street_fr.typeof
-            , street_fr.descriptors
+            , street_fr.typeof[1] typeof
+            , street_fr.descriptors[1] descriptors
         FROM
             changes c
                 JOIN street_fr ON c.name = street_fr.name
@@ -110,8 +110,8 @@ BEGIN
             c.change
             , street_public.name
             , street_public.name_normalized
-            , street_public.typeof[1] typeof
-            , street_public.descriptors[1] descriptors
+            , street_public.typeof
+            , street_public.descriptors
         FROM
             changes c
                 JOIN street_public ON c.name = street_public.name
@@ -370,8 +370,8 @@ BEGIN
         WITH
         complement_public AS (
             SELECT
-                name
-                , name_normalized
+                d.name
+                , d.name_normalized
             FROM
                 public.address_complement d
                     JOIN public.address a ON d.id = a.id_complement
@@ -380,18 +380,46 @@ BEGIN
                 t.country = 'FR'
         )
         , complement_fr AS (
-            SELECT DISTINCT
-                CONCAT_WS(' '
-                    , lb_type_groupe1_l3
-                    , lb_groupe1
-                    , lb_type_groupe2_l3
-                    , lb_groupe2
-                    , lb_type_groupe3_l3
-                    , lb_groupe3
-                ) name
-                , lb_standard_nn name_normalized
-            FROM fr.laposte_complement
-            WHERE fl_active
+            /* NOTE
+            7 faults due to name_normalized!
+            BATIMENT A RESIDENCE BELLEVUE	    {BATIMENT A RESIDENCE BELLEVUE,BATIMENT A RESIDENCE VILLA BELLEVUE}
+            BATIMENT A RESIDENCE MONTMORENCY	{BAT A RESIDENCE MONTMORENCY,BATIMENT A RESIDENCE MONTMORENCY}
+            BATIMENT A RESIDENCE VILLA ROSA	    {BAT A RESIDENCE VILLA ROSA,BATIMENT A RESIDENCE VILLA ROSA}
+            BATIMENT B RESIDENCE BELLEVUE	    {BATIMENT B RESIDENCE BELLEVUE,BATIMENT B RESIDENCE VILLA BELLEVUE}
+            BATIMENT B RESIDENCE MONTMORENCY	{BAT B RESIDENCE MONTMORENCY,BATIMENT B RESIDENCE MONTMORENCY}
+            BATIMENT B RESIDENCE VILLA ROSA	    {BAT B RESIDENCE VILLA ROSA,BATIMENT B RESIDENCE VILLA ROSA}
+            BATIMENT C RESIDENCE MONTMORENCY	{BAT C RESIDENCE MONTMORENCY,BATIMENT C RESIDENCE MONTMORENCY}
+             */
+            SELECT
+                name
+                -- trick to ignore normalized faults
+                , CASE
+                    WHEN LENGTH(name) > 38 THEN name_normalized[1]
+                    ELSE name
+                END name_normalized
+            FROM (
+                SELECT
+                    CONCAT_WS(' '
+                        , lb_type_groupe1_l3
+                        , lb_groupe1
+                        , lb_type_groupe2_l3
+                        , lb_groupe2
+                        , lb_type_groupe3_l3
+                        , lb_groupe3
+                    ) name
+                    , ARRAY_AGG(DISTINCT lb_standard_nn /*ORDER BY lb_standard_nn*/) name_normalized
+                FROM fr.laposte_complement
+                WHERE fl_active
+                GROUP BY
+                    CONCAT_WS(' '
+                        , lb_type_groupe1_l3
+                        , lb_groupe1
+                        , lb_type_groupe2_l3
+                        , lb_groupe2
+                        , lb_type_groupe3_l3
+                        , lb_groupe3
+                    )
+            ) t
         )
         , changes AS (
             (

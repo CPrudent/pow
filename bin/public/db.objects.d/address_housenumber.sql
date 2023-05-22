@@ -4,7 +4,7 @@
 
 CREATE TABLE IF NOT EXISTS public.address_housenumber (
     id SERIAL NOT NULL
-    , number VARCHAR NOT NULL
+    , number INT NOT NULL
     , extension VARCHAR
 )
 ;
