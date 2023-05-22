@@ -4,11 +4,11 @@
 
 /* NOTE
 PART 1
- update dictionaries (street, housenumber and complement), logging address_history (UPDATE/DELETE)
+ update dictionaries (street, housenumber and complement), logging address_history
 PART 2
- update address (w/ links to dictionaries)
-PART 3
+ update address (w/ links to dictionaries), by descending order
  update cross reference (to put LAPOSTE id, well-known as CEA)
+PART 3
  update XY
  */
 
@@ -263,7 +263,7 @@ BEGIN
         FROM
             changes c
                 JOIN housenumber_fr ON
-                (c.number, COALESCE(c.extension, 'NULL') = (housenumber_fr.number, COALESCE(housenumber_fr.extension, 'NULL'))
+                (c.number, COALESCE(c.extension, 'NULL')) = (housenumber_fr.number, COALESCE(housenumber_fr.extension, 'NULL'))
         WHERE
             c.change = '+'
 
@@ -277,7 +277,7 @@ BEGIN
         FROM
             changes c
                 JOIN housenumber_public ON
-                (c.number, COALESCE(c.extension, 'NULL') = (housenumber_public.number, COALESCE(housenumber_public.extension, 'NULL'))
+                (c.number, COALESCE(c.extension, 'NULL')) = (housenumber_public.number, COALESCE(housenumber_public.extension, 'NULL'))
         WHERE
             c.change = '-'
     )
@@ -569,13 +569,13 @@ BEGIN
         )
         , address_fr AS (
             SELECT
-                co_cea_determinant
-                , co_niveau
-                , CASE WHEN co_niveau = 'VOIE' THEN NULL ELSE co_cea_parent END co_cea_parent
-                , co_cea_za
-                , co_cea_voie
-                , co_cea_numero
-                , co_cea_l3
+                co_cea_determinant code_address
+                , co_niveau level
+                , CASE WHEN co_niveau = 'VOIE' THEN NULL ELSE co_cea_parent END code_parent
+                , co_cea_za code_territory
+                , co_cea_voie code_street
+                , co_cea_numero code_housenumber
+                , co_cea_l3 code_complement
                 /*
                 , cr1.id_address
                 , cr2.id_address id_parent
@@ -599,40 +599,40 @@ BEGIN
             (
                 SELECT '-' change, code_address FROM address_public
                 EXCEPT
-                SELECT '-', co_cea_determinant FROM address_fr
+                SELECT '-', code_address FROM address_fr
             )
             UNION
             (
-                SELECT '+', co_cea_determinant FROM address_fr
+                SELECT '+', code_address FROM address_fr
                 EXCEPT
                 SELECT '+', code_address FROM address_public
             )
             UNION
             SELECT '!', address_public.code_address
             FROM address_public
-                JOIN address_fr ON address_public.code_address = address_fr.co_cea_determinant
+                JOIN address_fr ON address_public.code_address = address_fr.code_address
             WHERE
-                (address_public.code_parent IS DISTINCT FROM address_fr.co_cea_parent)
+                (address_public.code_parent IS DISTINCT FROM address_fr.code_parent)
                 OR
-                (address_public.code_territory IS DISTINCT FROM address_fr.co_cea_za)
+                (address_public.code_territory IS DISTINCT FROM address_fr.code_territory)
                 OR
-                (address_public.code_street IS DISTINCT FROM address_fr.co_cea_voie)
+                (address_public.code_street IS DISTINCT FROM address_fr.code_street)
                 OR
-                (address_public.code_housenumber IS DISTINCT FROM address_fr.co_cea_numero)
+                (address_public.code_housenumber IS DISTINCT FROM address_fr.code_housenumber)
                 OR
-                (address_public.code_complement IS DISTINCT FROM address_fr.co_cea_l3)
+                (address_public.code_complement IS DISTINCT FROM address_fr.code_complement)
         )
 
-        -- insert/update addresses
+        -- insert/update
         SELECT
             c.change
-            , address_fr.co_niveau level
+            , address_fr.level
             , c.code_address
-            , address_fr.co_cea_parent code_parent
-            , address_fr.co_cea_za code_territory
-            , address_fr.co_cea_voie code_street
-            , address_fr.co_cea_numero code_housenumber
-            , address_fr.co_cea_l3 code_complement
+            , address_fr.code_parent
+            , address_fr.code_territory
+            , address_fr.code_street
+            , address_fr.code_housenumber
+            , address_fr.code_complement
             /*
             , address_fr.id_address
             , address_fr.id_parent
@@ -643,13 +643,13 @@ BEGIN
              */
         FROM
             changes c
-                JOIN address_fr ON c.code_address = address_fr.co_cea_determinant
+                JOIN address_fr ON c.code_address = address_fr.code_address
         WHERE
             c.change = ANY('{+,!}')
 
         UNION
 
-        -- delete old addresses
+        -- delete
         SELECT
             c.change
             , address_public.level
@@ -734,7 +734,7 @@ BEGIN
             level = 'VOIE'
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+    CALL public.log_info(CONCAT('VOIE: ', _nrows_affected));
 
     CALL public.log_info('Insertion');
     INSERT INTO public.address (

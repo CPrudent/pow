@@ -60,10 +60,11 @@ BEGIN
                 , _schema_name
                 , '.'
                 , _procedure_name
-                , '()'
+                , '($1)'
             );
 
-            EXECUTE _query;
+            CALL public.log_info(CONCAT('Pays: ', UPPER(_schema_name)));
+            EXECUTE _query USING force;
         END IF;
     END LOOP;
 END
