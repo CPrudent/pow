@@ -161,8 +161,8 @@ BEGIN
         SELECT
             c.name
             , c.name_normalized
-            , c.typeof[1]
-            , c.descriptors[1]
+            , c.typeof
+            , c.descriptors
         FROM
             tmp_fr_street_changes c
         WHERE
@@ -174,8 +174,8 @@ BEGIN
     CALL public.log_info('Mise à jour des modifications');
     UPDATE public.address_street SET
             name_normalized = c.name_normalized
-            , typeof = c.typeof[1]
-            , descriptors = c.descriptors[1]
+            , typeof = c.typeof
+            , descriptors = c.descriptors
         FROM
             tmp_fr_street_changes c
         WHERE
@@ -392,8 +392,9 @@ BEGIN
              */
             SELECT
                 name
-                -- trick to ignore normalized faults
+                -- trick to ignore normalized faults, fortunaly not needed!
                 , CASE
+                    -- have to be normalize?
                     WHEN LENGTH(name) > 38 THEN name_normalized[1]
                     ELSE name
                 END name_normalized
@@ -717,7 +718,7 @@ BEGIN
             , values
         )
         SELECT
-            a.id_address
+            a.id
             , TIMEOFDAY()::DATE
             , c.change
             , 'ADDRESS'
@@ -725,7 +726,7 @@ BEGIN
         FROM
             tmp_fr_address_changes c
                 JOIN public.address_cross_reference cr ON cr.id_source = c.code_address AND cr.source = 'LAPOSTE'
-                JOIN public.address a ON a.id_address = cr.id_address
+                JOIN public.address a ON a.id = cr.id_address
         WHERE c.change = ANY('{-,!}')
         ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
@@ -757,9 +758,9 @@ BEGIN
                 JOIN fr.laposte_street s1 ON s1.co_cea = c.code_street
                 JOIN public.address_street s2 ON s2.name = s1.lb_voie
         WHERE
-            change = '+'
+            c.change = '+'
             AND
-            level = 'VOIE'
+            c.level = 'VOIE'
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('VOIE: ', _nrows_affected));
@@ -819,9 +820,9 @@ BEGIN
                 JOIN fr.laposte_housenumber hn1 ON hn1.co_cea = c.code_housenumber
                 JOIN public.address_housenumber hn2 ON (hn2.number, COALESCE(hn2.extension, 'NULL')) = (hn1.no_voie, COALESCE(hn1.lb_ext, 'NULL'))
         WHERE
-            change = '+'
+            c.change = '+'
             AND
-            level = 'NUMERO'
+            c.level = 'NUMERO'
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('NUMERO: ', _nrows_affected));
@@ -894,9 +895,9 @@ BEGIN
                     , c1.lb_groupe3
                 )
         WHERE
-            change = '+'
+            c.change = '+'
             AND
-            level = 'L3'
+            c.level = 'L3'
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('L3: ', _nrows_affected));
@@ -968,13 +969,13 @@ BEGIN
                 JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
                 LEFT OUTER JOIN public.address_cross_reference cr2 ON cr2.id_source = c.code_parent AND cr2.source = 'LAPOSTE'
                 JOIN public.address_cross_reference cr3 ON cr3.id_source = c.code_street AND cr3.source = 'LAPOSTE'
-                JOIN public.address a3 ON a3.id_address = cr3.id_address
+                JOIN public.address a3 ON a3.id = cr3.id_address
                 LEFT OUTER JOIN public.address_cross_reference cr4 ON cr4.id_source = c.code_housenumber AND cr4.source = 'LAPOSTE'
-                LEFT OUTER JOIN public.address a4 ON a4.id_address = cr4.id_address
+                LEFT OUTER JOIN public.address a4 ON a4.id = cr4.id_address
                 LEFT OUTER JOIN public.address_cross_reference cr5 ON cr5.id_source = c.code_complement AND cr5.source = 'LAPOSTE'
-                LEFT OUTER JOIN public.address a5 ON a5.id_address = cr5.id_address
+                LEFT OUTER JOIN public.address a5 ON a5.id = cr5.id_address
         WHERE
-            change = '!'
+            c.change = '!'
     )
     UPDATE public.address a SET
             id_parent = u.id_parent
@@ -984,7 +985,7 @@ BEGIN
             , id_complement = u.id_complement
         FROM address_updates u
         WHERE
-            a.id_address = u.id_address
+            a.id = u.id_address
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('Total: ', _nrows_affected));
@@ -998,12 +999,12 @@ BEGIN
             tmp_fr_address_changes c
                 JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
         WHERE
-            change = '-'
+            c.change = '-'
     )
     DELETE FROM public.address a
         USING address_deletes d
         WHERE
-            a.id_address = d.id_address
+            a.id = d.id_address
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('Total: ', _nrows_affected));
@@ -1044,8 +1045,12 @@ BEGIN
                 xy.source = 'LAPOSTE'
         )
         , xy_fr AS (
+            /* TODO
+            filter only {street, housenumber, complement} gemoetries
+            LAPOSTE/RAN doesn't supply geometry for complement
+             */
             SELECT
-                co_cea
+                co_cea code_address
                 , CASE no_type_localisation
                     WHEN '1' THEN 'MUNICIPALITY_CENTER'
                     WHEN '2' THEN 'TOWN_HALL'
@@ -1056,8 +1061,8 @@ BEGIN
                     WHEN '7' THEN 'PARCEL'
                     WHEN '8' THEN 'ENTRANCE'
                     ELSE          'UNKNOWN'
-                END no_type_localisation
-                , gm_coord
+                END kind
+                , gm_coord geom
             FROM fr.laposte_xy
             WHERE
                 gm_coord IS NOT NULL
@@ -1066,33 +1071,33 @@ BEGIN
             (
                 SELECT '-' change, code_address FROM xy_public
                 EXCEPT
-                SELECT '-', co_cea FROM xy_fr
+                SELECT '-', code_address FROM xy_fr
             )
             UNION
             (
-                SELECT '+', co_cea FROM xy_fr
+                SELECT '+', code_address FROM xy_fr
                 EXCEPT
                 SELECT '+', code_address FROM xy_public
             )
             UNION
             SELECT '!', xy_public.code_address
             FROM xy_public
-                JOIN xy_fr ON xy_public.code_address = xy_fr.co_cea
+                JOIN xy_fr ON xy_public.code_address = xy_fr.code_address
             WHERE
-                (xy_public.kind IS DISTINCT FROM xy_fr.no_type_localisation)
+                (xy_public.kind IS DISTINCT FROM xy_fr.kind)
                 OR
-                (NOT ST_Equals(xy_public.geom, xy_fr.gm_coord))
+                (NOT ST_Equals(xy_public.geom, xy_fr.geom))
         )
 
         -- insert/update addresses
         SELECT
             c.change
             , c.code_address
-            , xy_fr.no_type_localisation kind
-            , xy_fr.gm_coord geom
+            , xy_fr.kind
+            , xy_fr.geom
         FROM
             changes c
-                JOIN xy_fr ON c.code_address = xy_fr.co_cea
+                JOIN xy_fr ON c.code_address = xy_fr.code_address
         WHERE
             c.change = ANY('{+,!}')
 
@@ -1143,16 +1148,21 @@ BEGIN
     xy_deletes AS (
         SELECT
             cr1.id_address
+            , c.kind
         FROM
             tmp_fr_xy_changes c
                 JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
         WHERE
-            change = '-'
+            c.change = '-'
     )
     DELETE FROM public.address_xy xy
         USING xy_deletes d
         WHERE
             xy.id_address = d.id_address
+            AND
+            xy.kind = c.kind
+            AND
+            xy.source = 'LAPOSTE'
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('Total: ', _nrows_affected));
