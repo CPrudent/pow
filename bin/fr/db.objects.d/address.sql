@@ -557,6 +557,8 @@ AS
 $proc$
 DECLARE
     _nrows_affected INT;
+    _streets RECORD;
+    _id INT;
 BEGIN
     CALL public.log_info('Mise à jour des Adresses');
 
@@ -738,46 +740,24 @@ BEGIN
     CALL public.log_info('Mise à jour des ajouts');
 
     -- STREET
-    /* NOTE
-    be careful about street w/ same name (and same territory) !
-     */
     CALL public.log_info('Préparation');
     DROP TABLE IF EXISTS tmp_fr_address_news;
     CREATE TEMPORARY TABLE tmp_fr_address_news AS
         SELECT * FROM public.address WITH NO DATA;
-    ALTER TABLE tmp_fr_address_news ADD COLUMN code_address VARCHAR, with_same_name BOOLEAN DEFAULT FALSE;
     INSERT INTO tmp_fr_address_news (
             id_territory
             , id_street
             , code_address
-            , with_same_name
         )
         SELECT
             t.id
             , s2.id
             , c.code_address
-            , CASE WHEN sn.name IS NOT NULL THEN TRUE ELSE FALSE END
         FROM
             tmp_fr_address_changes c
                 JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND country = 'FR'
                 JOIN fr.laposte_street s1 ON s1.co_cea = c.code_street
                 JOIN public.address_street s2 ON s2.name = s1.lb_voie
-                LEFT OUTER JOIN (
-                    SELECT
-                        t2.id
-                        , s3.lb_voie name
-                    FROM
-                        fr.laposte_street s3
-                            JOIN fr.laposte_address a on a.co_cea_voie = s3.co_cea
-                            JOIN public.territory t2 ON t2.code = a.co_cea_za
-                                AND t.level = 'ZA' AND country = 'FR'
-                    WHERE
-                        a.co_cea_numero IS NULL AND a.co_cea_l3 IS NULL
-                        AND
-                        s3.co_cea != c.code_address
-                        AND
-                        s3.lb_voie = s2.name
-                ) sn ON t.id = sn.id AND s2.name = sn.name
         WHERE
             c.change = '+'
             AND
@@ -786,35 +766,39 @@ BEGIN
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('VOIE: ', _nrows_affected));
 
-    CALL public.log_info('Insertion');
-    INSERT INTO public.address (
-            id_territory
-            , id_street
+    /* NOTE
+    be careful about street w/ same name (and same territory) !
+    have to insert row per row (to obtain id address)
+     */
+    CALL public.log_info('Insertion/Références');
+    _nrows_affected := 0;
+    FOR _streets IN (
+        SELECT * FROM tmp_fr_address_news
+    )
+    LOOP
+        INSERT INTO public.address (
+                id_territory
+                , id_street
+            )
+        VALUES (
+            _streets.id_territory
+            , _streets.id_street
         )
-        SELECT
-            id_territory
-            , id_street
-        FROM
-            tmp_fr_address_news
-    ;
-    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('VOIE: ', _nrows_affected));
+        RETURNING id INTO _id;
 
-    CALL public.log_info('Références');
-    INSERT INTO public.address_cross_reference (
-            id_address
-            , source
-            , id_source
-        )
-        SELECT
-            a.id
+        INSERT INTO public.address_cross_reference (
+                id_address
+                , source
+                , id_source
+            )
+        VALUES (
+            _id
             , 'LAPOSTE'
-            , n.code_address
-        FROM
-            tmp_fr_address_news n
-                JOIN public.address a ON a.id_territory = n.id_territory AND a.id_street = n.id_street
-    ;
-    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+            , _streets.code_address
+        );
+
+        _nrows_affected := _nrows_affected +1;
+    END LOOP;
     CALL public.log_info(CONCAT('VOIE: ', _nrows_affected));
 
     -- HOUSENUMBER
