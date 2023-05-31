@@ -738,25 +738,46 @@ BEGIN
     CALL public.log_info('Mise à jour des ajouts');
 
     -- STREET
+    /* NOTE
+    be careful about street w/ same name (and same territory) !
+     */
     CALL public.log_info('Préparation');
     DROP TABLE IF EXISTS tmp_fr_address_news;
     CREATE TEMPORARY TABLE tmp_fr_address_news AS
         SELECT * FROM public.address WITH NO DATA;
-    ALTER TABLE tmp_fr_address_news ADD COLUMN code_address VARCHAR;
+    ALTER TABLE tmp_fr_address_news ADD COLUMN code_address VARCHAR, with_same_name BOOLEAN DEFAULT FALSE;
     INSERT INTO tmp_fr_address_news (
             id_territory
             , id_street
             , code_address
+            , with_same_name
         )
         SELECT
             t.id
             , s2.id
             , c.code_address
+            , CASE WHEN sn.name IS NOT NULL THEN TRUE ELSE FALSE END
         FROM
             tmp_fr_address_changes c
                 JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND country = 'FR'
                 JOIN fr.laposte_street s1 ON s1.co_cea = c.code_street
                 JOIN public.address_street s2 ON s2.name = s1.lb_voie
+                LEFT OUTER JOIN (
+                    SELECT
+                        t2.id
+                        , s3.lb_voie name
+                    FROM
+                        fr.laposte_street s3
+                            JOIN fr.laposte_address a on a.co_cea_voie = s3.co_cea
+                            JOIN public.territory t2 ON t2.code = a.co_cea_za
+                                AND t.level = 'ZA' AND country = 'FR'
+                    WHERE
+                        a.co_cea_numero IS NULL AND a.co_cea_l3 IS NULL
+                        AND
+                        s3.co_cea != c.code_address
+                        AND
+                        s3.lb_voie = s2.name
+                ) sn ON t.id = sn.id AND s2.name = sn.name
         WHERE
             c.change = '+'
             AND
