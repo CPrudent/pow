@@ -40,6 +40,7 @@ $$;
 SELECT drop_all_functions_if_exists('public', 'set_address');
 CREATE OR REPLACE PROCEDURE public.set_address(
     force BOOLEAN DEFAULT FALSE
+    , drop_temporary BOOLEAN DEFAULT TRUE
 )
 AS
 $proc$
@@ -60,11 +61,11 @@ BEGIN
                 , _schema_name
                 , '.'
                 , _procedure_name
-                , '($1)'
+                , '($1, $2)'
             );
 
             CALL public.log_info(CONCAT('Pays: ', UPPER(_schema_name)));
-            EXECUTE _query USING force;
+            EXECUTE _query USING force, drop_temporary;
         END IF;
     END LOOP;
 END

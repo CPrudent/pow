@@ -62,7 +62,8 @@ BEGIN
                 -- trick to ignore different descriptors if typeof is null (by order)
                 , ARRAY_AGG(DISTINCT lb_desc ORDER BY lb_desc DESC) descriptors
             FROM fr.laposte_street
-            WHERE fl_active
+            -- hors MONACO
+            WHERE fl_active AND co_insee_commune != '99138'
             GROUP BY
                 lb_voie
         )
@@ -579,14 +580,6 @@ BEGIN
                 , cr3.id_source code_street
                 , cr4.id_source code_housenumber
                 , cr5.id_source code_complement
-                /*
-                , a.id id_address
-                , a.id_parent
-                , a.id_territory
-                , a.id_street
-                , a.id_housenumber
-                , a.id_complement
-                 */
             FROM
                 public.address a
                     JOIN public.territory t ON t.id = a.id_territory
@@ -607,24 +600,11 @@ BEGIN
                 , co_cea_voie code_street
                 , co_cea_numero code_housenumber
                 , co_cea_l3 code_complement
-                /*
-                , cr1.id_address
-                , cr2.id_address id_parent
-                , t.id id_territory
-                , cr3.id_address id_street
-                , cr4.id_address id_housenumber
-                , cr5.id_address id_complement
-                 */
-            FROM fr.laposte_address
-                /*
-                JOIN public.territory t ON t.code = co_cea_za AND t.level = 'ZA' AND country = 'FR'
-                LEFT OUTER JOIN public.address_cross_reference cr1 ON cr1.id_source = co_cea_determinant AND cr1.source = 'LAPOSTE'
-                LEFT OUTER JOIN public.address_cross_reference cr2 ON cr2.id_source = CASE WHEN co_niveau = 'VOIE' THEN NULL ELSE co_cea_parent END AND cr2.source = 'LAPOSTE'
-                LEFT OUTER JOIN public.address_cross_reference cr3 ON cr3.id_source = co_cea_voie AND cr3.source = 'LAPOSTE'
-                LEFT OUTER JOIN public.address_cross_reference cr4 ON cr4.id_source = co_cea_numero AND cr4.source = 'LAPOSTE'
-                LEFT OUTER JOIN public.address_cross_reference cr5 ON cr5.id_source = co_cea_l3 AND cr5.source = 'LAPOSTE'
-                 */
-            WHERE fl_active AND co_cea_voie IS NOT NULL
+            FROM fr.laposte_address a
+                JOIN fr.laposte_zone_address za ON za.co_cea = a.co_cea_za
+            -- hors ZA
+            -- hors MONACO
+            WHERE a.fl_active AND co_cea_voie IS NOT NULL AND za.co_insee_commune != '99138'
         )
         , changes AS (
             (
@@ -664,17 +644,20 @@ BEGIN
             , address_fr.code_street
             , address_fr.code_housenumber
             , address_fr.code_complement
-            /*
-            , address_fr.id_address
-            , address_fr.id_parent
-            , address_fr.id_territory
-            , address_fr.id_street
-            , address_fr.id_housenumber
-            , address_fr.id_complement
-             */
+            , s.id id_street
         FROM
             changes c
                 JOIN address_fr ON c.code_address = address_fr.code_address
+                JOIN LATERAL (
+                    SELECT
+                        s1.co_cea
+                        , s2.id
+                    FROM
+                        fr.laposte_street s1
+                            JOIN public.address_street s2 ON s2.name = s1.lb_voie
+                    WHERE
+                        s1.co_cea = address_fr.code_street
+                ) s ON TRUE
         WHERE
             c.change = ANY('{+,!}')
 
@@ -690,14 +673,7 @@ BEGIN
             , address_public.code_street
             , address_public.code_housenumber
             , address_public.code_complement
-            /*
-            , address_public.id_address
-            , address_public.id_parent
-            , address_public.id_territory
-            , address_public.id_street
-            , address_public.id_housenumber
-            , address_public.id_complement
-             */
+            , NULL::INT
         FROM
             changes c
                 JOIN address_public ON c.code_address = address_public.code_address
@@ -744,6 +720,8 @@ BEGIN
     DROP TABLE IF EXISTS tmp_fr_address_news;
     CREATE TEMPORARY TABLE tmp_fr_address_news AS
         SELECT * FROM public.address WITH NO DATA;
+    ALTER TABLE tmp_fr_address_news ADD COLUMN code_address VARCHAR;
+    ALTER TABLE tmp_fr_address_news DROP COLUMN id;
     INSERT INTO tmp_fr_address_news (
             id_territory
             , id_street
@@ -751,13 +729,15 @@ BEGIN
         )
         SELECT
             t.id
-            , s2.id
+            , c.id_street
             , c.code_address
         FROM
             tmp_fr_address_changes c
-                JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND country = 'FR'
+                JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND t.country = 'FR'
+                /*
                 JOIN fr.laposte_street s1 ON s1.co_cea = c.code_street
                 JOIN public.address_street s2 ON s2.name = s1.lb_voie
+                 */
         WHERE
             c.change = '+'
             AND
@@ -798,6 +778,9 @@ BEGIN
         );
 
         _nrows_affected := _nrows_affected +1;
+        IF _nrows_affected % 1000 = 0 THEN
+            CALL public.log_info(CONCAT('VOIE: ', _nrows_affected));
+        END IF;
     END LOOP;
     CALL public.log_info(CONCAT('VOIE: ', _nrows_affected));
 
@@ -819,7 +802,7 @@ BEGIN
             , c.code_address
         FROM
             tmp_fr_address_changes c
-                JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND country = 'FR'
+                JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND t.country = 'FR'
                 JOIN public.address_cross_reference cr ON cr.id_source = c.code_street AND cr.source = 'LAPOSTE'
                 JOIN public.address a ON a.id = cr.id_address
                 JOIN fr.laposte_housenumber hn1 ON hn1.co_cea = c.code_housenumber
@@ -887,7 +870,7 @@ BEGIN
             , c.code_address
         FROM
             tmp_fr_address_changes c
-                JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND country = 'FR'
+                JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND t.country = 'FR'
                 JOIN public.address_cross_reference cr ON cr.id_source = COALESCE(c.code_housenumber, c.code_street) AND cr.source = 'LAPOSTE'
                 JOIN public.address a ON a.id = cr.id_address
                 JOIN fr.laposte_complement c1 ON c1.co_cea = c.code_complement
@@ -970,7 +953,7 @@ BEGIN
             , a5.id_complement
         FROM
             tmp_fr_address_changes c
-                JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND country = 'FR'
+                JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND t.country = 'FR'
                 JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
                 LEFT OUTER JOIN public.address_cross_reference cr2 ON cr2.id_source = c.code_parent AND cr2.source = 'LAPOSTE'
                 JOIN public.address_cross_reference cr3 ON cr3.id_source = c.code_street AND cr3.source = 'LAPOSTE'
@@ -1182,17 +1165,18 @@ $proc$ LANGUAGE plpgsql;
 SELECT drop_all_functions_if_exists('fr', 'push_address_to_public');
 CREATE OR REPLACE PROCEDURE fr.push_address_to_public(
     force BOOLEAN DEFAULT FALSE
+    , drop_temporary BOOLEAN DEFAULT TRUE
 )
 AS
 $proc$
 BEGIN
     -- dictionaries (items of an address)
-    CALL fr.push_dictionary_street_to_public(force);
-    CALL fr.push_dictionary_housenumber_to_public(force);
-    CALL fr.push_dictionary_complement_to_public(force);
+    CALL fr.push_dictionary_street_to_public(force, drop_temporary);
+    CALL fr.push_dictionary_housenumber_to_public(force, drop_temporary);
+    CALL fr.push_dictionary_complement_to_public(force, drop_temporary);
     -- addresses (w/ cross reference to store LAPOSTE id, as CEA)
-    CALL fr.push_address_links_to_public(force);
+    CALL fr.push_address_links_to_public(force, drop_temporary);
     -- XY
-    CALL fr.push_address_xy_to_public(force);
+    CALL fr.push_address_xy_to_public(force, drop_temporary);
 END
 $proc$ LANGUAGE plpgsql;
