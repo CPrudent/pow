@@ -564,8 +564,8 @@ BEGIN
     CALL public.log_info('Mise à jour des Adresses');
 
     CALL public.log_info('Préparation des changements');
-    DROP TABLE IF EXISTS tmp_fr_address_changes;
-    CREATE TEMPORARY TABLE tmp_fr_address_changes AS (
+    DROP TABLE IF EXISTS fr.tmp_address_changes;
+    CREATE UNLOGGED TABLE fr.tmp_address_changes AS (
         WITH
         address_public AS (
             SELECT
@@ -685,7 +685,7 @@ BEGIN
     CALL public.log_info(CONCAT('Total: ', _nrows_affected));
 
     CALL public.log_info('Indexation des changements');
-    CREATE INDEX IF NOT EXISTS ix_tmp_fr_address_changes ON tmp_fr_address_changes(change, level);
+    CREATE INDEX IF NOT EXISTS ix_tmp_fr_address_changes ON fr.tmp_address_changes(change, level);
 
     CALL public.log_info('Historique des modifications/suppressions');
     INSERT INTO public.address_history (
@@ -702,7 +702,7 @@ BEGIN
             , 'ADDRESS'
             , ROW_TO_JSON(a.*)::JSONB
         FROM
-            tmp_fr_address_changes c
+            fr.tmp_address_changes c
                 JOIN public.address_cross_reference cr ON cr.id_source = c.code_address AND cr.source = 'LAPOSTE'
                 JOIN public.address a ON a.id = cr.id_address
         WHERE c.change = ANY('{-,!}')
@@ -717,12 +717,12 @@ BEGIN
 
     -- STREET
     CALL public.log_info('Préparation');
-    DROP TABLE IF EXISTS tmp_fr_address_news;
-    CREATE TEMPORARY TABLE tmp_fr_address_news AS
+    DROP TABLE IF EXISTS fr.tmp_address_news;
+    CREATE UNLOGGED TABLE fr.tmp_address_news AS
         SELECT * FROM public.address WITH NO DATA;
-    ALTER TABLE tmp_fr_address_news ADD COLUMN code_address VARCHAR;
-    ALTER TABLE tmp_fr_address_news DROP COLUMN id;
-    INSERT INTO tmp_fr_address_news (
+    ALTER TABLE fr.tmp_address_news ADD COLUMN code_address VARCHAR;
+    ALTER TABLE fr.tmp_address_news DROP COLUMN id;
+    INSERT INTO fr.tmp_address_news (
             id_territory
             , id_street
             , code_address
@@ -732,7 +732,7 @@ BEGIN
             , c.id_street
             , c.code_address
         FROM
-            tmp_fr_address_changes c
+            fr.tmp_address_changes c
                 JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND t.country = 'FR'
                 /*
                 JOIN fr.laposte_street s1 ON s1.co_cea = c.code_street
@@ -753,7 +753,7 @@ BEGIN
     CALL public.log_info('Insertion/Références');
     _nrows_affected := 0;
     FOR _streets IN (
-        SELECT * FROM tmp_fr_address_news
+        SELECT * FROM fr.tmp_address_news
     )
     LOOP
         INSERT INTO public.address (
@@ -786,8 +786,8 @@ BEGIN
 
     -- HOUSENUMBER
     CALL public.log_info('Préparation');
-    TRUNCATE TABLE tmp_fr_address_news;
-    INSERT INTO tmp_fr_address_news (
+    TRUNCATE TABLE fr.tmp_address_news;
+    INSERT INTO fr.tmp_address_news (
             id_parent
             , id_territory
             , id_street
@@ -801,7 +801,7 @@ BEGIN
             , hn2.id
             , c.code_address
         FROM
-            tmp_fr_address_changes c
+            fr.tmp_address_changes c
                 JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND t.country = 'FR'
                 JOIN public.address_cross_reference cr ON cr.id_source = c.code_street AND cr.source = 'LAPOSTE'
                 JOIN public.address a ON a.id = cr.id_address
@@ -828,7 +828,7 @@ BEGIN
             , id_street
             , id_housenumber
         FROM
-            tmp_fr_address_news
+            fr.tmp_address_news
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('NUMERO: ', _nrows_affected));
@@ -844,7 +844,7 @@ BEGIN
             , 'LAPOSTE'
             , n.code_address
         FROM
-            tmp_fr_address_news n
+            fr.tmp_address_news n
                 JOIN public.address a ON a.id_territory = n.id_territory AND a.id_street = n.id_street AND a.id_housenumber = n.id_housenumber
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
@@ -852,8 +852,8 @@ BEGIN
 
     -- COMPLEMENT
     CALL public.log_info('Préparation');
-    TRUNCATE TABLE tmp_fr_address_news;
-    INSERT INTO tmp_fr_address_news (
+    TRUNCATE TABLE fr.tmp_address_news;
+    INSERT INTO fr.tmp_address_news (
             id_parent
             , id_territory
             , id_street
@@ -869,7 +869,7 @@ BEGIN
             , c2.id
             , c.code_address
         FROM
-            tmp_fr_address_changes c
+            fr.tmp_address_changes c
                 JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND t.country = 'FR'
                 JOIN public.address_cross_reference cr ON cr.id_source = COALESCE(c.code_housenumber, c.code_street) AND cr.source = 'LAPOSTE'
                 JOIN public.address a ON a.id = cr.id_address
@@ -905,7 +905,7 @@ BEGIN
             , id_housenumber
             , id_complement
         FROM
-            tmp_fr_address_news
+            fr.tmp_address_news
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('L3: ', _nrows_affected));
@@ -921,7 +921,7 @@ BEGIN
             , 'LAPOSTE'
             , n.code_address
         FROM
-            tmp_fr_address_news n
+            fr.tmp_address_news n
                 JOIN public.address a ON
                     a.id_territory = n.id_territory
                     AND
@@ -952,7 +952,7 @@ BEGIN
             , a4.id_housenumber
             , a5.id_complement
         FROM
-            tmp_fr_address_changes c
+            fr.tmp_address_changes c
                 JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND t.country = 'FR'
                 JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
                 LEFT OUTER JOIN public.address_cross_reference cr2 ON cr2.id_source = c.code_parent AND cr2.source = 'LAPOSTE'
@@ -984,7 +984,7 @@ BEGIN
         SELECT
             cr1.id_address
         FROM
-            tmp_fr_address_changes c
+            fr.tmp_address_changes c
                 JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
         WHERE
             c.change = '-'
@@ -998,8 +998,8 @@ BEGIN
     CALL public.log_info(CONCAT('Total: ', _nrows_affected));
 
     IF drop_temporary THEN
-        DROP TABLE IF EXISTS tmp_fr_address_changes;
-        DROP TABLE IF EXISTS tmp_fr_address_news;
+        DROP TABLE IF EXISTS fr.tmp_address_changes;
+        DROP TABLE IF EXISTS fr.tmp_address_news;
     END IF;
 END
 $proc$ LANGUAGE plpgsql;
