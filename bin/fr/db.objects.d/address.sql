@@ -558,7 +558,7 @@ AS
 $proc$
 DECLARE
     _nrows_affected INT;
-    _streets RECORD;
+    _address RECORD;
     _id INT;
 BEGIN
     CALL public.log_info('Mise à jour des Adresses');
@@ -748,11 +748,11 @@ BEGIN
 
     /* NOTE
     be careful about street w/ same name (and same territory) !
-    have to insert row per row (to obtain id address)
+    have to insert row per row (to obtain uniq id address)
      */
     CALL public.log_info('Insertion/Références');
     _nrows_affected := 0;
-    FOR _streets IN (
+    FOR _address IN (
         SELECT * FROM fr.tmp_address_news
     )
     LOOP
@@ -761,8 +761,8 @@ BEGIN
                 , id_street
             )
         VALUES (
-            _streets.id_territory
-            , _streets.id_street
+            _address.id_territory
+            , _address.id_street
         )
         RETURNING id INTO _id;
 
@@ -774,7 +774,7 @@ BEGIN
         VALUES (
             _id
             , 'LAPOSTE'
-            , _streets.code_address
+            , _address.code_address
         );
 
         _nrows_affected := _nrows_affected +1;
@@ -815,39 +815,47 @@ BEGIN
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('NUMERO: ', _nrows_affected));
 
-    CALL public.log_info('Insertion');
-    INSERT INTO public.address (
-            id_parent
-            , id_territory
-            , id_street
-            , id_housenumber
+    /* NOTE
+    be careful about same housenumber on street w/ same name (and same territory) !
+    likewise, have to insert row per row (to obtain uniq id address)
+    e.g. 2 housenumbers : 35 RUE DE L EGLISE 30190 SAINTE ANASTASIE {30228222LN, 30228222LH}
+     */
+    CALL public.log_info('Insertion/Références');
+    _nrows_affected := 0;
+    FOR _address IN (
+        SELECT * FROM fr.tmp_address_news
+    )
+    LOOP
+        INSERT INTO public.address (
+                id_parent
+                , id_territory
+                , id_street
+                , id_housenumber
+            )
+        VALUES (
+            _address.id_parent
+            , _address.id_territory
+            , _address.id_street
+            , _address.id_housenumber
         )
-        SELECT
-            id_parent
-            , id_territory
-            , id_street
-            , id_housenumber
-        FROM
-            fr.tmp_address_news
-    ;
-    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('NUMERO: ', _nrows_affected));
+        RETURNING id INTO _id;
 
-    CALL public.log_info('Références');
-    INSERT INTO public.address_cross_reference (
-            id_address
-            , source
-            , id_source
-        )
-        SELECT
-            a.id
+        INSERT INTO public.address_cross_reference (
+                id_address
+                , source
+                , id_source
+            )
+        VALUES (
+            _id
             , 'LAPOSTE'
-            , n.code_address
-        FROM
-            fr.tmp_address_news n
-                JOIN public.address a ON a.id_territory = n.id_territory AND a.id_street = n.id_street AND a.id_housenumber = n.id_housenumber
-    ;
-    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+            , _address.code_address
+        );
+
+        _nrows_affected := _nrows_affected +1;
+        IF _nrows_affected % 10000 = 0 THEN
+            CALL public.log_info(CONCAT('NUMERO: ', _nrows_affected));
+        END IF;
+    END LOOP;
     CALL public.log_info(CONCAT('NUMERO: ', _nrows_affected));
 
     -- COMPLEMENT
@@ -890,55 +898,48 @@ BEGIN
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('L3: ', _nrows_affected));
 
-    CALL public.log_info('Insertion');
-    INSERT INTO public.address (
-            id_parent
-            , id_territory
-            , id_street
-            , id_housenumber
-            , id_complement
+    /* NOTE
+    eventualy for same complement ?
+    likewise, have to insert row per row (to obtain id address)
+     */
+    CALL public.log_info('Insertion/Références');
+    _nrows_affected := 0;
+    FOR _address IN (
+        SELECT * FROM fr.tmp_address_news
+    )
+    LOOP
+        INSERT INTO public.address (
+                id_parent
+                , id_territory
+                , id_street
+                , id_housenumber
+                , id_complement
+            )
+        VALUES (
+            _address.id_parent
+            , _address.id_territory
+            , _address.id_street
+            , _address.id_housenumber
+            , _address.id_complement
         )
-        SELECT
-            id_parent
-            , id_territory
-            , id_street
-            , id_housenumber
-            , id_complement
-        FROM
-            fr.tmp_address_news
-    ;
-    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('L3: ', _nrows_affected));
+        RETURNING id INTO _id;
 
-    CALL public.log_info('Références');
-    INSERT INTO public.address_cross_reference (
-            id_address
-            , source
-            , id_source
-        )
-        SELECT
-            a.id
+        INSERT INTO public.address_cross_reference (
+                id_address
+                , source
+                , id_source
+            )
+        VALUES (
+            _id
             , 'LAPOSTE'
-            , n.code_address
-        FROM
-            fr.tmp_address_news n
-                JOIN public.address a ON
-                    a.id_territory = n.id_territory
-                    AND
-                    a.id_street = n.id_street
-                    AND (
-                            (
-                                (n.id_housenumber IS NOT NULL)
-                                AND
-                                (a.id_housenumber = n.id_housenumber)
-                            )
-                            OR
-                            (n.id_housenumber IS NULL)
-                    )
-                    AND
-                    a.id_complement = n.id_complement
-    ;
-    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+            , _address.code_address
+        );
+
+        _nrows_affected := _nrows_affected +1;
+        IF _nrows_affected % 1000 = 0 THEN
+            CALL public.log_info(CONCAT('L3: ', _nrows_affected));
+        END IF;
+    END LOOP;
     CALL public.log_info(CONCAT('L3: ', _nrows_affected));
 
     CALL public.log_info('Mise à jour des modifications');
@@ -947,7 +948,7 @@ BEGIN
         SELECT
             cr1.id_address
             , cr2.id_address id_parent
-            , t.id_territory
+            , t.id id_territory
             , a3.id_street
             , a4.id_housenumber
             , a5.id_complement
