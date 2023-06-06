@@ -17,6 +17,10 @@ no delete applied on dictionaries. It will be necessary to known usage of this i
 a specific job could be built to purge item from dictionary, which not have usage!
  */
 
+/* NOTE
+can't commit dictionary, while address not inserting
+ */
+
 -- push properties of street dictionary (as changes) to public
 SELECT drop_all_functions_if_exists('fr', 'push_dictionary_street_to_public');
 CREATE OR REPLACE PROCEDURE fr.push_dictionary_street_to_public(
@@ -783,6 +787,7 @@ BEGIN
         END IF;
     END LOOP;
     CALL public.log_info(CONCAT('VOIE: ', _nrows_affected));
+    COMMIT;
 
     -- HOUSENUMBER
     CALL public.log_info('Préparation');
@@ -857,6 +862,7 @@ BEGIN
         END IF;
     END LOOP;
     CALL public.log_info(CONCAT('NUMERO: ', _nrows_affected));
+    COMMIT;
 
     -- COMPLEMENT
     CALL public.log_info('Préparation');
@@ -941,6 +947,7 @@ BEGIN
         END IF;
     END LOOP;
     CALL public.log_info(CONCAT('L3: ', _nrows_affected));
+    COMMIT;
 
     CALL public.log_info('Mise à jour des modifications');
     WITH
@@ -978,6 +985,7 @@ BEGIN
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+    COMMIT;
 
     CALL public.log_info('Mise à jour des suppressions');
     WITH
@@ -997,6 +1005,7 @@ BEGIN
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+    COMMIT;
 
     IF drop_temporary THEN
         DROP TABLE IF EXISTS fr.tmp_address_changes;
