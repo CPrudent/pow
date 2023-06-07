@@ -39,7 +39,7 @@ BEGIN
     DROP TABLE IF EXISTS tmp_fr_street_changes;
     CREATE TEMPORARY TABLE tmp_fr_street_changes AS (
         WITH
-        street_public AS (
+        public_street AS (
             SELECT
                 d.name
                 , d.name_normalized
@@ -52,7 +52,7 @@ BEGIN
             WHERE
                 t.country = 'FR'
         )
-        , street_fr AS (
+        , fr_street AS (
             /* NOTE
             367 faults (lb_type NULL) on restored LAPOSTE data (of 12/2022)
             e.g.
@@ -73,38 +73,38 @@ BEGIN
         )
         , changes AS (
             (
-                SELECT '-' change, name FROM street_public
+                SELECT '-' change, name FROM public_street
                 EXCEPT
-                SELECT '-', name FROM street_fr
+                SELECT '-', name FROM fr_street
             )
             UNION
             (
-                SELECT '+', name FROM street_fr
+                SELECT '+', name FROM fr_street
                 EXCEPT
-                SELECT '+', name FROM street_public
+                SELECT '+', name FROM public_street
             )
             UNION
-            SELECT '!', street_public.name
-            FROM street_public
-                JOIN street_fr ON street_public.name = street_fr.name
+            SELECT '!', public_street.name
+            FROM public_street
+                JOIN fr_street ON public_street.name = fr_street.name
             WHERE
-                (street_public.name_normalized IS DISTINCT FROM street_fr.name_normalized)
+                (public_street.name_normalized IS DISTINCT FROM fr_street.name_normalized)
                 OR
-                (street_public.typeof IS DISTINCT FROM street_fr.typeof[1])
+                (public_street.typeof IS DISTINCT FROM fr_street.typeof[1])
                 OR
-                (street_public.descriptors IS DISTINCT FROM street_fr.descriptors[1])
+                (public_street.descriptors IS DISTINCT FROM fr_street.descriptors[1])
         )
 
         -- insert/update
         SELECT
             c.change
-            , street_fr.name
-            , street_fr.name_normalized
-            , street_fr.typeof[1] typeof
-            , street_fr.descriptors[1] descriptors
+            , fr_street.name
+            , fr_street.name_normalized
+            , fr_street.typeof[1] typeof
+            , fr_street.descriptors[1] descriptors
         FROM
             changes c
-                JOIN street_fr ON c.name = street_fr.name
+                JOIN fr_street ON c.name = fr_street.name
         WHERE
             c.change = ANY('{+,!}')
 
@@ -113,13 +113,13 @@ BEGIN
         -- delete
         SELECT
             c.change
-            , street_public.name
-            , street_public.name_normalized
-            , street_public.typeof
-            , street_public.descriptors
+            , public_street.name
+            , public_street.name_normalized
+            , public_street.typeof
+            , public_street.descriptors
         FROM
             changes c
-                JOIN street_public ON c.name = street_public.name
+                JOIN public_street ON c.name = public_street.name
         WHERE
             c.change = '-'
     )
@@ -228,7 +228,7 @@ BEGIN
     DROP TABLE IF EXISTS tmp_fr_housenumber_changes;
     CREATE TEMPORARY TABLE tmp_fr_housenumber_changes AS (
         WITH
-        housenumber_public AS (
+        public_housenumber AS (
             SELECT
                 number
                 , extension
@@ -239,7 +239,7 @@ BEGIN
             WHERE
                 t.country = 'FR'
         )
-        , housenumber_fr AS (
+        , fr_housenumber AS (
             SELECT DISTINCT
                 no_voie number
                 , lb_ext extension
@@ -248,27 +248,27 @@ BEGIN
         )
         , changes AS (
             (
-                SELECT '-' change, number, extension FROM housenumber_public
+                SELECT '-' change, number, extension FROM public_housenumber
                 EXCEPT
-                SELECT '-', number, extension FROM housenumber_fr
+                SELECT '-', number, extension FROM fr_housenumber
             )
             UNION
             (
-                SELECT '+', number, extension FROM housenumber_fr
+                SELECT '+', number, extension FROM fr_housenumber
                 EXCEPT
-                SELECT '+', number, extension FROM housenumber_public
+                SELECT '+', number, extension FROM public_housenumber
             )
         )
 
         -- insert
         SELECT
             c.change
-            , housenumber_fr.number
-            , housenumber_fr.extension
+            , fr_housenumber.number
+            , fr_housenumber.extension
         FROM
             changes c
-                JOIN housenumber_fr ON
-                (c.number, COALESCE(c.extension, 'NULL')) = (housenumber_fr.number, COALESCE(housenumber_fr.extension, 'NULL'))
+                JOIN fr_housenumber ON
+                (c.number, COALESCE(c.extension, 'NULL')) = (fr_housenumber.number, COALESCE(fr_housenumber.extension, 'NULL'))
         WHERE
             c.change = '+'
 
@@ -277,12 +277,12 @@ BEGIN
         -- delete
         SELECT
             c.change
-            , housenumber_public.number
-            , housenumber_public.extension
+            , public_housenumber.number
+            , public_housenumber.extension
         FROM
             changes c
-                JOIN housenumber_public ON
-                (c.number, COALESCE(c.extension, 'NULL')) = (housenumber_public.number, COALESCE(housenumber_public.extension, 'NULL'))
+                JOIN public_housenumber ON
+                (c.number, COALESCE(c.extension, 'NULL')) = (public_housenumber.number, COALESCE(public_housenumber.extension, 'NULL'))
         WHERE
             c.change = '-'
     )
@@ -373,7 +373,7 @@ BEGIN
     DROP TABLE IF EXISTS tmp_fr_complement_changes;
     CREATE TEMPORARY TABLE tmp_fr_complement_changes AS (
         WITH
-        complement_public AS (
+        public_complement AS (
             SELECT
                 d.name
                 , d.name_normalized
@@ -384,7 +384,7 @@ BEGIN
             WHERE
                 t.country = 'FR'
         )
-        , complement_fr AS (
+        , fr_complement AS (
             /* NOTE
             7 faults due to name_normalized!
             BATIMENT A RESIDENCE BELLEVUE	    {BATIMENT A RESIDENCE BELLEVUE,BATIMENT A RESIDENCE VILLA BELLEVUE}
@@ -429,32 +429,32 @@ BEGIN
         )
         , changes AS (
             (
-                SELECT '-' change, name FROM complement_public
+                SELECT '-' change, name FROM public_complement
                 EXCEPT
-                SELECT '-', name FROM complement_fr
+                SELECT '-', name FROM fr_complement
             )
             UNION
             (
-                SELECT '+', name FROM complement_fr
+                SELECT '+', name FROM fr_complement
                 EXCEPT
-                SELECT '+', name FROM complement_public
+                SELECT '+', name FROM public_complement
             )
             UNION
-            SELECT '!', complement_public.name
-            FROM complement_public
-                JOIN complement_fr ON complement_public.name = complement_fr.name
+            SELECT '!', public_complement.name
+            FROM public_complement
+                JOIN fr_complement ON public_complement.name = fr_complement.name
             WHERE
-                (complement_public.name_normalized IS DISTINCT FROM complement_fr.name_normalized)
+                (public_complement.name_normalized IS DISTINCT FROM fr_complement.name_normalized)
         )
 
         -- insert/update
         SELECT
             c.change
-            , complement_fr.name
-            , complement_fr.name_normalized
+            , fr_complement.name
+            , fr_complement.name_normalized
         FROM
             changes c
-                JOIN complement_fr ON c.name = complement_fr.name
+                JOIN fr_complement ON c.name = fr_complement.name
         WHERE
             c.change = ANY('{+,!}')
 
@@ -463,11 +463,11 @@ BEGIN
         -- delete
         SELECT
             c.change
-            , complement_public.name
-            , complement_public.name_normalized
+            , public_complement.name
+            , public_complement.name_normalized
         FROM
             changes c
-                JOIN complement_public ON c.name = complement_public.name
+                JOIN public_complement ON c.name = public_complement.name
         WHERE
             c.change = '-'
     )
@@ -552,9 +552,319 @@ BEGIN
 END
 $proc$ LANGUAGE plpgsql;
 
--- push links of address (as changes) to public
+-- address element
+SELECT drop_all_functions_if_exists('fr', 'add_address_element');
+SELECT drop_all_functions_if_exists('fr', 'push_address_element_to_public');
+CREATE OR REPLACE PROCEDURE fr.push_address_element_to_public(
+    element VARCHAR
+    , table_name_to VARCHAR
+    , table_name_from VARCHAR
+    , simulation BOOLEAN DEFAULT FALSE
+    , notice_counter INT DEFAULT 100
+)
+AS
+$proc$
+DECLARE
+    _query TEXT;
+    _columns_insert VARCHAR :=
+        CASE element
+        WHEN 'VOIE' THEN
+            'id_territory, id_street'
+        WHEN 'NUMERO' THEN
+            'id_parent, id_territory, id_street, id_housenumber'
+        WHEN 'L3' THEN
+            'id_parent, id_territory, id_street, id_housenumber, id_complement'
+        END;
+    _columns_select VARCHAR :=
+        CASE element
+        WHEN 'VOIE' THEN
+            't.id, c.id_street'
+        WHEN 'NUMERO' THEN
+            'a.id, t.id, a.id_street, hn2.id'
+        WHEN 'L3' THEN
+            'a.id, t.id, a.id_street, a.id_housenumber, c2.id'
+        END;
+    _columns_id VARCHAR := 'id_territory, id_street';
+    _columns_id_aliased VARCHAR;
+    _source_parent VARCHAR :=
+        CASE element
+        WHEN 'VOIE' THEN
+            NULL
+        WHEN 'NUMERO' THEN
+            'c.code_street'
+        WHEN 'L3' THEN
+            'COALESCE(c.code_housenumber, c.code_street)'
+        END;
+    _join_dictionary VARCHAR :=
+        CASE element
+        WHEN 'NUMERO' THEN
+            '
+            JOIN fr.laposte_housenumber hn1 ON hn1.co_cea = c.code_housenumber
+            JOIN public.address_housenumber hn2 ON (hn2.number, COALESCE(hn2.extension, ''NULL'')) = (hn1.no_voie, COALESCE(hn1.lb_ext, ''NULL''))
+            '
+        WHEN 'L3' THEN
+            '
+            JOIN fr.laposte_complement c1 ON c1.co_cea = c.code_complement
+            JOIN public.address_complement c2 ON c2.name = CONCAT_WS('' ''
+                , c1.lb_type_groupe1_l3
+                , c1.lb_groupe1
+                , c1.lb_type_groupe2_l3
+                , c1.lb_groupe2
+                , c1.lb_type_groupe3_l3
+                , c1.lb_groupe3
+            )
+            '
+        END;
+    _nrows_affected INT;
+    _address RECORD;
+    _id INT;
+    _table_name_multiple VARCHAR := CONCAT(table_name_to, '_multiple');
+BEGIN
+    _columns_insert := CONCAT(_columns_insert, ', code_address');
+    _columns_select := CONCAT(_columns_select, ', c.code_address');
+    IF element != 'VOIE' THEN
+        _columns_id := CONCAT(_columns_id, ', id_housenumber');
+        IF element != 'NUMERO' THEN
+            _columns_id := CONCAT(_columns_id, ', id_complement');
+        END IF;
+    END IF;
+
+    -- prepare addresses of element
+    CALL public.log_info(CONCAT(element, ': Préparation'));
+    _query := CONCAT(
+        'TRUNCATE TABLE quote_ident($2);
+        INSERT INTO quote_ident($2) ('
+        , _columns_insert
+        , ')
+        SELECT '
+        , _columns_select
+        , ' FROM quote_ident($3) c
+            JOIN public.territory t ON t.code = c.code_territory AND t.level = ''ZA'' AND t.country = ''FR''
+        '
+    );
+    IF _source_parent IS NOT NULL THEN
+        _query := CONCAT(_query
+            , 'JOIN public.address_cross_reference cr ON cr.id_source = '
+            , _source_parent
+            , ' AND cr.source = ''LAPOSTE''
+                JOIN public.address a ON a.id = cr.id_address
+            '
+            , _join_dictionary
+        );
+    END IF;
+
+    _query := CONCAT(_query
+        , ' WHERE
+            c.change = ''+''
+            AND
+            c.level = quote_literal($1)'
+    );
+
+    IF simulation THEN
+        RAISE NOTICE 'query: %', _query;
+    ELSE
+        EXECUTE _query USING element, table_name_to, table_name_from;
+        GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+        CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
+    END IF;
+
+    _query := CONCAT(
+        'DROP TABLE IF EXISTS $1;
+        CREATE UNLOGGED TABLE quote_ident($1)
+        AS SELECT * FROM quote_ident($2) WITH NO DATA'
+    );
+    IF simulation THEN
+        RAISE NOTICE 'query: %', _query;
+    ELSE
+        EXECUTE _query USING _table_name_multiple, table_name_to;
+    END IF;
+
+    -- detect multiple address (w/ all same ID)
+    CALL public.log_info(CONCAT(element, ': Préparation (multiples)'));
+    _columns_id_aliased := alias_words(_columns_id, ',[ ]*', 'n');
+    _query := CONCAT(
+        'INSERT INTO quote_ident($1) ('
+        , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id, 'code_address')
+        , ' ) SELECT '
+        , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'n.id_parent' END, _columns_id_aliased, 'n.code_address')
+        , '
+        FROM
+            quote_ident($2) n
+                JOIN public.address a ON ('
+        , _columns_id_aliased
+        , ') = ('
+        , alias_words(_columns_id, ',[ ]*', 'a')
+        , ')
+        '
+    );
+    IF simulation THEN
+        RAISE NOTICE 'query: %', _query;
+    ELSE
+        EXECUTE _query USING _table_name_multiple, table_name_to;
+        GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+        CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
+    END IF;
+
+    /* NOTE
+    be careful about element w/ same IDs (and same territory) !
+    so insert new addresses in 2 parts:
+    1/ uniq
+    2/ multiple
+       have to insert row per row (to obtain uniq id address)
+
+    e.g. 2 housenumbers : 35 RUE DE L EGLISE 30190 SAINTE ANASTASIE {30228222LN, 30228222LH}
+     */
+
+    -- Part/1 uniq address
+    CALL public.log_info(CONCAT(element, ': Insertion (uniques)'));
+    _columns_id_aliased := alias_words(_columns_id, ',[ ]*', 'u');
+    _query := CONCAT(
+        'INSERT INTO public.address ( '
+        , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id)
+        , ' ) SELECT '
+        , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'u.id_parent' END, _columns_id_aliased)
+        , ' FROM quote_ident($1) u
+        WHERE NOT EXISTS(
+            SELECT 1 FROM quote_ident($2) m
+            WHERE ('
+        , _columns_id_aliased
+        , ') = ('
+        , alias_words(_columns_id, ',[ ]*', 'm')
+        , ')
+        )'
+    );
+    IF simulation THEN
+        RAISE NOTICE 'query: %', _query;
+    ELSE
+        EXECUTE _query USING table_name_to, _table_name_multiple;
+        GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+        CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
+    END IF;
+
+    CALL public.log_info(CONCAT(element, ': Références (uniques)'));
+    _query := CONCAT(
+        'INSERT INTO public.address_cross_reference (
+            id_address
+            , source
+            , id_source
+        )
+        SELECT
+            a.id
+            , ''LAPOSTE''
+            , n.code_address
+        FROM
+            quote_ident($1) u
+                JOIN public.address a ON '
+        , CASE WHEN element = 'L3' THEN
+            'a.id_territory = u.id_territory
+            AND
+            a.id_street = u.id_street
+            AND (
+                    (
+                        (u.id_housenumber IS NOT NULL)
+                        AND
+                        (a.id_housenumber = u.id_housenumber)
+                    )
+                    OR
+                    (u.id_housenumber IS NULL)
+            )
+            AND
+            a.id_complement = u.id_complement'
+        ELSE
+            CONCAT(
+                '('
+                , _columns_id_aliased
+                , ') = ('
+                , alias_words(_columns_id, ',[ ]*', 'a')
+                , ')'
+            )
+        END
+        , ' WHERE NOT EXISTS(
+            SELECT 1 FROM quote_ident($2) m
+            WHERE '
+        , CASE WHEN element = 'L3' THEN
+                'm.id_territory = u.id_territory
+                AND
+                m.id_street = u.id_street
+                AND (
+                        (
+                            (u.id_housenumber IS NOT NULL)
+                            AND
+                            (m.id_housenumber = u.id_housenumber)
+                        )
+                        OR
+                        (u.id_housenumber IS NULL)
+                )
+                AND
+                m.id_complement = u.id_complement'
+        ELSE
+                CONCAT(
+                    '('
+                    , _columns_id_aliased
+                    , ') = ('
+                    , alias_words(_columns_id, ',[ ]*', 'm')
+                    , ')'
+                )
+        END
+        , ' )'
+    );
+    IF simulation THEN
+        RAISE NOTICE 'query: %', _query;
+    ELSE
+        EXECUTE _query USING table_name_to, _table_name_multiple;
+        GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+        CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
+    END IF;
+
+    -- Part/2 multiple address
+    CALL public.log_info(CONCAT(element, ': Insertion/Référence (multiples)'));
+    _columns_id_aliased := alias_words(_columns_id, ',[ ]*', '_address');
+    _nrows_affected := 0;
+    -- https://stackoverflow.com/questions/20965882/for-loop-with-dynamic-table-name-in-postgresql-9-1
+    FOR _address IN EXECUTE FORMAT('SELECT * FROM %I', _table_name_multiple)
+    LOOP
+        -- https://stackoverflow.com/questions/17547666/execute-into-using-statement-in-pl-pgsql-cant-execute-into-a-record
+        _query := CONCAT(
+            'INSERT INTO public.address ( '
+            , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id)
+            , ' )
+            VALUES (
+            '
+            , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN '_address.id_parent' END, _columns_id_aliased)
+            , ' )
+            RETURNING id'
+        );
+        IF simulation THEN
+            RAISE NOTICE 'query: %', _query;
+        ELSE
+            EXECUTE _query INTO _id;
+
+            INSERT INTO public.address_cross_reference (
+                id_address
+                , source
+                , id_source
+                )
+            VALUES (
+                _id
+                , 'LAPOSTE'
+                , _address.code_address
+            );
+
+            _nrows_affected := _nrows_affected +1;
+            IF _nrows_affected % notice_counter = 0 THEN
+                CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
+            END IF;
+        END IF;
+    END LOOP;
+    CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
+    COMMIT;
+END
+$proc$ LANGUAGE plpgsql;
+
+-- push elements of address (as changes) to public
 SELECT drop_all_functions_if_exists('fr', 'push_address_links_to_public');
-CREATE OR REPLACE PROCEDURE fr.push_address_links_to_public(
+SELECT drop_all_functions_if_exists('fr', 'push_address_elements_to_public');
+CREATE OR REPLACE PROCEDURE fr.push_address_elements_to_public(
     force BOOLEAN DEFAULT FALSE
     , drop_temporary BOOLEAN DEFAULT TRUE
 )
@@ -571,7 +881,7 @@ BEGIN
     DROP TABLE IF EXISTS fr.tmp_address_changes;
     CREATE UNLOGGED TABLE fr.tmp_address_changes AS (
         WITH
-        address_public AS (
+        public_address AS (
             SELECT
                 cr1.id_source code_address
                 , CASE
@@ -595,7 +905,7 @@ BEGIN
             WHERE
                 t.country = 'FR'
         )
-        , address_fr AS (
+        , fr_address AS (
             SELECT
                 co_cea_determinant code_address
                 , co_niveau level
@@ -612,46 +922,46 @@ BEGIN
         )
         , changes AS (
             (
-                SELECT '-' change, code_address FROM address_public
+                SELECT '-' change, code_address FROM public_address
                 EXCEPT
-                SELECT '-', code_address FROM address_fr
+                SELECT '-', code_address FROM fr_address
             )
             UNION
             (
-                SELECT '+', code_address FROM address_fr
+                SELECT '+', code_address FROM fr_address
                 EXCEPT
-                SELECT '+', code_address FROM address_public
+                SELECT '+', code_address FROM public_address
             )
             UNION
-            SELECT '!', address_public.code_address
-            FROM address_public
-                JOIN address_fr ON address_public.code_address = address_fr.code_address
+            SELECT '!', public_address.code_address
+            FROM public_address
+                JOIN fr_address ON public_address.code_address = fr_address.code_address
             WHERE
-                (address_public.code_parent IS DISTINCT FROM address_fr.code_parent)
+                (public_address.code_parent IS DISTINCT FROM fr_address.code_parent)
                 OR
-                (address_public.code_territory IS DISTINCT FROM address_fr.code_territory)
+                (public_address.code_territory IS DISTINCT FROM fr_address.code_territory)
                 OR
-                (address_public.code_street IS DISTINCT FROM address_fr.code_street)
+                (public_address.code_street IS DISTINCT FROM fr_address.code_street)
                 OR
-                (address_public.code_housenumber IS DISTINCT FROM address_fr.code_housenumber)
+                (public_address.code_housenumber IS DISTINCT FROM fr_address.code_housenumber)
                 OR
-                (address_public.code_complement IS DISTINCT FROM address_fr.code_complement)
+                (public_address.code_complement IS DISTINCT FROM fr_address.code_complement)
         )
 
         -- insert/update
         SELECT
             c.change
-            , address_fr.level
+            , fr_address.level
             , c.code_address
-            , address_fr.code_parent
-            , address_fr.code_territory
-            , address_fr.code_street
-            , address_fr.code_housenumber
-            , address_fr.code_complement
+            , fr_address.code_parent
+            , fr_address.code_territory
+            , fr_address.code_street
+            , fr_address.code_housenumber
+            , fr_address.code_complement
             , s.id id_street
         FROM
             changes c
-                JOIN address_fr ON c.code_address = address_fr.code_address
+                JOIN fr_address ON c.code_address = fr_address.code_address
                 JOIN LATERAL (
                     SELECT
                         s1.co_cea
@@ -660,7 +970,7 @@ BEGIN
                         fr.laposte_street s1
                             JOIN public.address_street s2 ON s2.name = s1.lb_voie
                     WHERE
-                        s1.co_cea = address_fr.code_street
+                        s1.co_cea = fr_address.code_street
                 ) s ON TRUE
         WHERE
             c.change = ANY('{+,!}')
@@ -670,17 +980,17 @@ BEGIN
         -- delete
         SELECT
             c.change
-            , address_public.level
+            , public_address.level
             , c.code_address
-            , address_public.code_parent
-            , address_public.code_territory
-            , address_public.code_street
-            , address_public.code_housenumber
-            , address_public.code_complement
+            , public_address.code_parent
+            , public_address.code_territory
+            , public_address.code_street
+            , public_address.code_housenumber
+            , public_address.code_complement
             , NULL::INT
         FROM
             changes c
-                JOIN address_public ON c.code_address = address_public.code_address
+                JOIN public_address ON c.code_address = public_address.code_address
         WHERE
             c.change = '-'
     )
@@ -718,236 +1028,33 @@ BEGIN
     have to add addresses in descending order, because of parent id
      */
     CALL public.log_info('Mise à jour des ajouts');
-
-    -- STREET
-    CALL public.log_info('Préparation');
     DROP TABLE IF EXISTS fr.tmp_address_news;
     CREATE UNLOGGED TABLE fr.tmp_address_news AS
         SELECT * FROM public.address WITH NO DATA;
     ALTER TABLE fr.tmp_address_news ADD COLUMN code_address VARCHAR;
     ALTER TABLE fr.tmp_address_news DROP COLUMN id;
-    INSERT INTO fr.tmp_address_news (
-            id_territory
-            , id_street
-            , code_address
-        )
-        SELECT
-            t.id
-            , c.id_street
-            , c.code_address
-        FROM
-            fr.tmp_address_changes c
-                JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND t.country = 'FR'
-                /*
-                JOIN fr.laposte_street s1 ON s1.co_cea = c.code_street
-                JOIN public.address_street s2 ON s2.name = s1.lb_voie
-                 */
-        WHERE
-            c.change = '+'
-            AND
-            c.level = 'VOIE'
-    ;
-    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('VOIE: ', _nrows_affected));
-
-    /* NOTE
-    be careful about street w/ same name (and same territory) !
-    have to insert row per row (to obtain uniq id address)
-     */
-    CALL public.log_info('Insertion/Références');
-    _nrows_affected := 0;
-    FOR _address IN (
-        SELECT * FROM fr.tmp_address_news
-    )
-    LOOP
-        INSERT INTO public.address (
-                id_territory
-                , id_street
-            )
-        VALUES (
-            _address.id_territory
-            , _address.id_street
-        )
-        RETURNING id INTO _id;
-
-        INSERT INTO public.address_cross_reference (
-                id_address
-                , source
-                , id_source
-            )
-        VALUES (
-            _id
-            , 'LAPOSTE'
-            , _address.code_address
-        );
-
-        _nrows_affected := _nrows_affected +1;
-        IF _nrows_affected % 1000 = 0 THEN
-            CALL public.log_info(CONCAT('VOIE: ', _nrows_affected));
-        END IF;
-    END LOOP;
-    CALL public.log_info(CONCAT('VOIE: ', _nrows_affected));
-    COMMIT;
-
-    -- HOUSENUMBER
-    CALL public.log_info('Préparation');
-    TRUNCATE TABLE fr.tmp_address_news;
-    INSERT INTO fr.tmp_address_news (
-            id_parent
-            , id_territory
-            , id_street
-            , id_housenumber
-            , code_address
-        )
-        SELECT
-            a.id
-            , t.id
-            , a.id_street
-            , hn2.id
-            , c.code_address
-        FROM
-            fr.tmp_address_changes c
-                JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND t.country = 'FR'
-                JOIN public.address_cross_reference cr ON cr.id_source = c.code_street AND cr.source = 'LAPOSTE'
-                JOIN public.address a ON a.id = cr.id_address
-                JOIN fr.laposte_housenumber hn1 ON hn1.co_cea = c.code_housenumber
-                JOIN public.address_housenumber hn2 ON (hn2.number, COALESCE(hn2.extension, 'NULL')) = (hn1.no_voie, COALESCE(hn1.lb_ext, 'NULL'))
-        WHERE
-            c.change = '+'
-            AND
-            c.level = 'NUMERO'
-    ;
-    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('NUMERO: ', _nrows_affected));
-
-    /* NOTE
-    be careful about same housenumber on street w/ same name (and same territory) !
-    likewise, have to insert row per row (to obtain uniq id address)
-    e.g. 2 housenumbers : 35 RUE DE L EGLISE 30190 SAINTE ANASTASIE {30228222LN, 30228222LH}
-     */
-    CALL public.log_info('Insertion/Références');
-    _nrows_affected := 0;
-    FOR _address IN (
-        SELECT * FROM fr.tmp_address_news
-    )
-    LOOP
-        INSERT INTO public.address (
-                id_parent
-                , id_territory
-                , id_street
-                , id_housenumber
-            )
-        VALUES (
-            _address.id_parent
-            , _address.id_territory
-            , _address.id_street
-            , _address.id_housenumber
-        )
-        RETURNING id INTO _id;
-
-        INSERT INTO public.address_cross_reference (
-                id_address
-                , source
-                , id_source
-            )
-        VALUES (
-            _id
-            , 'LAPOSTE'
-            , _address.code_address
-        );
-
-        _nrows_affected := _nrows_affected +1;
-        IF _nrows_affected % 10000 = 0 THEN
-            CALL public.log_info(CONCAT('NUMERO: ', _nrows_affected));
-        END IF;
-    END LOOP;
-    CALL public.log_info(CONCAT('NUMERO: ', _nrows_affected));
-    COMMIT;
-
-    -- COMPLEMENT
-    CALL public.log_info('Préparation');
-    TRUNCATE TABLE fr.tmp_address_news;
-    INSERT INTO fr.tmp_address_news (
-            id_parent
-            , id_territory
-            , id_street
-            , id_housenumber
-            , id_complement
-            , code_address
-        )
-        SELECT
-            a.id
-            , t.id
-            , a.id_street
-            , a.id_housenumber
-            , c2.id
-            , c.code_address
-        FROM
-            fr.tmp_address_changes c
-                JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND t.country = 'FR'
-                JOIN public.address_cross_reference cr ON cr.id_source = COALESCE(c.code_housenumber, c.code_street) AND cr.source = 'LAPOSTE'
-                JOIN public.address a ON a.id = cr.id_address
-                JOIN fr.laposte_complement c1 ON c1.co_cea = c.code_complement
-                JOIN public.address_complement c2 ON c2.name = CONCAT_WS(' '
-                    , c1.lb_type_groupe1_l3
-                    , c1.lb_groupe1
-                    , c1.lb_type_groupe2_l3
-                    , c1.lb_groupe2
-                    , c1.lb_type_groupe3_l3
-                    , c1.lb_groupe3
-                )
-        WHERE
-            c.change = '+'
-            AND
-            c.level = 'L3'
-    ;
-    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('L3: ', _nrows_affected));
-
-    /* NOTE
-    eventualy for same complement ?
-    likewise, have to insert row per row (to obtain id address)
-     */
-    CALL public.log_info('Insertion/Références');
-    _nrows_affected := 0;
-    FOR _address IN (
-        SELECT * FROM fr.tmp_address_news
-    )
-    LOOP
-        INSERT INTO public.address (
-                id_parent
-                , id_territory
-                , id_street
-                , id_housenumber
-                , id_complement
-            )
-        VALUES (
-            _address.id_parent
-            , _address.id_territory
-            , _address.id_street
-            , _address.id_housenumber
-            , _address.id_complement
-        )
-        RETURNING id INTO _id;
-
-        INSERT INTO public.address_cross_reference (
-                id_address
-                , source
-                , id_source
-            )
-        VALUES (
-            _id
-            , 'LAPOSTE'
-            , _address.code_address
-        );
-
-        _nrows_affected := _nrows_affected +1;
-        IF _nrows_affected % 1000 = 0 THEN
-            CALL public.log_info(CONCAT('L3: ', _nrows_affected));
-        END IF;
-    END LOOP;
-    CALL public.log_info(CONCAT('L3: ', _nrows_affected));
-    COMMIT;
+    -- dictionaries (items of an address)
+    CALL fr.push_dictionary_street_to_public(force, drop_temporary);
+    CALL fr.push_address_element_to_public(
+        element => 'VOIE'
+        , table_name_to => 'fr.tmp_address_news'
+        , table_name_from => 'fr.tmp_address_changes'
+        , notice_counter => 100
+    );
+    CALL fr.push_dictionary_housenumber_to_public(force, drop_temporary);
+    CALL fr.push_address_element_to_public(
+        element => 'NUMERO'
+        , table_name_to => 'fr.tmp_address_news'
+        , table_name_from => 'fr.tmp_address_changes'
+        , notice_counter => 1000
+    );
+    CALL fr.push_dictionary_complement_to_public(force, drop_temporary);
+    CALL fr.push_address_element_to_public(
+        element => 'L3'
+        , table_name_to => 'fr.tmp_address_news'
+        , table_name_from => 'fr.tmp_address_changes'
+        , notice_counter => 100
+    );
 
     CALL public.log_info('Mise à jour des modifications');
     WITH
@@ -1029,9 +1136,9 @@ BEGIN
 
     CALL public.log_info('Préparation des changements');
     DROP TABLE IF EXISTS tmp_fr_xy_changes;
-    CREATE TEMPORARY TABLE tmp_fr_xy_changes AS (
+    CREATE UNLOGGED TABLE tmp_fr_xy_changes AS (
         WITH
-        xy_public AS (
+        public_xy AS (
             SELECT
                 cr.id_source code_address
                 , xy.kind
@@ -1042,7 +1149,7 @@ BEGIN
             WHERE
                 xy.source = 'LAPOSTE'
         )
-        , xy_fr AS (
+        , fr_xy AS (
             /* TODO
             filter only {street, housenumber, complement} gemoetries
             LAPOSTE/RAN doesn't supply geometry for complement
@@ -1067,35 +1174,35 @@ BEGIN
         )
         , changes AS (
             (
-                SELECT '-' change, code_address FROM xy_public
+                SELECT '-' change, code_address FROM public_xy
                 EXCEPT
-                SELECT '-', code_address FROM xy_fr
+                SELECT '-', code_address FROM fr_xy
             )
             UNION
             (
-                SELECT '+', code_address FROM xy_fr
+                SELECT '+', code_address FROM fr_xy
                 EXCEPT
-                SELECT '+', code_address FROM xy_public
+                SELECT '+', code_address FROM public_xy
             )
             UNION
-            SELECT '!', xy_public.code_address
-            FROM xy_public
-                JOIN xy_fr ON xy_public.code_address = xy_fr.code_address
+            SELECT '!', public_xy.code_address
+            FROM public_xy
+                JOIN fr_xy ON public_xy.code_address = fr_xy.code_address
             WHERE
-                (xy_public.kind IS DISTINCT FROM xy_fr.kind)
+                (public_xy.kind IS DISTINCT FROM fr_xy.kind)
                 OR
-                (NOT ST_Equals(xy_public.geom, xy_fr.geom))
+                (NOT ST_Equals(public_xy.geom, fr_xy.geom))
         )
 
         -- insert/update addresses
         SELECT
             c.change
             , c.code_address
-            , xy_fr.kind
-            , xy_fr.geom
+            , fr_xy.kind
+            , fr_xy.geom
         FROM
             changes c
-                JOIN xy_fr ON c.code_address = xy_fr.code_address
+                JOIN fr_xy ON c.code_address = fr_xy.code_address
         WHERE
             c.change = ANY('{+,!}')
 
@@ -1105,11 +1212,11 @@ BEGIN
         SELECT
             c.change
             , c.code_address
-            , xy_public.kind
-            , xy_public.geom
+            , public_xy.kind
+            , public_xy.geom
         FROM
             changes c
-                JOIN xy_public ON c.code_address = xy_public.code_address
+                JOIN public_xy ON c.code_address = public_xy.code_address
         WHERE
             c.change = '-'
     )
@@ -1164,6 +1271,7 @@ BEGIN
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+    COMMIT;
 
     IF drop_temporary THEN
         DROP TABLE IF EXISTS tmp_fr_xy_changes;
@@ -1180,12 +1288,8 @@ CREATE OR REPLACE PROCEDURE fr.push_address_to_public(
 AS
 $proc$
 BEGIN
-    -- dictionaries (items of an address)
-    CALL fr.push_dictionary_street_to_public(force, drop_temporary);
-    CALL fr.push_dictionary_housenumber_to_public(force, drop_temporary);
-    CALL fr.push_dictionary_complement_to_public(force, drop_temporary);
     -- addresses (w/ cross reference to store LAPOSTE id, as CEA)
-    CALL fr.push_address_links_to_public(force, drop_temporary);
+    CALL fr.push_address_elements_to_public(force, drop_temporary);
     -- XY
     CALL fr.push_address_xy_to_public(force, drop_temporary);
 END
