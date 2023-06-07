@@ -6,8 +6,9 @@
 PART 1
  update dictionaries (street, housenumber and complement), logging address_history
 PART 2
- update address (w/ links to dictionaries), by descending order
- update cross reference (to put LAPOSTE id, well-known as CEA)
+ update by descending order
+    address (w/ links to dictionaries)
+    cross reference (to put LAPOSTE id, well-known as CEA)
 PART 3
  update XY
  */
@@ -18,7 +19,7 @@ a specific job could be built to purge item from dictionary, which not have usag
  */
 
 /* NOTE
-can't commit dictionary, while address not inserting
+can't commit dictionary, while address not inserted
  */
 
 -- push properties of street dictionary (as changes) to public
@@ -34,6 +35,13 @@ DECLARE
     _nb_rows INT[];
 BEGIN
     CALL public.log_info('Mise à jour du dictionnaire des Voies');
+
+    /* TODO
+    be careful, if run again this procedure, but not the address part
+    dictionary 'public.address_street' will be inserted twice!
+    a solution is to drop it before (and so reset sequence too), but not compliant
+    w/ many countries!
+     */
 
     CALL public.log_info('Préparation des changements');
     DROP TABLE IF EXISTS tmp_fr_street_changes;
@@ -711,6 +719,11 @@ BEGIN
     1/ uniq
     2/ multiple
        have to insert row per row (to obtain uniq id address)
+
+    123 streets (w/ same name & territory)
+        010722249B	CHEMIN DE MOLAND
+        0402322266	PLACE DE LA FONTAINE
+        0402322266	RUE DE LA FONTAINE
 
     e.g. 2 housenumbers : 35 RUE DE L EGLISE 30190 SAINTE ANASTASIE {30228222LN, 30228222LH}
      */
