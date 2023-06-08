@@ -670,7 +670,12 @@ BEGIN
     IF simulation THEN
         RAISE NOTICE 'query: %', _query;
     ELSE
+        /* NOTE
+        https://dba.stackexchange.com/questions/276680/passing-parameters-for-dynamic-sql-in-a-function
+        _query := 'TRUNCATE TABLE $1;'; EXECUTE _query USING _table; don't work!
+         */
         EXECUTE FORMAT('TRUNCATE TABLE %s', table_name_to);
+
         EXECUTE _query USING element, table_name_to, table_name_from;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
         CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
