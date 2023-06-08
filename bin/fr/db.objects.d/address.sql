@@ -566,6 +566,7 @@ SELECT drop_all_functions_if_exists('fr', 'push_address_element_to_public');
 CREATE OR REPLACE PROCEDURE fr.push_address_element_to_public(
     element VARCHAR
     , table_name_to VARCHAR
+    , table_name_to_m VARCHAR
     , table_name_from VARCHAR
     , simulation BOOLEAN DEFAULT FALSE
     , notice_counter INT DEFAULT 100
@@ -626,7 +627,6 @@ DECLARE
     _nrows_affected INT;
     _address RECORD;
     _id INT;
-    _table_name_multiple VARCHAR := CONCAT(table_name_to, '_multiple');
 BEGIN
     _columns_insert := CONCAT(_columns_insert, ', code_address');
     _columns_select := CONCAT(_columns_select, ', c.code_address');
@@ -640,8 +640,7 @@ BEGIN
     -- prepare addresses of element
     CALL public.log_info(CONCAT(element, ': Préparation'));
     _query := CONCAT(
-        'TRUNCATE TABLE quote_ident($2);
-        INSERT INTO quote_ident($2) ('
+        'INSERT INTO quote_ident($2) ('
         , _columns_insert
         , ')
         SELECT '
@@ -671,20 +670,10 @@ BEGIN
     IF simulation THEN
         RAISE NOTICE 'query: %', _query;
     ELSE
+        EXECUTE FORMAT('TRUNCATE TABLE %s', table_name_to);
         EXECUTE _query USING element, table_name_to, table_name_from;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
         CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
-    END IF;
-
-    _query := CONCAT(
-        'DROP TABLE IF EXISTS $1;
-        CREATE UNLOGGED TABLE quote_ident($1)
-        AS SELECT * FROM quote_ident($2) WITH NO DATA'
-    );
-    IF simulation THEN
-        RAISE NOTICE 'query: %', _query;
-    ELSE
-        EXECUTE _query USING _table_name_multiple, table_name_to;
     END IF;
 
     -- detect multiple address (w/ all same ID)
@@ -708,7 +697,8 @@ BEGIN
     IF simulation THEN
         RAISE NOTICE 'query: %', _query;
     ELSE
-        EXECUTE _query USING _table_name_multiple, table_name_to;
+        EXECUTE FORMAT('TRUNCATE TABLE %s', table_name_to_m);
+        EXECUTE _query USING table_name_to_m, table_name_to;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
         CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
     END IF;
@@ -749,7 +739,7 @@ BEGIN
     IF simulation THEN
         RAISE NOTICE 'query: %', _query;
     ELSE
-        EXECUTE _query USING table_name_to, _table_name_multiple;
+        EXECUTE _query USING table_name_to, table_name_to_m;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
         CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
     END IF;
@@ -824,7 +814,7 @@ BEGIN
     IF simulation THEN
         RAISE NOTICE 'query: %', _query;
     ELSE
-        EXECUTE _query USING table_name_to, _table_name_multiple;
+        EXECUTE _query USING table_name_to, table_name_to_m;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
         CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
     END IF;
@@ -834,7 +824,7 @@ BEGIN
     _columns_id_aliased := alias_words(_columns_id, ',[ ]*', '_address');
     _nrows_affected := 0;
     -- https://stackoverflow.com/questions/20965882/for-loop-with-dynamic-table-name-in-postgresql-9-1
-    FOR _address IN EXECUTE FORMAT('SELECT * FROM %I', _table_name_multiple)
+    FOR _address IN EXECUTE FORMAT('SELECT * FROM %I', table_name_to_m)
     LOOP
         -- https://stackoverflow.com/questions/17547666/execute-into-using-statement-in-pl-pgsql-cant-execute-into-a-record
         _query := CONCAT(
@@ -1046,11 +1036,16 @@ BEGIN
         SELECT * FROM public.address WITH NO DATA;
     ALTER TABLE fr.tmp_address_news ADD COLUMN code_address VARCHAR;
     ALTER TABLE fr.tmp_address_news DROP COLUMN id;
+    DROP TABLE IF EXISTS fr.tmp_address_news_m;
+    CREATE UNLOGGED TABLE fr.tmp_address_news_m AS
+        SELECT * FROM fr.tmp_address_news WITH NO DATA;
+
     -- dictionaries (items of an address)
     CALL fr.push_dictionary_street_to_public(force, drop_temporary);
     CALL fr.push_address_element_to_public(
         element => 'VOIE'
         , table_name_to => 'fr.tmp_address_news'
+        , table_name_to_m => 'fr.tmp_address_news_m'
         , table_name_from => 'fr.tmp_address_changes'
         , notice_counter => 100
     );
@@ -1058,6 +1053,7 @@ BEGIN
     CALL fr.push_address_element_to_public(
         element => 'NUMERO'
         , table_name_to => 'fr.tmp_address_news'
+        , table_name_to_m => 'fr.tmp_address_news_m'
         , table_name_from => 'fr.tmp_address_changes'
         , notice_counter => 1000
     );
@@ -1065,6 +1061,7 @@ BEGIN
     CALL fr.push_address_element_to_public(
         element => 'L3'
         , table_name_to => 'fr.tmp_address_news'
+        , table_name_to_m => 'fr.tmp_address_news_m'
         , table_name_from => 'fr.tmp_address_changes'
         , notice_counter => 100
     );
@@ -1130,6 +1127,7 @@ BEGIN
     IF drop_temporary THEN
         DROP TABLE IF EXISTS fr.tmp_address_changes;
         DROP TABLE IF EXISTS fr.tmp_address_news;
+        DROP TABLE IF EXISTS fr.tmp_address_news_m;
     END IF;
 END
 $proc$ LANGUAGE plpgsql;
@@ -1165,7 +1163,7 @@ BEGIN
         , fr_xy AS (
             /* TODO
             filter only {street, housenumber, complement} gemoetries
-            LAPOSTE/RAN doesn't supply geometry for complement
+            LAPOSTE/RAN doesn't supply geometry for complement (and no more for ZA)
              */
             SELECT
                 co_cea code_address
