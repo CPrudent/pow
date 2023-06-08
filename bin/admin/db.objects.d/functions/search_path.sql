@@ -32,10 +32,10 @@ $func$
 DECLARE
     _search_paths TEXT[];
 BEGIN
-    SELECT STRING_TO_ARRAY(REPLACE(CURRENT_SETTING('search_path'), ' ', ''), ', ') INTO _search_paths;
+    SELECT STRING_TO_ARRAY(REPLACE(CURRENT_SETTING('search_path'), ' ', ''), ',') INTO _search_paths;
     IF NOT _search_paths @> ARRAY[schema_name] THEN
         _search_paths := ARRAY_APPEND(_search_paths, schema_name);
-        PERFORM public.set_search_path(ARRAY_TO_STRING(_search_paths, ', '));
+        PERFORM public.set_search_path(ARRAY_TO_STRING(_search_paths, ','));
     END IF;
     RETURN TRUE;
 END

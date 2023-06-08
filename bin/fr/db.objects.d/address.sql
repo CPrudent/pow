@@ -715,6 +715,7 @@ BEGIN
         0402322266	PLACE DE LA FONTAINE
         0402322266	RUE DE LA FONTAINE
 
+    x housenumbers (w/ same number/extension, street & territory)
     e.g. 2 housenumbers : 35 RUE DE L EGLISE 30190 SAINTE ANASTASIE {30228222LN, 30228222LH}
      */
 
