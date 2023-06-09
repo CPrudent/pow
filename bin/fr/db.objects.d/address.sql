@@ -1021,14 +1021,20 @@ BEGIN
                 , a.co_cea_l3 code_complement
             FROM fr.laposte_address a
                 JOIN fr.laposte_zone_address za ON za.co_cea = a.co_cea_za
+            WHERE
+                a.fl_active
+                AND
+                -- w/o ZA (CEA-voie defined)
                 /* NOTE
                 62 faults in LAPOSTE/RAN data, as address w/o street occurence!
                 to avoid them, add a join
                  */
-                JOIN fr.laposte_street s ON s.co_cea = a.co_cea_voie
-            -- hors ZA
-            -- hors MONACO
-            WHERE a.fl_active AND a.co_cea_voie IS NOT NULL AND za.co_insee_commune != '99138'
+                EXISTS (
+                    SELECT 1 FROM fr.laposte_street s WHERE s.co_cea = a.co_cea_voie
+                )
+                AND
+                -- except MONACO
+                za.co_insee_commune != '99138'
         )
         , changes AS (
             (
