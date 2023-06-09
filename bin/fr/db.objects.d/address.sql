@@ -587,7 +587,7 @@ DECLARE
     _columns_select VARCHAR :=
         CASE element
         WHEN 'VOIE' THEN
-            't.id, c.id_street'
+            't.id, s.id'
         WHEN 'NUMERO' THEN
             'a.id, t.id, a.id_street, hn2.id'
         WHEN 'L3' THEN
@@ -606,6 +606,11 @@ DECLARE
         END;
     _join_dictionary VARCHAR :=
         CASE element
+        WHEN 'VOIE' THEN
+            '
+            JOIN fr.laposte_street s1 ON s1.co_cea = c.code_street
+            JOIN public.address_street s2 ON s2.name = s1.lb_voie
+            '
         WHEN 'NUMERO' THEN
             '
             JOIN fr.laposte_housenumber hn1 ON hn1.co_cea = c.code_housenumber
@@ -625,6 +630,7 @@ DECLARE
             '
         END;
     _nrows_affected INT;
+    _nrows INT;
     _address RECORD;
     _id INT;
 BEGIN
@@ -640,31 +646,47 @@ BEGIN
     -- prepare addresses of element
     CALL public.log_info(CONCAT(element, ': Préparation'));
     _query := CONCAT(
-        'INSERT INTO quote_ident($2) ('
+        'INSERT INTO ', table_name_to, ' ('
         , _columns_insert
         , ')
         SELECT '
         , _columns_select
-        , ' FROM quote_ident($3) c
+        , ' FROM ', table_name_from , ' c
             JOIN public.territory t ON t.code = c.code_territory AND t.level = ''ZA'' AND t.country = ''FR''
         '
     );
+    -- get dictionary ID
     IF _source_parent IS NOT NULL THEN
         _query := CONCAT(_query
             , 'JOIN public.address_cross_reference cr ON cr.id_source = '
-            , _source_parent
-            , ' AND cr.source = ''LAPOSTE''
+            , _source_parent, ' AND cr.source = ''LAPOSTE''
                 JOIN public.address a ON a.id = cr.id_address
             '
             , _join_dictionary
         );
+    ELSE
+        _query := CONCAT(_query
+            , 'JOIN LATERAL (
+                SELECT
+                    s1.co_cea
+                    , s2.id
+                FROM
+                    fr.laposte_street s1
+                        JOIN public.address_street s2 ON s2.name = s1.lb_voie
+                WHERE
+                    s1.co_cea = c.code_street
+            ) s ON TRUE'
+        );
+            /*
+            -- _columns_select: get s2.id
+            , _join_dictionary
+             */
     END IF;
-
     _query := CONCAT(_query
         , ' WHERE
             c.change = ''+''
             AND
-            c.level = quote_literal($1)'
+            c.level = $1'
     );
 
     IF simulation THEN
@@ -676,34 +698,61 @@ BEGIN
          */
         EXECUTE FORMAT('TRUNCATE TABLE %s', table_name_to);
 
-        EXECUTE _query USING element, table_name_to, table_name_from;
+        EXECUTE _query USING element;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
         CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
     END IF;
 
     -- detect multiple address (w/ all same ID)
     CALL public.log_info(CONCAT(element, ': Préparation (multiples)'));
-    _columns_id_aliased := alias_words(_columns_id, ',[ ]*', 'n');
     _query := CONCAT(
-        'INSERT INTO quote_ident($1) ('
-        , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id, 'code_address')
-        , ' ) SELECT '
-        , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'n.id_parent' END, _columns_id_aliased, 'n.code_address')
-        , '
-        FROM
-            quote_ident($2) n
+        'SELECT COUNT(*) FROM public.address a
+        JOIN public.territory t ON t.id = a.id_territory
+        WHERE t.country = ''FR''');
+    EXECUTE _query INTO _nrows;
+    _columns_id_aliased := alias_words(_columns_id, ',[ ]*', 'n');
+    -- address already initiated ?
+    IF _nrows > 0 THEN
+        _query := CONCAT(
+            'INSERT INTO ', table_name_to_m, ' ('
+            , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id, 'code_address')
+            , ' ) SELECT '
+            , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'n.id_parent' END, _columns_id_aliased, 'n.code_address')
+            , ' FROM ', table_name_to, ' n
                 JOIN public.address a ON ('
-        , _columns_id_aliased
-        , ') = ('
-        , alias_words(_columns_id, ',[ ]*', 'a')
-        , ')
-        '
-    );
+            , _columns_id_aliased
+            , ') = ('
+            , alias_words(_columns_id, ',[ ]*', 'a')
+            , ')'
+        );
+    ELSE
+        _query := CONCAT(
+            'WITH
+            same_addresses AS (
+                SELECT '
+                , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id)
+                , ' FROM ', table_name_to, '
+                GROUP BY ', _columns_id, '
+                HAVING COUNT(*) > 1
+            )
+            INSERT INTO ', table_name_to_m, ' ('
+            , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id, 'code_address')
+            , ' ) SELECT '
+            , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'n.id_parent' END, _columns_id_aliased, 'n.code_address')
+            , ' FROM ', table_name_to, ' n
+                JOIN same_addresses sa ON ('
+            , _columns_id_aliased
+            , ') = ('
+            , alias_words(_columns_id, ',[ ]*', 'sa')
+            , ')'
+        );
+    END IF;
+
     IF simulation THEN
         RAISE NOTICE 'query: %', _query;
     ELSE
         EXECUTE FORMAT('TRUNCATE TABLE %s', table_name_to_m);
-        EXECUTE _query USING table_name_to_m, table_name_to;
+        EXECUTE _query;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
         CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
     END IF;
@@ -732,9 +781,9 @@ BEGIN
         , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id)
         , ' ) SELECT '
         , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'u.id_parent' END, _columns_id_aliased)
-        , ' FROM quote_ident($1) u
+        , ' FROM ', table_name_to, ' u
         WHERE NOT EXISTS(
-            SELECT 1 FROM quote_ident($2) m
+            SELECT 1 FROM ', table_name_to_m, ' m
             WHERE ('
         , _columns_id_aliased
         , ') = ('
@@ -745,7 +794,7 @@ BEGIN
     IF simulation THEN
         RAISE NOTICE 'query: %', _query;
     ELSE
-        EXECUTE _query USING table_name_to, table_name_to_m;
+        EXECUTE _query;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
         CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
     END IF;
@@ -760,10 +809,9 @@ BEGIN
         SELECT
             a.id
             , ''LAPOSTE''
-            , n.code_address
-        FROM
-            quote_ident($1) u
-                JOIN public.address a ON '
+            , u.code_address
+        FROM ', table_name_to, ' u
+            JOIN public.address a ON '
         , CASE WHEN element = 'L3' THEN
             'a.id_territory = u.id_territory
             AND
@@ -789,7 +837,7 @@ BEGIN
             )
         END
         , ' WHERE NOT EXISTS(
-            SELECT 1 FROM quote_ident($2) m
+            SELECT 1 FROM ', table_name_to_m, ' m
             WHERE '
         , CASE WHEN element = 'L3' THEN
                 'm.id_territory = u.id_territory
@@ -820,7 +868,7 @@ BEGIN
     IF simulation THEN
         RAISE NOTICE 'query: %', _query;
     ELSE
-        EXECUTE _query USING table_name_to, table_name_to_m;
+        EXECUTE _query;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
         CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
     END IF;
@@ -830,7 +878,7 @@ BEGIN
     _columns_id_aliased := alias_words(_columns_id, ',[ ]*', '_address');
     _nrows_affected := 0;
     -- https://stackoverflow.com/questions/20965882/for-loop-with-dynamic-table-name-in-postgresql-9-1
-    FOR _address IN EXECUTE FORMAT('SELECT * FROM %I', table_name_to_m)
+    FOR _address IN EXECUTE FORMAT('SELECT * FROM %s', table_name_to_m)
     LOOP
         -- https://stackoverflow.com/questions/17547666/execute-into-using-statement-in-pl-pgsql-cant-execute-into-a-record
         _query := CONCAT(
@@ -967,10 +1015,11 @@ BEGIN
             , fr_address.code_street
             , fr_address.code_housenumber
             , fr_address.code_complement
-            , s.id id_street
+            --, s.id id_street
         FROM
             changes c
                 JOIN fr_address ON c.code_address = fr_address.code_address
+                /*
                 JOIN LATERAL (
                     SELECT
                         s1.co_cea
@@ -981,6 +1030,7 @@ BEGIN
                     WHERE
                         s1.co_cea = fr_address.code_street
                 ) s ON TRUE
+                 */
         WHERE
             c.change = ANY('{+,!}')
 
@@ -996,7 +1046,7 @@ BEGIN
             , public_address.code_street
             , public_address.code_housenumber
             , public_address.code_complement
-            , NULL::INT
+            --, NULL::INT
         FROM
             changes c
                 JOIN public_address ON c.code_address = public_address.code_address
