@@ -578,20 +578,29 @@ DECLARE
     _columns_insert VARCHAR :=
         CASE element
         WHEN 'VOIE' THEN
-            'id_territory, id_street'
+            'id_territory'
         WHEN 'NUMERO' THEN
-            'id_parent, id_territory, id_street, id_housenumber'
+            'id_parent, id_territory, id_street'
         WHEN 'L3' THEN
-            'id_parent, id_territory, id_street, id_housenumber, id_complement'
+            'id_parent, id_territory, id_street, id_housenumber'
         END;
     _columns_select VARCHAR :=
         CASE element
         WHEN 'VOIE' THEN
-            't.id, s2.id'
+            't.id'
         WHEN 'NUMERO' THEN
-            'a.id, t.id, a.id_street, hn2.id'
+            'a.id, t.id, a.id_street'
         WHEN 'L3' THEN
-            'a.id, t.id, a.id_street, a.id_housenumber, c2.id'
+            'a.id, t.id, a.id_street, a.id_housenumber'
+        END;
+    _column_id VARCHAR :=
+        CASE element
+        WHEN 'VOIE' THEN
+            'id_street'
+        WHEN 'NUMERO' THEN
+            'id_housenumber'
+        WHEN 'L3' THEN
+            'id_complement'
         END;
     _columns_id VARCHAR := 'id_territory, id_street';
     _columns_id_aliased VARCHAR;
@@ -608,34 +617,37 @@ DECLARE
         CASE element
         WHEN 'VOIE' THEN
             '
-            JOIN (
-                SELECT
-                    s1.co_cea
-                    , s2.id
-                FROM
-                    fr.laposte_street s1
-                        JOIN public.address_street s2 ON s2.name = s1.lb_voie
-                WHERE
-                    -- hors MONACO
-                    s1.co_insee_commune != ''99138''
-            ) s2 ON s2.co_cea = c.code_address
+                s2.id
+            FROM fr.laposte_street s1, public.address_street s2
+            WHERE
+                s1.co_cea = n.code_address
+                AND
+                s2.name = s1.lb_voie
             '
         WHEN 'NUMERO' THEN
             '
-            JOIN fr.laposte_housenumber hn1 ON hn1.co_cea = c.code_housenumber
-            JOIN public.address_housenumber hn2 ON (hn2.number, COALESCE(hn2.extension, ''NULL'')) = (hn1.no_voie, COALESCE(hn1.lb_ext, ''NULL''))
+                hn2.id
+            FROM fr.laposte_housenumber hn1, public.address_housenumber hn2
+            WHERE
+                hn1.co_cea = n.code_address
+                AND
+                (hn2.number, COALESCE(hn2.extension, ''NULL'')) = (hn1.no_voie, COALESCE(hn1.lb_ext, ''NULL''))
             '
         WHEN 'L3' THEN
             '
-            JOIN fr.laposte_complement c1 ON c1.co_cea = c.code_complement
-            JOIN public.address_complement c2 ON c2.name = CONCAT_WS('' ''
-                , c1.lb_type_groupe1_l3
-                , c1.lb_groupe1
-                , c1.lb_type_groupe2_l3
-                , c1.lb_groupe2
-                , c1.lb_type_groupe3_l3
-                , c1.lb_groupe3
-            )
+                c2.id
+            FROM fr.laposte_complement c1, public.address_complement c2
+            WHERE
+                c1.co_cea = n.code_address
+                AND
+                c2.name = CONCAT_WS('' ''
+                    , c1.lb_type_groupe1_l3
+                    , c1.lb_groupe1
+                    , c1.lb_type_groupe2_l3
+                    , c1.lb_groupe2
+                    , c1.lb_type_groupe3_l3
+                    , c1.lb_groupe3
+                )
             '
         END;
     _nrows_affected INT;
@@ -673,9 +685,8 @@ BEGIN
             '
         );
     END IF;
-    -- get dictionary ID and filter creation of element
+    -- filter creation of element
     _query := CONCAT(_query
-        , _join_dictionary
         , ' WHERE
             c.change = ''+''
             AND
@@ -696,12 +707,33 @@ BEGIN
         CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
     END IF;
 
-    -- detect multiple address (w/ all same ID)
+    CALL public.log_info(CONCAT(element, ': Préparation (ID dictionnaire)'));
+    _query := CONCAT(
+        'UPDATE ', table_name_to, ' n SET '
+        , _column_id
+        , ' = '
+        , _join_dictionary
+    );
+    IF simulation THEN
+        RAISE NOTICE 'query: %', _query;
+    ELSE
+        EXECUTE _query;
+        GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+        CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
+    END IF;
+
+    /* NOTE
+    detect multiple address (w/ all same ID), according to state of address
+    if first time (no address of element) then find them into initial set (to add)
+    else, search for equals w/ existing addresses
+     */
     CALL public.log_info(CONCAT(element, ': Préparation (multiples)'));
     _query := CONCAT(
         'SELECT COUNT(*) FROM public.address a
         JOIN public.territory t ON t.id = a.id_territory
-        WHERE t.country = ''FR''');
+        WHERE t.country = ''FR''
+        AND a.', _column_id, ' IS NOT NULL'
+    );
     EXECUTE _query INTO _nrows;
     _columns_id_aliased := alias_words(_columns_id, ',[ ]*', 'n');
     -- address already initiated ?
@@ -873,7 +905,7 @@ BEGIN
     -- https://stackoverflow.com/questions/20965882/for-loop-with-dynamic-table-name-in-postgresql-9-1
     FOR _address IN EXECUTE FORMAT('SELECT * FROM %s', table_name_to_m)
     LOOP
-        -- https://stackoverflow.com/questions/17547666/execute-into-using-statement-in-pl-pgsql-cant-execute-into-a-record
+        /* FIXME
         _query := CONCAT(
             'INSERT INTO public.address ( '
             , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id)
@@ -888,6 +920,28 @@ BEGIN
             RAISE NOTICE 'query: %', _query;
         ELSE
             EXECUTE _query INTO _id;
+         */
+
+        /* TODO
+        https://stackoverflow.com/questions/17547666/execute-into-using-statement-in-pl-pgsql-cant-execute-into-a-record
+        dynamize this code!
+         */
+            IF element = 'VOIE' THEN
+                INSERT INTO public.address (id_territory, id_street)
+                VALUES (_address.id_territory, _address.id_street)
+                RETURNING id
+                INTO _id;
+            ELSIF element = 'NUMERO' THEN
+                INSERT INTO public.address (id_parent, id_territory, id_street, id_housenumber)
+                VALUES (_address.id_parent, _address.id_territory, _address.id_street, _address.id_housenumber)
+                RETURNING id
+                INTO _id;
+            ELSE
+                INSERT INTO public.address (id_parent, id_territory, id_street, id_housenumber, id_complement)
+                VALUES (_address.id_parent, _address.id_territory, _address.id_street, _address.id_housenumber, _address.id_complement)
+                RETURNING id
+                INTO _id;
+            END IF;
 
             INSERT INTO public.address_cross_reference (
                 id_address
@@ -904,10 +958,11 @@ BEGIN
             IF _nrows_affected % notice_counter = 0 THEN
                 CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
             END IF;
+        /*
         END IF;
+         */
     END LOOP;
     CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
-    COMMIT;
 END
 $proc$ LANGUAGE plpgsql;
 
@@ -957,18 +1012,23 @@ BEGIN
         )
         , fr_address AS (
             SELECT
-                co_cea_determinant code_address
-                , co_niveau level
-                , CASE WHEN co_niveau = 'VOIE' THEN NULL ELSE co_cea_parent END code_parent
-                , co_cea_za code_territory
-                , co_cea_voie code_street
-                , co_cea_numero code_housenumber
-                , co_cea_l3 code_complement
+                a.co_cea_determinant code_address
+                , a.co_niveau level
+                , CASE WHEN a.co_niveau = 'VOIE' THEN NULL ELSE a.co_cea_parent END code_parent
+                , a.co_cea_za code_territory
+                , a.co_cea_voie code_street
+                , a.co_cea_numero code_housenumber
+                , a.co_cea_l3 code_complement
             FROM fr.laposte_address a
                 JOIN fr.laposte_zone_address za ON za.co_cea = a.co_cea_za
+                /* NOTE
+                62 faults in LAPOSTE/RAN data, as address w/o street occurence!
+                to avoid them, add a join
+                 */
+                JOIN fr.laposte_street s ON s.co_cea = a.co_cea_voie
             -- hors ZA
             -- hors MONACO
-            WHERE a.fl_active AND co_cea_voie IS NOT NULL AND za.co_insee_commune != '99138'
+            WHERE a.fl_active AND a.co_cea_voie IS NOT NULL AND za.co_insee_commune != '99138'
         )
         , changes AS (
             (
@@ -1098,6 +1158,7 @@ BEGIN
         , table_name_from => 'fr.tmp_address_changes'
         , notice_counter => 100
     );
+    COMMIT;
     CALL fr.push_dictionary_housenumber_to_public(force, drop_temporary);
     CALL fr.push_address_element_to_public(
         element => 'NUMERO'
@@ -1106,6 +1167,7 @@ BEGIN
         , table_name_from => 'fr.tmp_address_changes'
         , notice_counter => 1000
     );
+    COMMIT;
     CALL fr.push_dictionary_complement_to_public(force, drop_temporary);
     CALL fr.push_address_element_to_public(
         element => 'L3'
@@ -1114,6 +1176,7 @@ BEGIN
         , table_name_from => 'fr.tmp_address_changes'
         , notice_counter => 100
     );
+    COMMIT;
 
     CALL public.log_info('Mise à jour des modifications');
     WITH
