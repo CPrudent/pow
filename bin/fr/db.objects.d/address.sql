@@ -587,7 +587,7 @@ DECLARE
     _columns_select VARCHAR :=
         CASE element
         WHEN 'VOIE' THEN
-            't.id, s.id'
+            't.id, s2.id'
         WHEN 'NUMERO' THEN
             'a.id, t.id, a.id_street, hn2.id'
         WHEN 'L3' THEN
@@ -655,34 +655,18 @@ BEGIN
             JOIN public.territory t ON t.code = c.code_territory AND t.level = ''ZA'' AND t.country = ''FR''
         '
     );
-    -- get dictionary ID
+    -- get IDs from address
     IF _source_parent IS NOT NULL THEN
         _query := CONCAT(_query
             , 'JOIN public.address_cross_reference cr ON cr.id_source = '
             , _source_parent, ' AND cr.source = ''LAPOSTE''
                 JOIN public.address a ON a.id = cr.id_address
             '
-            , _join_dictionary
         );
-    ELSE
-        _query := CONCAT(_query
-            , 'JOIN LATERAL (
-                SELECT
-                    s1.co_cea
-                    , s2.id
-                FROM
-                    fr.laposte_street s1
-                        JOIN public.address_street s2 ON s2.name = s1.lb_voie
-                WHERE
-                    s1.co_cea = c.code_street
-            ) s ON TRUE'
-        );
-            /*
-            -- _columns_select: get s2.id
-            , _join_dictionary
-             */
     END IF;
+    -- get dictionary ID and filter creation of element
     _query := CONCAT(_query
+        , _join_dictionary
         , ' WHERE
             c.change = ''+''
             AND
