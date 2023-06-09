@@ -608,8 +608,17 @@ DECLARE
         CASE element
         WHEN 'VOIE' THEN
             '
-            JOIN fr.laposte_street s1 ON s1.co_cea = c.code_street
-            JOIN public.address_street s2 ON s2.name = s1.lb_voie
+            JOIN (
+                SELECT
+                    s1.co_cea
+                    , s2.id
+                FROM
+                    fr.laposte_street s1
+                        JOIN public.address_street s2 ON s2.name = s1.lb_voie
+                WHERE
+                    -- hors MONACO
+                    s1.co_insee_commune != ''99138''
+            ) s2 ON s2.co_cea = c.code_address
             '
         WHEN 'NUMERO' THEN
             '
