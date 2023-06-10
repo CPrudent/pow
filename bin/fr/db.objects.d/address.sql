@@ -754,9 +754,8 @@ BEGIN
         _query := CONCAT(
             'WITH
             same_addresses AS (
-                SELECT '
-                , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id)
-                , ' FROM ', table_name_to, '
+                SELECT ', _columns_id, '
+                FROM ', table_name_to, '
                 GROUP BY ', _columns_id, '
                 HAVING COUNT(*) > 1
             )
@@ -794,8 +793,10 @@ BEGIN
         0402322266	PLACE DE LA FONTAINE
         0402322266	RUE DE LA FONTAINE
 
-    x housenumbers (w/ same number/extension, street & territory)
-    e.g. 2 housenumbers : 35 RUE DE L EGLISE 30190 SAINTE ANASTASIE {30228222LN, 30228222LH}
+    691 housenumbers (w/ same number/extension, street & territory)
+        2 housenumbers : 35 RUE DE L EGLISE 30190 SAINTE ANASTASIE {30228222LN, 30228222LH}
+
+    1260 complements (w/ same name, street, [housenumber] & territory)
      */
 
     -- Part/1 uniq address
@@ -895,6 +896,7 @@ BEGIN
     ELSE
         EXECUTE _query;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+        COMMIT;
         CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
     END IF;
 
@@ -1074,22 +1076,9 @@ BEGIN
             , fr_address.code_street
             , fr_address.code_housenumber
             , fr_address.code_complement
-            --, s.id id_street
         FROM
             changes c
                 JOIN fr_address ON c.code_address = fr_address.code_address
-                /*
-                JOIN LATERAL (
-                    SELECT
-                        s1.co_cea
-                        , s2.id
-                    FROM
-                        fr.laposte_street s1
-                            JOIN public.address_street s2 ON s2.name = s1.lb_voie
-                    WHERE
-                        s1.co_cea = fr_address.code_street
-                ) s ON TRUE
-                 */
         WHERE
             c.change = ANY('{+,!}')
 
@@ -1105,7 +1094,6 @@ BEGIN
             , public_address.code_street
             , public_address.code_housenumber
             , public_address.code_complement
-            --, NULL::INT
         FROM
             changes c
                 JOIN public_address ON c.code_address = public_address.code_address
@@ -1162,27 +1150,21 @@ BEGIN
         , table_name_to => 'fr.tmp_address_news'
         , table_name_to_m => 'fr.tmp_address_news_m'
         , table_name_from => 'fr.tmp_address_changes'
-        , notice_counter => 100
     );
-    COMMIT;
     CALL fr.push_dictionary_housenumber_to_public(force, drop_temporary);
     CALL fr.push_address_element_to_public(
         element => 'NUMERO'
         , table_name_to => 'fr.tmp_address_news'
         , table_name_to_m => 'fr.tmp_address_news_m'
         , table_name_from => 'fr.tmp_address_changes'
-        , notice_counter => 1000
     );
-    COMMIT;
     CALL fr.push_dictionary_complement_to_public(force, drop_temporary);
     CALL fr.push_address_element_to_public(
         element => 'L3'
         , table_name_to => 'fr.tmp_address_news'
         , table_name_to_m => 'fr.tmp_address_news_m'
         , table_name_from => 'fr.tmp_address_changes'
-        , notice_counter => 100
     );
-    COMMIT;
 
     CALL public.log_info('Mise à jour des modifications');
     WITH
@@ -1220,7 +1202,7 @@ BEGIN
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('Total: ', _nrows_affected));
-    COMMIT;
+    --COMMIT;
 
     CALL public.log_info('Mise à jour des suppressions');
     WITH
@@ -1240,7 +1222,7 @@ BEGIN
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('Total: ', _nrows_affected));
-    COMMIT;
+    --COMMIT;
 
     IF drop_temporary THEN
         DROP TABLE IF EXISTS fr.tmp_address_changes;
@@ -1400,7 +1382,7 @@ BEGIN
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('Total: ', _nrows_affected));
-    COMMIT;
+    --COMMIT;
 
     IF drop_temporary THEN
         DROP TABLE IF EXISTS tmp_fr_xy_changes;
