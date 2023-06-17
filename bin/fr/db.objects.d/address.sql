@@ -744,11 +744,9 @@ BEGIN
             , ' ) SELECT '
             , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'n.id_parent' END, _columns_id_aliased, 'n.code_address')
             , ' FROM ', table_name_to, ' n
-                JOIN public.address a ON ('
-            , _columns_id_aliased
-            , ') = ('
-            , alias_words(_columns_id, ',[ ]*', 'a')
-            , ')'
+                JOIN public.address a ON (', _columns_id_aliased, ')
+                IS NOT DISTINCT FROM
+                (', alias_words(_columns_id, ',[ ]*', 'a'), ')'
         );
     ELSE
         _query := CONCAT(
@@ -764,11 +762,9 @@ BEGIN
             , ' ) SELECT '
             , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'n.id_parent' END, _columns_id_aliased, 'n.code_address')
             , ' FROM ', table_name_to, ' n
-                JOIN same_addresses sa ON ('
-            , _columns_id_aliased
-            , ') = ('
-            , alias_words(_columns_id, ',[ ]*', 'sa')
-            , ')'
+                JOIN same_addresses sa ON (', _columns_id_aliased, ')
+                IS NOT DISTINCT FROM
+                (', alias_words(_columns_id, ',[ ]*', 'sa'), ')'
         );
     END IF;
 
@@ -810,11 +806,9 @@ BEGIN
         , ' FROM ', table_name_to, ' u
         WHERE NOT EXISTS(
             SELECT 1 FROM ', table_name_to_m, ' m
-            WHERE ('
-        , _columns_id_aliased
-        , ') = ('
-        , alias_words(_columns_id, ',[ ]*', 'm')
-        , ')
+            WHERE (', _columns_id_aliased, ')
+            IS NOT DISTINCT FROM
+            (', alias_words(_columns_id, ',[ ]*', 'm'), ')
         )'
     );
     IF simulation THEN

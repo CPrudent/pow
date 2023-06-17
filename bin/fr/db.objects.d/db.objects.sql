@@ -30,6 +30,7 @@
 \include_relative laposte_delivery_address.sql
 \include_relative laposte_organization.sql
 \include_relative laposte_address_redirect.sql
+\include_relative laposte_address_history.sql
 
 -- POW
 \include_relative constant.sql

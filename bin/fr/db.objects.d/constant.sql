@@ -204,5 +204,21 @@ BEGIN
 END;
 $proc$ LANGUAGE plpgsql;
 
+SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_correction_list');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_address_correction_list()
+AS
+$proc$
+BEGIN
+    IF NOT table_exists('fr', 'laposte_address') THEN
+        RAISE 'Données LAPOSTE non présentes';
+    END IF;
+
+    DELETE FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_CORRECTION';
+    INSERT INTO fr.constant (usecase, key, value) VALUES
+        ('LAPOSTE_ADDRESS_CORRECTION', 'TOO_SPACE', '1')
+        , ('LAPOSTE_ADDRESS_CORRECTION', 'COMPLEMENT_WITH_STREET_ERROR', '2')
+    ;
+END;
+$proc$ LANGUAGE plpgsql;
 
 CREATE INDEX IF NOT EXISTS ix_constant_usecase_key ON fr.constant (usecase, key);
