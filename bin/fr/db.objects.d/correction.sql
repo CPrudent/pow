@@ -100,8 +100,8 @@ BEGIN
             SELECT
                 a.', _column_from, '
                 , TIMEOFDAY()::DATE
-                , ', _correction.key
-                , ', ', _kind, '
+                , ', quote_literal(_correction.key)
+                , ', ', quote_literal(_kind), '
                 , ROW_TO_JSON(a.*)::JSONB
             FROM ', _table_from, ' a
                 JOIN fr.tmp_address_correction ac ON a.', _column_from, ' = ac.code_address
