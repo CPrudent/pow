@@ -17,7 +17,7 @@ DECLARE
     _aliased_words VARCHAR;
 BEGIN
     --RAISE NOTICE 'out: %', _separator_out;
-    FOREACH _word IN ARRAY regexp_split_to_array(words, separator) LOOP
+    FOREACH _word IN ARRAY REGEXP_SPLIT_TO_ARRAY(words, separator) LOOP
         _aliased_word := CONCAT(alias_name, '.', _word);
         IF _aliased_words IS NULL THEN
             _aliased_words := _aliased_word;

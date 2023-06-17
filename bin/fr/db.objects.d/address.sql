@@ -604,6 +604,8 @@ DECLARE
         END;
     _columns_id VARCHAR := 'id_territory, id_street';
     _columns_id_aliased VARCHAR;
+    _columns_id_array TEXT[];
+    _columns_id_values TEXT;
     _source_parent VARCHAR :=
         CASE element
         WHEN 'VOIE' THEN
@@ -652,7 +654,9 @@ DECLARE
         END;
     _nrows_affected INT;
     _nrows INT;
+    _i INT;
     _address RECORD;
+    _kv RECORD;
     _id INT;
 BEGIN
     _columns_insert := CONCAT(_columns_insert, ', code_address');
@@ -896,48 +900,39 @@ BEGIN
 
     -- Part/2 multiple address
     CALL public.log_info(CONCAT(element, ': Insertion/Référence (multiples)'));
-    _columns_id_aliased := alias_words(_columns_id, ',[ ]*', '_address');
     _nrows_affected := 0;
+    _columns_id_array := REGEXP_SPLIT_TO_ARRAY(
+        CONCAT_WS(', ', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id)
+        , ',[ ]*'
+    );
     -- https://stackoverflow.com/questions/20965882/for-loop-with-dynamic-table-name-in-postgresql-9-1
     FOR _address IN EXECUTE FORMAT('SELECT * FROM %s', table_name_to_m)
     LOOP
-        /* FIXME
+        -- https://dba.stackexchange.com/questions/52826/insert-values-from-a-record-variable-into-a-table
+        _columns_id_values := NULL;
+        FOR _i IN 1..ARRAY_LENGTH(_columns_id_array, 1)
+        LOOP
+            FOR _kv IN SELECT * FROM EACH(HSTORE(_address)) LOOP
+                IF _columns_id_array @> ARRAY[_kv.key] THEN
+                    _columns_id_values := CONCAT_WS(','
+                        , _columns_id_values
+                        , quote_nullable(_kv.value)
+                    );
+                    EXIT;
+                END IF;
+            END LOOP;
+         END LOOP;
+
         _query := CONCAT(
-            'INSERT INTO public.address ( '
+            'INSERT INTO public.address ('
             , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id)
-            , ' )
-            VALUES (
-            '
-            , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN '_address.id_parent' END, _columns_id_aliased)
-            , ' )
+            , ') VALUES (', _columns_id_values, ')
             RETURNING id'
         );
         IF simulation THEN
             RAISE NOTICE 'query: %', _query;
         ELSE
             EXECUTE _query INTO _id;
-         */
-
-        /* TODO
-        https://stackoverflow.com/questions/17547666/execute-into-using-statement-in-pl-pgsql-cant-execute-into-a-record
-        dynamize this code!
-         */
-            IF element = 'VOIE' THEN
-                INSERT INTO public.address (id_territory, id_street)
-                VALUES (_address.id_territory, _address.id_street)
-                RETURNING id
-                INTO _id;
-            ELSIF element = 'NUMERO' THEN
-                INSERT INTO public.address (id_parent, id_territory, id_street, id_housenumber)
-                VALUES (_address.id_parent, _address.id_territory, _address.id_street, _address.id_housenumber)
-                RETURNING id
-                INTO _id;
-            ELSE
-                INSERT INTO public.address (id_parent, id_territory, id_street, id_housenumber, id_complement)
-                VALUES (_address.id_parent, _address.id_territory, _address.id_street, _address.id_housenumber, _address.id_complement)
-                RETURNING id
-                INTO _id;
-            END IF;
 
             INSERT INTO public.address_cross_reference (
                 id_address
@@ -954,9 +949,7 @@ BEGIN
             IF _nrows_affected % notice_counter = 0 THEN
                 CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
             END IF;
-        /*
         END IF;
-         */
     END LOOP;
     CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
 END
