@@ -788,15 +788,18 @@ BEGIN
     2/ multiple
        have to insert row per row (to obtain uniq id address)
 
-    123 streets (w/ same name & territory)
-        010722249B	CHEMIN DE MOLAND
-        0402322266	PLACE DE LA FONTAINE
-        0402322266	RUE DE LA FONTAINE
+    multiples (street: 123, housenumber: 345, complement: 621)
+    248 streets (w/ same name & territory), as (CEA-ZA, name)
+        010722249B CHEMIN DE MOLAND
+        0402322266 PLACE DE LA FONTAINE
 
     691 housenumbers (w/ same number/extension, street & territory)
         2 housenumbers : 35 RUE DE L EGLISE 30190 SAINTE ANASTASIE {30228222LN, 30228222LH}
 
     1260 complements (w/ same name, street, [housenumber] & territory)
+        ENTREE 7 RESIDENCE ARDENNES, 2 RUE DU MARECHAL JOFFRE, 5901722NTP
+        BATIMENT 1 RESIDENCE DE FRANCE, RUE DU GENERAL DE GAULLE, 9401922AGL
+            this example has another occurence, on housenumber 26
      */
 
     -- Part/1 uniq address
@@ -894,7 +897,7 @@ BEGIN
     ELSE
         EXECUTE _query;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-        COMMIT;
+        --COMMIT;
         CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
     END IF;
 
