@@ -561,7 +561,6 @@ END
 $proc$ LANGUAGE plpgsql;
 
 -- address element
-SELECT drop_all_functions_if_exists('fr', 'add_address_element');
 SELECT drop_all_functions_if_exists('fr', 'push_address_element_to_public');
 CREATE OR REPLACE PROCEDURE fr.push_address_element_to_public(
     element VARCHAR
@@ -702,7 +701,7 @@ BEGIN
     ELSE
         /* NOTE
         https://dba.stackexchange.com/questions/276680/passing-parameters-for-dynamic-sql-in-a-function
-        _query := 'TRUNCATE TABLE $1;'; EXECUTE _query USING _table; don't work!
+        _query := 'TRUNCATE TABLE $1;'; EXECUTE _query USING _table; don't work! only DML
          */
         EXECUTE FORMAT('TRUNCATE TABLE %s', table_name_to);
 
@@ -755,7 +754,7 @@ BEGIN
     ELSE
         _query := CONCAT(
             'WITH
-            multiple_addresses AS (
+            namesake_addresses AS (
                 SELECT ', _columns_id, '
                 FROM ', table_name_to, '
                 GROUP BY ', _columns_id, '
@@ -766,9 +765,9 @@ BEGIN
             , ' ) SELECT '
             , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'n.id_parent' END, _columns_id_aliased, 'n.code_address')
             , ' FROM ', table_name_to, ' n
-                JOIN multiple_addresses ma ON (', _columns_id_aliased, ')
+                JOIN namesake_addresses na ON (', _columns_id_aliased, ')
                 IS NOT DISTINCT FROM
-                (', alias_words(_columns_id, ',[ ]*', 'ma'), ')'
+                (', alias_words(_columns_id, ',[ ]*', 'na'), ')'
         );
     END IF;
 
@@ -915,7 +914,6 @@ END
 $proc$ LANGUAGE plpgsql;
 
 -- push elements of address (as changes) to public
-SELECT drop_all_functions_if_exists('fr', 'push_address_links_to_public');
 SELECT drop_all_functions_if_exists('fr', 'push_address_elements_to_public');
 CREATE OR REPLACE PROCEDURE fr.push_address_elements_to_public(
     force BOOLEAN DEFAULT FALSE
@@ -924,6 +922,8 @@ CREATE OR REPLACE PROCEDURE fr.push_address_elements_to_public(
 AS
 $proc$
 DECLARE
+    _elements VARCHAR[] := ARRAY['VOIE', 'NUMERO', 'L3'];
+    _element VARCHAR;
     _nrows_affected INT;
     _address RECORD;
     _id INT;
@@ -1090,83 +1090,80 @@ BEGIN
         SELECT * FROM fr.tmp_address_news WITH NO DATA;
 
     -- dictionaries (items of an address) and addresses
-        CALL fr.push_dictionary_street_to_public(force, drop_temporary);
+    FOREACH _element IN ARRAY _elements
+    LOOP
+        --RAISE NOTICE 'element: %', _element;
+        EXECUTE FORMAT('CALL fr.push_dictionary_%s_to_public($1, $2)'
+            , CASE _element
+              WHEN 'VOIE' THEN 'street'
+              WHEN 'NUMERO' THEN 'housenumber'
+              WHEN 'L3' THEN 'complement'
+              END
+            )
+            USING force, drop_temporary;
         CALL fr.push_address_element_to_public(
-            element => 'VOIE'
+            element => _element
             , table_name_to => 'fr.tmp_address_news'
             , table_name_to_m => 'fr.tmp_address_news_m'
             , table_name_from => 'fr.tmp_address_changes'
         );
-        CALL fr.push_dictionary_housenumber_to_public(force, drop_temporary);
-        CALL fr.push_address_element_to_public(
-            element => 'NUMERO'
-            , table_name_to => 'fr.tmp_address_news'
-            , table_name_to_m => 'fr.tmp_address_news_m'
-            , table_name_from => 'fr.tmp_address_changes'
-        );
-        CALL fr.push_dictionary_complement_to_public(force, drop_temporary);
-        CALL fr.push_address_element_to_public(
-            element => 'L3'
-            , table_name_to => 'fr.tmp_address_news'
-            , table_name_to_m => 'fr.tmp_address_news_m'
-            , table_name_from => 'fr.tmp_address_changes'
-        );
+    END LOOP;
 
-        CALL public.log_info('Mise à jour des modifications');
-        WITH
-        address_updates AS (
-            SELECT
-                cr1.id_address
-                , cr2.id_address id_parent
-                , t.id id_territory
-                , a3.id_street
-                , a4.id_housenumber
-                , a5.id_complement
-            FROM
-                fr.tmp_address_changes c
-                    JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND t.country = 'FR'
-                    JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
-                    LEFT OUTER JOIN public.address_cross_reference cr2 ON cr2.id_source = c.code_parent AND cr2.source = 'LAPOSTE'
-                    JOIN public.address_cross_reference cr3 ON cr3.id_source = c.code_street AND cr3.source = 'LAPOSTE'
-                    JOIN public.address a3 ON a3.id = cr3.id_address
-                    LEFT OUTER JOIN public.address_cross_reference cr4 ON cr4.id_source = c.code_housenumber AND cr4.source = 'LAPOSTE'
-                    LEFT OUTER JOIN public.address a4 ON a4.id = cr4.id_address
-                    LEFT OUTER JOIN public.address_cross_reference cr5 ON cr5.id_source = c.code_complement AND cr5.source = 'LAPOSTE'
-                    LEFT OUTER JOIN public.address a5 ON a5.id = cr5.id_address
-            WHERE
-                c.change = '!'
-        )
-        UPDATE public.address a SET
-                id_parent = u.id_parent
-                , id_territory = u.id_territory
-                , id_street = u.id_street
-                , id_housenumber = u.id_housenumber
-                , id_complement = u.id_complement
-            FROM address_updates u
-            WHERE
-                a.id = u.id_address
-        ;
-        GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-        CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+    CALL public.log_info('Mise à jour des modifications');
+    WITH
+    address_updates AS (
+        SELECT
+            cr1.id_address
+            , cr2.id_address id_parent
+            , t.id id_territory
+            , a3.id_street
+            , a4.id_housenumber
+            , a5.id_complement
+        FROM
+            fr.tmp_address_changes c
+                JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND t.country = 'FR'
+                JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
+                LEFT OUTER JOIN public.address_cross_reference cr2 ON cr2.id_source = c.code_parent AND cr2.source = 'LAPOSTE'
+                JOIN public.address_cross_reference cr3 ON cr3.id_source = c.code_street AND cr3.source = 'LAPOSTE'
+                JOIN public.address a3 ON a3.id = cr3.id_address
+                LEFT OUTER JOIN public.address_cross_reference cr4 ON cr4.id_source = c.code_housenumber AND cr4.source = 'LAPOSTE'
+                LEFT OUTER JOIN public.address a4 ON a4.id = cr4.id_address
+                LEFT OUTER JOIN public.address_cross_reference cr5 ON cr5.id_source = c.code_complement AND cr5.source = 'LAPOSTE'
+                LEFT OUTER JOIN public.address a5 ON a5.id = cr5.id_address
+        WHERE
+            c.change = '!'
+    )
+    UPDATE public.address a SET
+            id_parent = u.id_parent
+            , id_territory = u.id_territory
+            , id_street = u.id_street
+            , id_housenumber = u.id_housenumber
+            , id_complement = u.id_complement
+        FROM address_updates u
+        WHERE
+            a.id = u.id_address
+    ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
 
-        CALL public.log_info('Mise à jour des suppressions');
-        WITH
-        address_deletes AS (
-            SELECT
-                cr1.id_address
-            FROM
-                fr.tmp_address_changes c
-                    JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
-            WHERE
-                c.change = '-'
-        )
-        DELETE FROM public.address a
-            USING address_deletes d
-            WHERE
-                a.id = d.id_address
-        ;
-        GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-        CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+    CALL public.log_info('Mise à jour des suppressions');
+    WITH
+    address_deletes AS (
+        SELECT
+            cr1.id_address
+        FROM
+            fr.tmp_address_changes c
+                JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
+        WHERE
+            c.change = '-'
+    )
+    DELETE FROM public.address a
+        USING address_deletes d
+        WHERE
+            a.id = d.id_address
+    ;
+    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
 
     IF drop_temporary THEN
         DROP TABLE IF EXISTS fr.tmp_address_changes;
@@ -1190,8 +1187,8 @@ BEGIN
     CALL public.log_info('Mise à jour des XY des Adresses');
 
     CALL public.log_info('Préparation des changements');
-    DROP TABLE IF EXISTS tmp_fr_xy_changes;
-    CREATE UNLOGGED TABLE tmp_fr_xy_changes AS (
+    DROP TABLE IF EXISTS fr.tmp_xy_changes;
+    CREATE UNLOGGED TABLE fr.tmp_xy_changes AS (
         WITH
         public_xy AS (
             SELECT
@@ -1292,7 +1289,7 @@ BEGIN
             , 'LAPOSTE'
             , c.geom
         FROM
-            tmp_fr_xy_changes c
+            fr.tmp_xy_changes c
                 JOIN public.address_cross_reference cr ON cr.id_source = xy.code_address AND cr.source = 'LAPOSTE'
         WHERE
             c.change = ANY('{+,!}')
@@ -1310,7 +1307,7 @@ BEGIN
             cr1.id_address
             , c.kind
         FROM
-            tmp_fr_xy_changes c
+            fr.tmp_xy_changes c
                 JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
         WHERE
             c.change = '-'
@@ -1320,7 +1317,7 @@ BEGIN
         WHERE
             xy.id_address = d.id_address
             AND
-            xy.kind = c.kind
+            xy.kind = d.kind
             AND
             xy.source = 'LAPOSTE'
     ;
@@ -1329,7 +1326,7 @@ BEGIN
     --COMMIT;
 
     IF drop_temporary THEN
-        DROP TABLE IF EXISTS tmp_fr_xy_changes;
+        DROP TABLE IF EXISTS fr.tmp_xy_changes;
     END IF;
 END
 $proc$ LANGUAGE plpgsql;
