@@ -602,7 +602,9 @@ DECLARE
             'id_complement'
         END;
     _columns_id VARCHAR := 'id_territory, id_street';
+    _columns_id2 VARCHAR;
     _columns_id_aliased VARCHAR;
+    _columns_id2_aliased VARCHAR;
     _columns_id_array TEXT[];
     _columns_id_values TEXT;
     _source_parent VARCHAR :=
@@ -661,9 +663,11 @@ BEGIN
     _columns_insert := CONCAT(_columns_insert, ', code_address');
     _columns_select := CONCAT(_columns_select, ', c.code_address');
     IF element != 'VOIE' THEN
+        _columns_id2 := _columns_id;
         _columns_id := CONCAT(_columns_id, ', id_housenumber');
         IF element != 'NUMERO' THEN
             _columns_id := CONCAT(_columns_id, ', id_complement');
+            _columns_id2 := CONCAT(_columns_id2, ', id_complement');
         END IF;
     END IF;
 
@@ -739,6 +743,9 @@ BEGIN
     );
     EXECUTE _query INTO _nrows;
     _columns_id_aliased := alias_words(_columns_id, ',[ ]*', 'n');
+    IF element = 'L3' THEN
+        _columns_id2_aliased := alias_words(_columns_id2, ',[ ]*', 'n');
+    END IF;
     -- address already initiated ?
     IF _nrows > 0 THEN
         _query := CONCAT(
@@ -802,18 +809,18 @@ BEGIN
      */
 
     -- Part/1 uniq address
-    CALL public.log_info(CONCAT(element, ': Insertion (uniques)'));
-    _columns_id_aliased := alias_words(_columns_id, ',[ ]*', 'u');
+    CALL public.log_info(CONCAT(element, ': Adresses (uniques)'));
+    _columns_id_aliased := alias_words(_columns_id, ',[ ]*', 'n');
     _query := CONCAT(
         'INSERT INTO public.address ( '
         , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id)
         , ' ) SELECT '
-        , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'u.id_parent' END, _columns_id_aliased)
-        , ' FROM ', table_name_to, ' u
+        , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'n.id_parent' END, _columns_id_aliased)
+        , ' FROM ', table_name_to, ' n
         WHERE NOT EXISTS(
             SELECT 1 FROM ', table_name_to_m, ' m
             WHERE (', _columns_id_aliased, ')
-                IS NOT DISTINCT FROM
+                =
                 (', alias_words(_columns_id, ',[ ]*', 'm'), ')
         )'
     );
@@ -826,6 +833,12 @@ BEGIN
     END IF;
 
     CALL public.log_info(CONCAT(element, ': Références (uniques)'));
+    /* NOTE
+    joining address w/ 'IS NOT DISTINCT FROM' degrades performance, back to equal!
+    BUT
+    have to accommodate usecase of complement's parent (housenumber OR street)
+    can't write (ids) = (ids) due to NULL housenumber possibility
+     */
     _query := CONCAT(
         'INSERT INTO public.address_cross_reference (
             id_address
@@ -835,16 +848,16 @@ BEGIN
         SELECT
             a.id
             , ''LAPOSTE''
-            , u.code_address
-        FROM ', table_name_to, ' u
+            , n.code_address
+        FROM ', table_name_to, ' n
             JOIN public.address a ON
                 (', _columns_id_aliased, ')
-                IS NOT DISTINCT FROM
+                =
                 (', alias_words(_columns_id, ',[ ]*', 'a'), ')
         WHERE NOT EXISTS(
             SELECT 1 FROM ', table_name_to_m, ' m
             WHERE (', _columns_id_aliased, ')
-                IS NOT DISTINCT FROM
+                =
                 (', alias_words(_columns_id, ',[ ]*', 'm'), ')
         )'
     );
@@ -853,11 +866,47 @@ BEGIN
     ELSE
         EXECUTE _query;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-        CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
+        CALL public.log_info(CONCAT(element, CASE WHEN element = 'L3' THEN '(NUMERO): ' ELSE ': ' END, _nrows_affected));
+    END IF;
+
+    IF element = 'L3' THEN
+        _query := CONCAT(
+            'INSERT INTO public.address_cross_reference (
+                id_address
+                , source
+                , id_source
+            )
+            SELECT
+                a.id
+                , ''LAPOSTE''
+                , n.code_address
+            FROM ', table_name_to, ' n
+                JOIN public.address a ON
+                    (', _columns_id2_aliased, ')
+                    =
+                    (', alias_words(_columns_id2, ',[ ]*', 'a'), ')
+            WHERE NOT EXISTS(
+                SELECT 1 FROM ', table_name_to_m, ' m
+                WHERE (', _columns_id2_aliased, ')
+                    =
+                    (', alias_words(_columns_id2, ',[ ]*', 'm'), ')
+                    AND
+                    m.id_housenumber IS NULL
+            )
+            AND
+            n.id_housenumber IS NULL'
+        );
+        IF simulation THEN
+            RAISE NOTICE 'query: %', _query;
+        ELSE
+            EXECUTE _query;
+            GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+            CALL public.log_info(CONCAT(element, '(VOIE): ', _nrows_affected));
+        END IF;
     END IF;
 
     -- Part/2 multiple address
-    CALL public.log_info(CONCAT(element, ': Insertion/Référence (multiples)'));
+    CALL public.log_info(CONCAT(element, ': Adresses/Références (multiples)'));
     _nrows_affected := 0;
     _columns_id_array := REGEXP_SPLIT_TO_ARRAY(
         CONCAT_WS(', ', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id)
@@ -925,8 +974,6 @@ DECLARE
     _elements VARCHAR[] := ARRAY['VOIE', 'NUMERO', 'L3'];
     _element VARCHAR;
     _nrows_affected INT;
-    _address RECORD;
-    _id INT;
 BEGIN
     CALL public.log_info('Mise à jour des Adresses');
 
@@ -1049,6 +1096,7 @@ BEGIN
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+    ALTER TABLE fr.tmp_address_changes SET (autovacuum_enabled = FALSE);
 
     CALL public.log_info('Indexation des changements');
     CREATE INDEX IF NOT EXISTS ix_tmp_fr_address_changes ON fr.tmp_address_changes(change, level);
@@ -1085,9 +1133,11 @@ BEGIN
         SELECT * FROM public.address WITH NO DATA;
     ALTER TABLE fr.tmp_address_news ADD COLUMN code_address VARCHAR;
     ALTER TABLE fr.tmp_address_news DROP COLUMN id;
+    ALTER TABLE fr.tmp_address_news SET (autovacuum_enabled = FALSE);
     DROP TABLE IF EXISTS fr.tmp_address_news_m;
     CREATE UNLOGGED TABLE fr.tmp_address_news_m AS
         SELECT * FROM fr.tmp_address_news WITH NO DATA;
+    ALTER TABLE fr.tmp_address_news_m SET (autovacuum_enabled = FALSE);
 
     -- dictionaries (items of an address) and addresses
     FOREACH _element IN ARRAY _elements
