@@ -604,7 +604,6 @@ DECLARE
     _columns_id VARCHAR := 'id_territory, id_street';
     _columns_id2 VARCHAR;
     _columns_id_aliased VARCHAR;
-    _columns_id2_aliased VARCHAR;
     _columns_id_array TEXT[];
     _columns_id_values TEXT;
     _source_parent VARCHAR :=
@@ -654,7 +653,7 @@ DECLARE
             '
         END;
     _nrows_affected INT;
-    _mode VARCHAR;
+    _mode_multiple VARCHAR;
     _nrows INT;
     _i INT;
     _address RECORD;
@@ -744,12 +743,9 @@ BEGIN
     );
     EXECUTE _query INTO _nrows;
     _columns_id_aliased := alias_words(_columns_id, ',[ ]*', 'n');
-    IF element = 'L3' THEN
-        _columns_id2_aliased := alias_words(_columns_id2, ',[ ]*', 'n');
-    END IF;
     -- address already initiated ?
     IF _nrows > 0 THEN
-        _mode := 'DELTA';
+        _mode_multiple := 'DELTA';
         _query := CONCAT(
             'INSERT INTO ', table_name_to_m, ' ('
             , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id, 'code_address')
@@ -761,7 +757,7 @@ BEGIN
                 (', alias_words(_columns_id, ',[ ]*', 'a'), ')'
         );
     ELSE
-        _mode := 'INIT';
+        _mode_multiple := 'INIT';
         _query := CONCAT(
             'WITH
             namesake_addresses AS (
@@ -787,7 +783,25 @@ BEGIN
         EXECUTE FORMAT('TRUNCATE TABLE %s', table_name_to_m);
         EXECUTE _query;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-        CALL public.log_info(CONCAT(element, '(', _mode, '): ', _nrows_affected));
+        CALL public.log_info(CONCAT(element, '(', _mode_multiple, '): ', _nrows_affected));
+    END IF;
+
+    CALL public.log_info(CONCAT(element, ': Préparation (uniques)'));
+    _query := CONCAT(
+        'DELETE FROM ', table_name_to, ' n
+        USING ', table_name_to_m, ' m
+        WHERE
+            (', _columns_id_aliased, ')
+            IS NOT DISTINCT FROM
+            (', alias_words(_columns_id, ',[ ]*', 'm'), ')'
+    );
+
+    IF simulation THEN
+        RAISE NOTICE 'query: %', _query;
+    ELSE
+        EXECUTE _query;
+        GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+        CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
     END IF;
 
     /* NOTE
@@ -813,20 +827,14 @@ BEGIN
 
     -- Part/1 uniq address
     CALL public.log_info(CONCAT(element, ': Adresses (uniques)'));
-    _columns_id_aliased := alias_words(_columns_id, ',[ ]*', 'n');
     _query := CONCAT(
         'INSERT INTO public.address ( '
         , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id)
         , ' ) SELECT '
         , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'n.id_parent' END, _columns_id_aliased)
-        , ' FROM ', table_name_to, ' n
-        WHERE NOT EXISTS(
-            SELECT 1 FROM ', table_name_to_m, ' m
-            WHERE (', _columns_id_aliased, ')
-                =
-                (', alias_words(_columns_id, ',[ ]*', 'm'), ')
-        )'
+        , ' FROM ', table_name_to
     );
+
     IF simulation THEN
         RAISE NOTICE 'query: %', _query;
     ELSE
@@ -836,6 +844,8 @@ BEGIN
     END IF;
 
     CALL public.log_info(CONCAT(element, ': Références (uniques)'));
+    _columns_id_aliased := alias_words(_columns_id, ',[ ]*', 'u');
+
     /* NOTE
     joining address w/ 'IS NOT DISTINCT FROM' degrades performance, back to equal!
     BUT
@@ -852,18 +862,13 @@ BEGIN
             a.id
             , ''LAPOSTE''
             , n.code_address
-        FROM ', table_name_to, ' n
+        FROM ', table_name_to, ' u
             JOIN public.address a ON
                 (', _columns_id_aliased, ')
                 =
-                (', alias_words(_columns_id, ',[ ]*', 'a'), ')
-        WHERE NOT EXISTS(
-            SELECT 1 FROM ', table_name_to_m, ' m
-            WHERE (', _columns_id_aliased, ')
-                =
-                (', alias_words(_columns_id, ',[ ]*', 'm'), ')
-        )'
+                (', alias_words(_columns_id, ',[ ]*', 'a'), ')'
     );
+
     IF simulation THEN
         RAISE NOTICE 'query: %', _query;
     ELSE
@@ -883,22 +888,15 @@ BEGIN
                 a.id
                 , ''LAPOSTE''
                 , n.code_address
-            FROM ', table_name_to, ' n
+            FROM ', table_name_to, ' u
                 JOIN public.address a ON
-                    (', _columns_id2_aliased, ')
+                    (', alias_words(_columns_id2, ',[ ]*', 'u'), ')
                     =
                     (', alias_words(_columns_id2, ',[ ]*', 'a'), ')
-            WHERE NOT EXISTS(
-                SELECT 1 FROM ', table_name_to_m, ' m
-                WHERE (', _columns_id2_aliased, ')
-                    =
-                    (', alias_words(_columns_id2, ',[ ]*', 'm'), ')
-                    AND
-                    m.id_housenumber IS NULL
-            )
-            AND
-            n.id_housenumber IS NULL'
+            WHERE
+                u.id_housenumber IS NULL'
         );
+
         IF simulation THEN
             RAISE NOTICE 'query: %', _query;
         ELSE
