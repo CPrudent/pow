@@ -920,6 +920,7 @@ BEGIN
         FOR _i IN 1..ARRAY_LENGTH(_columns_id_array, 1)
         LOOP
             FOR _kv IN SELECT * FROM EACH(HSTORE(_address)) LOOP
+                IF _kv.key != _columns_id_array[_i] THEN CONTINUE; END IF;
                 IF _columns_id_array @> ARRAY[_kv.key] THEN
                     _columns_id_values := CONCAT_WS(','
                         , _columns_id_values
