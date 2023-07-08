@@ -654,6 +654,7 @@ DECLARE
             '
         END;
     _nrows_affected INT;
+    _mode VARCHAR;
     _nrows INT;
     _i INT;
     _address RECORD;
@@ -748,6 +749,7 @@ BEGIN
     END IF;
     -- address already initiated ?
     IF _nrows > 0 THEN
+        _mode := 'DELTA';
         _query := CONCAT(
             'INSERT INTO ', table_name_to_m, ' ('
             , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id, 'code_address')
@@ -759,6 +761,7 @@ BEGIN
                 (', alias_words(_columns_id, ',[ ]*', 'a'), ')'
         );
     ELSE
+        _mode := 'INIT';
         _query := CONCAT(
             'WITH
             namesake_addresses AS (
@@ -784,7 +787,7 @@ BEGIN
         EXECUTE FORMAT('TRUNCATE TABLE %s', table_name_to_m);
         EXECUTE _query;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-        CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
+        CALL public.log_info(CONCAT(element, '(', _mode, '): ', _nrows_affected));
     END IF;
 
     /* NOTE
