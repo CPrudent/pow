@@ -964,8 +964,8 @@ BEGIN
 
     IF part_todo & 1 = 1 THEN
         CALL public.log_info('Préparation des changements');
-        DROP TABLE IF EXISTS fr.tmp_address_changes;
-        CREATE UNLOGGED TABLE fr.tmp_address_changes AS (
+        DROP TABLE IF EXISTS fr.tmp_address_change;
+        CREATE UNLOGGED TABLE fr.tmp_address_change AS (
             WITH
             public_address AS (
                 SELECT
@@ -1082,10 +1082,10 @@ BEGIN
         ;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
         CALL public.log_info(CONCAT('Total: ', _nrows_affected));
-        ALTER TABLE fr.tmp_address_changes SET (autovacuum_enabled = FALSE);
+        ALTER TABLE fr.tmp_address_change SET (autovacuum_enabled = FALSE);
 
         CALL public.log_info('Indexation des changements');
-        CREATE INDEX IF NOT EXISTS ix_tmp_fr_address_changes ON fr.tmp_address_changes(change, level);
+        CREATE INDEX IF NOT EXISTS ix_tmp_fr_address_changes ON fr.tmp_address_change(change, level);
     END IF;
 
     IF part_todo & 2 = 2 THEN
@@ -1104,7 +1104,7 @@ BEGIN
                 , 'ADDRESS'
                 , ROW_TO_JSON(a.*)::JSONB
             FROM
-                fr.tmp_address_changes c
+                fr.tmp_address_change c
                     JOIN public.address_cross_reference cr ON cr.id_source = c.code_address AND cr.source = 'LAPOSTE'
                     JOIN public.address a ON a.id = cr.id_address
             WHERE c.change = ANY('{-,!}')
@@ -1118,14 +1118,14 @@ BEGIN
         have to add addresses in descending order, because of parent id
         */
         CALL public.log_info('Mise à jour des ajouts');
-        DROP TABLE IF EXISTS fr.tmp_address_news;
-        CREATE UNLOGGED TABLE fr.tmp_address_news AS
+        DROP TABLE IF EXISTS fr.tmp_address_new;
+        CREATE UNLOGGED TABLE fr.tmp_address_new AS
             SELECT * FROM public.address WITH NO DATA;
-        ALTER TABLE fr.tmp_address_news
+        ALTER TABLE fr.tmp_address_new
             ADD COLUMN code_address VARCHAR
             , ADD COLUMN uniq BOOLEAN DEFAULT TRUE;
-        ALTER TABLE fr.tmp_address_news DROP COLUMN id;
-        ALTER TABLE fr.tmp_address_news SET (autovacuum_enabled = FALSE);
+        ALTER TABLE fr.tmp_address_new DROP COLUMN id;
+        ALTER TABLE fr.tmp_address_new SET (autovacuum_enabled = FALSE);
 
         -- dictionaries (items of an address) and addresses
         FOREACH _element IN ARRAY _elements
@@ -1141,8 +1141,8 @@ BEGIN
                 USING force, drop_temporary;
             CALL fr.push_address_element_to_public(
                 element => _element
-                , table_name_to => 'fr.tmp_address_news'
-                , table_name_from => 'fr.tmp_address_changes'
+                , table_name_to => 'fr.tmp_address_new'
+                , table_name_from => 'fr.tmp_address_change'
             );
         END LOOP;
     END IF;
@@ -1159,7 +1159,7 @@ BEGIN
                 , a4.id_housenumber
                 , a5.id_complement
             FROM
-                fr.tmp_address_changes c
+                fr.tmp_address_change c
                     JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND t.country = 'FR'
                     JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
                     LEFT OUTER JOIN public.address_cross_reference cr2 ON cr2.id_source = c.code_parent AND cr2.source = 'LAPOSTE'
@@ -1193,7 +1193,7 @@ BEGIN
             SELECT
                 cr1.id_address
             FROM
-                fr.tmp_address_changes c
+                fr.tmp_address_change c
                     JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
             WHERE
                 c.change = '-'
@@ -1208,9 +1208,8 @@ BEGIN
     END IF;
 
     IF drop_temporary THEN
-        DROP TABLE IF EXISTS fr.tmp_address_changes;
-        DROP TABLE IF EXISTS fr.tmp_address_news;
-        DROP TABLE IF EXISTS fr.tmp_address_news_m;
+        DROP TABLE IF EXISTS fr.tmp_address_change;
+        DROP TABLE IF EXISTS fr.tmp_address_new;
     END IF;
 END
 $proc$ LANGUAGE plpgsql;
