@@ -74,7 +74,7 @@ BEGIN
                 -- trick to ignore different descriptors if typeof is null (by order)
                 , ARRAY_AGG(DISTINCT lb_desc ORDER BY lb_desc DESC) descriptors
             FROM fr.laposte_street
-            -- hors MONACO
+            -- except MONACO
             WHERE fl_active AND co_insee_commune != '99138'
             GROUP BY
                 lb_voie
@@ -951,6 +951,7 @@ SELECT drop_all_functions_if_exists('fr', 'push_address_elements_to_public');
 CREATE OR REPLACE PROCEDURE fr.push_address_elements_to_public(
     force BOOLEAN DEFAULT FALSE
     , drop_temporary BOOLEAN DEFAULT TRUE
+    , part_todo INT DEFAULT 1 | 2 | 4 | 8 | 16
 )
 AS
 $proc$
@@ -961,240 +962,250 @@ DECLARE
 BEGIN
     CALL public.log_info('Mise à jour des Adresses');
 
-    CALL public.log_info('Préparation des changements');
-    DROP TABLE IF EXISTS fr.tmp_address_changes;
-    CREATE UNLOGGED TABLE fr.tmp_address_changes AS (
-        WITH
-        public_address AS (
-            SELECT
-                cr1.id_source code_address
-                , CASE
-                    WHEN id_complement IS NOT NULL THEN 'L3'
-                    WHEN id_housenumber IS NOT NULL AND id_complement IS NULL THEN 'NUMERO'
-                    ELSE 'VOIE'
-                END level
-                , cr2.id_source code_parent
-                , t.code code_territory
-                , cr3.id_source code_street
-                , cr4.id_source code_housenumber
-                , cr5.id_source code_complement
-            FROM
-                public.address a
-                    JOIN public.territory t ON t.id = a.id_territory
-                    JOIN public.address_cross_reference cr1 ON cr1.id_address = a.id AND cr1.source = 'LAPOSTE'
-                    LEFT OUTER JOIN public.address_cross_reference cr2 ON cr2.id_address = a.id_parent AND cr2.source = 'LAPOSTE'
-                    JOIN public.address_cross_reference cr3 ON cr3.id_address = a.id_street AND cr3.source = 'LAPOSTE'
-                    LEFT OUTER JOIN public.address_cross_reference cr4 ON cr4.id_address = a.id_housenumber AND cr4.source = 'LAPOSTE'
-                    LEFT OUTER JOIN public.address_cross_reference cr5 ON cr5.id_address = a.id_complement AND cr5.source = 'LAPOSTE'
-            WHERE
-                t.country = 'FR'
-        )
-        , fr_address AS (
-            SELECT
-                a.co_cea_determinant code_address
-                , a.co_niveau level
-                , CASE WHEN a.co_niveau = 'VOIE' THEN NULL ELSE a.co_cea_parent END code_parent
-                , a.co_cea_za code_territory
-                , a.co_cea_voie code_street
-                , a.co_cea_numero code_housenumber
-                , a.co_cea_l3 code_complement
-            FROM fr.laposte_address a
-                JOIN fr.laposte_zone_address za ON za.co_cea = a.co_cea_za
-            WHERE
-                a.fl_active
-                AND
-                -- w/o ZA (CEA-voie defined)
-                /* NOTE
-                62 faults in LAPOSTE/RAN data, as address w/o street occurence!
-                to avoid them, add a join
-                 */
-                EXISTS (
-                    SELECT 1 FROM fr.laposte_street s WHERE s.co_cea = a.co_cea_voie
+    IF part_todo & 1 = 1 THEN
+        CALL public.log_info('Préparation des changements');
+        DROP TABLE IF EXISTS fr.tmp_address_changes;
+        CREATE UNLOGGED TABLE fr.tmp_address_changes AS (
+            WITH
+            public_address AS (
+                SELECT
+                    cr1.id_source code_address
+                    , CASE
+                        WHEN id_complement IS NOT NULL THEN 'L3'
+                        WHEN id_housenumber IS NOT NULL AND id_complement IS NULL THEN 'NUMERO'
+                        ELSE 'VOIE'
+                    END level
+                    , cr2.id_source code_parent
+                    , t.code code_territory
+                    , cr3.id_source code_street
+                    , cr4.id_source code_housenumber
+                    , cr5.id_source code_complement
+                FROM
+                    public.address a
+                        JOIN public.territory t ON t.id = a.id_territory
+                        JOIN public.address_cross_reference cr1 ON cr1.id_address = a.id AND cr1.source = 'LAPOSTE'
+                        LEFT OUTER JOIN public.address_cross_reference cr2 ON cr2.id_address = a.id_parent AND cr2.source = 'LAPOSTE'
+                        JOIN public.address_cross_reference cr3 ON cr3.id_address = a.id_street AND cr3.source = 'LAPOSTE'
+                        LEFT OUTER JOIN public.address_cross_reference cr4 ON cr4.id_address = a.id_housenumber AND cr4.source = 'LAPOSTE'
+                        LEFT OUTER JOIN public.address_cross_reference cr5 ON cr5.id_address = a.id_complement AND cr5.source = 'LAPOSTE'
+                WHERE
+                    t.country = 'FR'
+            )
+            , fr_address AS (
+                SELECT
+                    a.co_cea_determinant code_address
+                    , a.co_niveau level
+                    , CASE WHEN a.co_niveau = 'VOIE' THEN NULL ELSE a.co_cea_parent END code_parent
+                    , a.co_cea_za code_territory
+                    , a.co_cea_voie code_street
+                    , a.co_cea_numero code_housenumber
+                    , a.co_cea_l3 code_complement
+                FROM fr.laposte_address a
+                    JOIN fr.laposte_zone_address za ON za.co_cea = a.co_cea_za
+                WHERE
+                    a.fl_active
+                    AND
+                    -- w/o ZA (CEA-voie defined)
+                    /* NOTE
+                    62 faults in LAPOSTE/RAN data, as address w/o street occurence!
+                    to avoid them, add a join
+                    */
+                    EXISTS (
+                        SELECT 1 FROM fr.laposte_street s WHERE s.co_cea = a.co_cea_voie
+                    )
+                    AND
+                    -- except MONACO
+                    za.co_insee_commune != '99138'
+            )
+            , changes AS (
+                (
+                    SELECT '-' change, code_address FROM public_address
+                    EXCEPT
+                    SELECT '-', code_address FROM fr_address
                 )
-                AND
-                -- except MONACO
-                za.co_insee_commune != '99138'
-        )
-        , changes AS (
-            (
-                SELECT '-' change, code_address FROM public_address
-                EXCEPT
-                SELECT '-', code_address FROM fr_address
+                UNION
+                (
+                    SELECT '+', code_address FROM fr_address
+                    EXCEPT
+                    SELECT '+', code_address FROM public_address
+                )
+                UNION
+                SELECT '!', public_address.code_address
+                FROM public_address
+                    JOIN fr_address ON public_address.code_address = fr_address.code_address
+                WHERE
+                    (public_address.code_parent IS DISTINCT FROM fr_address.code_parent)
+                    OR
+                    (public_address.code_territory IS DISTINCT FROM fr_address.code_territory)
+                    OR
+                    (public_address.code_street IS DISTINCT FROM fr_address.code_street)
+                    OR
+                    (public_address.code_housenumber IS DISTINCT FROM fr_address.code_housenumber)
+                    OR
+                    (public_address.code_complement IS DISTINCT FROM fr_address.code_complement)
             )
-            UNION
-            (
-                SELECT '+', code_address FROM fr_address
-                EXCEPT
-                SELECT '+', code_address FROM public_address
-            )
-            UNION
-            SELECT '!', public_address.code_address
-            FROM public_address
-                JOIN fr_address ON public_address.code_address = fr_address.code_address
+
+            -- insert/update
+            SELECT
+                c.change
+                , fr_address.level
+                , c.code_address
+                , fr_address.code_parent
+                , fr_address.code_territory
+                , fr_address.code_street
+                , fr_address.code_housenumber
+                , fr_address.code_complement
+            FROM
+                changes c
+                    JOIN fr_address ON c.code_address = fr_address.code_address
             WHERE
-                (public_address.code_parent IS DISTINCT FROM fr_address.code_parent)
-                OR
-                (public_address.code_territory IS DISTINCT FROM fr_address.code_territory)
-                OR
-                (public_address.code_street IS DISTINCT FROM fr_address.code_street)
-                OR
-                (public_address.code_housenumber IS DISTINCT FROM fr_address.code_housenumber)
-                OR
-                (public_address.code_complement IS DISTINCT FROM fr_address.code_complement)
+                c.change = ANY('{+,!}')
+
+            UNION
+
+            -- delete
+            SELECT
+                c.change
+                , public_address.level
+                , c.code_address
+                , public_address.code_parent
+                , public_address.code_territory
+                , public_address.code_street
+                , public_address.code_housenumber
+                , public_address.code_complement
+            FROM
+                changes c
+                    JOIN public_address ON c.code_address = public_address.code_address
+            WHERE
+                c.change = '-'
         )
-
-        -- insert/update
-        SELECT
-            c.change
-            , fr_address.level
-            , c.code_address
-            , fr_address.code_parent
-            , fr_address.code_territory
-            , fr_address.code_street
-            , fr_address.code_housenumber
-            , fr_address.code_complement
-        FROM
-            changes c
-                JOIN fr_address ON c.code_address = fr_address.code_address
-        WHERE
-            c.change = ANY('{+,!}')
-
-        UNION
-
-        -- delete
-        SELECT
-            c.change
-            , public_address.level
-            , c.code_address
-            , public_address.code_parent
-            , public_address.code_territory
-            , public_address.code_street
-            , public_address.code_housenumber
-            , public_address.code_complement
-        FROM
-            changes c
-                JOIN public_address ON c.code_address = public_address.code_address
-        WHERE
-            c.change = '-'
-    )
-    ;
-    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
-    ALTER TABLE fr.tmp_address_changes SET (autovacuum_enabled = FALSE);
-
-    CALL public.log_info('Indexation des changements');
-    CREATE INDEX IF NOT EXISTS ix_tmp_fr_address_changes ON fr.tmp_address_changes(change, level);
-
-    CALL public.log_info('Historique des modifications/suppressions');
-    INSERT INTO public.address_history (
-            id
-            , date_change
-            , change
-            , kind
-            , values
-        )
-        SELECT
-            a.id
-            , TIMEOFDAY()::DATE
-            , c.change
-            , 'ADDRESS'
-            , ROW_TO_JSON(a.*)::JSONB
-        FROM
-            fr.tmp_address_changes c
-                JOIN public.address_cross_reference cr ON cr.id_source = c.code_address AND cr.source = 'LAPOSTE'
-                JOIN public.address a ON a.id = cr.id_address
-        WHERE c.change = ANY('{-,!}')
         ;
-    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+        GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+        CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+        ALTER TABLE fr.tmp_address_changes SET (autovacuum_enabled = FALSE);
 
-    /* NOTE
-    have to add addresses in descending order, because of parent id
-     */
-    CALL public.log_info('Mise à jour des ajouts');
-    DROP TABLE IF EXISTS fr.tmp_address_news;
-    CREATE UNLOGGED TABLE fr.tmp_address_news AS
-        SELECT * FROM public.address WITH NO DATA;
-    ALTER TABLE fr.tmp_address_news
-        ADD COLUMN code_address VARCHAR
-        , ADD COLUMN uniq BOOLEAN DEFAULT TRUE;
-    ALTER TABLE fr.tmp_address_news DROP COLUMN id;
-    ALTER TABLE fr.tmp_address_news SET (autovacuum_enabled = FALSE);
+        CALL public.log_info('Indexation des changements');
+        CREATE INDEX IF NOT EXISTS ix_tmp_fr_address_changes ON fr.tmp_address_changes(change, level);
+    END IF;
 
-    -- dictionaries (items of an address) and addresses
-    FOREACH _element IN ARRAY _elements
-    LOOP
-        --RAISE NOTICE 'element: %', _element;
-        EXECUTE FORMAT('CALL fr.push_dictionary_%s_to_public($1, $2)'
-            , CASE _element
-              WHEN 'VOIE' THEN 'street'
-              WHEN 'NUMERO' THEN 'housenumber'
-              WHEN 'L3' THEN 'complement'
-              END
+    IF part_todo & 2 = 2 THEN
+        CALL public.log_info('Historique des modifications/suppressions');
+        INSERT INTO public.address_history (
+                id
+                , date_change
+                , change
+                , kind
+                , values
             )
-            USING force, drop_temporary;
-        CALL fr.push_address_element_to_public(
-            element => _element
-            , table_name_to => 'fr.tmp_address_news'
-            , table_name_from => 'fr.tmp_address_changes'
-        );
-    END LOOP;
+            SELECT
+                a.id
+                , TIMEOFDAY()::DATE
+                , c.change
+                , 'ADDRESS'
+                , ROW_TO_JSON(a.*)::JSONB
+            FROM
+                fr.tmp_address_changes c
+                    JOIN public.address_cross_reference cr ON cr.id_source = c.code_address AND cr.source = 'LAPOSTE'
+                    JOIN public.address a ON a.id = cr.id_address
+            WHERE c.change = ANY('{-,!}')
+            ;
+        GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+        CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+    END IF;
 
-    CALL public.log_info('Mise à jour des modifications');
-    WITH
-    address_updates AS (
-        SELECT
-            cr1.id_address
-            , cr2.id_address id_parent
-            , t.id id_territory
-            , a3.id_street
-            , a4.id_housenumber
-            , a5.id_complement
-        FROM
-            fr.tmp_address_changes c
-                JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND t.country = 'FR'
-                JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
-                LEFT OUTER JOIN public.address_cross_reference cr2 ON cr2.id_source = c.code_parent AND cr2.source = 'LAPOSTE'
-                JOIN public.address_cross_reference cr3 ON cr3.id_source = c.code_street AND cr3.source = 'LAPOSTE'
-                JOIN public.address a3 ON a3.id = cr3.id_address
-                LEFT OUTER JOIN public.address_cross_reference cr4 ON cr4.id_source = c.code_housenumber AND cr4.source = 'LAPOSTE'
-                LEFT OUTER JOIN public.address a4 ON a4.id = cr4.id_address
-                LEFT OUTER JOIN public.address_cross_reference cr5 ON cr5.id_source = c.code_complement AND cr5.source = 'LAPOSTE'
-                LEFT OUTER JOIN public.address a5 ON a5.id = cr5.id_address
-        WHERE
-            c.change = '!'
-    )
-    UPDATE public.address a SET
-            id_parent = u.id_parent
-            , id_territory = u.id_territory
-            , id_street = u.id_street
-            , id_housenumber = u.id_housenumber
-            , id_complement = u.id_complement
-        FROM address_updates u
-        WHERE
-            a.id = u.id_address
-    ;
-    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+    IF part_todo & 4 = 4 THEN
+        /* NOTE
+        have to add addresses in descending order, because of parent id
+        */
+        CALL public.log_info('Mise à jour des ajouts');
+        DROP TABLE IF EXISTS fr.tmp_address_news;
+        CREATE UNLOGGED TABLE fr.tmp_address_news AS
+            SELECT * FROM public.address WITH NO DATA;
+        ALTER TABLE fr.tmp_address_news
+            ADD COLUMN code_address VARCHAR
+            , ADD COLUMN uniq BOOLEAN DEFAULT TRUE;
+        ALTER TABLE fr.tmp_address_news DROP COLUMN id;
+        ALTER TABLE fr.tmp_address_news SET (autovacuum_enabled = FALSE);
 
-    CALL public.log_info('Mise à jour des suppressions');
-    WITH
-    address_deletes AS (
-        SELECT
-            cr1.id_address
-        FROM
-            fr.tmp_address_changes c
-                JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
-        WHERE
-            c.change = '-'
-    )
-    DELETE FROM public.address a
-        USING address_deletes d
-        WHERE
-            a.id = d.id_address
-    ;
-    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+        -- dictionaries (items of an address) and addresses
+        FOREACH _element IN ARRAY _elements
+        LOOP
+            --RAISE NOTICE 'element: %', _element;
+            EXECUTE FORMAT('CALL fr.push_dictionary_%s_to_public($1, $2)'
+                , CASE _element
+                WHEN 'VOIE' THEN 'street'
+                WHEN 'NUMERO' THEN 'housenumber'
+                WHEN 'L3' THEN 'complement'
+                END
+                )
+                USING force, drop_temporary;
+            CALL fr.push_address_element_to_public(
+                element => _element
+                , table_name_to => 'fr.tmp_address_news'
+                , table_name_from => 'fr.tmp_address_changes'
+            );
+        END LOOP;
+    END IF;
+
+    IF part_todo & 8 = 8 THEN
+        CALL public.log_info('Mise à jour des modifications');
+        WITH
+        address_updates AS (
+            SELECT
+                cr1.id_address
+                , cr2.id_address id_parent
+                , t.id id_territory
+                , a3.id_street
+                , a4.id_housenumber
+                , a5.id_complement
+            FROM
+                fr.tmp_address_changes c
+                    JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND t.country = 'FR'
+                    JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
+                    LEFT OUTER JOIN public.address_cross_reference cr2 ON cr2.id_source = c.code_parent AND cr2.source = 'LAPOSTE'
+                    JOIN public.address_cross_reference cr3 ON cr3.id_source = c.code_street AND cr3.source = 'LAPOSTE'
+                    JOIN public.address a3 ON a3.id = cr3.id_address
+                    LEFT OUTER JOIN public.address_cross_reference cr4 ON cr4.id_source = c.code_housenumber AND cr4.source = 'LAPOSTE'
+                    LEFT OUTER JOIN public.address a4 ON a4.id = cr4.id_address
+                    LEFT OUTER JOIN public.address_cross_reference cr5 ON cr5.id_source = c.code_complement AND cr5.source = 'LAPOSTE'
+                    LEFT OUTER JOIN public.address a5 ON a5.id = cr5.id_address
+            WHERE
+                c.change = '!'
+        )
+        UPDATE public.address a SET
+                id_parent = u.id_parent
+                , id_territory = u.id_territory
+                , id_street = u.id_street
+                , id_housenumber = u.id_housenumber
+                , id_complement = u.id_complement
+            FROM address_updates u
+            WHERE
+                a.id = u.id_address
+        ;
+        GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+        CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+    END IF;
+
+    IF part_todo & 16 = 16 THEN
+        CALL public.log_info('Mise à jour des suppressions');
+        WITH
+        address_deletes AS (
+            SELECT
+                cr1.id_address
+            FROM
+                fr.tmp_address_changes c
+                    JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
+            WHERE
+                c.change = '-'
+        )
+        DELETE FROM public.address a
+            USING address_deletes d
+            WHERE
+                a.id = d.id_address
+        ;
+        GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+        CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+    END IF;
 
     IF drop_temporary THEN
         DROP TABLE IF EXISTS fr.tmp_address_changes;
