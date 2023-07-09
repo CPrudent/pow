@@ -565,7 +565,6 @@ SELECT drop_all_functions_if_exists('fr', 'push_address_element_to_public');
 CREATE OR REPLACE PROCEDURE fr.push_address_element_to_public(
     element VARCHAR
     , table_name_to VARCHAR
-    , table_name_to_m VARCHAR
     , table_name_from VARCHAR
     , simulation BOOLEAN DEFAULT FALSE
     , notice_counter INT DEFAULT 100
@@ -654,7 +653,7 @@ DECLARE
             '
         END;
     _nrows_affected INT;
-    _mode VARCHAR;
+    _mode_multiple VARCHAR;
     _nrows INT;
     _i INT;
     _address RECORD;
@@ -744,24 +743,20 @@ BEGIN
     );
     EXECUTE _query INTO _nrows;
     _columns_id_aliased := alias_words(_columns_id, ',[ ]*', 'n');
-    IF element = 'L3' THEN
-        _columns_id2_aliased := alias_words(_columns_id2, ',[ ]*', 'n');
-    END IF;
     -- address already initiated ?
     IF _nrows > 0 THEN
-        _mode := 'DELTA';
+        _mode_multiple := 'DELTA';
         _query := CONCAT(
-            'INSERT INTO ', table_name_to_m, ' ('
-            , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id, 'code_address')
-            , ' ) SELECT '
-            , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'n.id_parent' END, _columns_id_aliased, 'n.code_address')
-            , ' FROM ', table_name_to, ' n
-                JOIN public.address a ON (', _columns_id_aliased, ')
+            'UPDATE ', table_name_to, ' n
+                SET uniq = FALSE
+            FROM
+                public.address a
+            WHERE (', _columns_id_aliased, ')
                 IS NOT DISTINCT FROM
                 (', alias_words(_columns_id, ',[ ]*', 'a'), ')'
         );
     ELSE
-        _mode := 'INIT';
+        _mode_multiple := 'INIT';
         _query := CONCAT(
             'WITH
             namesake_addresses AS (
@@ -770,12 +765,11 @@ BEGIN
                 GROUP BY ', _columns_id, '
                 HAVING COUNT(*) > 1
             )
-            INSERT INTO ', table_name_to_m, ' ('
-            , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id, 'code_address')
-            , ' ) SELECT '
-            , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'n.id_parent' END, _columns_id_aliased, 'n.code_address')
-            , ' FROM ', table_name_to, ' n
-                JOIN namesake_addresses na ON (', _columns_id_aliased, ')
+            UPDATE ', table_name_to, ' n
+                SET uniq = FALSE
+            FROM namesake_addresses na
+            WHERE
+                (', _columns_id_aliased, ')
                 IS NOT DISTINCT FROM
                 (', alias_words(_columns_id, ',[ ]*', 'na'), ')'
         );
@@ -784,10 +778,9 @@ BEGIN
     IF simulation THEN
         RAISE NOTICE 'query: %', _query;
     ELSE
-        EXECUTE FORMAT('TRUNCATE TABLE %s', table_name_to_m);
         EXECUTE _query;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-        CALL public.log_info(CONCAT(element, '(', _mode, '): ', _nrows_affected));
+        CALL public.log_info(CONCAT(element, ': ', _nrows_affected, ' (mode ', _mode_multiple, ')'));
     END IF;
 
     /* NOTE
@@ -820,12 +813,8 @@ BEGIN
         , ' ) SELECT '
         , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'n.id_parent' END, _columns_id_aliased)
         , ' FROM ', table_name_to, ' n
-        WHERE NOT EXISTS(
-            SELECT 1 FROM ', table_name_to_m, ' m
-            WHERE (', _columns_id_aliased, ')
-                =
-                (', alias_words(_columns_id, ',[ ]*', 'm'), ')
-        )'
+        WHERE
+            n.uniq'
     );
     IF simulation THEN
         RAISE NOTICE 'query: %', _query;
@@ -857,12 +846,8 @@ BEGIN
                 (', _columns_id_aliased, ')
                 =
                 (', alias_words(_columns_id, ',[ ]*', 'a'), ')
-        WHERE NOT EXISTS(
-            SELECT 1 FROM ', table_name_to_m, ' m
-            WHERE (', _columns_id_aliased, ')
-                =
-                (', alias_words(_columns_id, ',[ ]*', 'm'), ')
-        )'
+        WHERE
+            n.uniq'
     );
     IF simulation THEN
         RAISE NOTICE 'query: %', _query;
@@ -873,6 +858,7 @@ BEGIN
     END IF;
 
     IF element = 'L3' THEN
+        _columns_id2_aliased := alias_words(_columns_id2, ',[ ]*', 'n');
         _query := CONCAT(
             'INSERT INTO public.address_cross_reference (
                 id_address
@@ -888,16 +874,10 @@ BEGIN
                     (', _columns_id2_aliased, ')
                     =
                     (', alias_words(_columns_id2, ',[ ]*', 'a'), ')
-            WHERE NOT EXISTS(
-                SELECT 1 FROM ', table_name_to_m, ' m
-                WHERE (', _columns_id2_aliased, ')
-                    =
-                    (', alias_words(_columns_id2, ',[ ]*', 'm'), ')
-                    AND
-                    m.id_housenumber IS NULL
-            )
-            AND
-            n.id_housenumber IS NULL'
+            WHERE
+                n.uniq
+                AND
+                n.id_housenumber IS NULL'
         );
         IF simulation THEN
             RAISE NOTICE 'query: %', _query;
@@ -916,7 +896,7 @@ BEGIN
         , ',[ ]*'
     );
     -- https://stackoverflow.com/questions/20965882/for-loop-with-dynamic-table-name-in-postgresql-9-1
-    FOR _address IN EXECUTE FORMAT('SELECT * FROM %s', table_name_to_m)
+    FOR _address IN EXECUTE FORMAT('SELECT * FROM %s WHERE NOT uniq', table_name_to)
     LOOP
         -- https://dba.stackexchange.com/questions/52826/insert-values-from-a-record-variable-into-a-table
         _columns_id_values := NULL;
@@ -1135,13 +1115,11 @@ BEGIN
     DROP TABLE IF EXISTS fr.tmp_address_news;
     CREATE UNLOGGED TABLE fr.tmp_address_news AS
         SELECT * FROM public.address WITH NO DATA;
-    ALTER TABLE fr.tmp_address_news ADD COLUMN code_address VARCHAR;
+    ALTER TABLE fr.tmp_address_news
+        ADD COLUMN code_address VARCHAR
+        , ADD COLUMN uniq BOOLEAN DEFAULT TRUE;
     ALTER TABLE fr.tmp_address_news DROP COLUMN id;
     ALTER TABLE fr.tmp_address_news SET (autovacuum_enabled = FALSE);
-    DROP TABLE IF EXISTS fr.tmp_address_news_m;
-    CREATE UNLOGGED TABLE fr.tmp_address_news_m AS
-        SELECT * FROM fr.tmp_address_news WITH NO DATA;
-    ALTER TABLE fr.tmp_address_news_m SET (autovacuum_enabled = FALSE);
 
     -- dictionaries (items of an address) and addresses
     FOREACH _element IN ARRAY _elements
@@ -1158,7 +1136,6 @@ BEGIN
         CALL fr.push_address_element_to_public(
             element => _element
             , table_name_to => 'fr.tmp_address_news'
-            , table_name_to_m => 'fr.tmp_address_news_m'
             , table_name_from => 'fr.tmp_address_changes'
         );
     END LOOP;

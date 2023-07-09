@@ -22,12 +22,14 @@ CREATE OR REPLACE PROCEDURE public.set_address_index()
 AS
 $proc$
 BEGIN
+    DROP INDEX IF EXISTS ix_address_id_territory;
+
     CREATE UNIQUE INDEX IF NOT EXISTS iux_address_id ON public.address (id);
     CREATE INDEX IF NOT EXISTS ix_address_id_parent ON public.address (id_parent);
-    CREATE INDEX IF NOT EXISTS ix_address_id_territory ON public.address (id_territory);
     CREATE INDEX IF NOT EXISTS ix_address_id_street ON public.address (id_street);
     CREATE INDEX IF NOT EXISTS ix_address_id_housenumber ON public.address (id_housenumber);
     CREATE INDEX IF NOT EXISTS ix_address_id_complement ON public.address (id_complement);
+    CREATE INDEX IF NOT EXISTS ix_address_ids ON public.address (id_territory, id_street, id_housenumber, id_complement);
 END
 $proc$ LANGUAGE plpgsql;
 
