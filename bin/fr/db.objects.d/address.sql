@@ -831,7 +831,7 @@ BEGIN
         'INSERT INTO public.address ( '
         , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id)
         , ' ) SELECT '
-        , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'n.id_parent' END, _columns_id_aliased)
+        , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id)
         , ' FROM ', table_name_to
     );
 
@@ -861,7 +861,7 @@ BEGIN
         SELECT
             a.id
             , ''LAPOSTE''
-            , n.code_address
+            , u.code_address
         FROM ', table_name_to, ' u
             JOIN public.address a ON
                 (', _columns_id_aliased, ')
@@ -887,7 +887,7 @@ BEGIN
             SELECT
                 a.id
                 , ''LAPOSTE''
-                , n.code_address
+                , u.code_address
             FROM ', table_name_to, ' u
                 JOIN public.address a ON
                     (', alias_words(_columns_id2, ',[ ]*', 'u'), ')
