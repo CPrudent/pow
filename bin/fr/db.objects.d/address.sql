@@ -801,7 +801,7 @@ BEGIN
     ELSE
         EXECUTE _query;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-        CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
+        CALL public.log_info(CONCAT(element, ': -', _nrows_affected));
     END IF;
 
     /* NOTE
