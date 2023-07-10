@@ -1249,6 +1249,7 @@ BEGIN
     CALL public.log_info('Mise à jour des XY des Adresses');
 
     CALL public.log_info('Préparation des changements');
+    CALL public.drop_address_xy_index(drop_case => 'EXCEPT_UPSERT');
     DROP TABLE IF EXISTS fr.tmp_xy_change;
     CREATE UNLOGGED TABLE fr.tmp_xy_change AS (
         WITH
@@ -1385,7 +1386,8 @@ BEGIN
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('Total: ', _nrows_affected));
-    --COMMIT;
+    CALL public.log_info('Indexation');
+    CALL public.set_address_xy_index();
 
     IF drop_temporary THEN
         DROP TABLE IF EXISTS fr.tmp_xy_change;
