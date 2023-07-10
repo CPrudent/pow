@@ -567,7 +567,6 @@ CREATE OR REPLACE PROCEDURE fr.push_address_element_to_public(
     , table_name_to VARCHAR
     , table_name_from VARCHAR
     , simulation BOOLEAN DEFAULT FALSE
-    , notice_counter INT DEFAULT 100
 )
 AS
 $proc$
@@ -798,7 +797,7 @@ BEGIN
     691 housenumbers (w/ same number/extension, street & territory)
         <35> RUE DE L EGLISE 30190 SAINTE ANASTASIE           {30228222LN, 30228222LH}
 
-    1307 complements (w/ same name, [housenumber], street & territory)
+    1302 complements (w/ same name, [housenumber], street & territory)
         <ENTREE 7 RESIDENCE ARDENNES>       2   RUE DU MARECHAL JOFFRE          5901722NTP
         <BATIMENT 1 RESIDENCE DE FRANCE>        RUE DU GENERAL DE GAULLE        9401922AGL
             remark: this last example has another occurence, on housenumber 26!
@@ -819,9 +818,12 @@ BEGIN
     IF simulation THEN
         RAISE NOTICE 'query: %', _query;
     ELSE
+        CALL public.drop_address_index();
         EXECUTE _query;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
         CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
+        CALL public.log_info(CONCAT(element, ': ', 'Indexation'));
+        CALL public.set_address_index();
     END IF;
 
     CALL public.log_info(CONCAT(element, ': Références (uniques)'));
@@ -852,9 +854,14 @@ BEGIN
     IF simulation THEN
         RAISE NOTICE 'query: %', _query;
     ELSE
+        CALL public.drop_address_cross_reference_index();
         EXECUTE _query;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
         CALL public.log_info(CONCAT(element, CASE WHEN element = 'L3' THEN '(NUMERO): ' ELSE ': ' END, _nrows_affected));
+        IF element != 'L3' THEN
+            CALL public.log_info(CONCAT(element, ': ', 'Indexation'));
+            CALL public.set_address_cross_reference_index();
+        END IF;
     END IF;
 
     IF element = 'L3' THEN
@@ -877,7 +884,9 @@ BEGIN
             WHERE
                 n.uniq
                 AND
-                n.id_housenumber IS NULL'
+                n.id_housenumber IS NULL
+                AND
+                a.id_housenumber IS NULL'
         );
         IF simulation THEN
             RAISE NOTICE 'query: %', _query;
@@ -885,6 +894,8 @@ BEGIN
             EXECUTE _query;
             GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
             CALL public.log_info(CONCAT(element, '(VOIE): ', _nrows_affected));
+            CALL public.log_info(CONCAT(element, ': ', 'Indexation'));
+            CALL public.set_address_cross_reference_index();
         END IF;
     END IF;
 
@@ -937,9 +948,6 @@ BEGIN
             );
 
             _nrows_affected := _nrows_affected +1;
-            IF _nrows_affected % notice_counter = 0 THEN
-                CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
-            END IF;
         END IF;
     END LOOP;
     CALL public.log_info(CONCAT(element, ': ', _nrows_affected));
@@ -959,6 +967,7 @@ DECLARE
     _elements VARCHAR[] := ARRAY['VOIE', 'NUMERO', 'L3'];
     _element VARCHAR;
     _nrows_affected INT;
+    _nb_rows INT[];
 BEGIN
     CALL public.log_info('Mise à jour des Adresses');
 
@@ -1081,14 +1090,26 @@ BEGIN
         )
         ;
         GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-        CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+        --CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+        _nb_rows[1] := COUNT(*) FROM fr.tmp_address_change WHERE change = '+';
+        _nb_rows[2] := COUNT(*) FROM fr.tmp_address_change WHERE change = '!';
+        _nb_rows[3] := COUNT(*) FROM fr.tmp_address_change WHERE change = '-';
+        CALL public.log_info(CONCAT('Total: ', _nrows_affected, ' (+: ', _nb_rows[1], ', !: ', _nb_rows[2], ', -: ', _nb_rows[3], ')'));
+
         ALTER TABLE fr.tmp_address_change SET (autovacuum_enabled = FALSE);
 
         CALL public.log_info('Indexation des changements');
         CREATE INDEX IF NOT EXISTS ix_tmp_fr_address_changes ON fr.tmp_address_change(change, level);
+    ELSE
+        IF NOT table_exists('fr', 'tmp_address_change') THEN
+            RAISE 'manque table des changements : %', 'fr.tmp_address_change';
+        END IF;
+        _nb_rows[1] := COUNT(*) FROM fr.tmp_address_change WHERE change = '+';
+        _nb_rows[2] := COUNT(*) FROM fr.tmp_address_change WHERE change = '!';
+        _nb_rows[3] := COUNT(*) FROM fr.tmp_address_change WHERE change = '-';
     END IF;
 
-    IF part_todo & 2 = 2 THEN
+    IF part_todo & 2 = 2 AND (_nb_rows[2] > 0 OR _nb_rows[3] > 0) THEN
         CALL public.log_info('Historique des modifications/suppressions');
         INSERT INTO public.address_history (
                 id
@@ -1113,7 +1134,7 @@ BEGIN
         CALL public.log_info(CONCAT('Total: ', _nrows_affected));
     END IF;
 
-    IF part_todo & 4 = 4 THEN
+    IF part_todo & 4 = 4 AND _nb_rows[1] > 0 THEN
         /* NOTE
         have to add addresses in descending order, because of parent id
         */
@@ -1147,7 +1168,7 @@ BEGIN
         END LOOP;
     END IF;
 
-    IF part_todo & 8 = 8 THEN
+    IF part_todo & 8 = 8 AND _nb_rows[2] > 0 THEN
         CALL public.log_info('Mise à jour des modifications');
         WITH
         address_updates AS (
@@ -1186,7 +1207,7 @@ BEGIN
         CALL public.log_info(CONCAT('Total: ', _nrows_affected));
     END IF;
 
-    IF part_todo & 16 = 16 THEN
+    IF part_todo & 16 = 16 AND _nb_rows[3] > 0 THEN
         CALL public.log_info('Mise à jour des suppressions');
         WITH
         address_deletes AS (
@@ -1228,8 +1249,8 @@ BEGIN
     CALL public.log_info('Mise à jour des XY des Adresses');
 
     CALL public.log_info('Préparation des changements');
-    DROP TABLE IF EXISTS fr.tmp_xy_changes;
-    CREATE UNLOGGED TABLE fr.tmp_xy_changes AS (
+    DROP TABLE IF EXISTS fr.tmp_xy_change;
+    CREATE UNLOGGED TABLE fr.tmp_xy_change AS (
         WITH
         public_xy AS (
             SELECT
@@ -1330,8 +1351,8 @@ BEGIN
             , 'LAPOSTE'
             , c.geom
         FROM
-            fr.tmp_xy_changes c
-                JOIN public.address_cross_reference cr ON cr.id_source = xy.code_address AND cr.source = 'LAPOSTE'
+            fr.tmp_xy_change c
+                JOIN public.address_cross_reference cr ON cr.id_source = c.code_address AND cr.source = 'LAPOSTE'
         WHERE
             c.change = ANY('{+,!}')
     ON CONFLICT(id_address, kind, source) DO UPDATE
@@ -1348,7 +1369,7 @@ BEGIN
             cr1.id_address
             , c.kind
         FROM
-            fr.tmp_xy_changes c
+            fr.tmp_xy_change c
                 JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
         WHERE
             c.change = '-'
@@ -1367,7 +1388,7 @@ BEGIN
     --COMMIT;
 
     IF drop_temporary THEN
-        DROP TABLE IF EXISTS fr.tmp_xy_changes;
+        DROP TABLE IF EXISTS fr.tmp_xy_change;
     END IF;
 END
 $proc$ LANGUAGE plpgsql;

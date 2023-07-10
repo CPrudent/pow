@@ -25,6 +25,16 @@ BEGIN
 END
 $proc$ LANGUAGE plpgsql;
 
+SELECT drop_all_functions_if_exists('public', 'drop_address_cross_reference_index');
+CREATE OR REPLACE PROCEDURE public.drop_address_cross_reference_index()
+AS
+$proc$
+BEGIN
+    DROP INDEX IF EXISTS iux_address_cross_reference_id_address;
+    DROP INDEX IF EXISTS iux_address_cross_reference_id_source;
+END
+$proc$ LANGUAGE plpgsql;
+
 DO $$
 BEGIN
     CALL public.set_address_cross_reference_index();
