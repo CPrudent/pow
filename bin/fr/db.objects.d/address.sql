@@ -1245,6 +1245,7 @@ AS
 $proc$
 DECLARE
     _nrows_affected INT;
+    _nb_rows INT[];
 BEGIN
     CALL public.log_info('Mise à jour des XY des Adresses');
 
@@ -1266,12 +1267,13 @@ BEGIN
         )
         , fr_xy AS (
             /* TODO
-            filter only {street, housenumber, complement} gemoetries
-            LAPOSTE/RAN doesn't supply geometry for complement (and no more for ZA)
+            filter {street, housenumber} geometries
+            only if geometry different from parent one
+            LAPOSTE/RAN doesn't supply geometry for ZA (and the same as parent for complement)
              */
             SELECT
-                co_cea code_address
-                , CASE no_type_localisation
+                xy.co_cea code_address
+                , CASE xy.no_type_localisation
                     WHEN '1' THEN 'MUNICIPALITY_CENTER'
                     WHEN '2' THEN 'TOWN_HALL'
                     WHEN '3' THEN 'AREA'
@@ -1282,10 +1284,28 @@ BEGIN
                     WHEN '8' THEN 'ENTRANCE'
                     ELSE          'UNKNOWN'
                 END kind
-                , gm_coord geom
-            FROM fr.laposte_xy
+                , xy.gm_coord geom
+            FROM fr.laposte_xy xy
+                JOIN fr.laposte_address a ON xy.co_cea = a.co_cea_determinant
+                LEFT OUTER JOIN fr.laposte_xy xy2 ON xy2.co_cea = a.co_cea_parent
             WHERE
-                gm_coord IS NOT NULL
+                a.fl_active
+                AND
+                xy.gm_coord IS NOT NULL
+                AND
+                (
+                    (
+                        (a.co_niveau = 'NUMERO')
+                        AND
+                        xy2.gm_coord IS NOT NULL
+                        AND
+                        NOT ST_Equals_with_Threshold(xy.gm_coord, xy2.gm_coord)
+                    )
+                    OR
+                    (
+                        a.co_niveau = 'VOIE'
+                    )
+                )
         )
         , changes AS (
             (
@@ -1337,55 +1357,84 @@ BEGIN
     )
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+    _nb_rows[1] := COUNT(*) FROM fr.tmp_xy_change WHERE change = '+';
+    _nb_rows[2] := COUNT(*) FROM fr.tmp_xy_change WHERE change = '!';
+    _nb_rows[3] := COUNT(*) FROM fr.tmp_xy_change WHERE change = '-';
+    CALL public.log_info(CONCAT('Total: ', _nrows_affected, ' (+: ', _nb_rows[1], ', !: ', _nb_rows[2], ', -: ', _nb_rows[3], ')'));
 
-    CALL public.log_info('Mise à jour des ajouts/modifications');
-    INSERT INTO public.address_xy (
-            id_address
-            , kind
-            , source
-            , geom
+    IF (_nb_rows[1] + _nb_rows[2]) > 0 THEN
+        CALL public.log_info('Mise à jour des ajouts/modifications');
+        IF _nb_rows[2] > 0 THEN
+            INSERT INTO public.address_xy (
+                    id_address
+                    , kind
+                    , source
+                    , geom
+                )
+                SELECT
+                    cr.id_address
+                    , c.kind
+                    , 'LAPOSTE'
+                    , c.geom
+                FROM
+                    fr.tmp_xy_change c
+                        JOIN public.address_cross_reference cr ON cr.id_source = c.code_address AND cr.source = 'LAPOSTE'
+                WHERE
+                    c.change = ANY('{+,!}')
+            ON CONFLICT(id_address, kind, source) DO UPDATE
+                SET
+                    geom = EXCLUDED.geom
+            ;
+        ELSE
+            CALL public.drop_address_xy_index(drop_case => 'ALL');
+            INSERT INTO public.address_xy (
+                    id_address
+                    , kind
+                    , source
+                    , geom
+                )
+                SELECT
+                    cr.id_address
+                    , c.kind
+                    , 'LAPOSTE'
+                    , c.geom
+                FROM
+                    fr.tmp_xy_change c
+                        JOIN public.address_cross_reference cr ON cr.id_source = c.code_address AND cr.source = 'LAPOSTE'
+                WHERE
+                    c.change = '+'
+            ;
+        END IF;
+        GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+        CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+    END IF;
+
+    IF _nb_rows[3] > 0 THEN
+        CALL public.log_info('Mise à jour des suppressions');
+        WITH
+        xy_deletes AS (
+            SELECT
+                cr1.id_address
+                , c.kind
+            FROM
+                fr.tmp_xy_change c
+                    JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
+            WHERE
+                c.change = '-'
         )
-        SELECT
-            cr.id_address
-            , c.kind
-            , 'LAPOSTE'
-            , c.geom
-        FROM
-            fr.tmp_xy_change c
-                JOIN public.address_cross_reference cr ON cr.id_source = c.code_address AND cr.source = 'LAPOSTE'
-        WHERE
-            c.change = ANY('{+,!}')
-    ON CONFLICT(id_address, kind, source) DO UPDATE
-        SET
-            geom = EXCLUDED.geom
-    ;
-    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+        DELETE FROM public.address_xy xy
+            USING xy_deletes d
+            WHERE
+                xy.id_address = d.id_address
+                AND
+                xy.kind = d.kind
+                AND
+                xy.source = 'LAPOSTE'
+        ;
+        GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+        CALL public.log_info(CONCAT('Total: ', _nrows_affected));
+    END IF;
 
-    CALL public.log_info('Mise à jour des suppressions');
-    WITH
-    xy_deletes AS (
-        SELECT
-            cr1.id_address
-            , c.kind
-        FROM
-            fr.tmp_xy_change c
-                JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
-        WHERE
-            c.change = '-'
-    )
-    DELETE FROM public.address_xy xy
-        USING xy_deletes d
-        WHERE
-            xy.id_address = d.id_address
-            AND
-            xy.kind = d.kind
-            AND
-            xy.source = 'LAPOSTE'
-    ;
-    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info(CONCAT('Total: ', _nrows_affected));
     CALL public.log_info('Indexation');
     CALL public.set_address_xy_index();
 
