@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS public.territory (
     , name CHARACTER VARYING
     , population INT
     , area INT
+    , z_min INT
+    , z_max INT
     , codes_adjoining VARCHAR[]                 -- list of nearing territories (same level)
     , attributs HSTORE                          -- more attributs
     , date_last DATE
@@ -27,6 +29,13 @@ DO $$
 BEGIN
     IF column_exists('public', 'territory', 'date_geography') THEN
         ALTER TABLE public.territory RENAME COLUMN date_geography TO date_last;
+    END IF;
+
+    IF NOT column_exists('public', 'territory', 'z_min') THEN
+        ALTER TABLE public.territory ADD COLUMN z_min INTEGER;
+    END IF;
+    IF NOT column_exists('public', 'territory', 'z_max') THEN
+        ALTER TABLE public.territory ADD COLUMN z_max INTEGER;
     END IF;
 END $$;
 
@@ -164,7 +173,7 @@ BEGIN
     _alias := public.get_alias_from_level(level_in);
     _query := CONCAT('
         SELECT *
-        FROM territory AS ', _alias,'
+        FROM public.territory AS ', _alias,'
         WHERE ', _alias, '.country = ''', UPPER(country), ''' AND '
         , _alias, '.level = ''', level_in, '''
         /* WHERE-AND */
