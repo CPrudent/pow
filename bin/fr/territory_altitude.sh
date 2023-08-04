@@ -91,8 +91,13 @@ while IFS=: read _code _name _department _district; do
         }
     }
     [ -s "$_territory_cache/$_file" ] && {
-        _min=$(grep --only-matching --perl-regexp 'Min\.[ ]*[0-9]*' "$_territory_cache/$_file" | grep --only-matching --perl-regexp '[0-9]*')
-        _max=$(grep --only-matching --perl-regexp 'Max\.[ ]*[0-9]*' "$_territory_cache/$_file" | grep --only-matching --perl-regexp '[0-9]*')
+        # delete optional HTML numerical code (&#160; for &nbsp;)
+        # see: https://www.leptidigital.fr/productivite/caracteres-speciaux-html-2-19297/
+        _min=$(sed --expression 's/&#[0-9]*;//g' "$_territory_cache/$_file" | grep --only-matching --perl-regexp 'Min\.[ ]*[ 0-9]*' | grep --only-matching --perl-regexp '[ 0-9]*')
+        _max=$(sed --expression 's/&#[0-9]*;//g' "$_territory_cache/$_file" | grep --only-matching --perl-regexp 'Max\.[ ]*[ 0-9]*' | grep --only-matching --perl-regexp '[ 0-9]*')
+        # delete potential space
+        _min=${_min// }
+        _max=${_max// }
         echo "$_file min=$_min max=$_max"
         execute_query \
             --name "UDPATE_TERRITORY_ALTITUDE" \
