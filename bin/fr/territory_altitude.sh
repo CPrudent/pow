@@ -98,7 +98,7 @@ while IFS=: read _code _name _department _district; do
         # delete potential space
         _min=${_min// }
         _max=${_max// }
-        echo "$_file min=$_min max=$_max"
+        echo "$_file ($_code) min=$_min max=$_max"
         execute_query \
             --name "UDPATE_TERRITORY_ALTITUDE" \
             --query "
@@ -123,6 +123,7 @@ is_yes --var _territory_ko && {
     log_error "Mise à jour Altitudes des communes en erreur!"
     exit $ERROR_CODE
 } || {
+    set_env --schema_name public &&
     execute_query \
         --name "SET_MUNICIPALITY_ALTITUDE" \
         --query "
