@@ -120,7 +120,7 @@ execute_query \
     --psql_arguments 'tuples-only:pset=format=unaligned' \
     --return _territory_ko || exit $ERROR_CODE
 is_yes --var _territory_ko && {
-    log_error "Mise à jour Altitudes des communes en erreur!"
+    log_error "Mise à jour Altitudes des communes non terminée!"
     exit $ERROR_CODE
 } || {
     set_env --schema_name public &&
