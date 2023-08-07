@@ -260,7 +260,7 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                     altitude_set_values \
                         --source ${altitude_sources_order[$_altitude_step]} \
                         --file_path "$_territory_cache/$_file" \
-                        --tmpfile _tmpfile \
+                        --tmpfile $_tmpfile \
                         --min _min \
                         --max _max
                     echo "$_file ($_code) min=$_min max=$_max"
@@ -301,7 +301,7 @@ rm --force $_tmpfile || {
 }
 
 # update territory w/ altitude values (municipality then supra)
-is_yes --var _territory_ko || {
+([ "$get_arg_force" = no ] && is_yes --var _territory_ko) || {
     execute_query \
         --name SET_MUNICIPALITY_ALTITUDE \
         --query "
