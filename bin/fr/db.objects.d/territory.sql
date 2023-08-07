@@ -731,6 +731,8 @@ BEGIN
                 , attributs
                 , population
                 , area
+                , z_min
+                , z_max
                 , codes_adjoining
                 , geom_native
                 , geom_world
@@ -749,6 +751,8 @@ BEGIN
                 END attributs
                 , population
                 , superficie
+                , z_min
+                , z_max
                 , codgeo_voisins
                 , gm_contour_natif
                 , gm_contour
@@ -827,6 +831,10 @@ BEGIN
                 OR
                 (territory_public.area IS DISTINCT FROM territory_fr.superficie)
                 OR
+                (territory_public.z_min IS DISTINCT FROM territory_fr.z_min)
+                OR
+                (territory_public.z_max IS DISTINCT FROM territory_fr.z_max)
+                OR
                 (CARDINALITY(territory_public.codes_adjoining) != CARDINALITY(territory_fr.codgeo_voisins))
                 OR
                 (territory_public.codes_adjoining IS DISTINCT FROM territory_fr.codgeo_voisins)
@@ -845,6 +853,8 @@ BEGIN
             , attributs
             , population
             , superficie area
+            , z_min
+            , z_max
             , codgeo_voisins codes_adjoining
             , gm_contour_natif geom_native
             , gm_contour geom_world
@@ -865,6 +875,8 @@ BEGIN
             , tp.attributs
             , tp.population
             , tp.area
+            , tp.z_min
+            , tp.z_max
             , tp.codes_adjoining
             , tp.geom_native
             , tp.geom_world
@@ -929,6 +941,8 @@ BEGIN
             , attributs
             , population
             , area
+            , z_min
+            , z_max
             , codes_adjoining
             , date_last
             , geom_native
@@ -942,6 +956,8 @@ BEGIN
             , c.attributs
             , c.population
             , c.area
+            , c.z_min
+            , c.z_max
             , c.codes_adjoining
             , TIMEOFDAY()::DATE
             , c.geom_native
@@ -959,6 +975,8 @@ BEGIN
             , attributs = EXCLUDED.attributs
             , population = EXCLUDED.population
             , area = EXCLUDED.area
+            , z_min = EXCLUDED.z_min
+            , z_max = EXCLUDED.z_max
             , codes_adjoining = EXCLUDED.codes_adjoining
             , geom_native = EXCLUDED.geom_native
             , geom_world = EXCLUDED.geom_world

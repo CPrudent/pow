@@ -314,7 +314,7 @@ rm --force $_tmpfile || {
             -- set altitudes (SUPRA levels)
             PERFORM fr.set_territory_supra(
                 table_name => 'territory'
-                , schema_name => 'public'
+                , schema_name => 'fr'
                 , base_level => 'COM'
                 , update_mode => TRUE
                 , columns_agg => ARRAY['z_min, z_max']
