@@ -9,6 +9,7 @@ SELECT drop_all_functions_if_exists('fr', 'set_territory_supra');
 CREATE OR REPLACE FUNCTION fr.set_territory_supra(
     table_name VARCHAR
     , columns_agg TEXT[] DEFAULT NULL            -- NULL for all else list of column(s)
+    , columns_agg_func JSONB DEFAULT NULL::JSONB -- specify function other than default for column(s)
     , columns_groupby TEXT[] DEFAULT NULL        -- idem
     , where_in TEXT DEFAULT NULL
     , base_level VARCHAR DEFAULT 'COM'
@@ -82,31 +83,35 @@ BEGIN
                 _columns_onconflict := CONCAT_WS(', ', _columns_onconflict, _column_name);
             ELSE
                 IF columns_agg IS NOT NULL AND NOT (_column_name = ANY(columns_agg)) THEN CONTINUE; END IF;
-                _column_information := public.get_column_information(schema_name, table_name, _column_name);
-                --TODO : faire une fonction qui donne le type, et une autre qui donne le type général (chaine, numérique, ...)
-                _column_type := LOWER(COALESCE(NULLIF(_column_information.data_type, 'USER-DEFINED'), _column_information.udt_name));
-                IF _column_type IN ('numeric', 'integer', 'real', 'smallint', 'bigint', 'double precision') THEN
-                    _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('SUM(source.', _column_name, ') AS ', _column_name));
-                ELSIF _column_type IN ('geometry') THEN
-                    SELECT srid, type
-                    INTO _geometry_column_information
-                    FROM ext_postgis.geometry_columns
-                    WHERE f_table_catalog = 'pow'
-                    AND f_table_schema = schema_name
-                    AND f_table_name = table_name
-                    AND f_geometry_column = _column_name;
-                    IF _geometry_column_information.type LIKE 'MULTI%' THEN
-                        _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('ST_Multi(ST_Union(source.', _column_name, ')) AS ', _column_name));
-                    ELSE
-                        _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('ST_Union(source.', _column_name, ') AS ', _column_name));
-                    END IF;
-                ELSIF _column_type IN ('array') THEN
-                    RAISE NOTICE 'Type % non géré, veuillez recalculer les valeurs NULL de la colonne % de la table %.%', _column_type, _column_name, schema_name, table_name;
-                    /* _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('NULL AS ', _column_name));
-                        * Contournement pour avoir une valeur nulle avec le type de la colonne, utile uniquement au _columns_select_on_groupby : */
-                    _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('NULLIF(FIRST(source.', _column_name, '), FIRST(source.', _column_name, ')) AS ', _column_name));
+                IF columns_agg_func IS NOT NULL AND columns_agg_func[_column_name] IS NOT NULL THEN
+                    _columns_select := CONCAT_WS(', ', _columns_select, CONCAT(columns_agg_func[_column_name], '(source.', _column_name, ') AS ', _column_name));
                 ELSE
-                    _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('UNIQUE_AGG(source.', _column_name, ') AS ', _column_name));
+                    _column_information := public.get_column_information(schema_name, table_name, _column_name);
+                    --TODO : faire une fonction qui donne le type, et une autre qui donne le type général (chaine, numérique, ...)
+                    _column_type := LOWER(COALESCE(NULLIF(_column_information.data_type, 'USER-DEFINED'), _column_information.udt_name));
+                    IF _column_type IN ('numeric', 'integer', 'real', 'smallint', 'bigint', 'double precision') THEN
+                        _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('SUM(source.', _column_name, ') AS ', _column_name));
+                    ELSIF _column_type IN ('geometry') THEN
+                        SELECT srid, type
+                        INTO _geometry_column_information
+                        FROM ext_postgis.geometry_columns
+                        WHERE f_table_catalog = 'pow'
+                        AND f_table_schema = schema_name
+                        AND f_table_name = table_name
+                        AND f_geometry_column = _column_name;
+                        IF _geometry_column_information.type LIKE 'MULTI%' THEN
+                            _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('ST_Multi(ST_Union(source.', _column_name, ')) AS ', _column_name));
+                        ELSE
+                            _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('ST_Union(source.', _column_name, ') AS ', _column_name));
+                        END IF;
+                    ELSIF _column_type IN ('array') THEN
+                        RAISE NOTICE 'Type % non géré, veuillez recalculer les valeurs NULL de la colonne % de la table %.%', _column_type, _column_name, schema_name, table_name;
+                        /* _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('NULL AS ', _column_name));
+                            * Contournement pour avoir une valeur nulle avec le type de la colonne, utile uniquement au _columns_select_on_groupby : */
+                        _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('NULLIF(FIRST(source.', _column_name, '), FIRST(source.', _column_name, ')) AS ', _column_name));
+                    ELSE
+                        _columns_select := CONCAT_WS(', ', _columns_select, CONCAT('UNIQUE_AGG(source.', _column_name, ') AS ', _column_name));
+                    END IF;
                 END IF;
                 _columns_update_set := CONCAT_WS(', ', _columns_update_set, CONCAT(_column_name, ' = source.', _column_name));
                 _columns_select_on_groupby := CONCAT_WS(', ', _columns_select_on_groupby, _column_name);

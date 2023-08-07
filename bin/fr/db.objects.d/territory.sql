@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS fr.territory (
     , typgeo CHARACTER VARYING
     , population BIGINT
     , superficie BIGINT
+    , z_min INT
+    , z_max INT
     , gm_contour_natif GEOMETRY --Géographie native (non simplifiée, projetée dans un système local)
     , gm_contour GEOMETRY(MULTIPOLYGON, 4326) --Géographie simplifiée et reprojetée en 4326
     , codgeo_com_parent CHARACTER(5)
@@ -31,6 +33,16 @@ CREATE TABLE IF NOT EXISTS fr.territory (
 ALTER TABLE fr.territory SET (
 	autovacuum_enabled = FALSE
 );
+
+DO $$
+BEGIN
+    IF NOT column_exists('fr', 'territory', 'z_min') THEN
+        ALTER TABLE fr.territory ADD COLUMN z_min INTEGER;
+    END IF;
+    IF NOT column_exists('fr', 'territory', 'z_max') THEN
+        ALTER TABLE fr.territory ADD COLUMN z_max INTEGER;
+    END IF;
+END $$;
 
 SELECT drop_all_functions_if_exists('fr', 'set_territory');
 CREATE OR REPLACE FUNCTION fr.set_territory(
