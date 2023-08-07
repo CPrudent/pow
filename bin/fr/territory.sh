@@ -24,7 +24,7 @@ bash_args \
 # replace postal_geom w/ deduce of: RAN?|PDI|IGN date greatest than TERRITORY date
 # and use force to bypass this rule
 
-force="$get_arg_force"
+force=$get_arg_force
 set_env --schema_name fr &&
 log_info "Définition des territoires français" &&
 #$POW_DIR_BATCH/territory_insee.sh --force $force &&
@@ -90,6 +90,7 @@ execute_query \
 execute_query \
     --name SET_TERRITORY_NEAR \
     --query "SELECT fr.set_territory_next()" &&
+$POW_DIR_BATCH/territory_altitude.sh &&
 vacuum \
     --schema_name fr \
     --table_name territory \

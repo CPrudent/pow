@@ -176,20 +176,24 @@ altitude_set_values() {
 # main
 bash_args \
     --args_p '
-        force:Forcer le traitement même si celui-ci a déjà été fait;
+        force_list:Lister les communes même si elles possèdent déjà des altitudes;
+        force_public:Forcer la mise à jour des altitudes, même si données incomplètes;
         use_cache:Utiliser les données présentes dans le cache
     ' \
     --args_v '
-        force:yes|no;
+        force_list:yes|no;
+        force_public:yes|no;
         use_cache:yes|no
     ' \
     --args_d '
-        force:no;
+        force_list:no;
+        force_public:no;
         use_cache:yes
     ' \
     "$@" || exit $ERROR_CODE
 
-log_info 'Téléchargement des données Altitude (min, max) des Communes' &&
+[ "$get_arg_force_list" = no ] && _where='AND (t.z_min IS NULL OR t.z_max IS NULL)' || _where=''
+log_info 'Mise à jour des données Altitude (min, max) des Communes' &&
 set_env --schema_name fr &&
 execute_query \
     --name PREPARE_TERRITORY_ALTITUDE \
@@ -226,8 +230,19 @@ execute_query \
                 LEFT OUTER JOIN municipality_namesake mns ON t.name = mns.name
                 CROSS JOIN get_territory_from_query(get_query_territory_extended_to_level('fr', get_query_territory('fr', 'COM', t.code), 'DEP')) d
                 LEFT OUTER JOIN get_territory_from_query(get_query_territory_extended_to_level('fr', get_query_territory('fr', 'COM', t.code), 'COM_GLOBALE_ARM')) g ON TRUE
-            WHERE t.country = 'FR' AND t.level = 'COM'
-        " &&
+            WHERE t.country = 'FR' AND t.level = 'COM' $_where
+        " && {
+execute_query \
+    --name WITH_TERRITORY_ALTITUDE \
+    --query 'SELECT COUNT(1) FROM fr.municipality_altitude' \
+    --psql_arguments 'tuples-only:pset=format=unaligned' \
+    --return _territory_count && {
+        [ $_territory_count -eq 0 ] && {
+            log_info 'Mise à jour non nécessaire'
+            exit $SUCCESS_CODE
+        } || true
+    }
+} &&
 _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
     for ((_altitude_step=0; _altitude_step < ${#altitude_sources_order[@]}; _altitude_step++)); do
         altitude_set_list \
@@ -301,9 +316,9 @@ rm --force $_tmpfile || {
 }
 
 # update territory w/ altitude values (municipality then supra)
-([ "$get_arg_force" = no ] && is_yes --var _territory_ko) || {
+([ "$get_arg_force_public" = no ] && is_yes --var _territory_ko) || {
     execute_query \
-        --name SET_MUNICIPALITY_ALTITUDE \
+        --name SET_TERRITORY_ALTITUDE \
         --query "
             UPDATE fr.territory t SET
                 z_min = ma.z_min
@@ -317,13 +332,13 @@ rm --force $_tmpfile || {
                 , schema_name => 'fr'
                 , base_level => 'COM'
                 , update_mode => TRUE
-                , columns_agg => ARRAY['z_min, z_max']
+                , columns_agg => ARRAY['z_min', 'z_max']
                 , columns_agg_func => '{\"z_min\":\"MIN\", \"z_max\":\"MAX\"}'::JSONB
             );
         " || exit $ERROR_CODE
 }
 
 rm $_territory_list
-log_info 'Mise à jour Altitudes des communes avec succès'
+log_info 'Mise à jour avec succès'
 
 exit $SUCCESS_CODE
