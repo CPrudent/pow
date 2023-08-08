@@ -146,13 +146,16 @@ altitude_set_url() {
         [ -n "$get_arg_district" ] && _url_ref=$get_arg_district || _url_ref=$get_arg_municipality
         [ -n "$get_arg_department" ] && _url_ref+="_($get_arg_department)"
         _url_ref='https://fr.wikipedia.org/wiki/'${_url_ref}
+        # replace space by underscore
+        _url_ref=${_url_ref// /_}
         ;;
     $ALTITUDE_SOURCE_LALTITUDE)
         log_error 'non implémenté!'
         return $ERROR_CODE
         ;;
     $ALTITUDE_SOURCE_CARTESFRANCE)
-        _url_ref='https://www.cartesfrance.fr/carte-france-ville/'${get_arg_code}_${get_arg_municipality}.html
+        # replace space by minus
+        _url_ref='https://www.cartesfrance.fr/carte-france-ville/'${get_arg_code}_${get_arg_municipality// /-}.html
         ;;
     *)
         return $ERROR_CODE
@@ -185,9 +188,10 @@ altitude_set_values() {
 
     case $get_arg_source in
     $ALTITUDE_SOURCE_WIKIPEDIA)
+        # duplicate altitude, ie Condé-sur-Vire
         sed --expression 's/&#[0-9]*;//g' "$get_arg_file_path" > $get_arg_tmpfile
-        _min_ref=$(grep --only-matching --perl-regexp 'Min\.[ ]*[ 0-9]*' $get_arg_tmpfile | grep --only-matching --perl-regexp '[ 0-9]*')
-        _max_ref=$(grep --only-matching --perl-regexp 'Max\.[ ]*[ 0-9]*' $get_arg_tmpfile | grep --only-matching --perl-regexp '[ 0-9]*')
+        _min_ref=$(grep --only-matching --perl-regexp 'Min\.[ ]*[ 0-9]*' --max-count 1 $get_arg_tmpfile | grep --only-matching --perl-regexp '[ 0-9]*')
+        _max_ref=$(grep --only-matching --perl-regexp 'Max\.[ ]*[ 0-9]*' --max-count 1 $get_arg_tmpfile | grep --only-matching --perl-regexp '[ 0-9]*')
         ;;
     $ALTITUDE_SOURCE_LALTITUDE)
         log_error 'non implémenté!'
@@ -294,18 +298,18 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                 altitude_set_url \
                     --source ${altitude_sources_order[$_altitude_step]} \
                     --code $_code \
-                    --municipality $_name \
-                    --department $_department \
-                    --district $_district \
+                    --municipality "$_name" \
+                    --department "$_department" \
+                    --district "$_district" \
                     --url _url &&
                 _file=$(basename "$_url") || {
-                    log_error "obtention URL $_file en erreur"
+                    log_error "Obtention URL ($_file) en erreur"
                     continue
                 }
                 ([ "$get_arg_use_cache" = no ] || [ ! -s "$_territory_cache/$_file" ]) && {
                     curl --output "$_territory_cache/$_file" "$_url" || {
                         _error=$?
-                        log_error "téléchargement $_file en erreur ($_error)"
+                        log_error "Téléchargement ($_file) en erreur [$_error] URL=$_url"
                         continue
                     }
                 }
@@ -363,7 +367,7 @@ rm --force $_tmpfile || {
                 , z_max = ma.z_max
             FROM fr.municipality_altitude ma
             WHERE
-                t.country = 'FR' AND t.level = 'COM' AND t.code = ma.code;
+                t.nivgeo = 'COM' AND t.codgeo = ma.code;
             -- set altitudes (SUPRA levels)
             PERFORM fr.set_territory_supra(
                 table_name => 'territory'
