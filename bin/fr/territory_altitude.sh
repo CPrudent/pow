@@ -64,7 +64,7 @@ altitude_set_list() {
         "$@" || return $ERROR_CODE
 
     local _where
-    [ $get_arg_step -eq 0 ] && _where='NOT done' || _where='done AND (z_min IS NULL OR z_max IS NULL OR z_max < z_min)'
+    [ $get_arg_step -eq 0 ] && _where='NOT done' || _where='z_min IS NULL OR z_max IS NULL OR z_max < z_min'
 
     execute_query \
         --name TODO_TERRITORY_ALTITUDE \
