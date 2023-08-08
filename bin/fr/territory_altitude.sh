@@ -15,6 +15,41 @@ declare -a altitude_sources_order=(
     $ALTITUDE_SOURCE_CARTESFRANCE
 )
 
+altitude_log_info() {
+    bash_args \
+        --args_p '
+            step:Etape du traitement (0 étant la première itération);
+            source:Source des Données
+        ' \
+        --args_o '
+            step;
+            source
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local _info='Téléchargement '
+    [ $get_arg_step -eq 0 ] && _info+='de base' || _info='en complément'
+    _info+=' (à partir de '
+    case $get_arg_source in
+    $ALTITUDE_SOURCE_WIKIPEDIA)
+        _info+='WIKIPEDIA'
+        ;;
+    $ALTITUDE_SOURCE_LALTITUDE)
+        _info+='LALTITUDE'
+        ;;
+    $ALTITUDE_SOURCE_CARTESFRANCE)
+        _info+='CARTESFRANCE'
+        ;;
+    *)
+        return $ERROR_CODE
+        ;;
+    esac
+    _info+=')'
+    log_info "$_info"
+
+    return $SUCCESS_CODE
+}
+
 # initiate list of municipalities (according w/ step) : 1st=all, 2nd=only missing (or error)
 altitude_set_list() {
     bash_args \
@@ -192,7 +227,7 @@ bash_args \
     ' \
     "$@" || exit $ERROR_CODE
 
-[ "$get_arg_force_list" = no ] && _where='AND (t.z_min IS NULL OR t.z_max IS NULL)' || _where=''
+[ "$get_arg_force_list" = no ] && _where='AND (t.z_min IS NULL OR t.z_max IS NULL OR t.z_max < t.z_min)' || _where=''
 log_info 'Mise à jour des données Altitude (min, max) des Communes' &&
 set_env --schema_name fr &&
 execute_query \
@@ -237,7 +272,7 @@ execute_query \
     --query 'SELECT COUNT(1) FROM fr.municipality_altitude' \
     --psql_arguments 'tuples-only:pset=format=unaligned' \
     --return _territory_count && {
-        [ $_territory_count -eq 0 ] && {
+        [ ${_territory_count:-0} -eq 0 ] && {
             log_info 'Mise à jour non nécessaire'
             exit $SUCCESS_CODE
         } || true
@@ -245,6 +280,9 @@ execute_query \
 } &&
 _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
     for ((_altitude_step=0; _altitude_step < ${#altitude_sources_order[@]}; _altitude_step++)); do
+        altitude_log_info \
+            --step $_altitude_step \
+            --source ${altitude_sources_order[$_altitude_step]} &&
         altitude_set_list \
             --step $_altitude_step \
             --list $_territory_list &&
