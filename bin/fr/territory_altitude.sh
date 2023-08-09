@@ -140,27 +140,41 @@ altitude_set_url() {
         "$@" || return $ERROR_CODE
 
     local -n _url_ref=$get_arg_url
+    local _url_site _url_page
 
     case $get_arg_source in
     $ALTITUDE_SOURCE_WIKIPEDIA)
-        [ -n "$get_arg_district" ] && _url_ref=$get_arg_district || _url_ref=$get_arg_municipality
-        [ -n "$get_arg_department" ] && _url_ref+="_($get_arg_department)"
-        _url_ref='https://fr.wikipedia.org/wiki/'${_url_ref}
+        [ -n "$get_arg_district" ] && _url_page=$get_arg_district || _url_page=$get_arg_municipality
+        [ -n "$get_arg_department" ] && _url_page+="_($get_arg_department)"
+        _url_site='https://fr.wikipedia.org/wiki'
         # replace space by underscore
-        _url_ref=${_url_ref// /_}
+        _url_page=${_url_page// /_}
         ;;
     $ALTITUDE_SOURCE_LALTITUDE)
         log_error 'non implémenté!'
         return $ERROR_CODE
         ;;
     $ALTITUDE_SOURCE_CARTESFRANCE)
-        # replace space by minus
-        _url_ref='https://www.cartesfrance.fr/carte-france-ville/'${get_arg_code}_${get_arg_municipality// /-}.html
+        # replace {space,'} by minus and translate accent
+        #_url_ref='https://www.cartesfrance.fr/carte-france-ville/'${get_arg_code}_${get_arg_municipality//[ \']/-}.html
+        [ -n "$get_arg_district" ] && {
+            # need capitalize 'arrondissement'
+            local _tmp=${get_arg_district/a/A}
+            _url_page=${_tmp//_/-}
+        } || _url_page=$get_arg_municipality
+        _url_page=${get_arg_code}_$(echo ${_url_page//[ \']/-} | sed 'y/àâçéèêëîïôöùûüÉ/aaceeeeiioouuuE/').html
+        _url_site='https://www.cartesfrance.fr/carte-france-ville'
         ;;
     *)
         return $ERROR_CODE
         ;;
     esac
+
+    # encode URL (see: https://stackoverflow.com/questions/296536/how-to-urlencode-data-for-curl-command)
+    # don't work on CARTESFRANCE!
+    #_url_ref=${_url_site}/$(python3 -c "import urllib.parse; print(urllib.parse.quote(input()))" <<< "$_url_page")
+
+    _url_ref=${_url_site}/${_url_page}
 
     return $SUCCESS_CODE
 }
@@ -186,20 +200,21 @@ altitude_set_values() {
     local -n _min_ref=$get_arg_min
     local -n _max_ref=$get_arg_max
 
+    # negative altitude (min) : re w/ minus
     case $get_arg_source in
     $ALTITUDE_SOURCE_WIKIPEDIA)
-        # duplicate altitude, ie Condé-sur-Vire
+        # duplicate altitude, ie Condé-sur-Vire : max-count 1
         sed --expression 's/&#[0-9]*;//g' "$get_arg_file_path" > $get_arg_tmpfile
-        _min_ref=$(grep --only-matching --perl-regexp 'Min\.[ ]*[ 0-9]*' --max-count 1 $get_arg_tmpfile | grep --only-matching --perl-regexp '[ 0-9]*')
-        _max_ref=$(grep --only-matching --perl-regexp 'Max\.[ ]*[ 0-9]*' --max-count 1 $get_arg_tmpfile | grep --only-matching --perl-regexp '[ 0-9]*')
+        _min_ref=$(grep --only-matching --perl-regexp 'Min\.[ ]*[0-9 -]*' --max-count 1 $get_arg_tmpfile | grep --only-matching --perl-regexp '[0-9 -]*')
+        _max_ref=$(grep --only-matching --perl-regexp 'Max\.[ ]*[0-9 -]*' --max-count 1 $get_arg_tmpfile | grep --only-matching --perl-regexp '[0-9 -]*')
         ;;
     $ALTITUDE_SOURCE_LALTITUDE)
         log_error 'non implémenté!'
         return $ERROR_CODE
         ;;
     $ALTITUDE_SOURCE_CARTESFRANCE)
-        _min_ref=$(sed --silent '/Altitude minimum/,/align/p' "$get_arg_file_path" | grep --only-matching --perl-regexp '<td>[ 0-9]*' | grep --only-matching --perl-regexp '[ 0-9]*')
-        _max_ref=$(sed --silent '/Altitude maximum/,/align/p' "$get_arg_file_path" | grep --only-matching --perl-regexp '<td>[ 0-9]*' | grep --only-matching --perl-regexp '[ 0-9]*')
+        _min_ref=$(sed --silent '/Altitude minimum/,/align/p' "$get_arg_file_path" | grep --only-matching --perl-regexp '<td>[0-9 -]*' | grep --only-matching --perl-regexp '[0-9 -]*')
+        _max_ref=$(sed --silent '/Altitude maximum/,/align/p' "$get_arg_file_path" | grep --only-matching --perl-regexp '<td>[0-9 -]*' | grep --only-matching --perl-regexp '[0-9 -]*')
         ;;
     *)
         return $ERROR_CODE
@@ -217,7 +232,9 @@ bash_args \
     --args_p '
         force_list:Lister les communes même si elles possèdent déjà des altitudes;
         force_public:Forcer la mise à jour des altitudes, même si données incomplètes;
-        use_cache:Utiliser les données présentes dans le cache
+        use_cache:Utiliser les données présentes dans le cache;
+        except_territory:RE pour écarter certaines communes;
+        only_territory:RE pour traiter certaines communes
     ' \
     --args_v '
         force_list:yes|no;
@@ -282,6 +299,7 @@ execute_query \
         } || true
     }
 } &&
+_error=0 &&
 _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
     for ((_altitude_step=0; _altitude_step < ${#altitude_sources_order[@]}; _altitude_step++)); do
         altitude_log_info \
@@ -290,11 +308,17 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
         altitude_set_list \
             --step $_altitude_step \
             --list $_territory_list &&
+        get_file_nrows $_territory_list _rows &&
+        log_info "A traiter: $_rows communes" &&
         altitude_set_cache \
             --source ${altitude_sources_order[$_altitude_step]} \
             --cache _territory_cache \
             --tmpfile _tmpfile && {
             while IFS=: read _code _name _department _district; do
+                # only territory?
+                [ -n "$get_arg_only_territory" ] && [[ ! $_code =~ $get_arg_only_territory ]] && continue
+                # except territory?
+                [ -n "$get_arg_except_territory" ] && [[ $_code =~ $get_arg_except_territory ]] && continue
                 altitude_set_url \
                     --source ${altitude_sources_order[$_altitude_step]} \
                     --code $_code \
@@ -308,19 +332,21 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                 }
                 ([ "$get_arg_use_cache" = no ] || [ ! -s "$_territory_cache/$_file" ]) && {
                     curl --output "$_territory_cache/$_file" "$_url" || {
-                        _error=$?
-                        log_error "Téléchargement ($_file) en erreur [$_error] URL=$_url"
+                        _rc=$?
+                        log_error "Téléchargement ($_file) en erreur [$_rc] URL=$_url"
                         continue
                     }
                 }
-                [ -s "$_territory_cache/$_file" ] && {
+                [ ! -s "$_territory_cache/$_file" ] && {
+                    echo "Téléchargement ($_file) URL=$_url"
+                } || {
                     altitude_set_values \
                         --source ${altitude_sources_order[$_altitude_step]} \
                         --file_path "$_territory_cache/$_file" \
                         --tmpfile $_tmpfile \
                         --min _min \
                         --max _max
-                    echo "$_file ($_code) min=$_min max=$_max"
+                    echo "$_name ($_code) min=$_min max=$_max"
                     execute_query \
                         --name UDPATE_TERRITORY_ALTITUDE \
                         --query "
@@ -344,16 +370,15 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
             --return _territory_ko && {
             is_yes --var _territory_ko || break
         } || {
-            _territory_ko=t
-            # raise error ?
-            false
+            # to raise error (after loop)
+            _error=1
             break
         }
     done
 } &&
+[ $_error -eq 0 ] &&
 # remove temporary worked file
 rm --force $_tmpfile || {
-    log_error 'Mise à jour Altitudes des communes non complète!'
     exit $ERROR_CODE
 }
 
@@ -377,10 +402,12 @@ rm --force $_tmpfile || {
                 , columns_agg => ARRAY['z_min', 'z_max']
                 , columns_agg_func => '{\"z_min\":\"MIN\", \"z_max\":\"MAX\"}'::JSONB
             );
-        " || exit $ERROR_CODE
+        " &&
+    archive_file $_territory_list &&
+    log_info 'Mise à jour avec succès'
+} || {
+    log_error 'Mise à jour Altitudes des communes non complète!'
+    exit $ERROR_CODE
 }
-
-rm $_territory_list
-log_info 'Mise à jour avec succès'
 
 exit $SUCCESS_CODE
