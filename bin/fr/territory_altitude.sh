@@ -15,6 +15,14 @@ declare -a altitude_sources_order=(
     $ALTITUDE_SOURCE_CARTESFRANCE
 )
 
+_k=0
+TERRITORY_CODE=$((_k++))
+TERRITORY_NAME=$((_k++))
+TERRITORY_DEPARTMENT=$((_k++))
+TERRITORY_DISTRICT=$((_k++))
+TERRITORY_EVENT_CODE=$((_k++))
+TERRITORY_EVENT_NAME_BEFORE=$((_k++))
+
 altitude_log_info() {
     bash_args \
         --args_p '
@@ -148,7 +156,7 @@ altitude_set_url() {
     $ALTITUDE_SOURCE_WIKIPEDIA)
         # exceptions :
             # namesake! ex: Devoluy, need suffix _(commune) to access it
-            # ...
+            # case sensitive! ex: Bors_(Canton_de_Tude-et-Lavalette) KO due to Canton (instead canton)
         [ -n "$get_arg_district" ] && _url_page=$get_arg_district || _url_page=$get_arg_municipality
         [ -n "$get_arg_department" ] && _url_page+="_($get_arg_department)"
         _url_site='https://fr.wikipedia.org/wiki'
@@ -229,9 +237,10 @@ altitude_set_url() {
             local _tmp=${get_arg_district/a/A}
             _url_page=${_tmp//_/-}
         } || _url_page=$get_arg_municipality
+        # replace œ
         _url_page=${_url_page/Œ/OE}
         _url_page=${_url_page/œ/oe}
-        _url_page=${get_arg_code}_$(echo ${_url_page//[ \']/-} | sed 'y/àâçéèêëîïôöùûüÉÈÎ/aaceeeeiioouuuEEI/').html
+        _url_page=${get_arg_code}_$(echo ${_url_page//[ \']/-} | sed --expression 'y/àâçéèêëîïôöùûüÉÈÎ/aaceeeeiioouuuEEI/' --expression 's/[()]//g').html
         _url_site='https://www.cartesfrance.fr/carte-france-ville'
         ;;
     *)
@@ -340,7 +349,8 @@ execute_query \
                     COUNT(*) > 1
             )
             SELECT
-                t.code, t.name municipality
+                t.code
+                , REGEXP_REPLACE(t.name, '\(Canton ', '(canton ') municipality
                 , CASE WHEN mns.name IS NULL THEN NULL::VARCHAR
                 ELSE
                     d.name
@@ -383,51 +393,51 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
             --source ${altitude_sources_order[$_altitude_step]} \
             --cache _territory_cache \
             --tmpfile _tmpfile && {
-            while IFS=: read _code _name _department _district; do
+            while IFS=: read -a _territory_data; do
                 # only territory?
-                [ -n "$get_arg_only_territory" ] && [[ ! $_code =~ $get_arg_only_territory ]] && continue
+                [ -n "$get_arg_only_territory" ] && [[ ! ${_territory_data[$TERRITORY_CODE]} =~ $get_arg_only_territory ]] && continue
                 # except territory?
-                [ -n "$get_arg_except_territory" ] && [[ $_code =~ $get_arg_except_territory ]] && continue
+                [ -n "$get_arg_except_territory" ] && [[ ${_territory_data[$TERRITORY_CODE]} =~ $get_arg_except_territory ]] && continue
+                declare -p _territory_data
                 altitude_set_url \
                     --source ${altitude_sources_order[$_altitude_step]} \
-                    --code $_code \
-                    --municipality "$_name" \
-                    --department "$_department" \
-                    --district "$_district" \
+                    --code ${_territory_data[$TERRITORY_CODE]} \
+                    --municipality "${_territory_data[$TERRITORY_NAME]}" \
+                    --department "${_territory_data[$TERRITORY_DEPARTMENT]}" \
+                    --district "${_territory_data[$TERRITORY_DISTRICT]}" \
                     --url _url &&
                 _file=$(basename "$_url") || {
                     log_error "Obtention URL ($_file) en erreur"
                     continue
                 }
+                _rc=0
                 ([ "$get_arg_use_cache" = no ] || [ ! -s "$_territory_cache/$_file" ]) && {
-                    curl --output "$_territory_cache/$_file" "$_url" || {
-                        _rc=$?
-                        log_error "Téléchargement ($_file) en erreur [$_rc] URL=$_url"
-                        continue
-                    }
+                    curl --fail --output "$_territory_cache/$_file" "$_url"
+                    _rc=$?
                 }
-                [ ! -s "$_territory_cache/$_file" ] && {
-                    echo "Téléchargement ($_file) URL=$_url"
-                } || {
-                    altitude_set_values \
-                        --source ${altitude_sources_order[$_altitude_step]} \
-                        --file_path "$_territory_cache/$_file" \
-                        --tmpfile $_tmpfile \
-                        --min _min \
-                        --max _max
-                    echo "$_name ($_code) min=$_min max=$_max"
-                    execute_query \
-                        --name UDPATE_TERRITORY_ALTITUDE \
-                        --query "
-                            UPDATE fr.municipality_altitude SET
-                                z_min = ${_min:-NULL::INT}
-                                , z_max = ${_max:-NULL::INT}
-                                , done = TRUE
-                            WHERE
-                                code = '$_code'
-                        " || {
-                        log_error "Mise à jour $_code en erreur"
-                    }
+                ([ ! -s "$_territory_cache/$_file" ] || [ $_rc -ne 0 ]) && {
+                    log_error "Téléchargement ($_file) en erreur [$_rc] URL=$_url"
+                    continue
+                }
+                altitude_set_values \
+                    --source ${altitude_sources_order[$_altitude_step]} \
+                    --file_path "$_territory_cache/$_file" \
+                    --tmpfile $_tmpfile \
+                    --min _min \
+                    --max _max
+                echo "${_territory_data[$TERRITORY_NAME]} (${_territory_data[$TERRITORY_CODE]}) min=$_min max=$_max"
+                execute_query \
+                    --name UDPATE_TERRITORY_ALTITUDE \
+                    --query "
+                        UPDATE fr.municipality_altitude SET
+                            z_min = ${_min:-NULL::INT}
+                            , z_max = ${_max:-NULL::INT}
+                            , done = TRUE
+                        WHERE
+                            code = '${_territory_data[$TERRITORY_CODE]}'
+                    " || {
+                    log_error "Mise à jour ${_territory_data[$TERRITORY_CODE]} en erreur"
+
                 }
             done < $_territory_list
         }
