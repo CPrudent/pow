@@ -142,8 +142,13 @@ altitude_set_url() {
     local -n _url_ref=$get_arg_url
     local _url_site _url_page
 
+    # exceptions :
+        # no altitude for Polynésie française (987*)
     case $get_arg_source in
     $ALTITUDE_SOURCE_WIKIPEDIA)
+        # exceptions :
+            # namesake! ex: Devoluy, need suffix _(commune) to access it
+            # ...
         [ -n "$get_arg_district" ] && _url_page=$get_arg_district || _url_page=$get_arg_municipality
         [ -n "$get_arg_department" ] && _url_page+="_($get_arg_department)"
         _url_site='https://fr.wikipedia.org/wiki'
@@ -155,14 +160,78 @@ altitude_set_url() {
         return $ERROR_CODE
         ;;
     $ALTITUDE_SOURCE_CARTESFRANCE)
-        # replace {space,'} by minus and translate accent
-        #_url_ref='https://www.cartesfrance.fr/carte-france-ville/'${get_arg_code}_${get_arg_municipality//[ \']/-}.html
+        # exceptions :
+            # municipality event
+            # 05139 Dévoluy
+            # 06107 La Roque-en-Provence
+            # 15268 Le Rouget-Pers
+            # 16052 Bors (Canton de Tude-et-Lavalette)
+            # 16053 Bors (Canton de Charente-Sud)
+            # 21195 Cormot-Vauchignon
+            # 22046 Le Mené
+            # 22158 Guerlédan
+            # 24035 Pays de Belvès
+            # 24142 Coux et Bigaroque-Mouzens
+            # 27022 Le Val d'Hazey
+            # 27032 Chambois
+            # 27198 Mesnils-sur-Iton
+            # 27412 Terres de Bord
+            # 27693 Sylvains-Lès-Moulins
+            # 28236 Arcisses
+            # 28406 Éole-en-Beauce
+            # 28422 Les Villages Vovéens
+            # 37021 Beaumont-Louestault
+            # 37232 Coteaux-sur-Loire
+            # 38066 Chalon
+            # 38253 Les Deux Alpes
+            # 38456 Châtel-en-Trièves
+            # 39368 Hauts de Bienne
+            # 39510 Septmoncel les Molunes
+            # 46138 Cœur de Causse
+            # 46268 Saint Géry-Vers
+            # 48094 Massegros Causses Gorges
+            # 48152 Ventalon en Cévennes
+            # 48166 Cans et Cévennes
+            # 50535 Le Parc
+            # 51075 Bourgogne-Fresne
+            # 51457 Cœur-de-la-Vallée : ex- Reuil (01/01/2023)
+            # 52033 Avrecourt
+            # 52266 Laneuville-à-Rémy
+            # 52278 Lavilleneuve-au-Roi
+            # 52405 Le Montsaugeonnais
+            # 55138 Culey
+            # 55298 Loisey
+            # 56102 Forges de Lanouée
+            # 61211 Juvigny Val d'Andaine
+            # 61474 Gouffern en Auge
+            # 65192 Gavarnie-Gèdre
+            # 67004 Sommerau
+            # 68320 Spechbach
+            # 69066 Cours
+            # 70418 La Romaine
+            # 73010 Entrelacs
+            # 73150 La Plagne Tarentaise
+            # 73227 Courchevel
+            # 74282 Fillière
+            # 76289 Saint Martin de l'If
+            # 76601 Saint-Lucien
+            # 79251 Marcillé
+            # 85001 L'Aiguillon-la-Presqu'île
+            # 86053 Champigny en Rochereau
+            # 89130 Deux Rivières
+            # 89334 Le Val d'Ocre
+
+            # municipality upcase!
+            # 08165 Faux : FAUX
+        # replace {space,'} by minus, waited: Arrondissement and translate accent
         [ -n "$get_arg_district" ] && {
             # need capitalize 'arrondissement'
             local _tmp=${get_arg_district/a/A}
             _url_page=${_tmp//_/-}
         } || _url_page=$get_arg_municipality
-        _url_page=${get_arg_code}_$(echo ${_url_page//[ \']/-} | sed 'y/àâçéèêëîïôöùûüÉ/aaceeeeiioouuuE/').html
+        _url_page=${_url_page/Œ/OE}
+        _url_page=${_url_page/œ/oe}
+        _url_page=${get_arg_code}_$(echo ${_url_page//[ \']/-} | sed 'y/àâçéèêëîïôöùûüÉÈÎ/aaceeeeiioouuuEEI/').html
         _url_site='https://www.cartesfrance.fr/carte-france-ville'
         ;;
     *)
