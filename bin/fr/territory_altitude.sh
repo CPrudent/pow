@@ -30,6 +30,7 @@ TERRITORY_EVENT_CODE=$((_k++))
 TERRITORY_EVENT_DATE=$((_k++))
 TERRITORY_EVENT_NAME_BEFORE=$((_k++))
 TERRITORY_EVENT_CODE_AFTER=$((_k++))
+TERRITORY_EVENT_NAME_AFTER=$((_k++))
 
 altitude_log_info() {
     bash_args \
@@ -80,7 +81,7 @@ altitude_set_list() {
         "$@" || return $ERROR_CODE
 
     local _where
-    [ $get_arg_step -eq 0 ] && _where='NOT done' || _where='z_min IS NULL OR z_max IS NULL OR z_max < z_min'
+    [ $get_arg_step -eq 0 ] && _where='NOT done' || _where='(z_min IS NULL OR z_max IS NULL OR z_max < z_min)'
 
     execute_query \
         --name TODO_TERRITORY_ALTITUDE \
@@ -91,10 +92,36 @@ altitude_set_list() {
                     , municipality
                     , department
                     , district
+                    , me.mod
+                    , me.date_eff
+                    , me.libelle_av
+                    , me.com_ap
+                    , me.libelle_ap
                 FROM
-                    fr.municipality_altitude
+                    fr.municipality_altitude ma
+                        LEFT OUTER JOIN LATERAL (
+                            SELECT
+                                com_av
+                                , com_ap
+                                , date_eff
+                                , mod
+                                , libelle_av
+                                , libelle_ap
+                            FROM
+                                fr.insee_municipality_event me
+                            WHERE
+                                me.com_av = ma.code
+                                AND me.typecom_av = 'COM'
+                                AND me.typecom_ap = 'COM'
+                            ORDER BY
+                                me.date_eff DESC
+                            LIMIT
+                                1
+                        ) me ON ma.code = me.com_av
                 WHERE
                     $_where
+                    AND
+                    (ma.code !~ '^(98|97[578])')
             ) TO STDOUT WITH (DELIMITER E':', FORMAT CSV, HEADER FALSE, ENCODING UTF8)
         " \
         --output $get_arg_list || return $ERROR_CODE
@@ -152,7 +179,7 @@ altitude_set_url() {
         ' \
         "$@" || return $ERROR_CODE
 
-    local -n _territory_data_ref=$_get_arg_territory_data
+    local -n _territory_data_ref=$get_arg_territory_data
     local -n _url_ref=$get_arg_url
     local _url_site _url_page
 
@@ -163,8 +190,8 @@ altitude_set_url() {
         # exceptions :
             # namesake! ex: Devoluy, need suffix _(commune) to access it
             # case sensitive! ex: Bors_(Canton_de_Tude-et-Lavalette) KO due to Canton (instead canton)
-        [ -n "${_territory_data[$TERRITORY_DISTRICT]}" ] && _url_page=${_territory_data[$TERRITORY_DISTRICT]} || _url_page=${_territory_data[$TERRITORY_NAME]}
-        [ -n "${_territory_data[$TERRITORY_DEPARTMENT]}" ] && _url_page+="_(${_territory_data[$TERRITORY_DEPARTMENT]})"
+        [ -n "${_territory_data_ref[$TERRITORY_DISTRICT]}" ] && _url_page=${_territory_data_ref[$TERRITORY_DISTRICT]} || _url_page=${_territory_data_ref[$TERRITORY_NAME]}
+        [ -n "${_territory_data_ref[$TERRITORY_DEPARTMENT]}" ] && _url_page+="_(${_territory_data_ref[$TERRITORY_DEPARTMENT]})"
         _url_site='https://fr.wikipedia.org/wiki'
         # replace space by underscore
         _url_page=${_url_page// /_}
@@ -178,16 +205,16 @@ altitude_set_url() {
             # municipality event
             # municipality upcase! ex: 08165 Faux : FAUX
         # replace {space,'} by minus, waited: Arrondissement and translate accent
-        [ -n "${_territory_data[$TERRITORY_DISTRICT]}" ] && {
+        [ -n "${_territory_data_ref[$TERRITORY_DISTRICT]}" ] && {
             # need capitalize 'arrondissement'
-            local _tmp=${{_territory_data[$TERRITORY_DISTRICT]}/a/A}
+            local _tmp=${_territory_data_ref[$TERRITORY_DISTRICT]/a/A}
             _url_page=${_tmp//_/-}
-        } || _url_page=${_territory_data[$TERRITORY_NAME]}
+        } || _url_page=${_territory_data_ref[$TERRITORY_NAME]}
         # replace œ
         _url_page=${_url_page/Œ/OE}
         _url_page=${_url_page/œ/oe}
         # translate accent
-        _url_page=${{_territory_data[$TERRITORY_CODE]}}_$(echo ${_url_page//[ \']/-} | sed --expression 'y/àâçéèêëîïôöùûüÉÈÎ/aaceeeeiioouuuEEI/' --expression 's/[()]//g').html
+        _url_page=${_territory_data_ref[$TERRITORY_CODE]}_$(echo ${_url_page//[ \']/-} | sed --expression 'y/àâçéèêëîïôöùûüÉÈÎ/aaceeeeiioouuuEEI/' --expression 's/[()]//g').html
         _url_site='https://www.cartesfrance.fr/carte-france-ville'
         ;;
     *)
@@ -362,101 +389,114 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
 
                     _altitude_update=$ALTITUDE_UPDATE_BASIC
                     if [ $_first -eq 1 ]; then
-                        [ -s "$_territory_cache/$_file" ] && [ $_rc -eq 0 ] && {
-                            _altitude_code=(${_territory_data[$TERRITORY_CODE]})
-                            _altitude_name=(${_territory_data[$TERRITORY_NAME]})
-                            _altitude_file=($_file)
-                            break
-                        }
-                        [ ${altitude_sources_order[$_altitude_i]} -ne $ALTITUDE_SOURCE_CARTESFRANCE ] && {
-                            log_error "$_file: téléchargement en erreur URL=$_url"$([ $_rc -ne 0 ] && echo " [$_rc]")
-                            _territory_skip=1
-                            break
-                        }
-
-                        _territory_data_copy=("${_territory_data[@]}")
                         _first=0
+                        _altitude_code=(${_territory_data[$TERRITORY_CODE]})
+                        _altitude_name=(${_territory_data[$TERRITORY_NAME]})
+                        _altitude_file=($_file)
+                        _territory_data_copy=("${_territory_data[@]}")
 
-                        # municipality events aren't applied!
-                        case ${_territory_data[$TERRITORY_EVENT_CODE]} in
-                        10|21) # rename, abort (merge)
-                            _altitude_code=(${_territory_data[$TERRITORY_CODE]})
-                            _altitude_name=(${_territory_data[$TERRITORY_NAME]})
-                            _territory_data[$TERRITORY_NAME]=${_territory_data[$TERRITORY_EVENT_NAME_BEFORE]}
-                            ;;
-                        3[1-4]) # merge
-                            _altitude_update=$ALTITUDE_UPDATE_MERGE
-                            # find if eventually "separated", and final name of merged _municipality
-                            execute_query \
-                                --name TERRITORY_MERGE_ABORT \
-                                --query "
-                                    SELECT
-                                        t.com_ap
-                                        , CASE WHEN me.com_ap IS NULL THEN t.libelle_ap
-                                        ELSE me.libelle_ap
-                                        END
-                                    FROM (
-                                    SELECT
-                                        com_ap, libelle_ap
-                                    FROM fr.insee_municipality_event me
-                                    WHERE
-                                        com_ap = '${_territory_data[$TERRITORY_EVENT_CODE_AFTER]}'
-                                        AND com_av = '${_territory_data[$TERRITORY_EVENT_CODE]}'
-                                        AND typecom_av = 'COM'
-                                        AND typecom_ap = 'COM'
-                                        AND mod BETWEEN 31 AND 34
-                                        -- abort?
-                                        AND EXISTS(
-                                            SELECT 1
-                                            FROM fr.insee_municipality_event me2
-                                            WHERE
-                                                me2.mod = 21
-                                                AND
-                                                me2.com_av = me.com_ap
-                                                AND
-                                                me2.com_ap = me.com_av
-                                        )) t
-                                        -- exists more recent merge?
-                                        LEFT OUTER JOIN fr.insee_municipality_event me ON
-                                            t.com_ap = me.com_ap
-                                            AND me.mod BETWEEN 31 AND 34
-                                            AND me.date_eff > t.date_eff
-                                            AND me.typecom_av = 'COM'
-                                            AND me.typecom_ap = 'COM'
-                                " \
-                                --psql_arguments 'tuples-only:pset=format=unaligned' \
-                                --output $tmpfile && {
-                                [ -s $tmpfile ] && {
-                                    _altitude_code=($(head -n 1 $tmpfile | cut --delimiter \| --field 1)) &&
-                                    _altitude_name=($(head -n 1 $tmpfile | cut --delimiter \| --field 2)) &&
-                                } || {
-                                    # else, find old municipalities (before merge)
-                                    execute_query \
-                                        --name TERRITORY_MERGE \
-                                        --query "
-                                            SELECT
-                                                com_av
-                                                , libelle_av
-                                            FROM fr.insee_municipality_event
-                                            WHERE
-                                                com_ap = '${_territory_data[$TERRITORY_CODE]}'
-                                                AND typecom_av = 'COM' AND typecom_ap = 'COM'
-                                                AND mod BETWEEN 31 AND 34
-                                        " \
-                                        --psql_arguments 'tuples-only:pset=format=unaligned' \
-                                        --output $tmpfile &&
-                                    readarray -t _altitude_code < <(cut --delimiter \| --field 1 $tmpfile) &&
-                                    readarray -t _altitude_name < <(cut --delimiter \| --field 2 $tmpfile)
-                                }
-                            } && {
-                                _altitude_territory=0
-                                _altitude_file=()
-                                _territory_data[$TERRITORY_CODE]=${_altitude_code[0]} &&
-                                _territory_data[$TERRITORY_NAME]=${_altitude_name[0]}
+                        case ${altitude_sources_order[$_altitude_i]} in
+                        $ALTITUDE_SOURCE_WIKIPEDIA)
+                            [ -s "$_territory_cache/$_file" ] && [ $_rc -eq 0 ] && {
+                                grep 'homonymie de Wikimedia' "$_territory_cache/$_file" > /dev/null
+                                if [ $? -eq 1 ]; then
+                                    break
+                                else
+                                    _territory_data[$TERRITORY_NAME]+='_(commune)'
+                                fi
                             }
                             ;;
+                        $ALTITUDE_SOURCE_CARTESFRANCE)
+                            [ -s "$_territory_cache/$_file" ] && [ $_rc -eq 0 ] && {
+                                break
+                            }
+                            # municipality events aren't applied!
+                            case ${_territory_data[$TERRITORY_EVENT_CODE]} in
+                            10|21) # rename, abort (merge)
+                                _altitude_code=(${_territory_data[$TERRITORY_CODE]})
+                                _altitude_name=(${_territory_data[$TERRITORY_NAME]})
+                                _territory_data[$TERRITORY_NAME]=${_territory_data[$TERRITORY_EVENT_NAME_BEFORE]}
+                                ;;
+                            3[1-4]) # merge
+                                _altitude_update=$ALTITUDE_UPDATE_MERGE
+                                # find if eventually "separated", and final name of merged _municipality
+                                execute_query \
+                                    --name TERRITORY_MERGE_ABORT \
+                                    --query "
+                                        SELECT
+                                            t.com_ap
+                                            , CASE WHEN me.com_ap IS NULL THEN t.libelle_ap
+                                            ELSE me.libelle_ap
+                                            END
+                                        FROM (
+                                        SELECT
+                                            com_ap, libelle_ap
+                                        FROM fr.insee_municipality_event me
+                                        WHERE
+                                            com_ap = '${_territory_data[$TERRITORY_EVENT_CODE_AFTER]}'
+                                            AND com_av = '${_territory_data[$TERRITORY_EVENT_CODE]}'
+                                            AND typecom_av = 'COM'
+                                            AND typecom_ap = 'COM'
+                                            AND mod BETWEEN 31 AND 34
+                                            -- abort?
+                                            AND EXISTS(
+                                                SELECT 1
+                                                FROM fr.insee_municipality_event me2
+                                                WHERE
+                                                    me2.mod = 21
+                                                    AND
+                                                    me2.com_av = me.com_ap
+                                                    AND
+                                                    me2.com_ap = me.com_av
+                                            )) t
+                                            -- exists more recent merge?
+                                            LEFT OUTER JOIN fr.insee_municipality_event me ON
+                                                t.com_ap = me.com_ap
+                                                AND me.mod BETWEEN 31 AND 34
+                                                AND me.date_eff > t.date_eff
+                                                AND me.typecom_av = 'COM'
+                                                AND me.typecom_ap = 'COM'
+                                    " \
+                                    --psql_arguments 'tuples-only:pset=format=unaligned' \
+                                    --output $tmpfile && {
+                                    [ -s $tmpfile ] && {
+                                        _altitude_code=($(head -n 1 $tmpfile | cut --delimiter \| --field 1))
+                                        _altitude_name=($(head -n 1 $tmpfile | cut --delimiter \| --field 2))
+                                    } || {
+                                        # else, find old municipalities (before merge)
+                                        execute_query \
+                                            --name TERRITORY_MERGE \
+                                            --query "
+                                                SELECT
+                                                    com_av
+                                                    , libelle_av
+                                                FROM fr.insee_municipality_event
+                                                WHERE
+                                                    com_ap = '${_territory_data[$TERRITORY_CODE]}'
+                                                    AND typecom_av = 'COM' AND typecom_ap = 'COM'
+                                                    AND mod BETWEEN 31 AND 34
+                                            " \
+                                            --psql_arguments 'tuples-only:pset=format=unaligned' \
+                                            --output $tmpfile &&
+                                        readarray -t _altitude_code < <(cut --delimiter \| --field 1 $tmpfile) &&
+                                        readarray -t _altitude_name < <(cut --delimiter \| --field 2 $tmpfile)
+                                    }
+                                } && {
+                                    _altitude_j=0
+                                    _altitude_file=()
+                                    _territory_data[$TERRITORY_CODE]=${_altitude_code[0]} &&
+                                    _territory_data[$TERRITORY_NAME]=${_altitude_name[0]}
+                                }
+                                ;;
+                            *)
+                                log_error "$_file: évènement (${_territory_data[$TERRITORY_EVENT_CODE]}) non géré!"
+                                _territory_skip=1
+                                break
+                                ;;
+                            esac
+                            ;;
                         *)
-                            log_error "$_file: évènement (${_territory_data[$TERRITORY_EVENT_CODE]}) non géré!"
+                            log_error "$_file: téléchargement en erreur URL=$_url"$([ $_rc -ne 0 ] && echo " [$_rc]")
                             _territory_skip=1
                             break
                             ;;
@@ -468,25 +508,33 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                             break
                         }
 
-                        case ${_territory_data_copy[$TERRITORY_EVENT_CODE]} in
-                        10) # rename
-                            _altitude_update=$ALTITUDE_UPDATE_RENAME
+                        case ${altitude_sources_order[$_altitude_i]} in
+                        $ALTITUDE_SOURCE_WIKIPEDIA)
                             _altitude_file=($_file)
                             break
                             ;;
-                        21) # abort (merge)
-                            _altitude_update=$ALTITUDE_UPDATE_MERGE_ABORT
-                            _altitude_file=($_file)
-                            break
-                            ;;
-                        3[1-4]) # merge
-                            _altitude_file+=($_file)
-                            [ $((++_altitude_territory)) -eq ${#_altitude_code[*]} ] && {
+                        $ALTITUDE_SOURCE_CARTESFRANCE)
+                            case ${_territory_data_copy[$TERRITORY_EVENT_CODE]} in
+                            10) # rename
+                                _altitude_update=$ALTITUDE_UPDATE_RENAME
+                                _altitude_file=($_file)
                                 break
-                            } || {
-                                _territory_data[$TERRITORY_CODE]=${_altitude_code[$_altitude_territory]} &&
-                                _territory_data[$TERRITORY_NAME]=${_altitude_name[$_altitude_territory]}
-                            }
+                                ;;
+                            21) # abort (merge)
+                                _altitude_update=$ALTITUDE_UPDATE_MERGE_ABORT
+                                _altitude_file=($_file)
+                                break
+                                ;;
+                            3[1-4]) # merge
+                                _altitude_file+=($_file)
+                                [ $((++_altitude_j)) -eq ${#_altitude_code[*]} ] && {
+                                    break
+                                } || {
+                                    _territory_data[$TERRITORY_CODE]=${_altitude_code[$_altitude_j]} &&
+                                    _territory_data[$TERRITORY_NAME]=${_altitude_name[$_altitude_j]}
+                                }
+                                ;;
+                            esac
                             ;;
                         esac
                     fi
@@ -495,20 +543,21 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                 [ $_territory_skip -eq 1 ] && continue
 
                 declare -A _altitude_min _altitude_max
-                for ((_altitude_i=0; _altitude_i < ${#altitude_code[*]}; _altitude_i++)); do
+                declare -p _altitude_code _altitude_name _altitude_file
+                for ((_altitude_k=0; _altitude_k < ${#_altitude_code[*]}; _altitude_k++)); do
                     altitude_set_values \
-                        --source ${altitude_sources_order[$_altitude_i]} \
-                        --file_path "$_territory_cache/$_file" \
+                        --source ${altitude_sources_order[$_altitude_k]} \
+                        --file_path "$_territory_cache/${_altitude_file[$_altitude_k]}" \
                         --tmpfile $_tmpfile \
-                        --min _altitude_min[${_altitude_code[$_altitude_i]}] \
-                        --max _altitude_max[${_altitude_code[$_altitude_i]}]
-                    echo "${_altitude_name[$_altitude_i]} (${_altitude_code[$_altitude_i]}) min=${_altitude_min[${_altitude_code[$_altitude_i]}]} max=${_altitude_max[${_altitude_code[$_altitude_i]}]}"
-                    [ $_altitude_i -eq 0 ] && {
-                        _min=${_altitude_min[${_altitude_code[$_altitude_i]}]}
-                        _max=${_altitude_max[${_altitude_code[$_altitude_i]}]}
+                        --min _altitude_min[${_altitude_code[$_altitude_k]}] \
+                        --max _altitude_max[${_altitude_code[$_altitude_k]}]
+                    echo "${_altitude_name[$_altitude_k]} (${_altitude_code[$_altitude_k]}) min=${_altitude_min[${_altitude_code[$_altitude_k]}]} max=${_altitude_max[${_altitude_code[$_altitude_k]}]}"
+                    [ $_altitude_k -eq 0 ] && {
+                        _min=${_altitude_min[${_altitude_code[$_altitude_k]}]}
+                        _max=${_altitude_max[${_altitude_code[$_altitude_k]}]}
                     } || {
-                        _min=$((_altitude_min[${_altitude_code[$_altitude_i]}] < _min ? _altitude_min[${_altitude_code[$_altitude_i]}] : _min))
-                        _max=$((_altitude_max[${_altitude_code[$_altitude_i]}] > _max ? _altitude_max[${_altitude_code[$_altitude_i]}] : _max))
+                        _min=$((_altitude_min[${_altitude_code[$_altitude_k]}] < _min ? _altitude_min[${_altitude_code[$_altitude_k]}] : _min))
+                        _max=$((_altitude_max[${_altitude_code[$_altitude_k]}] > _max ? _altitude_max[${_altitude_code[$_altitude_k]}] : _max))
                     }
                 done
 
