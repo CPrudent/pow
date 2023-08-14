@@ -379,17 +379,13 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
 
                         # municipality events aren't applied!
                         case ${_territory_data[$TERRITORY_EVENT_CODE]} in
-                        10) # rename
-                            _altitude_code=(${_territory_data[$TERRITORY_CODE]})
-                            _altitude_name=(${_territory_data[$TERRITORY_NAME]})
-                            _territory_data[$TERRITORY_NAME]=${_territory_data[$TERRITORY_EVENT_NAME_BEFORE]}
-                            ;;
-                        21) # abort (merge)
+                        10|21) # rename, abort (merge)
                             _altitude_code=(${_territory_data[$TERRITORY_CODE]})
                             _altitude_name=(${_territory_data[$TERRITORY_NAME]})
                             _territory_data[$TERRITORY_NAME]=${_territory_data[$TERRITORY_EVENT_NAME_BEFORE]}
                             ;;
                         3[1-4]) # merge
+                            _altitude_update=$ALTITUDE_UPDATE_MERGE
                             # find if eventually "separated", and final name of merged _municipality
                             execute_query \
                                 --name TERRITORY_MERGE_ABORT \
