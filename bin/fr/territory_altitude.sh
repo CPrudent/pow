@@ -16,12 +16,20 @@ declare -a altitude_sources_order=(
 )
 
 _k=0
+ALTITUDE_UPDATE_BASIC=$((_k++))
+ALTITUDE_UPDATE_RENAME=$((_k++))
+ALTITUDE_UPDATE_MERGE_ABORT=$((_k++))
+ALTITUDE_UPDATE_MERGE=$((_k++))
+
+_k=0
 TERRITORY_CODE=$((_k++))
 TERRITORY_NAME=$((_k++))
 TERRITORY_DEPARTMENT=$((_k++))
 TERRITORY_DISTRICT=$((_k++))
 TERRITORY_EVENT_CODE=$((_k++))
+TERRITORY_EVENT_DATE=$((_k++))
 TERRITORY_EVENT_NAME_BEFORE=$((_k++))
+TERRITORY_EVENT_CODE_AFTER=$((_k++))
 
 altitude_log_info() {
     bash_args \
@@ -135,10 +143,7 @@ altitude_set_url() {
     bash_args \
         --args_p '
             source:Source des Données;
-            code:Code INSEE de la commune;
-            municipality:Nom de la commune;
-            department:Nom du département de la commune;
-            district:Nom Arrondissement communal;
+            territory_data:Tableau des données de la commune;
             url:URL à interroger
         ' \
         --args_o '
@@ -147,6 +152,7 @@ altitude_set_url() {
         ' \
         "$@" || return $ERROR_CODE
 
+    local -n _territory_data_ref=$_get_arg_territory_data
     local -n _url_ref=$get_arg_url
     local _url_site _url_page
 
@@ -157,8 +163,8 @@ altitude_set_url() {
         # exceptions :
             # namesake! ex: Devoluy, need suffix _(commune) to access it
             # case sensitive! ex: Bors_(Canton_de_Tude-et-Lavalette) KO due to Canton (instead canton)
-        [ -n "$get_arg_district" ] && _url_page=$get_arg_district || _url_page=$get_arg_municipality
-        [ -n "$get_arg_department" ] && _url_page+="_($get_arg_department)"
+        [ -n "${_territory_data[$TERRITORY_DISTRICT]}" ] && _url_page=${_territory_data[$TERRITORY_DISTRICT]} || _url_page=${_territory_data[$TERRITORY_NAME]}
+        [ -n "${_territory_data[$TERRITORY_DEPARTMENT]}" ] && _url_page+="_(${_territory_data[$TERRITORY_DEPARTMENT]})"
         _url_site='https://fr.wikipedia.org/wiki'
         # replace space by underscore
         _url_page=${_url_page// /_}
@@ -170,77 +176,18 @@ altitude_set_url() {
     $ALTITUDE_SOURCE_CARTESFRANCE)
         # exceptions :
             # municipality event
-            # 05139 Dévoluy
-            # 06107 La Roque-en-Provence
-            # 15268 Le Rouget-Pers
-            # 16052 Bors (Canton de Tude-et-Lavalette)
-            # 16053 Bors (Canton de Charente-Sud)
-            # 21195 Cormot-Vauchignon
-            # 22046 Le Mené
-            # 22158 Guerlédan
-            # 24035 Pays de Belvès
-            # 24142 Coux et Bigaroque-Mouzens
-            # 27022 Le Val d'Hazey
-            # 27032 Chambois
-            # 27198 Mesnils-sur-Iton
-            # 27412 Terres de Bord
-            # 27693 Sylvains-Lès-Moulins
-            # 28236 Arcisses
-            # 28406 Éole-en-Beauce
-            # 28422 Les Villages Vovéens
-            # 37021 Beaumont-Louestault
-            # 37232 Coteaux-sur-Loire
-            # 38066 Chalon
-            # 38253 Les Deux Alpes
-            # 38456 Châtel-en-Trièves
-            # 39368 Hauts de Bienne
-            # 39510 Septmoncel les Molunes
-            # 46138 Cœur de Causse
-            # 46268 Saint Géry-Vers
-            # 48094 Massegros Causses Gorges
-            # 48152 Ventalon en Cévennes
-            # 48166 Cans et Cévennes
-            # 50535 Le Parc
-            # 51075 Bourgogne-Fresne
-            # 51457 Cœur-de-la-Vallée : ex- Reuil (01/01/2023)
-            # 52033 Avrecourt
-            # 52266 Laneuville-à-Rémy
-            # 52278 Lavilleneuve-au-Roi
-            # 52405 Le Montsaugeonnais
-            # 55138 Culey
-            # 55298 Loisey
-            # 56102 Forges de Lanouée
-            # 61211 Juvigny Val d'Andaine
-            # 61474 Gouffern en Auge
-            # 65192 Gavarnie-Gèdre
-            # 67004 Sommerau
-            # 68320 Spechbach
-            # 69066 Cours
-            # 70418 La Romaine
-            # 73010 Entrelacs
-            # 73150 La Plagne Tarentaise
-            # 73227 Courchevel
-            # 74282 Fillière
-            # 76289 Saint Martin de l'If
-            # 76601 Saint-Lucien
-            # 79251 Marcillé
-            # 85001 L'Aiguillon-la-Presqu'île
-            # 86053 Champigny en Rochereau
-            # 89130 Deux Rivières
-            # 89334 Le Val d'Ocre
-
-            # municipality upcase!
-            # 08165 Faux : FAUX
+            # municipality upcase! ex: 08165 Faux : FAUX
         # replace {space,'} by minus, waited: Arrondissement and translate accent
-        [ -n "$get_arg_district" ] && {
+        [ -n "${_territory_data[$TERRITORY_DISTRICT]}" ] && {
             # need capitalize 'arrondissement'
-            local _tmp=${get_arg_district/a/A}
+            local _tmp=${{_territory_data[$TERRITORY_DISTRICT]}/a/A}
             _url_page=${_tmp//_/-}
-        } || _url_page=$get_arg_municipality
+        } || _url_page=${_territory_data[$TERRITORY_NAME]}
         # replace œ
         _url_page=${_url_page/Œ/OE}
         _url_page=${_url_page/œ/oe}
-        _url_page=${get_arg_code}_$(echo ${_url_page//[ \']/-} | sed --expression 'y/àâçéèêëîïôöùûüÉÈÎ/aaceeeeiioouuuEEI/' --expression 's/[()]//g').html
+        # translate accent
+        _url_page=${{_territory_data[$TERRITORY_CODE]}}_$(echo ${_url_page//[ \']/-} | sed --expression 'y/àâçéèêëîïôöùûüÉÈÎ/aaceeeeiioouuuEEI/' --expression 's/[()]//g').html
         _url_site='https://www.cartesfrance.fr/carte-france-ville'
         ;;
     *)
@@ -378,19 +325,19 @@ execute_query \
         } || true
     }
 } &&
-_error=0 &&
+_error_complete=0 &&
 _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
-    for ((_altitude_step=0; _altitude_step < ${#altitude_sources_order[@]}; _altitude_step++)); do
+    for ((_altitude_i=0; _altitude_i < ${#altitude_sources_order[@]}; _altitude_i++)); do
         altitude_log_info \
-            --step $_altitude_step \
-            --source ${altitude_sources_order[$_altitude_step]} &&
+            --step $_altitude_i \
+            --source ${altitude_sources_order[$_altitude_i]} &&
         altitude_set_list \
-            --step $_altitude_step \
+            --step $_altitude_i \
             --list $_territory_list &&
         get_file_nrows $_territory_list _rows &&
         log_info "A traiter: $_rows communes" &&
         altitude_set_cache \
-            --source ${altitude_sources_order[$_altitude_step]} \
+            --source ${altitude_sources_order[$_altitude_i]} \
             --cache _territory_cache \
             --tmpfile _tmpfile && {
             while IFS=: read -a _territory_data; do
@@ -398,34 +345,177 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                 [ -n "$get_arg_only_territory" ] && [[ ! ${_territory_data[$TERRITORY_CODE]} =~ $get_arg_only_territory ]] && continue
                 # except territory?
                 [ -n "$get_arg_except_territory" ] && [[ ${_territory_data[$TERRITORY_CODE]} =~ $get_arg_except_territory ]] && continue
-                declare -p _territory_data
-                altitude_set_url \
-                    --source ${altitude_sources_order[$_altitude_step]} \
-                    --code ${_territory_data[$TERRITORY_CODE]} \
-                    --municipality "${_territory_data[$TERRITORY_NAME]}" \
-                    --department "${_territory_data[$TERRITORY_DEPARTMENT]}" \
-                    --district "${_territory_data[$TERRITORY_DISTRICT]}" \
-                    --url _url &&
-                _file=$(basename "$_url") || {
-                    log_error "Obtention URL ($_file) en erreur"
-                    continue
-                }
-                _rc=0
-                ([ "$get_arg_use_cache" = no ] || [ ! -s "$_territory_cache/$_file" ]) && {
-                    curl --fail --output "$_territory_cache/$_file" "$_url"
+
+                _first=1
+                while true; do
+                    _territory_skip=0 &&
+                    altitude_set_url \
+                        --source ${altitude_sources_order[$_altitude_i]} \
+                        --territory_data _territory_data \
+                        --url _url &&
+                    _file=$(basename "$_url")
                     _rc=$?
-                }
-                ([ ! -s "$_territory_cache/$_file" ] || [ $_rc -ne 0 ]) && {
-                    log_error "Téléchargement ($_file) en erreur [$_rc] URL=$_url"
-                    continue
-                }
-                altitude_set_values \
-                    --source ${altitude_sources_order[$_altitude_step]} \
-                    --file_path "$_territory_cache/$_file" \
-                    --tmpfile $_tmpfile \
-                    --min _min \
-                    --max _max
-                echo "${_territory_data[$TERRITORY_NAME]} (${_territory_data[$TERRITORY_CODE]}) min=$_min max=$_max"
+                    ([ "$get_arg_use_cache" = no ] || [ ! -s "$_territory_cache/$_file" ]) && {
+                        curl --fail --output "$_territory_cache/$_file" "$_url"
+                        _rc=$?
+                    }
+
+                    _altitude_update=$ALTITUDE_UPDATE_BASIC
+                    if [ $_first -eq 1 ]; then
+                        [ -s "$_territory_cache/$_file" ] && [ $_rc -eq 0 ] && {
+                            _altitude_code=(${_territory_data[$TERRITORY_CODE]})
+                            _altitude_name=(${_territory_data[$TERRITORY_NAME]})
+                            _altitude_file=($_file)
+                            break
+                        }
+                        [ ${altitude_sources_order[$_altitude_i]} -ne $ALTITUDE_SOURCE_CARTESFRANCE ] && {
+                            log_error "$_file: téléchargement en erreur URL=$_url"$([ $_rc -ne 0 ] && echo " [$_rc]")
+                            _territory_skip=1
+                            break
+                        }
+
+                        _territory_data_copy=("${_territory_data[@]}")
+                        _first=0
+
+                        # municipality events aren't applied!
+                        case ${_territory_data[$TERRITORY_EVENT_CODE]} in
+                        10) # rename
+                            _altitude_code=(${_territory_data[$TERRITORY_CODE]})
+                            _altitude_name=(${_territory_data[$TERRITORY_NAME]})
+                            _territory_data[$TERRITORY_NAME]=${_territory_data[$TERRITORY_EVENT_NAME_BEFORE]}
+                            ;;
+                        21) # abort (merge)
+                            _altitude_code=(${_territory_data[$TERRITORY_CODE]})
+                            _altitude_name=(${_territory_data[$TERRITORY_NAME]})
+                            _territory_data[$TERRITORY_NAME]=${_territory_data[$TERRITORY_EVENT_NAME_BEFORE]}
+                            ;;
+                        3[1-4]) # merge
+                            # find if eventually "separated", and final name of merged _municipality
+                            execute_query \
+                                --name TERRITORY_MERGE_ABORT \
+                                --query "
+                                    SELECT
+                                        t.com_ap
+                                        , CASE WHEN me.com_ap IS NULL THEN t.libelle_ap
+                                        ELSE me.libelle_ap
+                                        END
+                                    FROM (
+                                    SELECT
+                                        com_ap, libelle_ap
+                                    FROM fr.insee_municipality_event me
+                                    WHERE
+                                        com_ap = '${_territory_data[$TERRITORY_EVENT_CODE_AFTER]}'
+                                        AND com_av = '${_territory_data[$TERRITORY_EVENT_CODE]}'
+                                        AND typecom_av = 'COM'
+                                        AND typecom_ap = 'COM'
+                                        AND mod BETWEEN 31 AND 34
+                                        -- abort?
+                                        AND EXISTS(
+                                            SELECT 1
+                                            FROM fr.insee_municipality_event me2
+                                            WHERE
+                                                me2.mod = 21
+                                                AND
+                                                me2.com_av = me.com_ap
+                                                AND
+                                                me2.com_ap = me.com_av
+                                        )) t
+                                        -- exists more recent merge?
+                                        LEFT OUTER JOIN fr.insee_municipality_event me ON
+                                            t.com_ap = me.com_ap
+                                            AND me.mod BETWEEN 31 AND 34
+                                            AND me.date_eff > t.date_eff
+                                            AND me.typecom_av = 'COM'
+                                            AND me.typecom_ap = 'COM'
+                                " \
+                                --psql_arguments 'tuples-only:pset=format=unaligned' \
+                                --output $tmpfile && {
+                                [ -s $tmpfile ] && {
+                                    _altitude_code=($(head -n 1 $tmpfile | cut --delimiter \| --field 1)) &&
+                                    _altitude_name=($(head -n 1 $tmpfile | cut --delimiter \| --field 2)) &&
+                                } || {
+                                    # else, find old municipalities (before merge)
+                                    execute_query \
+                                        --name TERRITORY_MERGE \
+                                        --query "
+                                            SELECT
+                                                com_av
+                                                , libelle_av
+                                            FROM fr.insee_municipality_event
+                                            WHERE
+                                                com_ap = '${_territory_data[$TERRITORY_CODE]}'
+                                                AND typecom_av = 'COM' AND typecom_ap = 'COM'
+                                                AND mod BETWEEN 31 AND 34
+                                        " \
+                                        --psql_arguments 'tuples-only:pset=format=unaligned' \
+                                        --output $tmpfile &&
+                                    readarray -t _altitude_code < <(cut --delimiter \| --field 1 $tmpfile) &&
+                                    readarray -t _altitude_name < <(cut --delimiter \| --field 2 $tmpfile)
+                                }
+                            } && {
+                                _altitude_territory=0
+                                _altitude_file=()
+                                _territory_data[$TERRITORY_CODE]=${_altitude_code[0]} &&
+                                _territory_data[$TERRITORY_NAME]=${_altitude_name[0]}
+                            }
+                            ;;
+                        *)
+                            log_error "$_file: évènement (${_territory_data[$TERRITORY_EVENT_CODE]}) non géré!"
+                            _territory_skip=1
+                            break
+                            ;;
+                        esac
+                    else
+                        ([ ! -s "$_territory_cache/$_file" ] || [ $_rc -ne 0 ]) && {
+                            log_error "$_file: téléchargement en erreur URL=$_url"$([ $_rc -ne 0 ] && echo " [$_rc]")
+                            _territory_skip=1
+                            break
+                        }
+
+                        case ${_territory_data_copy[$TERRITORY_EVENT_CODE]} in
+                        10) # rename
+                            _altitude_update=$ALTITUDE_UPDATE_RENAME
+                            _altitude_file=($_file)
+                            break
+                            ;;
+                        21) # abort (merge)
+                            _altitude_update=$ALTITUDE_UPDATE_MERGE_ABORT
+                            _altitude_file=($_file)
+                            break
+                            ;;
+                        3[1-4]) # merge
+                            _altitude_file+=($_file)
+                            [ $((++_altitude_territory)) -eq ${#_altitude_code[*]} ] && {
+                                break
+                            } || {
+                                _territory_data[$TERRITORY_CODE]=${_altitude_code[$_altitude_territory]} &&
+                                _territory_data[$TERRITORY_NAME]=${_altitude_name[$_altitude_territory]}
+                            }
+                            ;;
+                        esac
+                    fi
+                done
+
+                [ $_territory_skip -eq 1 ] && continue
+
+                declare -A _altitude_min _altitude_max
+                for ((_altitude_i=0; _altitude_i < ${#altitude_code[*]}; _altitude_i++)); do
+                    altitude_set_values \
+                        --source ${altitude_sources_order[$_altitude_i]} \
+                        --file_path "$_territory_cache/$_file" \
+                        --tmpfile $_tmpfile \
+                        --min _altitude_min[${_altitude_code[$_altitude_i]}] \
+                        --max _altitude_max[${_altitude_code[$_altitude_i]}]
+                    echo "${_altitude_name[$_altitude_i]} (${_altitude_code[$_altitude_i]}) min=${_altitude_min[${_altitude_code[$_altitude_i]}]} max=${_altitude_max[${_altitude_code[$_altitude_i]}]}"
+                    [ $_altitude_i -eq 0 ] && {
+                        _min=${_altitude_min[${_altitude_code[$_altitude_i]}]}
+                        _max=${_altitude_max[${_altitude_code[$_altitude_i]}]}
+                    } || {
+                        _min=$((_altitude_min[${_altitude_code[$_altitude_i]}] < _min ? _altitude_min[${_altitude_code[$_altitude_i]}] : _min))
+                        _max=$((_altitude_max[${_altitude_code[$_altitude_i]}] > _max ? _altitude_max[${_altitude_code[$_altitude_i]}] : _max))
+                    }
+                done
+
                 execute_query \
                     --name UDPATE_TERRITORY_ALTITUDE \
                     --query "
@@ -434,9 +524,9 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                             , z_max = ${_max:-NULL::INT}
                             , done = TRUE
                         WHERE
-                            code = '${_territory_data[$TERRITORY_CODE]}'
+                            code = '${_territory_data_copy[$TERRITORY_CODE]}'
                     " || {
-                    log_error "Mise à jour ${_territory_data[$TERRITORY_CODE]} en erreur"
+                    log_error "Mise à jour ${_territory_data_copy[$TERRITORY_CODE]} en erreur"
 
                 }
             done < $_territory_list
@@ -450,12 +540,12 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
             is_yes --var _territory_ko || break
         } || {
             # to raise error (after loop)
-            _error=1
+            _error_complete=1
             break
         }
     done
 } &&
-[ $_error -eq 0 ] &&
+[ $_error_complete -eq 0 ] &&
 # remove temporary worked file
 rm --force $_tmpfile || {
     exit $ERROR_CODE
