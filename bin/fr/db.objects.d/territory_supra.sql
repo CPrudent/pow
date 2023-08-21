@@ -84,7 +84,7 @@ BEGIN
             ELSE
                 IF columns_agg IS NOT NULL AND NOT (_column_name = ANY(columns_agg)) THEN CONTINUE; END IF;
                 IF columns_agg_func IS NOT NULL AND columns_agg_func[_column_name] IS NOT NULL THEN
-                    _columns_select := CONCAT_WS(', ', _columns_select, CONCAT(columns_agg_func[_column_name], '(source.', _column_name, ') AS ', _column_name));
+                    _columns_select := CONCAT_WS(', ', _columns_select, CONCAT(columns_agg_func->>_column_name, '(source.', _column_name, ') AS ', _column_name));
                 ELSE
                     _column_information := public.get_column_information(schema_name, table_name, _column_name);
                     --TODO : faire une fonction qui donne le type, et une autre qui donne le type général (chaine, numérique, ...)

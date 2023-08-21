@@ -653,9 +653,10 @@ rm --force $_tmpfile || {
         " &&
     archive_file $_territory_list &&
     log_info 'Mise à jour avec succès'
-} || {
-    log_error 'Mise à jour Altitudes des communes non complète!'
-    exit $ERROR_CODE
+    exit $SUCCESS_CODE
 }
 
-exit $SUCCESS_CODE
+log_error 'Mise à jour Altitudes des communes non complète!'
+exit $ERROR_CODE
+
+
