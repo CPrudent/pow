@@ -5,22 +5,24 @@
     #--
     # update territories w/ altitude (if available) from multiples sources
 
-# many sources (not one complete, have to mix them)
+# many sources (not one complete, have to mix them) : idea is to call one as base and another as complement
 ALTITUDE_SOURCE_WIKIPEDIA=1
 ALTITUDE_SOURCE_LALTITUDE=2
 ALTITUDE_SOURCE_CARTESFRANCE=3
-
+# base as WIKIPEDIA and complement as CARTESFRANCE
 declare -a altitude_sources_order=(
     $ALTITUDE_SOURCE_WIKIPEDIA
     $ALTITUDE_SOURCE_CARTESFRANCE
 )
 
+# update usecases
 _k=0
 ALTITUDE_UPDATE_BASIC=$((_k++))
 ALTITUDE_UPDATE_RENAME=$((_k++))
 ALTITUDE_UPDATE_MERGE_ABORT=$((_k++))
 ALTITUDE_UPDATE_MERGE=$((_k++))
 
+# extracted data
 _k=0
 TERRITORY_CODE=$((_k++))
 TERRITORY_NAME=$((_k++))
@@ -491,23 +493,20 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                                         } || {
                                             [ "$POW_DEBUG" = yes ] && echo 'ensemble des communes'
                                             # else, find old municipalities (before merge) starting at 2009/1/1 (web seems updated up to this date), not before!
+                                            set -o noglob &&
                                             execute_query \
                                                 --name TERRITORY_MERGE \
                                                 --query "
-                                                    SELECT
-                                                        com_av
-                                                        , libelle_av
-                                                    FROM fr.insee_municipality_event
-                                                    WHERE
-                                                        com_ap = '${_territory_data[$TERRITORY_CODE]}'
-                                                        AND typecom_av = 'COM' AND typecom_ap = 'COM'
-                                                        AND mod BETWEEN 31 AND 34
-                                                        AND date_eff > '${get_arg_from_date}'::DATE
+                                                    SELECT * FROM fr.get_municipalities_of_merge(
+                                                        municipality_code => '${_territory_data[$TERRITORY_CODE]}'
+                                                        , from_date => '${get_arg_from_date}'
+                                                    )
                                                 " \
                                                 --psql_arguments 'tuples-only:pset=format=unaligned' \
                                                 --output $_tmpfile &&
-                                            readarray -t _altitude_code < <(cut --delimiter \| --field 1 $_tmpfile) &&
-                                            readarray -t _altitude_name < <(cut --delimiter \| --field 2 $_tmpfile)
+                                            set +o noglob &&
+                                            readarray -t _altitude_code < <(cut --delimiter \| --field 4 $_tmpfile) &&
+                                            readarray -t _altitude_name < <(cut --delimiter \| --field 8 $_tmpfile)
                                         }
                                     } && {
                                         _altitude_j=0
