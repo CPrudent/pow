@@ -978,6 +978,7 @@ BEGIN
             , z_min = EXCLUDED.z_min
             , z_max = EXCLUDED.z_max
             , codes_adjoining = EXCLUDED.codes_adjoining
+            , date_last = EXCLUDED.date_last
             , geom_native = EXCLUDED.geom_native
             , geom_world = EXCLUDED.geom_world
     ;
