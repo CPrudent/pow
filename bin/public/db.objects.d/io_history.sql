@@ -12,17 +12,18 @@ CREATE TABLE IF NOT EXISTS public.io_history (
     , dt_data_end TIMESTAMP NOT NULL
     , nb_rows_todo INTEGER NOT NULL
     , nb_rows_processed INTEGER NOT NULL DEFAULT 0
-    , nb_rows_valid INTEGER
-    , co_status_integration VARCHAR(10) -- useful ?
+    , nb_rows_valid INTEGER                             -- useful ?
+    , co_status_integration VARCHAR(10)                 -- useful ?
     , infos_data VARCHAR
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS iux_io_history_id ON public.io_history(id);
+DROP INDEX IF EXISTS uix_io_history_co_type;
 CREATE INDEX IF NOT EXISTS ix_io_history_co_type ON public.io_history(co_type);
 
 COMMENT ON TABLE public.io_history IS 'Historique des Entrées/Sorties';
 SELECT set_column_comment('public', 'io_history', 'id', 'Identifiant de l''Entrée/Sortie');
-SELECT set_column_comment('public', 'io_history', 'co_type', 'Code du type de l''Entrée/Sortie, exemple : LAPOSTE_ADDRESS, etc ...');
+SELECT set_column_comment('public', 'io_history', 'co_type', 'Nom de l''Entrée/Sortie');
 SELECT set_column_comment('public', 'io_history', 'dt_exec_begin', 'Début d''exécution');
 SELECT set_column_comment('public', 'io_history', 'dt_exec_end', 'Fin d''exécution');
 SELECT set_column_comment('public', 'io_history', 'co_status', 'Etat : EN_COURS, SUCCES OU ERREUR');
@@ -46,9 +47,9 @@ $func$
 BEGIN
     RETURN QUERY SELECT *
         FROM public.io_history
-        WHERE co_type ~ type_in
+        WHERE co_type = type_in
         AND dt_data_end = date_end
-        AND co_status ~ status_in
+        AND co_status = status_in
         ORDER BY dt_data_begin
     ;
 END
@@ -66,15 +67,15 @@ BEGIN
     RETURN QUERY
         SELECT *
         FROM public.io_history
-        WHERE co_type ~ type_in
-            AND co_status ~ status_in
+        WHERE co_type = type_in
+            AND co_status = status_in
         ORDER BY dt_data_end DESC
         LIMIT 1
     ;
 END
 $func$ LANGUAGE plpgsql;
 
--- add IO history for LAPOSTE restored data
+-- add IO history for LAPOSTE restored data, if not exists
 DO $$
 DECLARE
     _io VARCHAR;

@@ -149,10 +149,10 @@ $POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
 esac
 
 log_info "Import du millésime $year de $co_type_import" &&
-# no history (think about requested item, so REGEX)
-execute_query \
-    --name "DELETE_IO_${co_type_import}" \
-    --query "DELETE FROM io_history WHERE co_type ~ '^${co_type_import}'" &&
+# # no history (think about requested item, so REGEX)
+# execute_query \
+#     --name "DELETE_IO_${co_type_import}" \
+#     --query "DELETE FROM io_history WHERE co_type ~ '^${co_type_import}'" &&
 io_history_begin \
     --type $co_type_import \
     --date_begin "${years[$year_id]}" \
