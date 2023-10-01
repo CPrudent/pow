@@ -25,49 +25,27 @@ BEGIN
     END IF;
 
     -- FR-TERRITORY -----------------------------------------------------------
-    IF NOT EXISTS(SELECT 1 FROM public.io_list WHERE name = 'FR-TERRITORY' LIMIT 1) THEN
-        INSERT INTO public.io_list(name) VALUES ('FR-TERRITORY');
-    END IF;
-    IF NOT EXISTS(SELECT 1 FROM public.io_list WHERE name = 'FR-TERRITORY-LAPOSTE' LIMIT 1) THEN
-        INSERT INTO public.io_list(name) VALUES ('FR-TERRITORY-LAPOSTE');
-    END IF;
-    IF NOT EXISTS(SELECT 1 FROM public.io_list WHERE name = 'FR-TERRITORY-INSEE' LIMIT 1) THEN
-        INSERT INTO public.io_list(name) VALUES ('FR-TERRITORY-INSEE');
-    END IF;
+
+    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY');
+    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE');
+    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-INSEE');
     -- ADMIN EXPRESS
-    IF NOT EXISTS(SELECT 1 FROM public.io_list WHERE name = 'FR-TERRITORY-IGN' LIMIT 1) THEN
-        INSERT INTO public.io_list(name) VALUES ('FR-TERRITORY-IGN');
-    END IF;
-    IF NOT EXISTS(SELECT 1 FROM public.io_list WHERE name = 'FR-TERRITORY-BANATIC' LIMIT 1) THEN
-        INSERT INTO public.io_list(name) VALUES ('FR-TERRITORY-BANATIC');
-    END IF;
-    IF NOT EXISTS(SELECT 1 FROM public.io_list WHERE name = 'FR-MUNICIPALITY-INSEE-EVENT' LIMIT 1) THEN
-        INSERT INTO public.io_list(name) VALUES ('FR-MUNICIPALITY-INSEE-EVENT');
-    END IF;
-    IF NOT EXISTS(SELECT 1 FROM public.io_list WHERE name = 'FR-MUNICIPALITY-WIKIPEDIA-EVENT' LIMIT 1) THEN
-        INSERT INTO public.io_list(name) VALUES ('FR-MUNICIPALITY-WIKIPEDIA-EVENT');
-    END IF;
+    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN');
+    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-BANATIC');
+    CALL public.io_add_if_not_exists(name => 'FR-MUNICIPALITY-INSEE-EVENT');
+    CALL public.io_add_if_not_exists(name => 'FR-MUNICIPALITY-WIKIPEDIA-EVENT');
     -- SOURCE ORGA
-    IF NOT EXISTS(SELECT 1 FROM public.io_list WHERE name = 'FR-TERRITORY-LAPOSTE-ORGANIZATION' LIMIT 1) THEN
-        INSERT INTO public.io_list(name) VALUES ('FR-TERRITORY-LAPOSTE-ORGANIZATION');
-    END IF;
+    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE-ORGANIZATION');
 
     -- FR-ADDRESS -----------------------------------------------------------
-    IF NOT EXISTS(SELECT 1 FROM public.io_list WHERE name = 'FR-ADDRESS' LIMIT 1) THEN
-        INSERT INTO public.io_list(name) VALUES ('FR-ADDRESS');
-    END IF;
+
+    CALL public.io_add_if_not_exists(name => 'FR-ADDRESS');
     -- RAN
-    IF NOT EXISTS(SELECT 1 FROM public.io_list WHERE name = 'FR-ADDRESS-LAPOSTE' LIMIT 1) THEN
-        INSERT INTO public.io_list(name) VALUES ('FR-ADDRESS-LAPOSTE');
-    END IF;
+    CALL public.io_add_if_not_exists(name => 'FR-ADDRESS-LAPOSTE');
     -- GEOPAD
-    IF NOT EXISTS(SELECT 1 FROM public.io_list WHERE name = 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT' LIMIT 1) THEN
-        INSERT INTO public.io_list(name) VALUES ('FR-ADDRESS-LAPOSTE-DELIVERY-POINT');
-    END IF;
+    CALL public.io_add_if_not_exists(name => 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT');
     -- RAO
-    IF NOT EXISTS(SELECT 1 FROM public.io_list WHERE name = 'FR-ADDRESS-LAPOSTE-DELIVERY-ORGANIZATION' LIMIT 1) THEN
-        INSERT INTO public.io_list(name) VALUES ('FR-ADDRESS-LAPOSTE-DELIVERY-ORGANIZATION');
-    END IF;
+    CALL public.io_add_if_not_exists(name => 'FR-ADDRESS-LAPOSTE-DELIVERY-ORGANIZATION');
 
     _io_list := ARRAY(SELECT io_list FROM public.io_list);
     _id_1 := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY');

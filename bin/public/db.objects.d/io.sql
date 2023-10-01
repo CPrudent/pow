@@ -83,6 +83,24 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+-- is IO integration to do ?
+SELECT public.drop_all_functions_if_exists('public', 'io_integration_is_todo');
+CREATE OR REPLACE FUNCTION public.io_integration_is_todo(
+    name VARCHAR
+)
+RETURNS BOOLEAN AS
+$func$
+DECLARE
+    _todo BOOLEAN := FALSE;
+BEGIN
+    /*
+     IO_EXIST: integration already done, and all depended IO exist
+     IO_MORE_RECENT: at least one depended IO more recent
+     IO_WITH_DIFFERENCE: with difference compared with previous integration
+     */
+    RETURN _todo;
+END
+$func$ LANGUAGE plpgsql;
 
 DO $INIT$
 DECLARE
