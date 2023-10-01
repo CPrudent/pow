@@ -2,9 +2,8 @@
  * PUBLIC schema: list of objects to create
  */
 
+\include_relative io.sql
 \include_relative io_history.sql
-\include_relative io_list.sql
-\include_relative io_relation.sql
 
 \include_relative territory.sql
 \include_relative territory_parent.sql

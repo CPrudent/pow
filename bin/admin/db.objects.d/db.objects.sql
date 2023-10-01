@@ -57,6 +57,9 @@ begins w/ drop.sql due to drop_all_functions_if_exists() called for each functio
 \include_relative ./functions/address.sql
 \include_relative territory_to_date.sql
 
+-- FIXME : dependency!
+\include_relative ../../public/db.objects.d/io.sql
+
 /* INCLUDE
 \include_relative ./functions/getcodeinseedepartementfromcodeinseecommune.sql
 \include_relative ./functions/removemotsoutils.sql

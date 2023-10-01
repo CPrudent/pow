@@ -7,6 +7,9 @@
 \include_relative ./functions/address.sql
 \include_relative ./functions/address_normalize.sql
 
+-- IO
+\include_relative io.sql
+
 -- BAL
 
 \include_relative bal_municipality.sql
