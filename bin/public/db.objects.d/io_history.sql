@@ -81,10 +81,10 @@ DECLARE
     _io VARCHAR;
     _ios VARCHAR[] :=
         ARRAY[
-            'LAPOSTE_ADDRESS'
-            , 'LAPOSTE_DELIVERY_POINT'
-            , 'LAPOSTE_DELIVERY_ADDRESS'
-            , 'LAPOSTE_ORGANIZATION'
+            'FR-ADDRESS-LAPOSTE'
+            , 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT'
+            , 'FR-ADDRESS-LAPOSTE-DELIVERY-ORGANIZATION'
+            , 'FR-TERRITORY-LAPOSTE-ORGANIZATION'
         ];
     _i INT;
     _nb_rows INT[];
@@ -101,7 +101,7 @@ BEGIN
                 '{ "import" : '
                 , '{ "from" : "backup" } }'
                 );
-            IF _io = 'LAPOSTE_ADDRESS' THEN
+            IF _io = 'FR-ADDRESS-LAPOSTE' THEN
                 SELECT
                     GREATEST(
                         MAX(dt_reference)
@@ -144,7 +144,7 @@ BEGIN
                     , ' } } }'
                     );
 
-            ELSIF _io = 'LAPOSTE_DELIVERY_POINT' THEN
+            ELSIF _io = 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT' THEN
                 SELECT
                     MAX(pdi_dt_modification)::DATE
                 INTO
@@ -154,7 +154,7 @@ BEGIN
                     ;
 
                 _io_history.nb_rows_todo := COUNT(*) FROM fr.laposte_delivery_point;
-            ELSIF _io = 'LAPOSTE_DELIVERY_ADDRESS' THEN
+            ELSIF _io = 'FR-ADDRESS-LAPOSTE-DELIVERY-ORGANIZATION' THEN
                 _io_history.nb_rows_todo := COUNT(*) FROM fr.laposte_delivery_address;
                 _io_history.dt_data_end := '2022-12-09'::DATE;
             ELSE

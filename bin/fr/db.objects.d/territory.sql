@@ -53,7 +53,7 @@ AS $$
 DECLARE
     _date_ign TIMESTAMP := (public.get_last_io(type_in => 'IGN_ADMINEXPRESS')).dt_data_end;
     _date_insee TIMESTAMP := (public.get_last_io(type_in => 'INSEE_DECOUPAGE_COMMUNAL')).dt_data_end;
-    _date_ran TIMESTAMP := (public.get_last_io(type_in => 'LAPOSTE_ADDRESS')).dt_data_end;
+    _date_ran TIMESTAMP := (public.get_last_io(type_in => 'FR-ADDRESS-LAPOSTE')).dt_data_end;
     _query TEXT;
 BEGIN
     /*
