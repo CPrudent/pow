@@ -188,61 +188,61 @@ BEGIN
                 --  geometry
                 OR
                 NOT ST_Equals(x.geom, t.geom_native)
-                '
-            WHEN 'FR-TERRITORY-INSEE' THEN
-                '
-                    (
-                        SELECT
-                            codgeo
-                            , libgeo
-                            , cv
-                            , arr
-                            , dep
-                            , reg
-                        FROM
-                            fr.insee_administrative_cutting_municipality_and_district
-                    ) x
+            '
+        WHEN 'FR-TERRITORY-INSEE' THEN
+            '
+                (
+                    SELECT
+                        codgeo
+                        , libgeo
+                        , cv
+                        , arr
+                        , dep
+                        , reg
+                    FROM
+                        fr.insee_administrative_cutting_municipality_and_district
+                ) x
 
-                    FULL OUTER JOIN
+                FULL OUTER JOIN
 
-                    (
-                        SELECT
-                            code
-                            , name
-                            , (get_territory_from_query(get_query_territory_extended_to_level('fr', get_query_territory('fr', 'COM', code), 'CV'))).code code_cv
-                            , (get_territory_from_query(get_query_territory_extended_to_level('fr', get_query_territory('fr', 'COM', code), 'ARR'))).code code_arr
-                            , (get_territory_from_query(get_query_territory_extended_to_level('fr', get_query_territory('fr', 'COM', code), 'DEP'))).code code_dep
-                            , (get_territory_from_query(get_query_territory_extended_to_level('fr', get_query_territory('fr', 'COM', code), 'REG'))).code code_reg
-                        FROM
-                            public.territory
-                        WHERE
-                            country = ''FR''
-                            AND
-                            level = ''COM''
-                            AND
-                            code !~ ''^(98|97[578])''
-                    ) t
+                (
+                    SELECT
+                        code
+                        , name
+                        , (get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', ''COM'', code), ''CV''))).code code_cv
+                        , (get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', ''COM'', code), ''ARR''))).code code_arr
+                        , (get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', ''COM'', code), ''DEP''))).code code_dep
+                        , (get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', ''COM'', code), ''REG''))).code code_reg
+                    FROM
+                        public.territory
+                    WHERE
+                        country = ''FR''
+                        AND
+                        level = ''COM''
+                        AND
+                        code !~ ''^(98|97[578])''
+                ) t
 
-                    ON x.codgeo = t.code
-                WHERE
-                    --  municipality
-                    (
-                        x.codgeo IS NULL
-                        OR
-                        t.code IS NULL
-                    )
-                    -- SUPRA
+                ON x.codgeo = t.code
+            WHERE
+                --  municipality
+                (
+                    x.codgeo IS NULL
                     OR
-                    (
-                        x.cv IS DISTINCT FROM t.code_cv
-                        OR
-                        x.arr IS DISTINCT FROM t.code_arr
-                        OR
-                        x.dep IS DISTINCT FROM t.code_dep
-                        OR
-                        x.reg IS DISTINCT FROM t.code_reg
-                    )
-                '
+                    t.code IS NULL
+                )
+                -- SUPRA
+                OR
+                (
+                    x.cv IS DISTINCT FROM t.code_cv
+                    OR
+                    x.arr IS DISTINCT FROM t.code_arr
+                    OR
+                    x.dep IS DISTINCT FROM t.code_dep
+                    OR
+                    x.reg IS DISTINCT FROM t.code_reg
+                )
+            '
         WHEN 'FR-TERRITORY-BANATIC' THEN
             '
                 (
@@ -340,8 +340,136 @@ BEGIN
                     (t.code_epci IS NULL OR t.code_com IS NULL)
                 )
             '
-        WHEN 'FR-TERRITORY-LAPOSTE' THEN
-            NULL
+        WHEN 'FR-TERRITORY-LAPOSTE-AREA' THEN
+            '
+                (
+                    SELECT
+                        co_cea codgeo
+                        , co_insee_commune codgeo_com
+                        , CASE WHEN co_insee_commune ~ ''^98[78]'' THEN lb_ach_nn ELSE lb_l5_nn END libgeo_l5
+                        , CASE WHEN co_insee_commune ~ ''^98[78]'' THEN lb_l5_nn ELSE lb_ach_nn END libgeo_l6
+                    FROM
+                        fr.laposte_zone_address
+                    WHERE
+                        fl_active
+                        AND
+                        -- exclude MONACO, and trick for bug #45
+                        co_insee_commune !~ ''^9[89]''
+                ) x
+
+                FULL OUTER JOIN
+
+                (
+                    SELECT
+                        za.code
+                        , com.code code_com
+                        , za.attributs->''L5_NORM'' name_l5
+                        , com.attributs->''L6_NORM'' name_l6
+                    FROM
+                        public.territory za
+                            CROSS JOIN get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', ''ZA'', za.code), ''COM'')) com
+                    WHERE
+                        za.country = ''FR''
+                        AND
+                        za.level = ''ZA''
+                        AND
+                        -- fix bug (see #45 2nd usecase)
+                        com.code !~ ''^98''
+                ) t
+
+                ON x.codgeo = t.code
+            WHERE
+                -- ZA
+                (
+                    x.codgeo IS NULL
+                    OR
+                    t.code IS NULL
+                    OR
+                    x.codgeo_com IS DISTINCT FROM t.code_com
+                    OR
+                    x.libgeo_l6 IS DISTINCT FROM t.name_l6
+                    OR
+                    x.libgeo_l5 IS DISTINCT FROM t.name_l5
+                )
+            '
+        WHEN 'FR-TERRITORY-LAPOSTE-SUPRA' THEN
+            '
+                (
+                    SELECT
+                        codgeo
+                        , NULLIF(codgeo_pdc_ppdc_parent, codgeo) codgeo_pdc_ppdc_parent
+                        , NULLIF(codgeo_ppdc_pdc_parent, codgeo) codgeo_ppdc_pdc_parent
+                        , CASE WHEN nivgeo = ''DEX'' THEN codgeo ELSE codgeo_dex_parent END codgeo_dex_parent
+                    FROM
+                        fr.territory_laposte
+                    WHERE
+                        -- fix bug (see #45 3rd usecase)
+                        (
+                            nivgeo = ''CP''
+                            AND
+                            codgeo !~ ''^9[78]''
+                        )
+                        OR	(
+                            nivgeo = ''PDC_PPDC''
+                            AND
+                            NOT codgeo = ANY(''{A19500,A19490,A19497,A19503,A19492,A75042,A19494}'')
+                        )
+                        OR (
+                            nivgeo = ''PPDC_PDC''
+                            AND
+                            NOT codgeo = ANY(''{A75042}'')
+                        )
+                        OR (
+                            nivgeo = ''DEX''
+                        )
+                ) x
+
+                FULL OUTER JOIN
+
+                (
+                    SELECT
+                        t.code
+                        , NULLIF(pdc_ppdc.code, t.code) code_pdc_ppdc
+                        , NULLIF(ppdc_pdc.code, t.code) code_ppdc_pdc
+                        , (get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', t.level, t.code), ''DEX''))).code code_dex
+                    FROM
+                        public.territory t
+                            LEFT OUTER JOIN get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', t.level, t.code), ''PDC_PPDC'')) pdc_ppdc ON public.is_level_below(''fr'', t.level, ''PDC_PPDC'')
+                            LEFT OUTER JOIN get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', t.level, t.code), ''PPDC_PDC'')) ppdc_pdc ON public.is_level_below(''fr'', t.level, ''PPDC_PDC'')
+                    WHERE
+                        t.country = ''FR''
+                        AND ((
+                                t.level = ''CP''
+                                AND
+                                -- fix bug (see #45 3rd usecase)
+                                t.code !~ ''^9[78]''
+                            )
+                            OR (
+                                t.level = ANY(''{PDC_PPDC,PPDC_PDC,DEX}'')
+                            )
+                        )
+                ) t
+
+                ON x.codgeo = t.code
+            WHERE
+                -- level
+                (
+                    x.codgeo IS NULL
+                    OR
+                    t.code IS NULL
+                    --OR
+                    --x.libgeo IS DISTINCT FROM t.name
+                )
+                -- SUPRA
+                OR
+                (
+                    x.codgeo_pdc_ppdc_parent IS DISTINCT FROM t.code_pdc_ppdc
+                    OR
+                    x.codgeo_ppdc_pdc_parent IS DISTINCT FROM t.code_ppdc_pdc
+                    OR
+                    x.codgeo_dex_parent IS DISTINCT FROM t.code_dex
+                )
+            '
         ELSE
             NULL
     END CASE;
