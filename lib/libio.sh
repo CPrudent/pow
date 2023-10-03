@@ -352,7 +352,7 @@ io_get_list_online_available() {
     local -n _dates_ref=$get_arg_dates_list
 
     case $get_arg_type_import in
-    IGN_ADMINEXPRESS)
+    FR-TERRITORY-IGN)
         _url='https://geoservices.ign.fr/adminexpress'
         _re1='href="(http|ftp)[^"]+ADMIN-EXPRESS_(?(?!WM)[^"])+[0-9-]{10}\.7z[^"]*'
         _re2='[0-9-]{10}'
@@ -368,7 +368,7 @@ io_get_list_online_available() {
         _re2='[0-9]{2}/[0-9]{2}/[0-9]{4}'
         _only_matching_re1=
         ;;
-    INSEE_DECOUPAGE_COMMUNAL)
+    FR-TERRITORY-INSEE)
         _url='https://www.insee.fr/fr/information/2028028'
         _re1='table-appartenance-geo-communes-[0-9]{2}[^.]*\.zip'
         _re2='[0-9]{2}'

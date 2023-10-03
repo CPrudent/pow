@@ -137,62 +137,209 @@ BEGIN
     _query := CASE name
         WHEN 'FR-TERRITORY-IGN' THEN
             '
-            (
-                SELECT
-                    insee_com AS codgeo
-                    , nom AS libgeo
-                    , geom
-                    , population
-                FROM
-                    fr.admin_express_commune
-                WHERE
-                    insee_com NOT IN (''75056'', ''13055'', ''69123'')
-                UNION
-                SELECT
-                    arm.insee_arm
-                    , arm.nom
-                    , arm.geom
-                    , population
-                FROM
-                    fr.admin_express_arrondissement_municipal AS arm
-            ) x
+                (
+                    SELECT
+                        insee_com AS codgeo
+                        , nom AS libgeo
+                        , geom
+                        , population
+                    FROM
+                        fr.admin_express_commune
+                    WHERE
+                        insee_com NOT IN (''75056'', ''13055'', ''69123'')
+                    UNION
+                    SELECT
+                        arm.insee_arm
+                        , arm.nom
+                        , arm.geom
+                        , population
+                    FROM
+                        fr.admin_express_arrondissement_municipal AS arm
+                ) x
 
-            FULL OUTER JOIN
+                FULL OUTER JOIN
 
-            (
-                SELECT
-                    code
-                    , name
-                    , geom_native
-                    , population
-                FROM
-                    public.territory
-                WHERE
-                    country = ''FR''
-                    AND
-                    level = ''COM''
-                    AND
-                    code !~ ''^(98|97[578])''
-            ) t
+                (
+                    SELECT
+                        code
+                        , name
+                        , geom_native
+                        , population
+                    FROM
+                        public.territory
+                    WHERE
+                        country = ''FR''
+                        AND
+                        level = ''COM''
+                        AND
+                        code !~ ''^(98|97[578])''
+                ) t
 
-            ON x.codgeo = t.code
-        WHERE
-            --  municipality
-            (
-                x.codgeo IS NULL
+                ON x.codgeo = t.code
+            WHERE
+                --  municipality
+                (
+                    x.codgeo IS NULL
+                    OR
+                    t.code IS NULL
+                    OR
+                    x.libgeo IS DISTINCT FROM t.name
+                )
+                --  geometry
                 OR
-                t.code IS NULL
-                OR
-                x.libgeo IS DISTINCT FROM t.name
-            )
-            --  geometry
-            OR
-            NOT ST_Equals(x.geom, t.geom_native)
-            '
-        WHEN 'FR-TERRITORY-INSEE' THEN
-            NULL
+                NOT ST_Equals(x.geom, t.geom_native)
+                '
+            WHEN 'FR-TERRITORY-INSEE' THEN
+                '
+                    (
+                        SELECT
+                            codgeo
+                            , libgeo
+                            , cv
+                            , arr
+                            , dep
+                            , reg
+                        FROM
+                            fr.insee_administrative_cutting_municipality_and_district
+                    ) x
+
+                    FULL OUTER JOIN
+
+                    (
+                        SELECT
+                            code
+                            , name
+                            , (get_territory_from_query(get_query_territory_extended_to_level('fr', get_query_territory('fr', 'COM', code), 'CV'))).code code_cv
+                            , (get_territory_from_query(get_query_territory_extended_to_level('fr', get_query_territory('fr', 'COM', code), 'ARR'))).code code_arr
+                            , (get_territory_from_query(get_query_territory_extended_to_level('fr', get_query_territory('fr', 'COM', code), 'DEP'))).code code_dep
+                            , (get_territory_from_query(get_query_territory_extended_to_level('fr', get_query_territory('fr', 'COM', code), 'REG'))).code code_reg
+                        FROM
+                            public.territory
+                        WHERE
+                            country = ''FR''
+                            AND
+                            level = ''COM''
+                            AND
+                            code !~ ''^(98|97[578])''
+                    ) t
+
+                    ON x.codgeo = t.code
+                WHERE
+                    --  municipality
+                    (
+                        x.codgeo IS NULL
+                        OR
+                        t.code IS NULL
+                    )
+                    -- SUPRA
+                    OR
+                    (
+                        x.cv IS DISTINCT FROM t.code_cv
+                        OR
+                        x.arr IS DISTINCT FROM t.code_arr
+                        OR
+                        x.dep IS DISTINCT FROM t.code_dep
+                        OR
+                        x.reg IS DISTINCT FROM t.code_reg
+                    )
+                '
         WHEN 'FR-TERRITORY-BANATIC' THEN
-            NULL
+            '
+                (
+                    SELECT
+                        n_siren codgeo
+                        , nom_du_groupement libgeo
+                        , nature_juridique typgeo
+                    FROM
+                        fr.banatic_listof_epci
+                    WHERE
+                        nature_juridique IN (''MET69'', ''CC'', ''CA'', ''METRO'', ''CU'')
+                ) x
+
+                FULL OUTER JOIN
+
+                (
+                    SELECT
+                        code
+                        , name
+                        , attributs->''TYPE''
+                    FROM
+                        public.territory
+                    WHERE
+                        country = ''FR''
+                        AND
+                        level = ''EPCI''
+                ) t
+
+                ON x.codgeo = t.code
+            WHERE
+                --  EPCI
+                (
+                    x.codgeo IS NULL
+                    OR
+                    t.code IS NULL
+                    OR
+                    x.libgeo IS DISTINCT FROM t.name
+                )
+            UNION
+            SELECT 1
+            FROM
+                (
+                    SELECT
+                        s.n_siren codgeo_epci
+                        , (get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', ''COM_GLOBALE_ARM'', l.insee), ''COM''))).code codgeo_com
+                    FROM
+                        fr.banatic_setof_epci s
+                            JOIN fr.banatic_siren_insee l ON s.siren_membre = l.siren
+                    WHERE
+                        s.nature_juridique IN (''MET69'', ''CC'', ''CA'', ''METRO'', ''CU'')
+                        AND
+                        EXISTS(
+                            SELECT 1
+                            FROM public.territory
+                            WHERE country = ''FR'' AND level = ''COM_GLOBALE_ARM'' AND code = l.insee
+                        )
+                    UNION
+                    SELECT
+                        s.n_siren codgeo_epci
+                        , l.insee codgeo_com
+                    FROM
+                        fr.banatic_setof_epci s
+                            JOIN fr.banatic_siren_insee l ON s.siren_membre = l.siren
+                    WHERE
+                        s.nature_juridique IN (''MET69'', ''CC'', ''CA'', ''METRO'', ''CU'')
+                        AND
+                        NOT EXISTS(
+                            SELECT 1
+                            FROM public.territory
+                            WHERE country = ''FR'' AND level = ''COM_GLOBALE_ARM'' AND code = l.insee
+                        )
+                ) x
+
+                FULL OUTER JOIN
+
+                (
+                    SELECT
+                        t.code code_epci
+                        , c.code code_com
+                    FROM
+                        public.territory t
+                            CROSS JOIN get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', ''EPCI'', t.code), ''COM'')) c
+                    WHERE
+                        t.country = ''FR''
+                        AND
+                        t.level = ''EPCI''
+                ) t
+
+                ON (x.codgeo_epci, x.codgeo_com) = (t.code_epci, t.code_com)
+            WHERE
+                -- links
+                (
+                    (x.codgeo_epci IS NULL OR x.codgeo_com IS NULL)
+                    OR
+                    (t.code_epci IS NULL OR t.code_com IS NULL)
+                )
+            '
         WHEN 'FR-TERRITORY-LAPOSTE' THEN
             NULL
         ELSE
@@ -218,13 +365,13 @@ $func$ LANGUAGE plpgsql;
 SELECT public.drop_all_functions_if_exists('public', 'io_is_todo');
 CREATE OR REPLACE FUNCTION public.io_is_todo(
     name VARCHAR
-    , simulation BOOLEAN DEFAULT FALSE
 )
-RETURNS BOOLEAN AS
+RETURNS HSTORE AS
 $func$
 DECLARE
     _todo BOOLEAN := FALSE;
-    _error_message VARCHAR := CONCAT('IO ', io_is_todo.name, '% non valide');
+    _result VARCHAR;
+    _error_message VARCHAR := CONCAT('IO ', io_is_todo.name, ' non valide');
     _io_history public.io_history;
     _io_currents public.io_history[];
     _io_lasts public.io_history[];
@@ -234,6 +381,8 @@ DECLARE
     _io_with_differences BOOLEAN[];
     _i INT;
     _j INT;
+    _has_relation BOOLEAN;
+    _more_recent BOOLEAN;
     _with_difference BOOLEAN;
 BEGIN
     IF NOT EXISTS(SELECT 1 FROM public.io_list WHERE name = io_is_todo.name) THEN
@@ -308,30 +457,45 @@ BEGIN
             SELECT io.* FROM io_id JOIN public.io_history io ON io_id.id = io.id
         );
 
+        _result := NULL;
         _io_more_recents := ARRAY[]::BOOLEAN[];
         _io_with_differences := ARRAY[]::BOOLEAN[];
         FOR _i IN 1 .. ARRAY_UPPER(_io_depends, 1) LOOP
-            _io_more_recents := ARRAY_APPEND(_io_more_recents,
-                (
+            _has_relation := public.io_has_relation(name => _io_depends[_i]);
+            IF NOT _has_relation THEN
+                _more_recent := (
                     _io_lasts[public.io_get_subscript_from_array_by_name(_io_lasts, _io_depends[_i])].dt_data_end >
                     _io_currents[public.io_get_subscript_from_array_by_name(_io_currents, _io_depends[_i])].dt_data_end
-                )
-            );
+                );
+                _with_difference := FALSE;
+            ELSE
+                _more_recent := public.io_is_todo(name => _io_depends[_i]);
+                _with_difference := _more_recent;
+            END IF;
+            _io_more_recents := ARRAY_APPEND(_io_more_recents, _more_recent);
 
-            _with_difference := FALSE;
-            IF _io_more_recents[_i] THEN
+            IF _io_more_recents[_i] AND NOT _has_relation THEN
                 _with_difference := public.io_with_difference(name => _io_depends[_i]);
             END IF;
             _io_with_differences := ARRAY_APPEND(_io_with_differences, _with_difference);
 
-            -- enough to do if one more recent
-            IF NOT simulation AND _with_difference THEN
-                EXIT;
+            IF NOT _todo AND _io_more_recents[_i] AND _io_with_differences[_i] THEN
+                _todo := TRUE;
             END IF;
+
+            _result := CONCAT_WS(','
+                , _result
+                , FORMAT('"%"=>%', _io_depends[_i], _io_more_recents[_i] AND _io_with_differences[_i])
+            );
         END LOOP;
     END IF;
 
-    RETURN _todo;
+    _result := CONCAT(
+        _result
+        , FORMAT(',"TODO"=>%', _todo)
+    );
+
+    RETURN _result::HSTORE;
 END
 $func$ LANGUAGE plpgsql;
 

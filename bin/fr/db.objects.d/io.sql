@@ -28,6 +28,9 @@ BEGIN
 
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE');
+    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE-AREA');
+    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE-SUPRA');
+    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE-GEOMETRY');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-INSEE');
     -- ADMIN EXPRESS
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN');
@@ -48,22 +51,19 @@ BEGIN
     CALL public.io_add_if_not_exists(name => 'FR-ADDRESS-LAPOSTE-DELIVERY-ORGANIZATION');
 
     _io_list := ARRAY(SELECT io_list FROM public.io_list);
-    _id_1 := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY');
-    _id_2 := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-LAPOSTE');
-    _id_3 := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-ADDRESS');
 
     -- FR-TERRITORY -----------------------------------------------------------
+
+    _id_1 := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY');
+    _id_2 := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-LAPOSTE');
     -- FR-TERRITORY / FR-TERRITORY-LAPOSTE
     CALL public.io_add_relation_if_not_exists(id1 => _id_1, id2 => _id_2);
-
     -- FR-TERRITORY / FR-TERRITORY-INSEE
     _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-INSEE');
     CALL public.io_add_relation_if_not_exists(id1 => _id_1, id2 => _id);
-
     -- FR-TERRITORY / FR-TERRITORY-IGN
     _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-IGN');
     CALL public.io_add_relation_if_not_exists(id1 => _id_1, id2 => _id);
-
     -- FR-TERRITORY / FR-TERRITORY-BANATIC
     _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-BANATIC');
     CALL public.io_add_relation_if_not_exists(id1 => _id_1, id2 => _id);
@@ -72,24 +72,56 @@ BEGIN
     _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-MUNICIPALITY-INSEE-EVENT');
     CALL public.io_add_relation_if_not_exists(id1 => _id_1, id2 => _id);
 
-    -- FR-TERRITORY / FR-ADDRESS-LAPOSTE-DELIVERY-POINT
-    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT');
-    CALL public.io_add_relation_if_not_exists(id1 => _id_1, id2 => _id);
-
     -- FR-TERRITORY-LAPOSTE ---------------------------------------------------
-    -- FR-TERRITORY-LAPOSTE / FR-ADDRESS-LAPOSTE
+
+    -- FR-TERRITORY-LAPOSTE / FR-TERRITORY-LAPOSTE-AREA
+    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-LAPOSTE-AREA');
+    CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
+    -- FR-TERRITORY-LAPOSTE / FR-TERRITORY-LAPOSTE-SUPRA
+    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-LAPOSTE-SUPRA');
+    CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
+    -- FR-TERRITORY-LAPOSTE / FR-TERRITORY-LAPOSTE-GEOMETRY
+    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-LAPOSTE-GEOMETRY');
+    CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
+
+    -- FR-TERRITORY-LAPOSTE-AREA -----------------------------------------------
+
+    _id_2 := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-LAPOSTE-AREA');
+    -- FR-TERRITORY-LAPOSTE-AREA / FR-ADDRESS-LAPOSTE
     _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-ADDRESS-LAPOSTE');
     CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
-
-    -- FR-TERRITORY-LAPOSTE / FR-ADDRESS-LAPOSTE-DELIVERY-ORGANIZATION
-    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-ADDRESS-LAPOSTE-DELIVERY-ORGANIZATION');
+    -- FR-TERRITORY-LAPOSTE-AREA / FR-MUNICIPALITY-INSEE-EVENT
+    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-MUNICIPALITY-INSEE-EVENT');
     CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
 
-    -- FR-TERRITORY-LAPOSTE / FR-TERRITORY-LAPOSTE-ORGANIZATION
+    -- FR-TERRITORY-LAPOSTE-SUPRA ----------------------------------------------
+
+    _id_2 := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-LAPOSTE-SUPRA');
+    -- FR-TERRITORY-LAPOSTE-SUPRA / FR-ADDRESS-LAPOSTE
+    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-ADDRESS-LAPOSTE');
+    CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
+    -- FR-TERRITORY-LAPOSTE-SUPRA / FR-ADDRESS-LAPOSTE-DELIVERY-ORGANIZATION
+    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-ADDRESS-LAPOSTE-DELIVERY-ORGANIZATION');
+    CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
+    -- FR-TERRITORY-LAPOSTE-SUPRA / FR-TERRITORY-LAPOSTE-ORGANIZATION
     _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-LAPOSTE-ORGANIZATION');
     CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
 
+    -- FR-TERRITORY-LAPOSTE-GEOMETRY -------------------------------------------
+
+    _id_2 := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-LAPOSTE-GEOMETRY');
+    -- FR-TERRITORY-LAPOSTE-GEOMETRY / FR-TERRITORY-LAPOSTE-AREA
+    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-LAPOSTE-AREA');
+    CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
+    -- FR-TERRITORY-LAPOSTE-GEOMETRY / FR-TERRITORY-IGN
+    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-IGN');
+    CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
+    -- FR-TERRITORY-LAPOSTE-GEOMETRY / FR-ADDRESS-LAPOSTE-DELIVERY-POINT
+    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT');
+    CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
+
     -- FR-ADDRESS ---------------------------------------------------
+    _id_3 := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-ADDRESS');
     -- FR-ADDRESS / FR-ADDRESS-LAPOSTE
     _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-ADDRESS-LAPOSTE');
     CALL public.io_add_relation_if_not_exists(id1 => _id_3, id2 => _id);

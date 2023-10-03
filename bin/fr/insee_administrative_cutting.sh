@@ -21,7 +21,7 @@ bash_args \
     ' \
     "$@" || exit $ERROR_CODE
 
-co_type_import=INSEE_DECOUPAGE_COMMUNAL
+co_type_import=FR-TERRITORY-INSEE
 force="$get_arg_force"
 load_mode="$get_arg_load_mode"
 # year of administrative cutting (w/ YY format)

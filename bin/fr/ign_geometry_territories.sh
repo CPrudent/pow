@@ -59,7 +59,7 @@ bash_args \
     ' \
     "$@" || exit $ERROR_CODE
 
-co_type_import=IGN_ADMINEXPRESS
+co_type_import=FR-TERRITORY-IGN
 force="$get_arg_force_import"
 
 on_import_error() {
@@ -95,7 +95,7 @@ if [ -z "$get_arg_item" ]; then
     # NOTE: ARRONDISSEMENT_DEPARTEMENTAL and CHEF_LIEU seem not useful
     declare -a ITEMS=(COMMUNE ARRONDISSEMENT_MUNICIPAL EPCI DEPARTEMENT REGION)
 else
-	co_type_import=IGN_ADMINEXPRESS_$get_arg_item
+	co_type_import=FR-TERRITORY-IGN_$get_arg_item
 	declare -a ITEMS=($get_arg_item)
 fi
 

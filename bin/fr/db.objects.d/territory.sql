@@ -51,8 +51,8 @@ CREATE OR REPLACE FUNCTION fr.set_territory(
 RETURNS BOOLEAN
 AS $$
 DECLARE
-    _date_ign TIMESTAMP := (public.get_last_io(type_in => 'IGN_ADMINEXPRESS')).dt_data_end;
-    _date_insee TIMESTAMP := (public.get_last_io(type_in => 'INSEE_DECOUPAGE_COMMUNAL')).dt_data_end;
+    _date_ign TIMESTAMP := (public.get_last_io(type_in => 'FR-TERRITORY-IGN')).dt_data_end;
+    _date_insee TIMESTAMP := (public.get_last_io(type_in => 'FR-TERRITORY-INSEE')).dt_data_end;
     _date_ran TIMESTAMP := (public.get_last_io(type_in => 'FR-ADDRESS-LAPOSTE')).dt_data_end;
     _query TEXT;
 BEGIN
@@ -76,7 +76,7 @@ BEGIN
     PERFORM fr.set_zone_address_to_now();
 
     /*
-    SELECT dt_fin_donnees INTO v_dtrgeo_source FROM historique_import WHERE co_type = 'IGN_ADMINEXPRESS' AND co_etat = 'SUCCES';
+    SELECT dt_fin_donnees INTO v_dtrgeo_source FROM historique_import WHERE co_type = 'FR-TERRITORY-IGN' AND co_etat = 'SUCCES';
     SELECT TO_DATE(NULLIF(public.get_table_metadata('public', 'territoire_ign')->>'dtrgeo_source', ''), 'DD/MM/YYYY') INTO v_table_metadata_dtrgeo_source;
     SELECT TO_DATE(NULLIF(public.get_table_metadata('public', 'territoire_ign')->>'dtrgeo', ''), 'DD/MM/YYYY') INTO v_table_metadata_dtrgeo;
     IF v_dtrgeo_source IS NULL THEN
