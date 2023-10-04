@@ -142,7 +142,6 @@ BEGIN
                         insee_com AS codgeo
                         , nom AS libgeo
                         , geom
-                        , population
                     FROM
                         fr.admin_express_commune
                     WHERE
@@ -152,7 +151,6 @@ BEGIN
                         arm.insee_arm
                         , arm.nom
                         , arm.geom
-                        , population
                     FROM
                         fr.admin_express_arrondissement_municipal AS arm
                 ) x
@@ -164,7 +162,6 @@ BEGIN
                         code
                         , name
                         , geom_native
-                        , population
                     FROM
                         public.territory
                     WHERE
@@ -457,8 +454,6 @@ BEGIN
                     x.codgeo IS NULL
                     OR
                     t.code IS NULL
-                    --OR
-                    --x.libgeo IS DISTINCT FROM t.name
                 )
                 -- SUPRA
                 OR
