@@ -508,7 +508,7 @@ DECLARE
     _more_recent BOOLEAN;
     _with_difference BOOLEAN;
 BEGIN
-    IF NOT EXISTS(SELECT 1 FROM public.io_list WHERE name = io_is_todo.name) THEN
+    IF NOT EXISTS(SELECT 1 FROM public.io_list l WHERE l.name = io_is_todo.name) THEN
         RAISE '% (pas défini)', _error_message;
     END IF;
 
@@ -517,6 +517,7 @@ BEGIN
      IO_MORE_RECENT: at least one depended IO more recent
      IO_WITH_DIFFERENCE: with difference compared with previous result
      */
+    _result := NULL;
     _io_history := (SELECT get_last_io(io_is_todo.name));
     IF _io_history IS NULL THEN
         _todo := TRUE;
@@ -528,7 +529,7 @@ BEGIN
             FROM
                 public.io_relation r
             WHERE
-                id = (SELECT id FROM public.io_list WHERE name = io_is_todo.name)
+                id = (SELECT id FROM public.io_list l WHERE l.name = io_is_todo.name)
         );
 
         IF _io_depends IS NULL THEN
@@ -544,10 +545,14 @@ BEGIN
                     id = ANY(
                         SELECT h.id
                         FROM
-                            (SELECT UNNEST(_io_list) name) l
+                            (SELECT UNNEST(_io_depends) name) l
                                 JOIN get_last_io(l.name) h ON h.co_type = l.name
                     )
             );
+
+            IF ARRAY_UPPER(_io_lasts, 1) IS NULL THEN
+                RAISE '% (manque historique des dépendances)', _error_message;
+            END IF;
 
             -- missing IO ?
             _io_missing := ARRAY_CAT(_io_depends, NULL);
@@ -568,19 +573,21 @@ BEGIN
     IF NOT _todo THEN
         -- current history of depended IO
         _io_currents := ARRAY(
-            WITH
-            io_each AS (
-                SELECT value ios FROM JSON_EACH((SELECT (get_last_io(io_is_todo.name)).infos_data::JSON))
-            )
-            , io_id AS (
-                SELECT io_json.value::TEXT::INT id
-                FROM io_each io
-                    CROSS JOIN JSON_EACH(io.ios) io_json
-            )
-            SELECT io.* FROM io_id JOIN public.io_history io ON io_id.id = io.id
+            SELECT
+                io_history
+            FROM
+                public.io_history
+            WHERE
+                id = ANY(
+                    SELECT io_json.value::TEXT::INT id
+                    FROM (
+                        SELECT value ios
+                        FROM JSON_EACH((SELECT (get_last_io(io_is_todo.name)).infos_data::JSON))
+                    ) io
+                        CROSS JOIN JSON_EACH(io.ios) io_json
+                )
         );
 
-        _result := NULL;
         _io_more_recents := ARRAY[]::BOOLEAN[];
         _io_with_differences := ARRAY[]::BOOLEAN[];
         FOR _i IN 1 .. ARRAY_UPPER(_io_depends, 1) LOOP
@@ -592,7 +599,7 @@ BEGIN
                 );
                 _with_difference := FALSE;
             ELSE
-                _more_recent := public.io_is_todo(name => _io_depends[_i]);
+                _more_recent := (public.io_is_todo(name => _io_depends[_i]))->'TODO';
                 _with_difference := _more_recent;
             END IF;
             _io_more_recents := ARRAY_APPEND(_io_more_recents, _more_recent);
@@ -608,14 +615,14 @@ BEGIN
 
             _result := CONCAT_WS(','
                 , _result
-                , FORMAT('"%"=>%', _io_depends[_i], _io_more_recents[_i] AND _io_with_differences[_i])
+                , FORMAT('"%s"=>%s', _io_depends[_i], _io_more_recents[_i] AND _io_with_differences[_i])
             );
         END LOOP;
     END IF;
 
-    _result := CONCAT(
-        _result
-        , FORMAT(',"TODO"=>%', _todo)
+    _result := CONCAT_WS(','
+        , _result
+        , FORMAT('"TODO"=>%s', _todo)
     );
 
     RETURN _result::HSTORE;
