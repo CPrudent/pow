@@ -139,6 +139,14 @@ BEGIN
     ELSE
         RAISE NOTICE '%', _query;
     END IF;
+
+    -- date of modification
+    _query := 'CREATE INDEX IF NOT EXISTS ix_laposte_delivery_point_dt_modification ON fr.laposte_delivery_point (pdi_dt_modification)';
+    IF NOT simulation THEN
+        EXECUTE _query;
+    ELSE
+        RAISE NOTICE '%', _query;
+    END IF;
 END
 $proc$ LANGUAGE plpgsql;
 

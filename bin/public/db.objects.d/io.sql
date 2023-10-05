@@ -133,7 +133,12 @@ $func$
 DECLARE
     _query TEXT;
     _with BOOLEAN;
+    _last_io TIMESTAMP;
 BEGIN
+    IF name = ANY('{FR-TERRITORY-LAPOSTE-GEOMETRY,FR-MUNICIPALITY-INSEE-EVENT}') THEN
+        _last_io := (public.get_last_io(type_in => name)).dt_data_end;
+    END IF;
+
     _query := CASE name
         WHEN 'FR-TERRITORY-IGN' THEN
             '
@@ -345,6 +350,7 @@ BEGIN
                         , co_insee_commune codgeo_com
                         , CASE WHEN co_insee_commune ~ ''^98[78]'' THEN lb_ach_nn ELSE lb_l5_nn END libgeo_l5
                         , CASE WHEN co_insee_commune ~ ''^98[78]'' THEN lb_l5_nn ELSE lb_ach_nn END libgeo_l6
+                        , co_postal
                     FROM
                         fr.laposte_zone_address
                     WHERE
@@ -362,9 +368,11 @@ BEGIN
                         , com.code code_com
                         , za.attributs->''L5_NORM'' name_l5
                         , com.attributs->''L6_NORM'' name_l6
+                        , cp.code code_cp
                     FROM
                         public.territory za
                             CROSS JOIN get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', ''ZA'', za.code), ''COM'')) com
+                            CROSS JOIN get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', ''ZA'', za.code), ''CP'')) cp
                     WHERE
                         za.country = ''FR''
                         AND
@@ -383,6 +391,8 @@ BEGIN
                     t.code IS NULL
                     OR
                     x.codgeo_com IS DISTINCT FROM t.code_com
+                    OR
+                    x.co_postal IS DISTINCT FROM t.code_cp
                     OR
                     x.libgeo_l6 IS DISTINCT FROM t.name_l6
                     OR
@@ -465,8 +475,42 @@ BEGIN
                     x.codgeo_dex_parent IS DISTINCT FROM t.code_dex
                 )
             '
+        WHEN 'FR-TERRITORY-LAPOSTE-GEOMETRY' THEN
+            CONCAT(
+                '
+                    fr.delivery_point_view p
+                        JOIN public.territory t ON p.co_adr_za = t.code
+                WHERE
+                    t.country = ''FR'' AND t.level = ''ZA''
+                    AND
+                    -- new point from previous IO
+                    p.pdi_dt_modification > '''
+                , _last_io
+                , '''::TIMESTAMP
+                    AND
+                    -- valid point
+                    p.fl_active AND p.fl_diffusable AND p.pdi_etat = 1 AND p.pdi_visible
+                    -- at least street-center (=4)
+                    AND p.pdi_no_type_localisation_coord >= 4
+                    -- any valid point apart from existing geometry ?
+                    AND ST_Relate(ST_Transform(p.pdi_coord, 4326), t.geom_world, ''**0******'')
+                '
+            )
+        WHEN 'FR-MUNICIPALITY-INSEE-EVENT' THEN
+            CONCAT(
+                '
+                    fr.insee_municipality_event
+                WHERE
+                    date_eff > '''
+                , _last_io
+                , '''::DATE
+                '
+            )
+        -- always true if this IO is more recent
         ELSE
-            NULL
+            '
+            pg_tables
+            '
     END CASE;
 
     IF _query IS NULL THEN RETURN FALSE; END IF;

@@ -103,6 +103,20 @@ BEGIN
                 );
             IF _io = 'FR-ADDRESS-LAPOSTE' THEN
                 SELECT
+                    LEAST(
+                        MIN(dt_reference)
+                        , MIN(dt_reference_l3)
+                        , MIN(dt_reference_numero)
+                        , MIN(dt_reference_voie)
+                        , MIN(dt_reference_za)
+                    )
+                INTO
+                    _io_history.dt_data_begin
+                FROM
+                    fr.laposte_address
+                    ;
+
+                SELECT
                     GREATEST(
                         MAX(dt_reference)
                         , MAX(dt_reference_l3)
@@ -146,9 +160,11 @@ BEGIN
 
             ELSIF _io = 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT' THEN
                 SELECT
-                    MAX(pdi_dt_modification)::DATE
+                    MIN(pdi_dt_modification)
+                    , MAX(pdi_dt_modification)
                 INTO
-                    _io_history.dt_data_end
+                    _io_history.dt_data_begin
+                    , _io_history.dt_data_end
                 FROM
                     fr.laposte_delivery_point
                     ;
@@ -157,9 +173,40 @@ BEGIN
             ELSIF _io = 'FR-ADDRESS-LAPOSTE-DELIVERY-ORGANIZATION' THEN
                 _io_history.nb_rows_todo := COUNT(*) FROM fr.laposte_delivery_address;
                 _io_history.dt_data_end := '2022-12-09'::DATE;
+                _io_history.dt_data_begin := _io_history.dt_data_end;
             ELSE
                 _io_history.nb_rows_todo := COUNT(*) FROM fr.laposte_organization;
-                _io_history.dt_data_end := '2022-12-09'::DATE;
+                SELECT
+                    TO_DATE(
+                        SUBSTR(
+                            LEAST(
+                                MIN(date_creation)
+                                , MIN(date_modification)
+                            )
+                            , 3
+                        )
+                        , 'YY-MM-DD'
+                    )
+                INTO
+                    _io_history.dt_data_begin
+                FROM
+                    fr.laposte_organization_all
+                    ;
+                SELECT
+                    TO_DATE(
+                        GREATEST(
+                            MAX(date_creation)
+                            , MAX(date_modification)
+                        )
+                        , 'YY-MM-DD'
+                    )
+                INTO
+                    _io_history.dt_data_end
+                FROM
+                    fr.laposte_organization_all
+                WHERE
+                    date_creation <= date_modification
+                    ;
             END IF;
 
             -- SERIAL not called
@@ -173,7 +220,6 @@ BEGIN
             -- common values
             _io_history.co_type := _io;
             _io_history.co_status := 'SUCCES';
-            _io_history.dt_data_begin := _io_history.dt_data_end;
             _io_history.nb_rows_processed := _io_history.nb_rows_todo;
             _io_history.dt_exec_end := TIMEOFDAY()::TIMESTAMP;
 
