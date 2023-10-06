@@ -27,8 +27,8 @@ bash_args \
 force=$get_arg_force
 set_env --schema_name fr &&
 log_info "Définition des territoires français" &&
-#$POW_DIR_BATCH/territory_insee.sh --force $force &&
-$POW_DIR_BATCH/insee_administrative_cutting.sh --force $force &&
+$POW_DIR_BATCH/territory_insee.sh --force $force &&
+
 #$POW_DIR_BATCH/territory_ign.sh --force $force &&
 $POW_DIR_BATCH/ign_geometry_territories.sh --force $force &&
 #$POW_DIR_BATCH/territory_laposte.sh --force $force &&

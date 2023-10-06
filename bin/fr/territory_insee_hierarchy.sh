@@ -62,7 +62,7 @@ elif [ "$get_arg_year" = ALL ]; then
     load_mode_all=$load_mode
     for _year in ${years[@]}; do
         _yy=$(date -d _year +%y)
-        $POW_DIR_BATCH/insee_administrative_cutting.sh \
+        $POW_DIR_BATCH/territory_insee_hierarchy.sh \
             --year $_yy \
             --load_mode $load_mode_all \
             --force $force || exit $ERROR_CODE
@@ -271,7 +271,7 @@ execute_query \
 } &&
 execute_query \
     --name ADMINISTRATIVE_CUTTING \
-    --query "$POW_DIR_BATCH/insee_administrative_cutting.sql" &&
+    --query "$POW_DIR_BATCH/territory_insee_hierarchy.sql" &&
 execute_query \
     --name DROP_TMP \
     --query '

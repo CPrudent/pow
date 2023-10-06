@@ -289,24 +289,33 @@ bash_args \
         use_cache:Utiliser les données présentes dans le cache;
         except_territory:RE pour écarter certaines communes;
         only_territory:RE pour traiter certaines communes;
-        from_date:Prise en compte des fusions de communes à partir de cette date
+        from_date:Prise en compte des fusions de communes à partir de cette date;
+        reset:Effacer la table de préapration
     ' \
     --args_v '
         force_list:yes|no;
         force_public:yes|no;
-        use_cache:yes|no
+        use_cache:yes|no;
+        reset:yes|no
     ' \
     --args_d '
         force_list:no;
         force_public:no;
         use_cache:yes;
-        from_date:2009-01-01
+        from_date:2009-01-01;
+        reset:no
     ' \
     "$@" || exit $ERROR_CODE
 
 [ "$get_arg_force_list" = no ] && _where='AND (t.z_min IS NULL OR t.z_max IS NULL OR t.z_max < t.z_min)' || _where=''
 set_env --schema_name fr &&
-log_info 'Mise à jour des données Altitude (min, max) des Communes' &&
+log_info 'Mise à jour des données Altitude (min, max) des Communes' && {
+    [ "$get_arg_reset" = yes ] && {
+        execute_query \
+            --name RESET_TERRITORY_ALTITUDE \
+            --query "DROP TABLE IF EXISTS fr.municipality_altitude"
+    } || true
+} &&
 execute_query \
     --name PREPARE_TERRITORY_ALTITUDE \
     --query "

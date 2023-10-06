@@ -357,7 +357,7 @@ io_get_list_online_available() {
         _re1='href="(http|ftp)[^"]+ADMIN-EXPRESS_(?(?!WM)[^"])+[0-9-]{10}\.7z[^"]*'
         _re2='[0-9-]{10}'
         ;;
-    IGN_CONTOURS_IRIS)
+    FR-TERRITORY-IGN-IRIS)
         _url='https://geoservices.ign.fr/contoursiris#telechargement'
         _re1='href="(http|ftp)[^" ]+CONTOURS-IRIS[^" ]*(FXX|FRA)[^" ]*\.7z[^" ]*"'
         _re2='[0-9]{4}-01-01'
@@ -373,7 +373,7 @@ io_get_list_online_available() {
         _re1='table-appartenance-geo-communes-[0-9]{2}[^.]*\.zip'
         _re2='[0-9]{2}'
         ;;
-    INSEE_EVENEMENT_COMMUNE)
+    FR-MUNICIPALITY-INSEE-EVENT)
         _url='https://www.insee.fr/fr/information/2560452'
         _re1='Millésime [0-9]{4}&nbsp;: <a'
         _re2='[0-9]{4}'

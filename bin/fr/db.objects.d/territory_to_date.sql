@@ -1211,6 +1211,28 @@ BEGIN
         WHERE za_to_now.dt_reference_commune != za.dt_reference_commune
     )
     LOOP
+        _query := CONCAT('
+            INSERT INTO fr.laposte_address_history (
+                code_address
+                , date_change
+                , change
+                , kind
+                , values
+            )
+            SELECT
+                co_cea
+                , TIMEOFDAY()::DATE
+                , ', quote_literal('FR-MUNICIPALITY-INSEE-EVENT')
+                , ', ', quote_literal('AREA'), '
+                , ROW_TO_JSON(a.*)::JSONB
+            FROM
+                fr.laposte_zone_address a
+            WHERE
+                co_cea = ''', _zone_address_to_now.co_cea, '''
+            '
+        );
+        EXECUTE _query;
+
         UPDATE fr.laposte_zone_address za
         SET co_insee_commune = _zone_address_to_now.co_insee_commune
             , co_insee_commune_precedente = _zone_address_to_now.co_insee_commune_precedente

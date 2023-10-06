@@ -18,7 +18,7 @@ bash_args \
     ' \
     "$@" || exit $ERROR_CODE
 
-co_type_import=INSEE_EVENEMENT_COMMUNE
+co_type_import=FR-MUNICIPALITY-INSEE-EVENT
 # year of municipality events (w/ YYYY format)
 year=
 
@@ -125,7 +125,7 @@ import_file \
     --import_options 'table_columns:HEADER_TO_LOWER_CODE' &&
 execute_query \
     --name MUNICIPALITY_EVENT \
-    --query "$POW_DIR_BATCH/insee_municipality_event.sql" &&
+    --query "$POW_DIR_BATCH/territory_insee_event.sql" &&
 io_history_end_ok \
     --nrows_processed '(SELECT COUNT(*) FROM fr.insee_municipality_event)' \
     --id $year_history_id &&

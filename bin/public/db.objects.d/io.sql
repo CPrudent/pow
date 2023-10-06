@@ -135,8 +135,8 @@ DECLARE
     _with BOOLEAN;
     _last_io TIMESTAMP;
 BEGIN
-    IF name = ANY('{FR-TERRITORY-LAPOSTE-GEOMETRY,FR-MUNICIPALITY-INSEE-EVENT}') THEN
-        _last_io := (public.get_last_io(type_in => name)).dt_data_end;
+    IF name = 'FR-TERRITORY-LAPOSTE-GEOMETRY' THEN
+        _last_io := (public.get_last_io(type_in => 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT')).dt_data_end;
     END IF;
 
     _query := CASE name
@@ -483,7 +483,7 @@ BEGIN
                 WHERE
                     t.country = ''FR'' AND t.level = ''ZA''
                     AND
-                    -- new point from previous IO
+                    -- new point from last IO
                     p.pdi_dt_modification > '''
                 , _last_io
                 , '''::TIMESTAMP
@@ -496,20 +496,10 @@ BEGIN
                     AND ST_Relate(ST_Transform(p.pdi_coord, 4326), t.geom_world, ''**0******'')
                 '
             )
-        WHEN 'FR-MUNICIPALITY-INSEE-EVENT' THEN
-            CONCAT(
-                '
-                    fr.insee_municipality_event
-                WHERE
-                    date_eff > '''
-                , _last_io
-                , '''::DATE
-                '
-            )
-        -- always true if this IO is more recent
+        -- always true (if this IO is more recent)
         ELSE
             '
-            pg_tables
+            pg_tables LIMIT 1
             '
     END CASE;
 
