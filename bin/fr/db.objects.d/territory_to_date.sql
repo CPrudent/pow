@@ -1222,7 +1222,7 @@ BEGIN
             SELECT
                 co_cea
                 , TIMEOFDAY()::DATE
-                , ', quote_literal('FR-MUNICIPALITY-INSEE-EVENT')
+                , ', quote_literal('MUNICIPALITY_EVENT')
                 , ', ', quote_literal('AREA'), '
                 , ROW_TO_JSON(a.*)::JSONB
             FROM

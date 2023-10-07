@@ -28,14 +28,13 @@ force=$get_arg_force
 set_env --schema_name fr &&
 log_info "Définition des territoires français" &&
 $POW_DIR_BATCH/territory_insee.sh --force $force &&
-
-#$POW_DIR_BATCH/territory_ign.sh --force $force &&
-$POW_DIR_BATCH/ign_geometry_territories.sh --force $force &&
+$POW_DIR_BATCH/territory_ign.sh --force $force &&
+$POW_DIR_BATCH/territory_banatic.sh --force $force &&
 #$POW_DIR_BATCH/territory_laposte.sh --force $force &&
+
 execute_query \
     --name SET_TERRITORY_LAPOSTE \
     --query "SELECT fr.set_territory_laposte()" &&
-$POW_DIR_BATCH/banatic_setof_municipalities.sh --force $force && {
     if [ "$get_arg_postal_geom" = no ]; then
         table_exists --schema_name fr --table_name territory &&
         execute_query \

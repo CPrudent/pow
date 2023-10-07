@@ -88,7 +88,7 @@ year_data=$(basename "$url_data")
 rm --force "$years_list_path"
 
 set_env --schema_name fr &&
-io_todo \
+io_todo_import \
     --force $get_arg_force \
     --type $co_type_import \
     --date_end "${years[$year_id]}"

@@ -15,7 +15,7 @@ bash_args \
         force:no' \
     "$@" || exit $ERROR_CODE
 
-co_type_import=BANATIC_EPCI
+co_type_import=FR-TERRITORY-BANATIC
 force="$get_arg_force"
 
 on_import_error() {
@@ -62,7 +62,7 @@ year=$(date -d ${years[$year_id]} +%Y)
 [ "$POW_DEBUG" = yes ] && { echo "year=$year (${years[$year_id]})"; }
 
 set_env --schema_name fr &&
-io_todo \
+io_todo_import \
     --force $get_arg_force \
     --type $co_type_import \
     --date_end "${years[$year_id]}"

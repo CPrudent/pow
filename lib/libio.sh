@@ -182,7 +182,8 @@ POW_IO_IN_PROGRESS=11
 POW_IO_TODO=12
 POW_IO_ERROR=13
 
-io_todo() {
+# IO import is todo?
+io_todo_import() {
     bash_args \
         --args_p '
             force:option de forçage du traitement;
@@ -235,7 +236,36 @@ io_todo() {
     return $POW_IO_TODO
 }
 
-#
+# IO integration is todo?
+io_todo_integration() {
+    bash_args \
+        --args_p '
+            name:IO name;
+            hash:variable pour récupérer les statuts (à faire, et de chaque IO dépendant)
+        ' \
+        --args_o '
+            name;
+            hash
+        ' \
+        "$@" || return $POW_IO_ERROR
+
+    local -n _hash_ref=$get_arg_hash
+    local _tmpfile
+    get_tmp_file --tmpfile _tmpfile &&
+    execute_query \
+        --name IO_IS_TODO \
+        --query "SELECT io_is_todo('$get_arg_name')" \
+        --psql_arguments 'tuples-only:pset=format=unaligned' \
+        --output $_tmpfile || return $ERROR_CODE
+    # each row contains: key=>value
+    _hash_ref=()
+    while read; do
+        _hash_ref[${REPLY%=*}]=${REPLY#*>}
+    done < <(sed --expression 's/"//g' --expression 's/,/\n/g' < $_tmpfile | sed --expression 's/^[ ]*//')
+    rm $_tmpfile
+    return $SUCCESS_CODE
+}
+
 io_history_begin() {
     bash_args \
         --args_p '
