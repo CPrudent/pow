@@ -541,6 +541,8 @@ DECLARE
     _has_relation BOOLEAN;
     _more_recent BOOLEAN;
     _with_difference BOOLEAN;
+    _depends VARCHAR;
+    _relation HSTORE;
 BEGIN
     IF NOT EXISTS(SELECT 1 FROM public.io_list l WHERE l.name = io_is_todo.name) THEN
         RAISE '% (pas défini)', _error_message;
@@ -622,6 +624,11 @@ BEGIN
                 )
         );
 
+        _result := CONCAT_WS(','
+            , _result
+            , FORMAT('"%s"=>"%s"', 'DEPENDS', ARRAY_TO_STRING(_io_depends, ','))
+        );
+
         _io_more_recents := ARRAY[]::BOOLEAN[];
         _io_with_differences := ARRAY[]::BOOLEAN[];
         FOR _i IN 1 .. ARRAY_UPPER(_io_depends, 1) LOOP
@@ -633,8 +640,10 @@ BEGIN
                 );
                 _with_difference := FALSE;
             ELSE
-                _more_recent := (public.io_is_todo(name => _io_depends[_i]))->'TODO';
+                _relation := public.io_is_todo(name => _io_depends[_i]);
+                _more_recent := _relation->'TODO';
                 _with_difference := _more_recent;
+                _depends := _relation->'DEPENDS';
             END IF;
             _io_more_recents := ARRAY_APPEND(_io_more_recents, _more_recent);
 
@@ -647,9 +656,26 @@ BEGIN
                 _todo := TRUE;
             END IF;
 
+            IF NOT _has_relation THEN
+                _result := CONCAT_WS(','
+                    , _result
+                    , FORMAT('"%s"=>%s'
+                        , CONCAT(_io_depends[_i], '_t')
+                        , _io_more_recents[_i] AND _io_with_differences[_i]
+                    )
+                );
+            ELSE
+                _result := CONCAT_WS(','
+                    , _result
+                    , ((_relation - ARRAY['TODO', 'DEPENDS']) || HSTORE(CONCAT(_io_depends[_i], '_t'), _relation->'TODO') || HSTORE(CONCAT(_io_depends[_i], '_d'), _relation->'DEPENDS'))::TEXT
+                );
+            END IF;
             _result := CONCAT_WS(','
                 , _result
-                , FORMAT('"%s"=>%s', _io_depends[_i], _io_more_recents[_i] AND _io_with_differences[_i])
+                , FORMAT('"%s"=>%s'
+                    , CONCAT(_io_depends[_i], '_i')
+                    , _io_lasts[public.io_get_subscript_from_array_by_name(_io_lasts, _io_depends[_i])].id
+                )
             );
         END LOOP;
     END IF;

@@ -1182,6 +1182,7 @@ DECLARE
     _zone_address_to_now RECORD;
     _date_address DATE := (public.get_last_io(type_in => 'FR-ADDRESS-LAPOSTE')).dt_data_end;
     _laposte_updated BOOLEAN DEFAULT FALSE;
+    _query TEXT;
 BEGIN
     FOR _zone_address_to_now IN (
         SELECT
