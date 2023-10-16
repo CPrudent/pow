@@ -615,12 +615,11 @@ BEGIN
                 public.io_history
             WHERE
                 id = ANY(
-                    SELECT io_json.value::TEXT::INT id
+                    SELECT io.id::TEXT::INT id
                     FROM (
-                        SELECT value ios
+                        SELECT value id
                         FROM JSON_EACH((SELECT (get_last_io(io_is_todo.name)).infos_data::JSON))
                     ) io
-                        CROSS JOIN JSON_EACH(io.ios) io_json
                 )
         );
 
