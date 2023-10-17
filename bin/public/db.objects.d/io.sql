@@ -135,8 +135,8 @@ DECLARE
     _with BOOLEAN;
     _last_io TIMESTAMP;
 BEGIN
-    IF name = 'FR-TERRITORY-LAPOSTE-GEOMETRY' THEN
-        _last_io := (public.get_last_io(type_in => 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT')).dt_data_end;
+    IF name = 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT' THEN
+        _last_io := (public.get_last_io(type_in => name)).dt_data_end;
     END IF;
 
     _query := CASE name
@@ -475,7 +475,7 @@ BEGIN
                     x.codgeo_dex_parent IS DISTINCT FROM t.code_dex
                 )
             '
-        WHEN 'FR-TERRITORY-LAPOSTE-GEOMETRY' THEN
+        WHEN 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT' THEN
             CONCAT(
                 '
                     fr.delivery_point_view p
@@ -493,6 +493,7 @@ BEGIN
                     -- at least street-center (=4)
                     AND p.pdi_no_type_localisation_coord >= 4
                     -- any valid point apart from existing geometry ?
+                    -- w/ DIMM : intersect(interior point, exterior area) = point (dim=0)
                     AND ST_Relate(ST_Transform(p.pdi_coord, 4326), t.geom_world, ''**0******'')
                 '
             )
