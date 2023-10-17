@@ -626,7 +626,7 @@ BEGIN
 
         _result := CONCAT_WS(','
             , _result
-            , FORMAT('"%s"=>"%s"', 'DEPENDS', ARRAY_TO_STRING(_io_depends, ','))
+            , FORMAT('"%s"=>"%s"', 'DEPENDS', ARRAY_TO_STRING(_io_depends, ':'))
         );
 
         _io_more_recents := ARRAY[]::BOOLEAN[];

@@ -236,12 +236,12 @@ io_todo_import() {
     return $POW_IO_TODO
 }
 
-# IO integration is todo?
-io_todo_integration() {
+# get description of IO integration (HSTORE converted to associative array)
+io_get_info_integration() {
     bash_args \
         --args_p '
             name:IO name;
-            hash:variable pour récupérer les statuts (à faire, et de chaque IO dépendant)
+            hash:variable pour récupérer la description de cette intégration
         ' \
         --args_o '
             name;
@@ -257,12 +257,51 @@ io_todo_integration() {
         --query "SELECT io_is_todo('$get_arg_name')" \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --output $_tmpfile || return $ERROR_CODE
+    [ "$POW_DEBUG" = yes ] && cat $_tmpfile
     # each row contains: key=>value
     _hash_ref=()
     while read; do
         _hash_ref[${REPLY%=*}]=${REPLY#*>}
     done < <(sed --expression 's/"//g' --expression 's/,/\n/g' < $_tmpfile | sed --expression 's/^[ ]*//')
     rm $_tmpfile
+    return $SUCCESS_CODE
+}
+
+# build list of IDs as string (coded as JSON) for IO history
+io_get_ids_integration() {
+    bash_args \
+        --args_p '
+            name:IO name;
+            hash:tableau associatif de description de cette intégration;
+            ids:variable pour récupérer les IDs
+        ' \
+        --args_o '
+            name;
+            hash;
+            ids
+        ' \
+        "$@" || return $POW_IO_ERROR
+
+    # https://stackoverflow.com/questions/13219634/easiest-way-to-check-for-an-index-or-a-key-in-an-array
+
+    local -n _hash_ref=$get_arg_hash
+    local -n _ids_ref=$get_arg_ids
+    local _steps _step
+    [[ -v "_hash_ref[${get_arg_name}_d]" ]] || {
+        log_error "manque dépendances IO=$get_arg_name"
+        return $ERROR_CODE
+    }
+    _steps=(${_hash_ref[${get_arg_name}_d]//:/ })
+    _ids_ref=''
+    for _step in "${_steps[@]}"; do
+        [[ -v "_hash_ref[${_step}_i]" ]] || {
+            log_error "manque ID IO=$_step"
+            return $ERROR_CODE
+        }
+        [ -n "$_ids_ref" ] && _ids_ref+=,
+        _ids_ref+=$(printf '"%s":%d' $_step ${_hash_ref[${_step}_i]})
+    done
+    _ids_ref="{${_ids_ref}}"
     return $SUCCESS_CODE
 }
 
