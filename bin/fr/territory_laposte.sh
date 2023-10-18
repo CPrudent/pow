@@ -41,8 +41,6 @@ declare -A io_data
 
 set_env --schema_name fr &&
 io_get_info_integration --name $io_name --hash io_data || exit $ERROR_CODE
-declare -p io_data
-read
 
 ([ "$io_force" = no ] && (! is_yes --var io_data[TODO])) && {
     log_info "IO '$io_name' déjà à jour!"
@@ -126,9 +124,9 @@ io_history_begin \
 } &&
 [ $io_error -eq 0 ] && {
     io_info=''
-    for io_step in "${io_steps[@]}"; do
+    for (( io_step=0; io_step<${#io_steps[@]}; io_step++ )); do
         [ -n "$io_info" ] && io_info+=,
-        io_info+=$(printf '"%s":%d' $io_step ${io_ids[${io_step}]})
+        io_info+=$(printf '"%s":%d' ${io_steps[$io_step]} ${io_ids[${io_step}]})
     done
     io_info="{${io_info}}"
     io_history_end_ok \

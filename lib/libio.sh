@@ -48,10 +48,6 @@ _io_history_manager() {
     APPEND)
         local -n _io_id_manager=$get_arg_id
         _return='--return _io_id_manager'
-        declare -p get_arg_infos
-        local _infos
-        [ -z "$get_arg_infos" ] && _infos='NULL' || _infos="'${get_arg_infos}'"
-        declare -p _infos
         _query="
             INSERT INTO public.io_history(
                 co_type
@@ -67,27 +63,27 @@ _io_history_manager() {
                 , '$get_arg_date_end'::TIMESTAMP
                 , '${get_arg_status:-EN_COURS}'
                 , $get_arg_nrows_todo
-                , $_infos
+                ,
+                    CASE WHEN LENGTH('$get_arg_infos') = 0 THEN NULL
+                    ELSE '$get_arg_infos'
+                    END
             );
             SELECT CURRVAL('public.io_history_id_seq');
         "
-        declare -p _query
         ;;
     UPDATE_OK)
-        declare -p get_arg_infos
-        local _infos
         # itself (if no defined) to remain previous value
-        [ -z "$get_arg_infos" ] && _infos='infos_data' || _infos="'${get_arg_infos}'"
-        declare -p _infos
         _query="
             UPDATE public.io_history SET
                 dt_exec_end = NOW()
                 , co_status = 'SUCCES'
                 , nb_rows_processed = $get_arg_nrows_processed
-                , infos_data = $_infos
+                , infos_data =
+                    CASE WHEN LENGTH('$get_arg_infos') = 0 THEN infos_data
+                    ELSE '$get_arg_infos'
+                    END
             WHERE id = $get_arg_id
         "
-        declare -p _query
         ;;
     UPDATE_KO)
         _query="

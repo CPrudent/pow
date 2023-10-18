@@ -72,6 +72,8 @@ DECLARE
     _id INT := 0;
     _i INT;
 BEGIN
+    IF ARRAY_UPPER(from_array, 1) IS NULL THEN RETURN 0; END IF;
+
     FOR _i IN 1 .. ARRAY_UPPER(from_array, 1) LOOP
         IF from_array[_i].name = name THEN
             _id := from_array[_i].id;
@@ -94,6 +96,8 @@ DECLARE
     _id INT := 0;
     _i INT;
 BEGIN
+    IF ARRAY_UPPER(from_array, 1) IS NULL THEN RETURN 0; END IF;
+
     FOR _i IN 1 .. ARRAY_UPPER(from_array, 1) LOOP
         IF from_array[_i].co_type = name THEN
             _id := _i;
@@ -539,6 +543,7 @@ DECLARE
     _io_with_differences BOOLEAN[];
     _i INT;
     _j INT;
+    _k INT;
     _has_relation BOOLEAN;
     _more_recent BOOLEAN;
     _with_difference BOOLEAN;
@@ -558,41 +563,39 @@ BEGIN
     _io_history := (SELECT get_last_io(io_is_todo.name));
     IF _io_history IS NULL THEN
         _todo := TRUE;
+    END IF;
+
+    -- depended IO
+    _io_depends := ARRAY(
+        SELECT
+            (SELECT l.name FROM public.io_list l WHERE l.id = r.id_child) name
+        FROM
+            public.io_relation r
+        WHERE
+            id = (SELECT id FROM public.io_list l WHERE l.name = io_is_todo.name)
+    );
+
+    IF _io_depends IS NULL THEN
+        RAISE '% (pas de dépendance)', _error_message;
     ELSE
-        -- depended IO
-        _io_depends := ARRAY(
+        -- last history of depended IO
+        _io_lasts := ARRAY(
             SELECT
-                (SELECT l.name FROM public.io_list l WHERE l.id = r.id_child) name
+                io_history
             FROM
-                public.io_relation r
+                public.io_history
             WHERE
-                id = (SELECT id FROM public.io_list l WHERE l.name = io_is_todo.name)
+                id = ANY(
+                    SELECT h.id
+                    FROM
+                        (SELECT UNNEST(_io_depends) name) l
+                            JOIN get_last_io(l.name) h ON h.co_type = l.name
+                )
         );
 
-        IF _io_depends IS NULL THEN
-            RAISE '% (pas de dépendance)', _error_message;
-        ELSE
-            -- last history of depended IO
-            _io_lasts := ARRAY(
-                SELECT
-                    io_history
-                FROM
-                    public.io_history
-                WHERE
-                    id = ANY(
-                        SELECT h.id
-                        FROM
-                            (SELECT UNNEST(_io_depends) name) l
-                                JOIN get_last_io(l.name) h ON h.co_type = l.name
-                    )
-            );
-
-            IF ARRAY_UPPER(_io_lasts, 1) IS NULL THEN
-                RAISE '% (manque historique des dépendances)', _error_message;
-            END IF;
-
-            -- missing IO ?
-            _io_missing := ARRAY_CAT(_io_depends, NULL);
+        -- missing IO ?
+        _io_missing := ARRAY_CAT(_io_depends, NULL);
+        IF ARRAY_UPPER(_io_lasts, 1) IS NOT NULL THEN
             FOR _i IN 1 .. ARRAY_UPPER(_io_depends, 1) LOOP
                 FOR _j IN 1 .. ARRAY_UPPER(_io_lasts, 1) LOOP
                     IF _io_lasts[_j].co_type = _io_depends[_i] THEN
@@ -601,84 +604,93 @@ BEGIN
                     END IF;
                 END LOOP;
             END LOOP;
-            IF ARRAY_LENGTH(_io_missing, 1) > 0 THEN
-                RAISE '% (manque %)', _error_message, ARRAY_TO_STRING(_io_missing, ', ');
-            END IF;
+        END IF;
+        IF ARRAY_LENGTH(_io_missing, 1) > 0 THEN
+            RAISE NOTICE '% (manque %)', _error_message, ARRAY_TO_STRING(_io_missing, ', ');
         END IF;
     END IF;
 
-    IF NOT _todo THEN
-        -- current history of depended IO
-        _io_currents := ARRAY(
-            SELECT
-                io_history
-            FROM
-                public.io_history
-            WHERE
-                id = ANY(
-                    SELECT io.id::TEXT::INT id
-                    FROM (
-                        SELECT value id
-                        FROM JSON_EACH((SELECT (get_last_io(io_is_todo.name)).infos_data::JSON))
-                    ) io
-                )
-        );
+    -- current history of depended IO
+    _io_currents := ARRAY(
+        SELECT
+            io_history
+        FROM
+            public.io_history
+        WHERE
+            id = ANY(
+                SELECT io.id::TEXT::INT id
+                FROM (
+                    SELECT value id
+                    FROM JSON_EACH((SELECT (get_last_io(io_is_todo.name)).infos_data::JSON))
+                ) io
+            )
+    );
 
-        _result := CONCAT_WS(','
-            , _result
-            , FORMAT('"%s"=>"%s"', 'DEPENDS', ARRAY_TO_STRING(_io_depends, ':'))
-        );
+    _result := CONCAT_WS(','
+        , _result
+        , FORMAT('"%s"=>"%s"', 'DEPENDS', ARRAY_TO_STRING(_io_depends, ':'))
+    );
 
-        _io_more_recents := ARRAY[]::BOOLEAN[];
-        _io_with_differences := ARRAY[]::BOOLEAN[];
-        FOR _i IN 1 .. ARRAY_UPPER(_io_depends, 1) LOOP
-            _has_relation := public.io_has_relation(name => _io_depends[_i]);
-            IF NOT _has_relation THEN
-                _more_recent := (
-                    _io_lasts[public.io_get_subscript_from_array_by_name(_io_lasts, _io_depends[_i])].dt_data_end >
-                    _io_currents[public.io_get_subscript_from_array_by_name(_io_currents, _io_depends[_i])].dt_data_end
-                );
+    _io_more_recents := ARRAY[]::BOOLEAN[];
+    _io_with_differences := ARRAY[]::BOOLEAN[];
+    FOR _i IN 1 .. ARRAY_UPPER(_io_depends, 1) LOOP
+        _j := public.io_get_subscript_from_array_by_name(_io_lasts, _io_depends[_i]);
+        _k := public.io_get_subscript_from_array_by_name(_io_currents, _io_depends[_i]);
+        _has_relation := public.io_has_relation(name => _io_depends[_i]);
+        IF NOT _has_relation THEN
+            -- no history (1st time) ?
+            IF _k = 0 THEN
+                _more_recent := TRUE;
+                _with_difference := TRUE;
+            ELSE
+                _more_recent := (_io_lasts[_j].dt_data_end > _io_currents[_k].dt_data_end);
                 _with_difference := FALSE;
-            ELSE
-                _relation := public.io_is_todo(name => _io_depends[_i]);
-                _more_recent := _relation->'TODO';
-                _with_difference := _more_recent;
-                _depends := _relation->'DEPENDS';
             END IF;
-            _io_more_recents := ARRAY_APPEND(_io_more_recents, _more_recent);
+        ELSE
+            _relation := public.io_is_todo(name => _io_depends[_i]);
+            _more_recent := _relation->'TODO';
+            _with_difference := _more_recent;
+            _depends := _relation->'DEPENDS';
+        END IF;
+        _io_more_recents := ARRAY_APPEND(_io_more_recents, _more_recent);
 
-            IF _io_more_recents[_i] AND NOT _has_relation THEN
-                _with_difference := public.io_with_difference(name => _io_depends[_i]);
-            END IF;
-            _io_with_differences := ARRAY_APPEND(_io_with_differences, _with_difference);
+        IF _io_more_recents[_i] AND NOT _has_relation AND NOT _with_difference THEN
+            _with_difference := public.io_with_difference(name => _io_depends[_i]);
+        END IF;
+        _io_with_differences := ARRAY_APPEND(_io_with_differences, _with_difference);
 
-            IF NOT _todo AND _io_more_recents[_i] AND _io_with_differences[_i] THEN
-                _todo := TRUE;
-            END IF;
+        IF NOT _todo AND _io_more_recents[_i] AND _io_with_differences[_i] THEN
+            _todo := TRUE;
+        END IF;
 
-            IF NOT _has_relation THEN
-                _result := CONCAT_WS(','
-                    , _result
-                    , FORMAT('"%s"=>%s'
-                        , CONCAT(_io_depends[_i], '_t')
-                        , _io_more_recents[_i] AND _io_with_differences[_i]
-                    )
-                );
-            ELSE
-                _result := CONCAT_WS(','
-                    , _result
-                    , ((_relation - ARRAY['TODO', 'DEPENDS']) || HSTORE(CONCAT(_io_depends[_i], '_t'), _relation->'TODO') || HSTORE(CONCAT(_io_depends[_i], '_d'), _relation->'DEPENDS'))::TEXT
-                );
-            END IF;
+        IF NOT _has_relation THEN
             _result := CONCAT_WS(','
                 , _result
                 , FORMAT('"%s"=>%s'
+                    , CONCAT(_io_depends[_i], '_t')
+                    , _io_more_recents[_i] AND _io_with_differences[_i]
+                )
+                , FORMAT('"%s"=>%s'
                     , CONCAT(_io_depends[_i], '_i')
-                    , _io_lasts[public.io_get_subscript_from_array_by_name(_io_lasts, _io_depends[_i])].id
+                    , _io_lasts[_j].id
                 )
             );
-        END LOOP;
-    END IF;
+        ELSE
+            _result := CONCAT_WS(','
+                , _result
+                , ((_relation - ARRAY['TODO', 'DEPENDS']) || HSTORE(CONCAT(_io_depends[_i], '_t'), _relation->'TODO') || HSTORE(CONCAT(_io_depends[_i], '_d'), _relation->'DEPENDS'))::TEXT
+            );
+        END IF;
+
+        -- last history, if defined
+        _result := CONCAT_WS(','
+            , _result
+            , FORMAT('"%s"=>%s'
+                , CONCAT(_io_depends[_i], '_i')
+                , CASE WHEN (_j > 0) THEN _io_lasts[_j].id ELSE 0 END
+            )
+        );
+    END LOOP;
 
     _result := CONCAT_WS(','
         , _result
