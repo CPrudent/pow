@@ -48,8 +48,10 @@ _io_history_manager() {
     APPEND)
         local -n _io_id_manager=$get_arg_id
         _return='--return _io_id_manager'
+        declare -p get_arg_infos
         local _infos
         [ -z "$get_arg_infos" ] && _infos='NULL' || _infos="'${get_arg_infos}'"
+        declare -p _infos
         _query="
             INSERT INTO public.io_history(
                 co_type
@@ -69,11 +71,14 @@ _io_history_manager() {
             );
             SELECT CURRVAL('public.io_history_id_seq');
         "
+        declare -p _query
         ;;
     UPDATE_OK)
+        declare -p get_arg_infos
         local _infos
         # itself (if no defined) to remain previous value
         [ -z "$get_arg_infos" ] && _infos='infos_data' || _infos="'${get_arg_infos}'"
+        declare -p _infos
         _query="
             UPDATE public.io_history SET
                 dt_exec_end = NOW()
@@ -82,6 +87,7 @@ _io_history_manager() {
                 , infos_data = $_infos
             WHERE id = $get_arg_id
         "
+        declare -p _query
         ;;
     UPDATE_KO)
         _query="
@@ -189,6 +195,7 @@ io_todo_import() {
             force:option de forçage du traitement;
             type:code type IO;
             date_end:date de fin des données (format connu PostgreSQL);
+            purge:purge historique précédent;
             id:variable pour récupérer ID de IO
         ' \
         --args_o '
@@ -196,10 +203,12 @@ io_todo_import() {
             date_end
         ' \
         --args_v '
-            force:no|yes
+            force:no|yes;
+            purge:no|yes
         ' \
         --args_d '
-            force:no
+            force:no;
+            purge:no
         ' \
         "$@" || return $POW_IO_ERROR
 
@@ -226,7 +235,7 @@ io_todo_import() {
         log_info "Le traitement $get_arg_type est déjà en cours"
         return $POW_IO_IN_PROGRESS
     }
-    [ "$get_arg_force" = yes ] && {
+    [ "$get_arg_purge" = yes ] && {
         # purge previous history
         execute_query \
             --name "DELETE_IO_${get_arg_type}" \
@@ -354,7 +363,7 @@ io_history_end_ok() {
 
     _io_history_manager \
         --method UPDATE_OK \
-        --nrows_processed $get_arg_nrows_processed \
+        --nrows_processed "$get_arg_nrows_processed" \
         --infos "$get_arg_infos" \
         --id $get_arg_id || return $ERROR_CODE
 
