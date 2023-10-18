@@ -71,9 +71,9 @@ BEGIN
         */
     --On considère cette table de même à jour
     PERFORM public.set_table_metadata('public', 'territory', CONCAT('{"dtrgeo":"', TO_CHAR(public.getDateMajCommuneToNow(), 'DD/MM/YYYY'), '"}'));
-     */
-    --
+
     PERFORM fr.set_zone_address_to_now();
+     */
 
     /*
     SELECT dt_fin_donnees INTO v_dtrgeo_source FROM historique_import WHERE co_type = 'FR-TERRITORY-IGN' AND co_etat = 'SUCCES';

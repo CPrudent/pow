@@ -122,8 +122,6 @@ altitude_set_list() {
                         ) me ON ma.code = me.com_av
                 WHERE
                     $_where
-                    AND
-                    (ma.code !~ '^(98|97[578])')
             ) TO STDOUT WITH (DELIMITER E':', FORMAT CSV, HEADER FALSE, ENCODING UTF8)
         " \
         --output $get_arg_list || return $ERROR_CODE
@@ -287,30 +285,35 @@ bash_args \
         force_list:Lister les communes même si elles possèdent déjà des altitudes;
         force_public:Forcer la mise à jour des altitudes, même si données incomplètes;
         use_cache:Utiliser les données présentes dans le cache;
+        reset_territory:Effacer la table de préparation;
         except_territory:RE pour écarter certaines communes;
         only_territory:RE pour traiter certaines communes;
-        from_date:Prise en compte des fusions de communes à partir de cette date;
-        reset:Effacer la table de préapration
+        from_date:Prise en compte des fusions de communes à partir de cette date
+
     ' \
     --args_v '
         force_list:yes|no;
         force_public:yes|no;
         use_cache:yes|no;
-        reset:yes|no
+        reset_territory:yes|no
     ' \
     --args_d '
         force_list:no;
         force_public:no;
         use_cache:yes;
         from_date:2009-01-01;
-        reset:no
+        reset_territory:no
     ' \
     "$@" || exit $ERROR_CODE
+
+# TODO be careful w/ name of option, because general variable (get_arg_*) can be changed
+#      by another call of bash_args !
+#      get_arg_reset also used by set_env_pg()
 
 [ "$get_arg_force_list" = no ] && _where='AND (t.z_min IS NULL OR t.z_max IS NULL OR t.z_max < t.z_min)' || _where=''
 set_env --schema_name fr &&
 log_info 'Mise à jour des données Altitude (min, max) des Communes' && {
-    [ "$get_arg_reset" = yes ] && {
+    [ "$get_arg_reset_territory" = yes ] && {
         execute_query \
             --name RESET_TERRITORY_ALTITUDE \
             --query "DROP TABLE IF EXISTS fr.municipality_altitude"
@@ -352,7 +355,8 @@ execute_query \
                 LEFT OUTER JOIN municipality_namesake mns ON t.name = mns.name
                 CROSS JOIN get_territory_from_query(get_query_territory_extended_to_level('fr', get_query_territory('fr', 'COM', t.code), 'DEP')) d
                 LEFT OUTER JOIN get_territory_from_query(get_query_territory_extended_to_level('fr', get_query_territory('fr', 'COM', t.code), 'COM_GLOBALE_ARM')) g ON TRUE
-            WHERE t.country = 'FR' AND t.level = 'COM' $_where
+            WHERE
+                t.country = 'FR' AND t.level = 'COM' AND t.code !~ '^(98|97[578])' $_where
         " && {
 execute_query \
     --name WITH_TERRITORY_ALTITUDE \
@@ -417,7 +421,7 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                         case ${altitude_sources_order[$_altitude_i]} in
                         $ALTITUDE_SOURCE_WIKIPEDIA)
                             [ -s "$_territory_cache/$_file" ] && [ $_rc -eq 0 ] && {
-                                grep --silent 'homonymie de Wikimedia' "$_territory_cache/$_file"
+                                grep --silent 'homonymie de Wikipedia' "$_territory_cache/$_file"
                                 if [ $? -eq 1 ]; then
                                     break
                                 else
