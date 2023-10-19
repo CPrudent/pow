@@ -531,7 +531,7 @@ CREATE OR REPLACE FUNCTION public.io_is_todo(
 RETURNS HSTORE AS
 $func$
 DECLARE
-    _todo BOOLEAN := FALSE;
+    _todo BOOLEAN;
     _result VARCHAR;
     _error_message VARCHAR := CONCAT('IO ', io_is_todo.name, ' non valide');
     _io_history public.io_history;
@@ -547,7 +547,6 @@ DECLARE
     _has_relation BOOLEAN;
     _more_recent BOOLEAN;
     _with_difference BOOLEAN;
-    _depends VARCHAR;
     _relation HSTORE;
 BEGIN
     IF NOT EXISTS(SELECT 1 FROM public.io_list l WHERE l.name = io_is_todo.name) THEN
@@ -561,9 +560,7 @@ BEGIN
      */
     _result := NULL;
     _io_history := (SELECT get_last_io(io_is_todo.name));
-    IF _io_history IS NULL THEN
-        _todo := TRUE;
-    END IF;
+    _todo := (_io_history IS NULL);
 
     -- depended IO
     _io_depends := ARRAY(
@@ -595,6 +592,7 @@ BEGIN
 
         -- missing IO ?
         _io_missing := ARRAY_CAT(_io_depends, NULL);
+        -- no history (1st time) ?
         IF ARRAY_UPPER(_io_lasts, 1) IS NOT NULL THEN
             FOR _i IN 1 .. ARRAY_UPPER(_io_depends, 1) LOOP
                 FOR _j IN 1 .. ARRAY_UPPER(_io_lasts, 1) LOOP
@@ -650,7 +648,6 @@ BEGIN
             _relation := public.io_is_todo(name => _io_depends[_i]);
             _more_recent := _relation->'TODO';
             _with_difference := _more_recent;
-            _depends := _relation->'DEPENDS';
         END IF;
         _io_more_recents := ARRAY_APPEND(_io_more_recents, _more_recent);
 

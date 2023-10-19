@@ -65,6 +65,10 @@ io_get_info_integration --name $io_name --hash io_data || exit $ERROR_CODE
     esac
 }
 
+echo '### DEBUG'
+declare -p io_data
+read
+
 log_info "Calcul des territoires français" &&
 io_history_begin \
     --type $io_name \

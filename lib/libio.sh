@@ -436,7 +436,7 @@ io_get_list_online_available() {
         _re1='href="(http|ftp)[^" ]+CONTOURS-IRIS[^" ]*(FXX|FRA)[^" ]*\.7z[^" ]*"'
         _re2='[0-9]{4}-01-01'
         ;;
-    BANATIC_EPCI)
+    FR-TERRITORY-BANATIC)
         _url='https://www.banatic.interieur.gouv.fr/V5/fichiers-en-telechargement/fichiers-telech.php'
         _re1='Données mises à jour le :'
         _re2='[0-9]{2}/[0-9]{2}/[0-9]{4}'
