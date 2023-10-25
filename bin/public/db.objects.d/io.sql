@@ -168,32 +168,30 @@ BEGIN
 
                 (
                     SELECT
-                        code
-                        , name
-                        , geom_native
+                        codgeo
+                        , libgeo
+                        , gm_contour_natif
                     FROM
-                        public.territory
+                        fr.territory
                     WHERE
-                        country = ''FR''
+                        nivgeo = ''COM''
                         AND
-                        level = ''COM''
-                        AND
-                        code !~ ''^(98|97[578])''
+                        codgeo !~ ''^(98|97[578])''
                 ) t
 
-                ON x.codgeo = t.code
+                ON x.codgeo = t.codgeo
             WHERE
                 --  municipality
                 (
                     x.codgeo IS NULL
                     OR
-                    t.code IS NULL
+                    t.codgeo IS NULL
                     OR
-                    x.libgeo IS DISTINCT FROM t.name
+                    x.libgeo IS DISTINCT FROM t.libgeo
                 )
                 --  geometry
                 OR
-                NOT ST_Equals(x.geom, t.geom_native)
+                NOT ST_Equals(x.geom, t.gm_contour_natif)
             '
         WHEN 'FR-TERRITORY-INSEE' THEN
             '
@@ -213,40 +211,38 @@ BEGIN
 
                 (
                     SELECT
-                        code
-                        , name
-                        , (get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', ''COM'', code), ''CV''))).code code_cv
-                        , (get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', ''COM'', code), ''ARR''))).code code_arr
-                        , (get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', ''COM'', code), ''DEP''))).code code_dep
-                        , (get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', ''COM'', code), ''REG''))).code code_reg
+                        codgeo
+                        , libgeo
+                        , codgeo_cv_parent
+                        , codgeo_arr_parent
+                        , codgeo_dep_parent
+                        , codgeo_reg_parent
                     FROM
-                        public.territory
+                        fr.territory
                     WHERE
-                        country = ''FR''
+                        nivgeo = ''COM''
                         AND
-                        level = ''COM''
-                        AND
-                        code !~ ''^(98|97[578])''
+                        codgeo !~ ''^(98|97[578])''
                 ) t
 
-                ON x.codgeo = t.code
+                ON x.codgeo = t.codgeo
             WHERE
                 --  municipality
                 (
                     x.codgeo IS NULL
                     OR
-                    t.code IS NULL
+                    t.codgeo IS NULL
                 )
                 -- SUPRA
                 OR
                 (
-                    x.cv IS DISTINCT FROM t.code_cv
+                    x.cv IS DISTINCT FROM t.codgeo_cv_parent
                     OR
-                    x.arr IS DISTINCT FROM t.code_arr
+                    x.arr IS DISTINCT FROM t.codgeo_arr_parent
                     OR
-                    x.dep IS DISTINCT FROM t.code_dep
+                    x.dep IS DISTINCT FROM t.codgeo_dep_parent
                     OR
-                    x.reg IS DISTINCT FROM t.code_reg
+                    x.reg IS DISTINCT FROM t.codgeo_reg_parent
                 )
             '
         WHEN 'FR-TERRITORY-BANATIC' THEN
@@ -266,26 +262,24 @@ BEGIN
 
                 (
                     SELECT
-                        code
-                        , name
-                        , attributs->''TYPE''
+                        codgeo
+                        , libgeo
+                        , typgeo
                     FROM
-                        public.territory
+                        fr.territory
                     WHERE
-                        country = ''FR''
-                        AND
-                        level = ''EPCI''
+                        nivgeo = ''EPCI''
                 ) t
 
-                ON x.codgeo = t.code
+                ON x.codgeo = t.codgeo
             WHERE
                 --  EPCI
                 (
                     x.codgeo IS NULL
                     OR
-                    t.code IS NULL
+                    t.codgeo IS NULL
                     OR
-                    x.libgeo IS DISTINCT FROM t.name
+                    x.libgeo IS DISTINCT FROM t.libgeo
                 )
             UNION
             SELECT 1
@@ -293,18 +287,14 @@ BEGIN
                 (
                     SELECT
                         s.n_siren codgeo_epci
-                        , (get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', ''COM_GLOBALE_ARM'', l.insee), ''COM''))).code codgeo_com
+                        , c.codgeo codgeo_com
                     FROM
                         fr.banatic_setof_epci s
                             JOIN fr.banatic_siren_insee l ON s.siren_membre = l.siren
+                            JOIN fr.territory cg ON cg.codgeo = l.insee AND cg.nivgeo = ''COM_GLOBALE_ARM''
+                            JOIN fr.territory c ON c.codgeo_com_globale_arm_parent = cg.codgeo AND c.nivgeo = ''COM''
                     WHERE
                         s.nature_juridique IN (''MET69'', ''CC'', ''CA'', ''METRO'', ''CU'')
-                        AND
-                        EXISTS(
-                            SELECT 1
-                            FROM public.territory
-                            WHERE country = ''FR'' AND level = ''COM_GLOBALE_ARM'' AND code = l.insee
-                        )
                     UNION
                     SELECT
                         s.n_siren codgeo_epci
@@ -312,14 +302,11 @@ BEGIN
                     FROM
                         fr.banatic_setof_epci s
                             JOIN fr.banatic_siren_insee l ON s.siren_membre = l.siren
+                            JOIN fr.territory c ON c.codgeo = l.insee AND c.nivgeo = ''COM''
                     WHERE
                         s.nature_juridique IN (''MET69'', ''CC'', ''CA'', ''METRO'', ''CU'')
                         AND
-                        NOT EXISTS(
-                            SELECT 1
-                            FROM public.territory
-                            WHERE country = ''FR'' AND level = ''COM_GLOBALE_ARM'' AND code = l.insee
-                        )
+                        c.codgeo_com_globale_arm_parent IS NULL
                 ) x
 
                 FULL OUTER JOIN
@@ -327,14 +314,12 @@ BEGIN
                 (
                     SELECT
                         t.code code_epci
-                        , c.code code_com
+                        , c.codgeo code_com
                     FROM
-                        public.territory t
-                            CROSS JOIN get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', ''EPCI'', t.code), ''COM'')) c
+                        fr.territory t
+                            JOIN fr.territory c ON c.codgeo_epci_parent = t.codgeo AND c.nivgeo = ''COM''
                     WHERE
-                        t.country = ''FR''
-                        AND
-                        t.level = ''EPCI''
+                        t.nivgeo = ''EPCI''
                 ) t
 
                 ON (x.codgeo_epci, x.codgeo_com) = (t.code_epci, t.code_com)
@@ -367,40 +352,51 @@ BEGIN
                 FULL OUTER JOIN
 
                 (
+                    WITH
+                    l5_cp_l6 AS (
+                        SELECT
+                            za.codgeo codgeo_za
+                            , za.codgeo_com_parent codgeo_com
+                            , za.codgeo_cp_parent codgeo_cp
+                            , STRING_TO_ARRAY(za.libgeo, ''-'') libs
+                        FROM
+                            fr.territory za
+                        WHERE
+                            za.nivgeo = ''ZA''
+                            AND
+                            za.codgeo !~ ''^9[89]''
+                    )
                     SELECT
-                        za.code
-                        , com.code code_com
-                        , za.attributs->''L5_NORM'' name_l5
-                        , com.attributs->''L6_NORM'' name_l6
-                        , cp.code code_cp
+                        codgeo_za
+                        , codgeo_com
+                        , codgeo_cp
+                        , CASE ARRAY_LENGTH(libs, 1)
+                            WHEN 2 THEN libs[2]
+                            WHEN 3 THEN libs[3]
+                            END libgeo_l6
+                        , CASE ARRAY_LENGTH(libs, 1)
+                            WHEN 2 THEN NULL
+                            WHEN 3 THEN libs[1]
+                            END libgeo_l5
                     FROM
-                        public.territory za
-                            CROSS JOIN get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', ''ZA'', za.code), ''COM'')) com
-                            CROSS JOIN get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', ''ZA'', za.code), ''CP'')) cp
-                    WHERE
-                        za.country = ''FR''
-                        AND
-                        za.level = ''ZA''
-                        AND
-                        -- fix bug (see #45 2nd usecase)
-                        com.code !~ ''^98''
+                        l5_cp_l6
                 ) t
 
-                ON x.codgeo = t.code
+                ON x.codgeo = t.codgeo_za
             WHERE
                 -- ZA
                 (
                     x.codgeo IS NULL
                     OR
-                    t.code IS NULL
+                    t.codgeo_za IS NULL
                     OR
                     x.codgeo_com IS DISTINCT FROM t.code_com
                     OR
-                    x.co_postal IS DISTINCT FROM t.code_cp
+                    x.co_postal IS DISTINCT FROM t.codgeo_cp
                     OR
-                    x.libgeo_l6 IS DISTINCT FROM t.name_l6
+                    x.libgeo_l6 IS DISTINCT FROM t.libgeo_l6
                     OR
-                    x.libgeo_l5 IS DISTINCT FROM t.name_l5
+                    x.libgeo_l5 IS DISTINCT FROM t.libgeo_l5
                 )
             '
         WHEN 'FR-TERRITORY-LAPOSTE-SUPRA' THEN
@@ -439,53 +435,50 @@ BEGIN
 
                 (
                     SELECT
-                        t.code
-                        , NULLIF(pdc_ppdc.code, t.code) code_pdc_ppdc
-                        , NULLIF(ppdc_pdc.code, t.code) code_ppdc_pdc
-                        , (get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', t.level, t.code), ''DEX''))).code code_dex
+                        codgeo
+                        , codgeo_pdc_ppdc_parent
+                        , codgeo_ppdc_pdc_parent
+                        , codgeo_dex_parent
                     FROM
-                        public.territory t
-                            LEFT OUTER JOIN get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', t.level, t.code), ''PDC_PPDC'')) pdc_ppdc ON public.is_level_below(''fr'', t.level, ''PDC_PPDC'')
-                            LEFT OUTER JOIN get_territory_from_query(get_query_territory_extended_to_level(''fr'', get_query_territory(''fr'', t.level, t.code), ''PPDC_PDC'')) ppdc_pdc ON public.is_level_below(''fr'', t.level, ''PPDC_PDC'')
+                        fr.territory
                     WHERE
-                        t.country = ''FR''
-                        AND ((
-                                t.level = ''CP''
+                        ((
+                                nivgeo = ''CP''
                                 AND
                                 -- fix bug (see #45 3rd usecase)
-                                t.code !~ ''^9[78]''
+                                codgeo !~ ''^9[78]''
                             )
                             OR (
-                                t.level = ANY(''{PDC_PPDC,PPDC_PDC,DEX}'')
+                                nivgeo = ANY(''{PDC_PPDC,PPDC_PDC,DEX}'')
                             )
                         )
                 ) t
 
-                ON x.codgeo = t.code
+                ON x.codgeo = t.codgeo
             WHERE
                 -- level
                 (
                     x.codgeo IS NULL
                     OR
-                    t.code IS NULL
+                    t.codgeo IS NULL
                 )
                 -- SUPRA
                 OR
                 (
-                    x.codgeo_pdc_ppdc_parent IS DISTINCT FROM t.code_pdc_ppdc
+                    x.codgeo_pdc_ppdc_parent IS DISTINCT FROM t.codgeo_pdc_ppdc_parent
                     OR
-                    x.codgeo_ppdc_pdc_parent IS DISTINCT FROM t.code_ppdc_pdc
+                    x.codgeo_ppdc_pdc_parent IS DISTINCT FROM t.codgeo_ppdc_pdc_parent
                     OR
-                    x.codgeo_dex_parent IS DISTINCT FROM t.code_dex
+                    x.codgeo_dex_parent IS DISTINCT FROM t.codgeo_dex_parent
                 )
             '
         WHEN 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT' THEN
             CONCAT(
                 '
                     fr.delivery_point_view p
-                        JOIN public.territory t ON p.co_adr_za = t.code
+                        JOIN fr.territory t ON p.co_adr_za = t.codgeo
                 WHERE
-                    t.country = ''FR'' AND t.level = ''ZA''
+                    t.nivgeo = ''ZA''
                     AND
                     -- new point from last IO
                     p.pdi_dt_modification > '''
@@ -498,7 +491,7 @@ BEGIN
                     AND p.pdi_no_type_localisation_coord >= 4
                     -- any valid point apart from existing geometry ?
                     -- w/ DIMM : intersect(interior point, exterior area) = point (dim=0)
-                    AND ST_Relate(ST_Transform(p.pdi_coord, 4326), t.geom_world, ''**0******'')
+                    AND ST_Relate(ST_Transform(p.pdi_coord, 4326), t.gm_contour, ''**0******'')
                 '
             )
         -- always true (if this IO is more recent)
