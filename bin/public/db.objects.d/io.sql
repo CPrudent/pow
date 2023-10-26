@@ -436,20 +436,33 @@ BEGIN
                 (
                     SELECT
                         codgeo
-                        , codgeo_pdc_ppdc_parent
-                        , codgeo_ppdc_pdc_parent
-                        , codgeo_dex_parent
+                        , NULLIF(codgeo_pdc_ppdc_parent, codgeo) codgeo_pdc_ppdc_parent
+                        , NULLIF(codgeo_ppdc_pdc_parent, codgeo) codgeo_ppdc_pdc_parent
+                        , CASE WHEN nivgeo = ''DEX'' THEN codgeo ELSE codgeo_dex_parent END codgeo_dex_parent
                     FROM
                         fr.territory
                     WHERE
+                        -- fix bug (see #45 3rd usecase)
                         ((
                                 nivgeo = ''CP''
                                 AND
-                                -- fix bug (see #45 3rd usecase)
                                 codgeo !~ ''^9[78]''
+                                -- fix bug (see #45 4th usecase)
+                                AND
+                                COALESCE(codgeo_pdc_ppdc_parent, codgeo_ppdc_pdc_parent, codgeo_dex_parent) IS NOT NULL
                             )
                             OR (
-                                nivgeo = ANY(''{PDC_PPDC,PPDC_PDC,DEX}'')
+                                nivgeo = ''PDC_PPDC''
+                                AND
+                                NOT codgeo = ANY(''{A19500,A19490,A19497,A19503,A19492,A75042,A19494}'')
+                            )
+                            OR (
+                                nivgeo = ''PPDC_PDC''
+                                AND
+                                NOT codgeo = ANY(''{A75042}'')
+                            )
+                            OR (
+                                nivgeo = ''DEX''
                             )
                         )
                 ) t
