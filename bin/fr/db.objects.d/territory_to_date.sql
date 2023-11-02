@@ -956,8 +956,8 @@ BEGIN
             BEGIN
                 SELECT TRUE
                 INTO STRICT _exists
-                FROM fr.territory
-                WHERE country = 'FR' AND level = 'COM' AND code = code;
+                FROM public.territory t
+                WHERE country = 'FR' AND level = 'COM' AND t.code = get_municipality_to_date.code;
             EXCEPTION WHEN NO_DATA_FOUND THEN
                 IF months_back_if_not_exists > 0 THEN
                     --ATTENTION CETTE METHODE N'EST PAS PARFAITE, ON NE GERE PAS LE CAS D'UNE DIVISION OU UNE PARTIE DES NOUVELLES COMMUNES OBTENUES N'EXISTERAIT PAS (cas ne se produisant à priori jamais)
