@@ -18,7 +18,7 @@ bash_args \
     ' \
     "$@" || exit $ERROR_CODE
 
-co_type_import=FR-MUNICIPALITY-INSEE-EVENT
+co_type_import=FR-MUNICIPALITY-EVENT-INSEE
 # year of municipality events (w/ YYYY format)
 year=
 

@@ -447,7 +447,7 @@ io_get_list_online_available() {
         _re1='table-appartenance-geo-communes-[0-9]{2}[^.]*\.zip'
         _re2='[0-9]{2}'
         ;;
-    FR-MUNICIPALITY-INSEE-EVENT)
+    FR-MUNICIPALITY-EVENT-INSEE)
         _url='https://www.insee.fr/fr/information/2560452'
         _re1='Millésime [0-9]{4}&nbsp;: <a'
         _re2='[0-9]{4}'

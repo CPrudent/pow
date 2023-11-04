@@ -36,8 +36,8 @@ BEGIN
     -- ADMIN EXPRESS
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-BANATIC');
-    CALL public.io_add_if_not_exists(name => 'FR-MUNICIPALITY-INSEE-EVENT');
-    CALL public.io_add_if_not_exists(name => 'FR-MUNICIPALITY-WIKIPEDIA-EVENT');
+    CALL public.io_add_if_not_exists(name => 'FR-MUNICIPALITY-EVENT-INSEE');
+    CALL public.io_add_if_not_exists(name => 'FR-MUNICIPALITY-EVENT-WIKIPEDIA');
     -- SOURCE ORGA
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE-ORGANIZATION');
 
@@ -62,7 +62,7 @@ BEGIN
             |-> FR-TERRITORY-INSEE
             |-> FR-TERRITORY-IGN
             |-> FR-TERRITORY-BANATIC
-            |-> FR-MUNICIPALITY-INSEE-EVENT
+            |-> FR-MUNICIPALITY-EVENT-INSEE
             |-> FR-ADDRESS-LAPOSTE-DELIVERY-POINT
      */
 
@@ -75,7 +75,7 @@ BEGIN
     CALL public.io_add_relation_if_not_exists(id1 => _id_1, id2 => _id);
     _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-BANATIC');
     CALL public.io_add_relation_if_not_exists(id1 => _id_1, id2 => _id);
-    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-MUNICIPALITY-INSEE-EVENT');
+    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-MUNICIPALITY-EVENT-INSEE');
     CALL public.io_add_relation_if_not_exists(id1 => _id_1, id2 => _id);
     _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT');
     CALL public.io_add_relation_if_not_exists(id1 => _id_1, id2 => _id);
@@ -94,13 +94,13 @@ BEGIN
     /*
        FR-TERRITORY-LAPOSTE-AREA
             |-> FR-ADDRESS-LAPOSTE
-            |-> FR-MUNICIPALITY-INSEE-EVENT
+            |-> FR-MUNICIPALITY-EVENT-INSEE
      */
 
     _id_2 := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-LAPOSTE-AREA');
     _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-ADDRESS-LAPOSTE');
     CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
-    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-MUNICIPALITY-INSEE-EVENT');
+    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-MUNICIPALITY-EVENT-INSEE');
     CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
 
     /*
