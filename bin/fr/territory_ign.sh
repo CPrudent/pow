@@ -92,8 +92,8 @@ on_import_error() {
 
 # according command line
 if [ -z "$get_arg_item" ]; then
-    # NOTE: ARRONDISSEMENT_DEPARTEMENTAL and CHEF_LIEU seem not useful
-    declare -a ITEMS=(COMMUNE ARRONDISSEMENT_MUNICIPAL EPCI DEPARTEMENT REGION)
+    # NOTE: some items seem not useful, and EPCI is taken elsewhere
+    declare -a ITEMS=(COMMUNE ARRONDISSEMENT_MUNICIPAL DEPARTEMENT REGION)
 else
 	co_type_import=FR-TERRITORY-IGN_$get_arg_item
 	declare -a ITEMS=($get_arg_item)
@@ -284,9 +284,9 @@ io_history_begin \
             ARRONDISSEMENT_MUNICIPAL)
                 _key_idx=insee_arm
                 ;;
-            EPCI)
-                _key_idx=code_siren
-                ;;
+#             EPCI)
+#                 _key_idx=code_siren
+#                 ;;
             DEPARTEMENT)
                 _key_idx=insee_dep
                 ;;
