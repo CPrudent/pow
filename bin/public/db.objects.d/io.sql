@@ -128,15 +128,14 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
-SELECT public.drop_all_functions_if_exists('public', 'io_with_difference');
-CREATE OR REPLACE FUNCTION public.io_with_difference(
+SELECT public.drop_all_functions_if_exists('public', 'io_with_difference_query');
+CREATE OR REPLACE FUNCTION public.io_with_difference_query(
     name VARCHAR
 )
-RETURNS BOOLEAN AS
+RETURNS TEXT AS
 $func$
 DECLARE
     _query TEXT;
-    _with BOOLEAN;
     _last_io TIMESTAMP;
 BEGIN
     IF name = 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT' THEN
@@ -245,7 +244,7 @@ BEGIN
                     x.reg IS DISTINCT FROM t.codgeo_reg_parent
                 )
             '
-        WHEN 'FR-TERRITORY-BANATIC' THEN
+        WHEN 'FR-TERRITORY-BANATIC-LIST' THEN
             '
                 (
                     SELECT
@@ -281,9 +280,9 @@ BEGIN
                     OR
                     x.libgeo IS DISTINCT FROM t.libgeo
                 )
-            UNION
-            SELECT 1
-            FROM
+            '
+        WHEN 'FR-TERRITORY-BANATIC-SET' THEN
+            '
                 (
                     SELECT
                         s.n_siren codgeo_epci
@@ -313,7 +312,7 @@ BEGIN
 
                 (
                     SELECT
-                        t.code code_epci
+                        t.codgeo code_epci
                         , c.codgeo code_com
                     FROM
                         fr.territory t
@@ -507,25 +506,68 @@ BEGIN
                     AND ST_Relate(ST_Transform(p.pdi_coord, 4326), t.gm_contour, ''**0******'')
                 '
             )
-        -- always true (if this IO is more recent)
-        ELSE
-            '
-            pg_tables LIMIT 1
-            '
     END CASE;
 
-    IF _query IS NULL THEN RETURN FALSE; END IF;
-    _query := CONCAT(
-        '
-        SELECT EXISTS(
-            SELECT 1
-            FROM
-        '
-        , _query
-        , ')'
-    );
-    EXECUTE _query INTO _with;
+    RETURN _query;
+END
+$func$ LANGUAGE plpgsql;
+
+SELECT public.drop_all_functions_if_exists('public', 'io_with_difference_exists');
+CREATE OR REPLACE FUNCTION public.io_with_difference_exists(
+    name VARCHAR
+)
+RETURNS BOOLEAN AS
+$func$
+DECLARE
+    _query TEXT;
+    _with BOOLEAN;
+BEGIN
+    _query := public.io_with_difference_query(name);
+    IF _query IS NOT NULL THEN
+        _query := CONCAT(
+            '
+            SELECT EXISTS(
+                SELECT 1
+                FROM
+            '
+            , _query
+            , ')'
+        );
+        EXECUTE _query INTO _with;
+    ELSE
+        -- always true (if this IO is more recent)
+        _with := TRUE;
+    END IF;
+
     RETURN _with;
+END
+$func$ LANGUAGE plpgsql;
+
+SELECT public.drop_all_functions_if_exists('public', 'io_with_difference_count');
+CREATE OR REPLACE FUNCTION public.io_with_difference_count(
+    name VARCHAR
+)
+RETURNS INT AS
+$func$
+DECLARE
+    _query TEXT;
+    _count INT;
+BEGIN
+    _query := public.io_with_difference_query(name);
+    IF _query IS NOT NULL THEN
+        _query := CONCAT(
+            '
+            SELECT COUNT(*)
+            FROM
+            '
+            , _query
+        );
+        EXECUTE _query INTO _count;
+    ELSE
+        _count := 0;
+    END IF;
+
+    RETURN _count;
 END
 $func$ LANGUAGE plpgsql;
 
@@ -658,7 +700,7 @@ BEGIN
         _io_more_recents := ARRAY_APPEND(_io_more_recents, _more_recent);
 
         IF _io_more_recents[_i] AND NOT _has_relation AND NOT _with_difference THEN
-            _with_difference := public.io_with_difference(name => _io_depends[_i]);
+            _with_difference := public.io_with_difference_exists(name => _io_depends[_i]);
         END IF;
         _io_with_differences := ARRAY_APPEND(_io_with_differences, _with_difference);
 
