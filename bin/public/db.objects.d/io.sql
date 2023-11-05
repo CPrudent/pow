@@ -138,18 +138,23 @@ DECLARE
     _query TEXT;
     _last_io TIMESTAMP;
 BEGIN
-    IF name = 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT' THEN
-        _last_io := (public.get_last_io(type_in => name)).dt_data_end;
+    IF name = 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT-GEOMETRY' THEN
+        _last_io := (public.get_last_io(type_in => 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT')).dt_data_end;
+    ELSIF name = 'FR-TERRITORY-IGN-EVENT' THEN
+        _last_io := (public.get_last_io(type_in => 'FR-TERRITORY-IGN')).dt_data_end;
+    ELSIF name = 'FR-TERRITORY-INSEE-EVENT' THEN
+        _last_io := (public.get_last_io(type_in => 'FR-TERRITORY-INSEE')).dt_data_end;
+    ELSIF name = 'FR-TERRITORY-LAPOSTE-AREA-EVENT' THEN
+        _last_io := (public.get_last_io(type_in => 'FR-TERRITORY-LAPOSTE-AREA')).dt_data_end;
     END IF;
 
     _query := CASE name
-        WHEN 'FR-TERRITORY-IGN' THEN
+        WHEN 'FR-TERRITORY-IGN-MUNICIPALITY' THEN
             '
                 (
                     SELECT
                         insee_com AS codgeo
                         , nom AS libgeo
-                        , geom
                     FROM
                         fr.admin_express_commune
                     WHERE
@@ -158,7 +163,6 @@ BEGIN
                     SELECT
                         arm.insee_arm
                         , arm.nom
-                        , arm.geom
                     FROM
                         fr.admin_express_arrondissement_municipal AS arm
                 ) x
@@ -169,6 +173,47 @@ BEGIN
                     SELECT
                         codgeo
                         , libgeo
+                    FROM
+                        fr.territory
+                    WHERE
+                        nivgeo = ''COM''
+                        AND
+                        codgeo !~ ''^(98|97[578])''
+                ) t
+
+                ON x.codgeo = t.codgeo
+            WHERE
+                (
+                    x.codgeo IS NULL
+                    OR
+                    t.codgeo IS NULL
+                    OR
+                    x.libgeo IS DISTINCT FROM t.libgeo
+                )
+            '
+        WHEN 'FR-TERRITORY-IGN-GEOMETRY' THEN
+            '
+                (
+                    SELECT
+                        insee_com AS codgeo
+                        , geom
+                    FROM
+                        fr.admin_express_commune
+                    WHERE
+                        insee_com NOT IN (''75056'', ''13055'', ''69123'')
+                    UNION
+                    SELECT
+                        arm.insee_arm
+                        , arm.geom
+                    FROM
+                        fr.admin_express_arrondissement_municipal AS arm
+                ) x
+
+                JOIN
+
+                (
+                    SELECT
+                        codgeo
                         , gm_contour_natif
                     FROM
                         fr.territory
@@ -180,30 +225,39 @@ BEGIN
 
                 ON x.codgeo = t.codgeo
             WHERE
-                --  municipality
-                (
-                    x.codgeo IS NULL
-                    OR
-                    t.codgeo IS NULL
-                    OR
-                    x.libgeo IS DISTINCT FROM t.libgeo
-                )
-                --  geometry
-                OR
                 NOT ST_Equals(x.geom, t.gm_contour_natif)
             '
-        WHEN 'FR-TERRITORY-INSEE' THEN
+        WHEN 'FR-TERRITORY-IGN-EVENT' THEN
+            CONCAT(
+                '
+                    fr.admin_express_commune ign
+                        CROSS JOIN fr.get_municipality_to_date(
+                            code => ign.insee_com
+                            , code_previous => ign.insee_com
+                            , date_geography_from => '''
+                , _last_io
+                , '''::DATE
+                            , with_deleted => TRUE
+                            , check_exists => FALSE
+                        ) to_now
+                WHERE
+                    to_now.date_geography != '''
+                , _last_io
+                , '''::DATE
+                '
+            )
+        WHEN 'FR-TERRITORY-INSEE-MUNICIPALITY' THEN
             '
                 (
                     SELECT
                         codgeo
-                        , libgeo
-                        , cv
-                        , arr
-                        , dep
-                        , reg
+                        --, libgeo
                     FROM
                         fr.insee_administrative_cutting_municipality_and_district
+                    WHERE
+                        millesime = (
+                            SELECT MAX(millesime) FROM fr.insee_administrative_cutting_municipality_and_district
+                        )
                 ) x
 
                 FULL OUTER JOIN
@@ -211,11 +265,7 @@ BEGIN
                 (
                     SELECT
                         codgeo
-                        , libgeo
-                        , codgeo_cv_parent
-                        , codgeo_arr_parent
-                        , codgeo_dep_parent
-                        , codgeo_reg_parent
+                        --, libgeo
                     FROM
                         fr.territory
                     WHERE
@@ -226,24 +276,78 @@ BEGIN
 
                 ON x.codgeo = t.codgeo
             WHERE
-                --  municipality
                 (
                     x.codgeo IS NULL
                     OR
                     t.codgeo IS NULL
                 )
-                -- SUPRA
-                OR
+            '
+        WHEN 'FR-TERRITORY-INSEE-SUPRA' THEN
+            '
                 (
-                    x.cv IS DISTINCT FROM t.codgeo_cv_parent
+                    SELECT
+                        nivgeo
+                        , codgeo
+                        , libgeo
+                    FROM
+                        fr.insee_administrative_cutting_supra
+                    WHERE
+                        millesime = (
+                            SELECT MAX(millesime) FROM fr.insee_administrative_cutting_municipality_and_district
+                        )
+                ) x
+
+                FULL OUTER JOIN
+
+                (
+                    SELECT
+                        nivgeo
+                        , codgeo
+                        , libgeo
+                    FROM
+                        fr.territory
+                    WHERE
+                        nivgeo ~ ''COM_GLOBALE_ARM|ARR|CV|DEP|REG''
+                        AND
+                        codgeo !~ ''^(98|97[578])''
+                        AND
+                        codgeo != ''97''
+                ) t
+
+                ON (x.nivgeo, x.codgeo) = (t.nivgeo, t.codgeo)
+            WHERE
+                (
+                    x.codgeo IS NULL
                     OR
-                    x.arr IS DISTINCT FROM t.codgeo_arr_parent
+                    t.codgeo IS NULL
                     OR
-                    x.dep IS DISTINCT FROM t.codgeo_dep_parent
-                    OR
-                    x.reg IS DISTINCT FROM t.codgeo_reg_parent
+                    x.libgeo IS DISTINCT FROM t.libgeo
                 )
             '
+        WHEN 'FR-TERRITORY-INSEE-EVENT' THEN
+            CONCAT(
+                '
+                    fr.insee_administrative_cutting_municipality_and_district insee
+                        CROSS JOIN fr.get_municipality_to_date(
+                            code => insee.codgeo
+                            , code_previous => insee.codgeo
+                            , date_geography_from => '''
+                , _last_io
+                , '''::DATE
+                            , with_deleted => TRUE
+                            , check_exists => FALSE
+                        ) to_now
+                WHERE
+                    millesime = (
+                        SELECT MAX(millesime) FROM fr.insee_administrative_cutting_municipality_and_district
+                    )
+                    AND
+                    to_now.date_geography != '''
+                , _last_io
+                , '''::DATE
+                '
+            )
+
         WHEN 'FR-TERRITORY-BANATIC-LIST' THEN
             '
                 (
@@ -272,7 +376,6 @@ BEGIN
 
                 ON x.codgeo = t.codgeo
             WHERE
-                --  EPCI
                 (
                     x.codgeo IS NULL
                     OR
@@ -323,14 +426,48 @@ BEGIN
 
                 ON (x.codgeo_epci, x.codgeo_com) = (t.code_epci, t.code_com)
             WHERE
-                -- links
                 (
                     (x.codgeo_epci IS NULL OR x.codgeo_com IS NULL)
                     OR
                     (t.code_epci IS NULL OR t.code_com IS NULL)
                 )
             '
-        WHEN 'FR-TERRITORY-LAPOSTE-AREA' THEN
+        WHEN 'FR-TERRITORY-LAPOSTE-AREA-ADD-OR-DEL' THEN
+            '
+                (
+                    SELECT
+                        co_cea codgeo
+                    FROM
+                        fr.laposte_zone_address
+                    WHERE
+                        fl_active
+                        AND
+                        -- exclude MONACO, and trick for bug #45
+                        co_insee_commune !~ ''^9[89]''
+                ) x
+
+                FULL OUTER JOIN
+
+                (
+                    SELECT
+                        codgeo
+                    FROM
+                        fr.territory
+                    WHERE
+                        nivgeo = ''ZA''
+                        AND
+                        codgeo !~ ''^9[89]''
+                ) t
+
+                ON x.codgeo = t.codgeo
+            WHERE
+                (
+                    x.codgeo IS NULL
+                    OR
+                    t.codgeo IS NULL
+                )
+            '
+        WHEN 'FR-TERRITORY-LAPOSTE-AREA-UPD' THEN
             '
                 (
                     SELECT
@@ -348,22 +485,22 @@ BEGIN
                         co_insee_commune !~ ''^9[89]''
                 ) x
 
-                FULL OUTER JOIN
+                JOIN
 
                 (
                     WITH
                     l5_cp_l6 AS (
                         SELECT
-                            za.codgeo codgeo_za
-                            , za.codgeo_com_parent codgeo_com
-                            , za.codgeo_cp_parent codgeo_cp
-                            , STRING_TO_ARRAY(za.libgeo, ''-'') libs
+                            codgeo codgeo_za
+                            , codgeo_com_parent codgeo_com
+                            , codgeo_cp_parent codgeo_cp
+                            , STRING_TO_ARRAY(libgeo, ''-'') libs
                         FROM
-                            fr.territory za
+                            fr.territory
                         WHERE
-                            za.nivgeo = ''ZA''
+                            nivgeo = ''ZA''
                             AND
-                            za.codgeo !~ ''^9[89]''
+                            codgeo !~ ''^9[89]''
                     )
                     SELECT
                         codgeo_za
@@ -383,13 +520,8 @@ BEGIN
 
                 ON x.codgeo = t.codgeo_za
             WHERE
-                -- ZA
                 (
-                    x.codgeo IS NULL
-                    OR
-                    t.codgeo_za IS NULL
-                    OR
-                    x.codgeo_com IS DISTINCT FROM t.code_com
+                    x.codgeo_com IS DISTINCT FROM t.codgeo_com
                     OR
                     x.co_postal IS DISTINCT FROM t.codgeo_cp
                     OR
@@ -398,6 +530,29 @@ BEGIN
                     x.libgeo_l5 IS DISTINCT FROM t.libgeo_l5
                 )
             '
+        WHEN 'FR-TERRITORY-LAPOSTE-AREA-EVENT' THEN
+            CONCAT(
+                '
+                    fr.laposte_zone_address area
+                        CROSS JOIN fr.get_municipality_to_date(
+                            code => area.co_insee_commune
+                            , code_previous => COALESCE(area.co_insee_commune_precedente, area.co_insee_commune)
+                            , date_geography_from => '''
+                , _last_io
+                , '''::DATE
+                            , with_deleted => TRUE
+                            , check_exists => FALSE
+                        ) to_now
+                WHERE
+                    area.fl_active
+                    AND
+                    to_now.date_geography != '''
+                , _last_io
+                , '''::DATE
+                '
+            )
+        /* NOTE never difference!
+                moreover it has relation, so depends of prerequisites
         WHEN 'FR-TERRITORY-LAPOSTE-SUPRA' THEN
             '
                 (
@@ -484,7 +639,8 @@ BEGIN
                     x.codgeo_dex_parent IS DISTINCT FROM t.codgeo_dex_parent
                 )
             '
-        WHEN 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT' THEN
+         */
+        WHEN 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT-GEOMETRY' THEN
             CONCAT(
                 '
                     fr.delivery_point_view p
@@ -684,13 +840,13 @@ BEGIN
         _k := public.io_get_subscript_from_array_by_name(_io_currents, _io_depends[_i]);
         _has_relation := public.io_has_relation(name => _io_depends[_i]);
         IF NOT _has_relation THEN
+            _with_difference := FALSE;
             -- no history (1st time) ?
             IF _k = 0 THEN
                 _more_recent := TRUE;
-                _with_difference := TRUE;
+                --_with_difference := TRUE;
             ELSE
                 _more_recent := (_io_lasts[_j].dt_data_end > _io_currents[_k].dt_data_end);
-                _with_difference := FALSE;
             END IF;
         ELSE
             _relation := public.io_is_todo(name => _io_depends[_i]);
@@ -717,7 +873,7 @@ BEGIN
                 )
                 , FORMAT('"%s"=>%s'
                     , CONCAT(_io_depends[_i], '_i')
-                    , _io_lasts[_j].id
+                    , COALESCE(_io_lasts[_j].id, 0)
                 )
             );
         ELSE

@@ -29,11 +29,11 @@ BEGIN
     -- FR-TERRITORY
 
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY');
-    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-GEOMETRY');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE-AREA');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE-AREA-ADD-OR-DEL');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE-AREA-UPD');
+    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE-AREA-EVENT');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE-SUPRA');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-INSEE');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-INSEE-MUNICIPALITY');
@@ -45,11 +45,15 @@ BEGIN
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN-GEOMETRY');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN-EVENT');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-BANATIC');
-    CALL public.io_add_if_not_exists(name => 'FR-MUNICIPALITY-EVENT-INSEE');
-    CALL public.io_add_if_not_exists(name => 'FR-MUNICIPALITY-EVENT-WIKIPEDIA');
+    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-BANATIC-LIST');
+    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-BANATIC-SET');
+    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-GEOMETRY');
     -- SOURCE ORGA
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE-ORGANIZATION');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE-ORGANIZATION-GEOMETRY');
+
+    CALL public.io_add_if_not_exists(name => 'FR-MUNICIPALITY-EVENT-INSEE');
+    CALL public.io_add_if_not_exists(name => 'FR-MUNICIPALITY-EVENT-WIKIPEDIA');
 
     -- FR-ADDRESS
 
@@ -75,10 +79,10 @@ BEGIN
             |-> FR-TERRITORY-IGN
             |-> FR-TERRITORY-BANATIC
             |-> FR-TERRITORY-GEOMETRY
-            |-> FR-MUNICIPALITY-EVENT-INSEE
      */
 
-    CALL public.io_add_relation_if_not_exists(id1 => _id_1, id2 => _id_2);
+    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-LAPOSTE');
+    CALL public.io_add_relation_if_not_exists(id1 => _id_1, id2 => _id);
     _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-INSEE');
     CALL public.io_add_relation_if_not_exists(id1 => _id_1, id2 => _id);
     _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-IGN');
@@ -87,8 +91,7 @@ BEGIN
     CALL public.io_add_relation_if_not_exists(id1 => _id_1, id2 => _id);
     _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-GEOMETRY');
     CALL public.io_add_relation_if_not_exists(id1 => _id_1, id2 => _id);
-    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-MUNICIPALITY-EVENT-INSEE');
-    CALL public.io_add_relation_if_not_exists(id1 => _id_1, id2 => _id);
+
 
     /*
        FR-TERRITORY-LAPOSTE
@@ -106,7 +109,7 @@ BEGIN
        FR-TERRITORY-LAPOSTE-AREA
             |-> FR-TERRITORY-LAPOSTE-AREA-ADD-OR-DEL
             |-> FR-TERRITORY-LAPOSTE-AREA-UPD
-            |-> FR-MUNICIPALITY-EVENT-INSEE
+            |-> FR-TERRITORY-LAPOSTE-AREA-EVENT
      */
 
     _id_2 := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-LAPOSTE-AREA');
@@ -114,7 +117,7 @@ BEGIN
     CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
     _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-LAPOSTE-AREA-UPD');
     CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
-    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-MUNICIPALITY-EVENT-INSEE');
+    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-LAPOSTE-AREA-EVENT');
     CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
 
     /*
