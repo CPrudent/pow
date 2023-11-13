@@ -404,11 +404,11 @@ BEGIN
                     FROM
                         fr.banatic_setof_epci s
                             JOIN fr.banatic_siren_insee l ON s.siren_membre = l.siren
-                            JOIN fr.territory c ON c.codgeo = l.insee AND c.nivgeo = ''COM''
                     WHERE
                         s.nature_juridique IN (''MET69'', ''CC'', ''CA'', ''METRO'', ''CU'')
                         AND
-                        c.codgeo_com_globale_arm_parent IS NULL
+                        -- not global municipality
+                        l.insee !~ ''^(13055|69123|75056)$''
                 ) x
 
                 FULL OUTER JOIN
@@ -416,12 +416,15 @@ BEGIN
                 (
                     SELECT
                         t.codgeo code_epci
-                        , c.codgeo code_com
+                        , t.codgeo code_com
                     FROM
                         fr.territory t
-                            JOIN fr.territory c ON c.codgeo_epci_parent = t.codgeo AND c.nivgeo = ''COM''
                     WHERE
-                        t.nivgeo = ''EPCI''
+                        t.nivgeo = ''COM''
+                        AND
+                        -- exclude 9[789] and 4 islands (last ones)
+                        t.codgeo !~ ''^(97[578]|9[89]|29083|29155|22016|85113)''
+
                 ) t
 
                 ON (x.codgeo_epci, x.codgeo_com) = (t.code_epci, t.code_com)

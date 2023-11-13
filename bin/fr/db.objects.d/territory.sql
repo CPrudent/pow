@@ -44,10 +44,33 @@ BEGIN
     END IF;
 END $$;
 
+SELECT drop_all_functions_if_exists('fr', 'drop_territory_index');
+CREATE OR REPLACE PROCEDURE fr.drop_territory_index(
+    drop_case VARCHAR DEFAULT 'ALL'             -- ALL | EXCEPT_LEVEL_CODE
+)
+AS
+$proc$
+DECLARE
+    _levels VARCHAR[] := public.get_levels('fr');
+    _level VARCHAR;
+BEGIN
+    DROP INDEX IF EXISTS ix_territory_gm_contour;
+
+    FOREACH _level IN ARRAY _levels LOOP
+        EXECUTE CONCAT('DROP INDEX IF EXISTS iux_territory_codgeo_', _level) ;
+    END LOOP;
+
+    IF drop_case = 'ALL' THEN
+        DROP INDEX IF EXISTS iux_territory_nivgeo_codgeo;
+    END IF;
+END
+$proc$ LANGUAGE plpgsql;
+
 SELECT drop_all_functions_if_exists('fr', 'set_territory');
 CREATE OR REPLACE FUNCTION fr.set_territory(
     io_infos HSTORE
     , municipality_subsection VARCHAR DEFAULT 'ZA'
+    , simulation BOOLEAN DEFAULT FALSE
 )
 RETURNS BOOLEAN
 AS $$
@@ -55,6 +78,7 @@ DECLARE
     _query TEXT;
     _message_begin VARCHAR;
     _message_end VARCHAR;
+    _drop_index VARCHAR;
     _key VARCHAR := 'FR-TERRITORY-GEOMETRY_t';
     _nrows INTEGER;
     _levels VARCHAR[] := public.get_levels('fr');
@@ -69,10 +93,17 @@ BEGIN
         RAISE 'argument IO semble erroné : %', io_infos;
     END IF;
 
+    IF NOT (io_infos -> 'TODO')::BOOLEAN THEN
+        RAISE NOTICE 'IO déjà à jour!';
+        RETURN FALSE;
+    END IF;
+
     IF (io_infos -> _key)::BOOLEAN THEN
         _message_begin := 'Calcul';
+        _drop_index := 'ALL';
     ELSE
         _message_begin := 'Mise à jour';
+        _drop_index := 'EXCEPT_LEVEL_CODE';
     END IF;
     _message_end := ' (niveau de base: ' || municipality_subsection || ')';
     CALL public.log_info(CONCAT_WS(' '
@@ -81,8 +112,14 @@ BEGIN
         , _message_end
     ));
 
+    IF simulation THEN
+        RAISE NOTICE 'IO=%', io_infos;
+        RAISE NOTICE 'mode DELTA/INIT=%', (io_infos -> _key)::BOOLEAN;
+        RETURN FALSE;
+     END IF;
+
     CALL public.log_info('Purge Index');
-    PERFORM public.drop_table_indexes('fr', 'territory');
+    CALL fr.drop_territory_index(drop_case => _drop_index);
 
     -- build all if necessary to calculate geometries
     IF (io_infos -> _key)::BOOLEAN THEN
@@ -288,7 +325,7 @@ BEGIN
     ELSE
         -- update base level, delete others
         DELETE FROM fr.territory
-            WHERE nivgeo != municipality_subsection
+        WHERE nivgeo != municipality_subsection
             ;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
         CALL public.log_info('Purge Données (#' || _nrows || ') autres que ' || municipality_subsection);
@@ -307,24 +344,24 @@ BEGIN
                 , codgeo_cp_parent = area.co_postal
             FROM fr.laposte_zone_address area
             WHERE
-            (
-                t.nivgeo = municipality_subsection
+                (
+                    t.nivgeo = municipality_subsection
+                    AND
+                    area.co_cea = t.codgeo
+                )
                 AND
-                area.co_cea = t.codgeo
-            )
-            AND
-            (
-                t.libgeo IS DISTINCT FROM
-                    CONCAT_WS('-'
-                        , CASE WHEN co_insee_commune ~ '^98[78]' THEN lb_ach_nn ELSE lb_l5_nn END
-                        , co_postal
-                        , CASE WHEN co_insee_commune ~ '^98[78]' THEN lb_l5_nn ELSE lb_ach_nn END
-                    )
-                OR
-                t.codgeo_com_parent IS DISTINCT FROM area.co_insee_commune
-                OR
-                t.codgeo_cp_parent IS DISTINCT FROM area.co_postal
-            )
+                (
+                    t.libgeo IS DISTINCT FROM
+                        CONCAT_WS('-'
+                            , CASE WHEN co_insee_commune ~ '^98[78]' THEN lb_ach_nn ELSE lb_l5_nn END
+                            , co_postal
+                            , CASE WHEN co_insee_commune ~ '^98[78]' THEN lb_l5_nn ELSE lb_ach_nn END
+                        )
+                    OR
+                    t.codgeo_com_parent IS DISTINCT FROM area.co_insee_commune
+                    OR
+                    t.codgeo_cp_parent IS DISTINCT FROM area.co_postal
+                )
             ;
             GET DIAGNOSTICS _nrows = ROW_COUNT;
             CALL public.log_info('LAPOSTE: mise à jour #' || _nrows || ' libellé(s), lien(s) COM/CP');
@@ -339,21 +376,21 @@ BEGIN
                 , codgeo_dex_parent = laposte.codgeo_dex_parent
             FROM fr.territory_laposte laposte
             WHERE
-            (
-                t.nivgeo = municipality_subsection
+                (
+                    t.nivgeo = municipality_subsection
+                    AND
+                    laposte.nivgeo = 'CP'
+                    AND
+                    laposte.codgeo = t.codgeo_cp_parent
+                )
                 AND
-                laposte.nivgeo = 'CP'
-                AND
-                laposte.codgeo = t.codgeo_cp_parent
-            )
-            AND
-            (
-                t.codgeo_pdc_ppdc_parent IS DISTINCT FROM laposte.codgeo_pdc_ppdc_parent
-                OR
-                t.codgeo_ppdc_pdc_parent IS DISTINCT FROM laposte.codgeo_ppdc_pdc_parent
-                OR
-                t.codgeo_dex_parent IS DISTINCT FROM laposte.codgeo_dex_parent
-            )
+                (
+                    t.codgeo_pdc_ppdc_parent IS DISTINCT FROM laposte.codgeo_pdc_ppdc_parent
+                    OR
+                    t.codgeo_ppdc_pdc_parent IS DISTINCT FROM laposte.codgeo_ppdc_pdc_parent
+                    OR
+                    t.codgeo_dex_parent IS DISTINCT FROM laposte.codgeo_dex_parent
+                )
             ;
             GET DIAGNOSTICS _nrows = ROW_COUNT;
             CALL public.log_info('LAPOSTE: mise à jour #' || _nrows || ' lien(s) SUPRA CP');
@@ -369,45 +406,45 @@ BEGIN
                 , codgeo_reg_parent = insee.reg
             FROM fr.insee_administrative_cutting_municipality_and_district insee
             WHERE
-            (
-                t.nivgeo = municipality_subsection
-                AND t.codgeo_com_parent = insee.codgeo
-                AND insee.millesime = (
-                    SELECT MAX(millesime) FROM fr.insee_administrative_cutting_municipality_and_district
+                (
+                    t.nivgeo = municipality_subsection
+                    AND t.codgeo_com_parent = insee.codgeo
+                    AND insee.millesime = (
+                        SELECT MAX(millesime) FROM fr.insee_administrative_cutting_municipality_and_district
+                    )
                 )
-            )
-            AND
-            (
-                t.codgeo_cv_parent IS DISTINCT FROM insee.cv
-                OR
-                t.codgeo_arr_parent IS DISTINCT FROM insee.arr
-                OR
-                t.codgeo_dep_parent IS DISTINCT FROM insee.dep
-                OR
-                t.codgeo_reg_parent IS DISTINCT FROM insee.reg
-            )
+                AND
+                (
+                    t.codgeo_cv_parent IS DISTINCT FROM insee.cv
+                    OR
+                    t.codgeo_arr_parent IS DISTINCT FROM insee.arr
+                    OR
+                    t.codgeo_dep_parent IS DISTINCT FROM insee.dep
+                    OR
+                    t.codgeo_reg_parent IS DISTINCT FROM insee.reg
+                )
             ;
             GET DIAGNOSTICS _nrows = ROW_COUNT;
             CALL public.log_info('INSEE: mise à jour #' || _nrows || ' lien(s) SUPRA');
         END IF;
 
         -- BANATIC : SUPRA
-        IF (io_infos -> 'FR-TERRITORY-BANATIC-SUPRA_t')::BOOLEAN THEN
+        IF (io_infos -> 'FR-TERRITORY-BANATIC-SET_t')::BOOLEAN THEN
             UPDATE fr.territory t SET
                 dt_reference_geo = TIMEOFDAY()::DATE
-                , codgeo_epci_parent = l.siren
+                , codgeo_epci_parent = s.n_siren
             FROM
                 fr.banatic_setof_epci s
                     JOIN fr.banatic_siren_insee l ON s.siren_membre = l.siren
             WHERE
-            (
-                t.nivgeo = municipality_subsection
-                AND t.codgeo_com_parent = l.insee
-            )
-            AND
-            (
-                t.codgeo_epci_parent IS DISTINCT FROM l.siren
-            )
+                (
+                    t.nivgeo = municipality_subsection
+                    AND t.codgeo_com_parent = l.insee
+                )
+                AND
+                (
+                    t.codgeo_epci_parent IS DISTINCT FROM s.n_siren
+                )
             ;
             GET DIAGNOSTICS _nrows = ROW_COUNT;
             CALL public.log_info('BANATIC: mise à jour #' || _nrows || ' lien(s) EPCI');
@@ -495,6 +532,7 @@ BEGIN
         WHERE commune_ign.codgeo = territory.codgeo AND territory.nivgeo = 'COM';
     END IF;
     -- set population (SUPRA levels)
+    CALL public.log_info('remontée SUPRA : (population)');
     PERFORM fr.set_territory_supra(
         table_name => 'territory'
         , schema_name => 'fr'

@@ -246,15 +246,17 @@ io_get_info_integration() {
     bash_args \
         --args_p '
             name:IO name;
-            hash:variable pour récupérer la description de cette intégration
+            to_hash:variable pour récupérer la description de cette intégration;
+            to_string:variable pour récupérer la description de cette intégration
         ' \
         --args_o '
             name;
-            hash
+            to_hash
         ' \
         "$@" || return $POW_IO_ERROR
 
-    local -n _hash_ref=$get_arg_hash
+    local -n _hash_ref=$get_arg_to_hash
+    local -n _str_ref=$get_arg_to_string
     local _tmpfile
     get_tmp_file --tmpfile _tmpfile &&
     execute_query \
@@ -268,6 +270,7 @@ io_get_info_integration() {
     while read; do
         _hash_ref[${REPLY%=*}]=${REPLY#*>}
     done < <(sed --expression 's/"//g' --expression 's/,/\n/g' < $_tmpfile | sed --expression 's/^[ ]*//')
+    _str_ref=$(< $_tmpfile)
     rm $_tmpfile
     return $SUCCESS_CODE
 }
@@ -303,6 +306,8 @@ io_get_ids_integration() {
             log_error "manque ID IO=$_step"
             return $ERROR_CODE
         }
+        # IO condition ?
+        [ ${_hash_ref[${_step}_i]} -eq 0 ] && continue
         [ -n "$_ids_ref" ] && _ids_ref+=,
         _ids_ref+=$(printf '"%s":%d' $_step ${_hash_ref[${_step}_i]})
     done

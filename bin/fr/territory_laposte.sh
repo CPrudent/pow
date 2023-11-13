@@ -37,12 +37,12 @@ bash_args \
 io_name=FR-TERRITORY-LAPOSTE
 io_date=$(date +%F)
 io_force=$get_arg_force
-declare -A io_data
+declare -A io_hash
 
 set_env --schema_name fr &&
-io_get_info_integration --name $io_name --hash io_data || exit $ERROR_CODE
+io_get_info_integration --name $io_name --to_hash io_hash || exit $ERROR_CODE
 
-([ "$io_force" = no ] && (! is_yes --var io_data[TODO])) && {
+([ "$io_force" = no ] && (! is_yes --var io_hash[TODO])) && {
     log_info "IO '$io_name' déjà à jour!"
     exit $SUCCESS_CODE
 } || {
@@ -69,7 +69,7 @@ io_history_begin \
     --nrows_todo 1 \
     --id io_main_id && {
 
-    io_steps=(${io_data[DEPENDS]//:/ })
+    io_steps=(${io_hash[DEPENDS]//:/ })
     io_ids=()
     # default counts
     io_counts=(39192 8671)
@@ -77,9 +77,9 @@ io_history_begin \
 
     for (( io_step=0; io_step<${#io_steps[@]}; io_step++ )); do
         # last id
-        io_ids[$io_step]=${io_data[${io_steps[$io_step]}_i]}
+        io_ids[$io_step]=${io_hash[${io_steps[$io_step]}_i]}
         # step todo or force it ?
-        ([ "$io_force" = no ] && (! is_yes --var io_data[${io_steps[$io_step]}_t])) || {
+        ([ "$io_force" = no ] && (! is_yes --var io_hash[${io_steps[$io_step]}_t])) || {
             io_history_begin \
                 --type ${io_steps[$io_step]} \
                 --date_begin "$io_date" \
@@ -93,7 +93,7 @@ io_history_begin \
                         WHERE change = 'MUNICIPALITY_EVENT' AND date_change = NOW()::DATE
                         " &&
                     execute_query \
-                        --name SET_TERRITORY_LAPOSTE_AREA \
+                        --name FR_TERRITORY_LAPOSTE_AREA \
                         --query "SELECT fr.set_zone_address_to_now()"
                     ;;
                 FR-TERRITORY-LAPOSTE-SUPRA)
@@ -101,14 +101,14 @@ io_history_begin \
                         SELECT COUNT(1) FROM fr.territory_laposte
                         " &&
                     execute_query \
-                        --name SET_TERRITORY_LAPOSTE_SUPRA \
+                        --name FR_TERRITORY_LAPOSTE_SUPRA \
                         --query "SELECT fr.set_territory_laposte()"
                     ;;
                 esac
             } &&
             io_get_ids_integration \
                 --name ${io_steps[$io_step]} \
-                --hash io_data \
+                --hash io_hash \
                 --ids _ids &&
             io_history_end_ok \
                 --nrows_processed "($io_count)" \

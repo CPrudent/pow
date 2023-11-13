@@ -550,15 +550,17 @@ calculate geometry of territories
     PART/3
         deal w/ holes
     PART/4
-        apply SUPRA (geometry, area)
+        based level (COM_CP|ZA) : eval area
+    PART/5
+        apply SUPRA : simplified geometry and area
 
     TODO
-    PART/5
+    PART/6
         native geometry for other levels when available (administrative cuttings, w/ IGN)
  */
 SELECT drop_all_functions_if_exists('fr', 'set_territory_geometry');
 CREATE OR REPLACE PROCEDURE fr.set_territory_geometry(
-    part_todo INT DEFAULT 1 | 2 | 4 | 8
+    part_todo INT DEFAULT 1 | 2 | 4 | 8 | 16
     , municipality_subsection VARCHAR DEFAULT 'ZA'
     , location_min INT DEFAULT 4
     , department_test VARCHAR DEFAULT NULL
@@ -681,13 +683,21 @@ BEGIN
     IF part_todo & 8 = 8 THEN
         -- unit= hm2 (1/100 km2)
         -- see: https://gis.stackexchange.com/questions/169422/how-does-st-area-in-postgis-work
+
+        CALL public.log_info('calcul : (superficie)');
         UPDATE fr.territory
         SET superficie = ROUND(ST_Area(ST_Transform(gm_contour_natif, 4326)::GEOGRAPHY)/10000)
         WHERE nivgeo = municipality_subsection;
 
+        COMMIT;
+    END IF;
+
+    --
+    -- PART/5 : eval SUPRA for (simplified geometry, area)
+    IF part_todo & 16 = 16 THEN
         DROP INDEX IF EXISTS public.ix_territory_gm_contour;
 
-        CALL public.log_info('remontée SUPRA pour superficie et contour simplifié');
+        CALL public.log_info('remontée SUPRA : (superficie, contour simplifié)');
         PERFORM fr.set_territory_supra(
             schema_name => 'fr'
             , table_name => 'territory'
@@ -696,7 +706,7 @@ BEGIN
             , update_mode => TRUE
         );
 
-        CALL public.log_info('Indexation Territoire : Contour simplifié');
+        CALL public.log_info('Création Index : (contour simplifié)');
         CREATE INDEX IF NOT EXISTS ix_territory_gm_contour ON fr.territory USING GIST(nivgeo, gm_contour);
 
         COMMIT;

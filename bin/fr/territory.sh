@@ -24,29 +24,35 @@ on_integration_error() {
 
 bash_args \
     --args_p "
-        force:Forcer le traitement même si celui-ci a déjà été fait
+        force:Forcer le traitement même si celui-ci a déjà été fait;
+        depends:Mettre à jour les dépendances (si nécessaire)
     " \
     --args_v '
-        force:yes|no
+        force:yes|no;
+        depends:yes|no
     ' \
     --args_d '
-        force:no
+        force:no;
+        depends:yes
     ' \
     "$@" || exit $ERROR_CODE
 
 io_name=FR-TERRITORY
 io_date=$(date +%F)
 io_force=$get_arg_force
-declare -A io_data
+declare -A io_hash
 
-set_env --schema_name fr &&
-$POW_DIR_BATCH/territory_insee.sh --force $io_force &&
-$POW_DIR_BATCH/territory_ign.sh --force $io_force &&
-$POW_DIR_BATCH/territory_banatic.sh --force $io_force &&
-$POW_DIR_BATCH/territory_laposte.sh --force $io_force &&
-io_get_info_integration --name $io_name --hash io_data || exit $ERROR_CODE
+set_env --schema_name fr && {
+    [ "$get_arg_depends" = yes ] && {
+        $POW_DIR_BATCH/territory_insee.sh --force $io_force &&
+        $POW_DIR_BATCH/territory_ign.sh --force $io_force &&
+        $POW_DIR_BATCH/territory_banatic.sh --force $io_force &&
+        $POW_DIR_BATCH/territory_laposte.sh --force $io_force
+    } || true
+} &&
+io_get_info_integration --name $io_name --to_hash io_hash --to_string io_str || exit $ERROR_CODE
 
-([ "$io_force" = no ] && (! is_yes --var io_data[TODO])) && {
+([ "$io_force" = no ] && (! is_yes --var io_hash[TODO])) && {
     log_info "IO '$io_name' déjà à jour!"
     exit $SUCCESS_CODE
 } || {
@@ -65,10 +71,7 @@ io_get_info_integration --name $io_name --hash io_data || exit $ERROR_CODE
     esac
 }
 
-echo '### DEBUG'
-declare -p io_data
-read
-
+echo $io_str | tr ',' '\n'
 log_info "Calcul des territoires français" &&
 io_history_begin \
     --type $io_name \
@@ -77,97 +80,110 @@ io_history_begin \
     --nrows_todo 1 \
     --id io_main_id && {
 
-    {
-        [ -v "io_data[FR-TERRITORY-LAPOSTE-AREA]" ] &&
-        [ -v "io_data[FR-TERRITORY-IGN]" ] &&
-        [ -v "io_data[FR-ADDRESS-LAPOSTE-DELIVERY-POINT]" ] && {
-            io_geometry=1
-            [ "$io_force" = no ] && {
-                (! is_yes --var io_data[FR-TERRITORY-LAPOSTE-AREA]) &&
-                (! is_yes --var io_data[FR-TERRITORY-IGN]) &&
-                (! is_yes --var io_data[FR-ADDRESS-LAPOSTE-DELIVERY-POINT]) && {
-                    io_geometry=0
-                    table_exists --schema_name fr --table_name territory &&
-                    execute_query \
-                        --name BACKUP_AREA_GEOMETRY \
-                        --query "
-                            DROP TABLE IF EXISTS fr.territory_za;
-                            CREATE TABLE fr.territory_za AS (
-                                SELECT codgeo, superficie, gm_contour
-                                FROM fr.territory
-                                WHERE nivgeo = public.get_bigger_sublevel('fr', 'CP')
-                            );
-                        "
-                } || true
-            } || true
-        } || {
-            log_error "IO '$io_name' incomplet!"
-            false
-        }
-    } &&
+    io_steps=(${io_hash[DEPENDS]//:/ })
+    io_ids=()
+    # default counts
+    io_counts=()
+    io_error=0
 
     # build low level (ZA or COM_CP), and propagate on supra territories
     execute_query \
-        --name SET_TERRITORY \
-        --query "SELECT fr.set_territory()" && {
+        --name FR_TERRITORY \
+        --query "SELECT fr.set_territory('$io_str'::HSTORE)" &&
 
-        # build or restore geometry
-        [ $io_geometry -eq 1 ] && {
-            execute_query \
-                --name SET_AREA_GEOMETRY \
-                --query "CALL fr.set_territory_geometry()" && {
-                _error=$(grep '^ERREUR' $POW_DIR_ARCHIVE/SET_AREA_GEOMETRY.notice.log)
-                [ -n "$_error" ] && {
-                    log_error "calcul des géométries : $_error"
-                    false
-                } || true
-            }
-        } || {
-            table_exists --schema_name fr --table_name territory_za &&
-            execute_query \
-                --name RESTORE_AREA_GEOMETRY \
-                --query "
-                    UPDATE fr.territory
-                    SET gm_contour = territory_za.gm_contour
-                        , superficie = territory_za.superficie
-                    FROM fr.territory_za
-                    WHERE territory.codgeo = territory_za.codgeo
-                    AND territory.nivgeo = public.get_bigger_sublevel('fr', 'CP');
+    for (( io_step=0; io_step<${#io_steps[@]}; io_step++ )); do
+        # last id
+        io_ids[$io_step]=${io_hash[${io_steps[$io_step]}_i]}
 
-                    DROP INDEX IF EXISTS fr.ix_territory_gm_contour;
-                    SELECT fr.set_territory_supra(
-                        schema_name => 'fr'
-                        , table_name => 'territory'
-                        , base_level => public.get_bigger_sublevel('fr', 'CP')
-                        , columns_agg => ARRAY['gm_contour', 'superficie']
-                        , update_mode => TRUE
-                    );
-                    CREATE INDEX IF NOT EXISTS ix_territory_gm_contour ON fr.territory USING GIST(nivgeo, gm_contour);
-                "
-        }
-    } &&
+        case ${io_steps[$io_step]} in
+        # only IO not already done
+        FR-TERRITORY-GEOMETRY)
+            # step todo or force it ?
+            if ([ "$io_force" = yes ] || (is_yes --var io_hash[${io_steps[$io_step]}_t])); then
+                io_history_begin \
+                    --type ${io_steps[$io_step]} \
+                    --date_begin "$io_date" \
+                    --date_end "$io_date" \
+                    --nrows_todo ${io_counts[$io_step]:-1} \
+                    --id io_step_id && {
+                    case ${io_steps[$io_step]} in
+                    # build geometry on low level, then set supra
+                    FR-TERRITORY-GEOMETRY)
+                        io_count="
+                            SELECT COUNT(1) FROM fr.territory WHERE nivgeo = 'ZA'
+                            " &&
+                        execute_query \
+                            --name FR_AREA_GEOMETRY \
+                            --query "CALL fr.set_territory_geometry()" && {
+                                _error=$(grep '^ERREUR' $POW_DIR_ARCHIVE/FR_AREA_GEOMETRY.notice.log)
+                                [ -n "$_error" ] && {
+                                    log_error "calcul des géométries : $_error"
+                                    false
+                                } || true
+                            }
+                        ;;
+                    esac
+                } &&
+                io_get_ids_integration \
+                    --name ${io_steps[$io_step]} \
+                    --hash io_hash \
+                    --ids _ids &&
+                io_history_end_ok \
+                    --nrows_processed "($io_count)" \
+                    --infos "$_ids" \
+                    --id $io_step_id &&
+                io_ids[$io_step]=$io_step_id || {
+                    on_integration_error --id $io_step_id
+                    io_error=1
+                    break
+                }
+            elif (! is_yes --var io_hash[${io_steps[$io_step]}_t]); then
+                # eval only SUPRA (area, simplified geometry)
+                execute_query \
+                    --name FR_AREA_GEOMETRY_16 \
+                    --query "CALL fr.set_territory_geometry(part_todo => 16)" && {
+                        _error=$(grep '^ERREUR' $POW_DIR_ARCHIVE/FR_AREA_GEOMETRY_16.notice.log)
+                        [ -n "$_error" ] && {
+                            log_error "calcul des géométries : $_error"
+                            io_error=1
+                            false
+                        } || true
+                    }
+            fi
+            ;;
+        *)
+            continue
+            ;;
+        esac
+    done
+} &&
 
-    # build adjoining territories
-    execute_query \
-        --name SET_TERRITORY_NEAR \
-        --query "SELECT fr.set_territory_next()" &&
+[ $io_error -eq 0 ] && {
+    io_info=''
+    for (( io_step=0; io_step<${#io_steps[@]}; io_step++ )); do
+        [ ${io_ids[${io_step}]} -eq 0 ] && continue
+        [ -n "$io_info" ] && io_info+=,
+        io_info+=$(printf '"%s":%d' ${io_steps[$io_step]} ${io_ids[${io_step}]})
+    done
+    io_info="{${io_info}}"
+} &&
 
-    # update altitude if needed
-    $POW_DIR_BATCH/territory_altitude.sh --reset yes &&
+# build adjoining territories
+execute_query \
+    --name FR_TERRITORY_NEAR \
+    --query "SELECT fr.set_territory_next()" &&
 
-    io_get_ids_integration \
-        --name $io_name \
-        --hash io_data \
-        --ids _ids &&
-    io_history_end_ok \
-        --nrows_processed 1 \
-        --infos "$_ids" \
-        --id $io_main_id &&
-    vacuum \
-        --schema_name fr \
-        --table_name territory \
-        --mode ANALYZE
-} || {
+# update altitude if needed
+$POW_DIR_BATCH/territory_altitude.sh --reset_territory yes &&
+
+io_history_end_ok \
+    --nrows_processed "(SELECT COUNT(1) FROM fr.territory)" \
+    --infos "$io_info" \
+    --id $io_main_id &&
+vacuum \
+    --schema_name fr \
+    --table_name territory \
+    --mode ANALYZE || {
     on_integration_error --id $io_main_id
     exit $ERROR_CODE
 }
