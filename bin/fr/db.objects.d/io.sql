@@ -50,7 +50,6 @@ BEGIN
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-GEOMETRY');
     -- SOURCE ORGA
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE-ORGANIZATION');
-    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE-ORGANIZATION-GEOMETRY');
 
     CALL public.io_add_if_not_exists(name => 'FR-MUNICIPALITY-EVENT-INSEE');
     CALL public.io_add_if_not_exists(name => 'FR-MUNICIPALITY-EVENT-WIKIPEDIA');
@@ -62,6 +61,7 @@ BEGIN
     CALL public.io_add_if_not_exists(name => 'FR-ADDRESS-LAPOSTE');
     -- GEOPAD
     CALL public.io_add_if_not_exists(name => 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT');
+    CALL public.io_add_if_not_exists(name => 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT-GEOMETRY');
     -- RAO
     CALL public.io_add_if_not_exists(name => 'FR-ADDRESS-LAPOSTE-DELIVERY-ORGANIZATION');
 
@@ -178,7 +178,7 @@ BEGIN
        FR-TERRITORY-GEOMETRY
             |-> FR-TERRITORY-LAPOSTE-AREA-ADD-OR-DEL
             |-> FR-TERRITORY-IGN-GEOMETRY
-            |-> FR-TERRITORY-LAPOSTE-ORGANIZATION-GEOMETRY
+            |-> FR-ADDRESS-LAPOSTE-DELIVERY-POINT-GEOMETRY
      */
 
     _id_2 := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-GEOMETRY');
@@ -186,7 +186,7 @@ BEGIN
     CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
     _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-IGN-GEOMETRY');
     CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
-    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-LAPOSTE-ORGANIZATION-GEOMETRY');
+    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT-GEOMETRY');
     CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
 
     /*

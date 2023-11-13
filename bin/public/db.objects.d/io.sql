@@ -841,10 +841,9 @@ BEGIN
         _has_relation := public.io_has_relation(name => _io_depends[_i]);
         IF NOT _has_relation THEN
             _with_difference := FALSE;
-            -- no history (1st time) ?
+            -- no history (1st time, IO condition) ?
             IF _k = 0 THEN
                 _more_recent := TRUE;
-                --_with_difference := TRUE;
             ELSE
                 _more_recent := (_io_lasts[_j].dt_data_end > _io_currents[_k].dt_data_end);
             END IF;
