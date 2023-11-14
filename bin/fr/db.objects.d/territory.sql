@@ -46,7 +46,7 @@ END $$;
 
 SELECT drop_all_functions_if_exists('fr', 'drop_territory_index');
 CREATE OR REPLACE PROCEDURE fr.drop_territory_index(
-    drop_case VARCHAR DEFAULT 'ALL'             -- ALL | EXCEPT_LEVEL_CODE | ONLY_GEOM
+    drop_case VARCHAR DEFAULT 'ALL'             -- ALL | EXCEPT_LEVEL_CODE | ONLY_GEOM_(NATIVE|WORLD)
 )
 AS
 $proc$
@@ -54,10 +54,17 @@ DECLARE
     _levels VARCHAR[] := public.get_levels('fr');
     _level VARCHAR;
 BEGIN
-    CALL public.log_info('Suppression Index (contour simplifié)');
-    DROP INDEX IF EXISTS fr.ix_territory_gm_contour;
+    IF drop_case = ANY('{ALL,ONLY_GEOM_NATIVE}') THEN
+        CALL public.log_info('Suppression Index (contour natif)');
+        DROP INDEX IF EXISTS fr.ix_territory_gm_contour_natif;
+    END IF;
 
-    IF drop_case != 'ONLY_GEOM' THEN
+    IF drop_case = ANY('{ALL,ONLY_GEOM_WORLD}') THEN
+        CALL public.log_info('Suppression Index (contour simplifié)');
+        DROP INDEX IF EXISTS fr.ix_territory_gm_contour;
+    END IF;
+
+    IF NOT drop_case = ANY('{ONLY_GEOM_NATIVE,ONLY_GEOM_WORLD}') THEN
         FOREACH _level IN ARRAY _levels LOOP
             CALL public.log_info('Suppression Index (' || _level || ')');
             EXECUTE CONCAT('DROP INDEX IF EXISTS fr.iux_territory_codgeo_', _level) ;
@@ -73,7 +80,7 @@ $proc$ LANGUAGE plpgsql;
 
 SELECT drop_all_functions_if_exists('fr', 'set_territory_index');
 CREATE OR REPLACE PROCEDURE fr.set_territory_index(
-    set_case VARCHAR DEFAULT 'ALL'             -- ALL | ONLY_INFRA | ONLY_GEOM
+    set_case VARCHAR DEFAULT 'ALL'             -- ALL | ONLY_INFRA | ONLY_GEOM_(NATIVE|WORLD)
 )
 AS
 $proc$
@@ -82,7 +89,12 @@ DECLARE
     _level VARCHAR;
     _infra VARCHAR := public.get_bigger_sublevel('fr', 'CP');
 BEGIN
-    IF set_case = ANY('{ALL,ONLY_GEOM}') THEN
+    IF set_case = ANY('{ALL,ONLY_GEOM_NATIVE}') THEN
+        CALL public.log_info('Création Index (contour natif)');
+        CREATE INDEX IF NOT EXISTS ix_territory_gm_contour_natif ON fr.territory USING GIST(nivgeo, gm_contour_natif);
+    END IF;
+
+    IF set_case = ANY('{ALL,ONLY_GEOM_WORLD}') THEN
         CALL public.log_info('Création Index (contour simplifié)');
         CREATE INDEX IF NOT EXISTS ix_territory_gm_contour ON fr.territory USING GIST(nivgeo, gm_contour);
     END IF;

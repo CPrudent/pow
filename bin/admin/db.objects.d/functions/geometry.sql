@@ -971,11 +971,26 @@ CREATE OR REPLACE FUNCTION public.ST_Equals_with_Threshold(
     geom1 GEOMETRY
     , geom2 GEOMETRY
     , distance NUMERIC DEFAULT 0.001
+    , reference VARCHAR DEFAULT 'ONE'           -- 'TWO' if second
 )
 RETURNS BOOLEAN AS
 $func$
+DECLARE
+    _srid1 INTEGER := ST_SRID(geom1);
+    _srid2 INTEGER := ST_SRID(geom2);
 BEGIN
-	RETURN (ST_Distance(geom1, geom2) <= distance);
+	RETURN
+        CASE
+        WHEN _srid1  = _srid2 THEN
+            (ST_Distance(geom1, geom2) <= distance)
+        WHEN _srid1 != _srid2 THEN
+            CASE
+            WHEN reference = 'ONE' THEN
+                (ST_Distance(geom1, ST_Transform(geom2, _srid1)) <= distance)
+            WHEN reference = 'TWO' THEN
+                (ST_Distance(ST_Transform(geom1, _srid2), geom2) <= distance)
+            END
+        END;
 END
 $func$ LANGUAGE plpgsql;
 

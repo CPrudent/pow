@@ -140,9 +140,9 @@ io_history_begin \
             elif (! is_yes --var io_hash[${io_steps[$io_step]}_t]); then
                 # eval only SUPRA (area, simplified geometry)
                 execute_query \
-                    --name FR_AREA_GEOMETRY_16 \
+                    --name FR_AREA_GEOMETRY \
                     --query "CALL fr.set_territory_geometry(part_todo => 16)" && {
-                        _error=$(grep '^ERREUR' $POW_DIR_ARCHIVE/FR_AREA_GEOMETRY_16.notice.log)
+                        _error=$(grep '^ERREUR' $POW_DIR_ARCHIVE/FR_AREA_GEOMETRY.notice.log)
                         [ -n "$_error" ] && {
                             log_error "calcul des géométries : $_error"
                             io_error=1

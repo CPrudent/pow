@@ -225,7 +225,7 @@ BEGIN
 
                 ON x.codgeo = t.codgeo
             WHERE
-                NOT ST_Equals(x.geom, t.gm_contour_natif)
+                NOT ST_Equals_with_Threshold(x.geom, t.gm_contour_natif)
             '
         WHEN 'FR-TERRITORY-IGN-EVENT' THEN
             CONCAT(

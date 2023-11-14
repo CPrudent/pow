@@ -628,9 +628,10 @@ BEGIN
      */
 
     IF part_todo & 1 = 1 THEN
-        DROP INDEX IF EXISTS ix_territory_gm_contour_natif;
+        CALL fr.drop_territory_index(drop_case => 'ONLY_GEOM_NATIVE');
+
         CALL public.log_info(
-            message => 'Commande SH de suivi : watch -d -c "grep ''contours avec commune partielle'' $POW_DIR_TMP/SET_TERRITORY_GEOMETRY.notice.log | wc -l"'
+            message => 'Commande SH de suivi : watch -d -c "grep ''contours avec commune partielle'' $POW_DIR_TMP/FR_AREA_GEOMETRY.notice.log | wc -l"'
             , stamped => FALSE
         );
 
@@ -644,10 +645,10 @@ BEGIN
     -- PART/2 : initialize simplified geometry for based level (municipality_subsection)
     --
     IF part_todo & 2 = 2 THEN
-        DROP INDEX IF EXISTS ix_territory_gm_contour;
+        CALL fr.drop_territory_index(drop_case => 'ONLY_GEOM_WORLD');
 
         CALL public.log_info(
-            message => 'Commande SH de suivi : watch -d -c "cat $POW_DIR_TMP/SET_TERRITORY_GEOMETRY.notice.log | grep -o -P ''[0-9]+ traité'' | grep -o -P ''[0-9]+'' | awk ''{ SUM += \$1} END { print SUM }''"'
+            message => 'Commande SH de suivi : watch -d -c "cat $POW_DIR_TMP/FR_AREA_GEOMETRY.notice.log | grep -o -P ''[0-9]+ traité'' | grep -o -P ''[0-9]+'' | awk ''{ SUM += \$1} END { print SUM }''"'
             , stamped => FALSE
         );
 
@@ -695,7 +696,7 @@ BEGIN
     --
     -- PART/5 : eval SUPRA for (simplified geometry, area)
     IF part_todo & 16 = 16 THEN
-        CALL fr.drop_territory_index(drop_case => 'ONLY_GEOM');
+        CALL fr.drop_territory_index(drop_case => 'ONLY_GEOM_WORLD');
 
         CALL public.log_info('remontée SUPRA : (superficie, contour simplifié)');
         PERFORM fr.set_territory_supra(
@@ -706,7 +707,7 @@ BEGIN
             , update_mode => TRUE
         );
 
-        CALL fr.set_territory_index(set_case => 'ONLY_GEOM');
+        CALL fr.set_territory_index(set_case => 'ONLY_GEOM_WORLD');
 
         COMMIT;
     END IF;
