@@ -415,7 +415,7 @@ BEGIN
 
                 (
                     SELECT
-                        t.codgeo code_epci
+                        t.codgeo_epci_parent code_epci
                         , t.codgeo code_com
                     FROM
                         fr.territory t
@@ -423,7 +423,8 @@ BEGIN
                         t.nivgeo = ''COM''
                         AND
                         -- exclude 9[789] and 4 islands (last ones)
-                        t.codgeo !~ ''^(97[578]|9[89]|29083|29155|22016|85113)''
+                        --t.codgeo !~ ''^(97[578]|9[89]|29083|29155|22016|85113)''
+                        t.codgeo_epci_parent IS NOT NULL
 
                 ) t
 
