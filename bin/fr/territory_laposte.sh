@@ -128,7 +128,7 @@ io_history_begin \
         [ -n "$io_info" ] && io_info+=,
         io_info+=$(printf '"%s":%d' ${io_steps[$io_step]} ${io_ids[${io_step}]})
     done
-    io_info="{${io_info}}"
+    [ -n "$io_info" ] && io_info="{${io_info}}"
     io_history_end_ok \
         --nrows_processed 1 \
         --infos "$io_info" \

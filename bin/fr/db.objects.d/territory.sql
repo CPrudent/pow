@@ -46,7 +46,7 @@ END $$;
 
 SELECT drop_all_functions_if_exists('fr', 'drop_territory_index');
 CREATE OR REPLACE PROCEDURE fr.drop_territory_index(
-    drop_case VARCHAR DEFAULT 'ALL'             -- ALL | EXCEPT_LEVEL_CODE
+    drop_case VARCHAR DEFAULT 'ALL'             -- ALL | EXCEPT_LEVEL_CODE | ONLY_GEOM
 )
 AS
 $proc$
@@ -54,14 +54,67 @@ DECLARE
     _levels VARCHAR[] := public.get_levels('fr');
     _level VARCHAR;
 BEGIN
-    DROP INDEX IF EXISTS ix_territory_gm_contour;
+    CALL public.log_info('Suppression Index (contour simplifié)');
+    DROP INDEX IF EXISTS fr.ix_territory_gm_contour;
 
-    FOREACH _level IN ARRAY _levels LOOP
-        EXECUTE CONCAT('DROP INDEX IF EXISTS iux_territory_codgeo_', _level) ;
-    END LOOP;
+    IF drop_case != 'ONLY_GEOM' THEN
+        FOREACH _level IN ARRAY _levels LOOP
+            CALL public.log_info('Suppression Index (' || _level || ')');
+            EXECUTE CONCAT('DROP INDEX IF EXISTS fr.iux_territory_codgeo_', _level) ;
+        END LOOP;
+    END IF;
 
     IF drop_case = 'ALL' THEN
-        DROP INDEX IF EXISTS iux_territory_nivgeo_codgeo;
+        CALL public.log_info('Suppression Index (niveau, code)');
+        DROP INDEX IF EXISTS fr.iux_territory_nivgeo_codgeo;
+    END IF;
+END
+$proc$ LANGUAGE plpgsql;
+
+SELECT drop_all_functions_if_exists('fr', 'set_territory_index');
+CREATE OR REPLACE PROCEDURE fr.set_territory_index(
+    set_case VARCHAR DEFAULT 'ALL'             -- ALL | ONLY_INFRA | ONLY_GEOM
+)
+AS
+$proc$
+DECLARE
+    _levels VARCHAR[] := public.get_levels('fr');
+    _level VARCHAR;
+    _infra VARCHAR := public.get_bigger_sublevel('fr', 'CP');
+BEGIN
+    IF set_case = ANY('{ALL,ONLY_GEOM}') THEN
+        CALL public.log_info('Création Index (contour simplifié)');
+        CREATE INDEX IF NOT EXISTS ix_territory_gm_contour ON fr.territory USING GIST(nivgeo, gm_contour);
+    END IF;
+
+    IF set_case = ANY('{ALL,ONLY_INFRA}') THEN
+        CALL public.log_info('Création Index (' || _infra || ')');
+        EXECUTE CONCAT(
+            'CREATE UNIQUE INDEX IF NOT EXISTS iux_territory_codgeo_'
+            , LOWER(_infra)
+            , ' ON fr.territory (codgeo) WHERE nivgeo = '
+            , quote_literal(_infra)
+        );
+    END IF;
+
+    IF set_case = 'ALL' THEN
+        FOREACH _level IN ARRAY _levels LOOP
+            CALL public.log_info('Création Index (' || _level || ')');
+            EXECUTE CONCAT(
+                'CREATE UNIQUE INDEX IF NOT EXISTS iux_territory_codgeo_', _level, ' ON fr.territory (codgeo) WHERE nivgeo = ''', _level, ''''
+            );
+            /*
+            --TODO : voir si ces indexes sont judicieux
+            IF column_exists('public', 'territory', CONCAT('codgeo_', _level, '_parent')) THEN
+                EXECUTE CONCAT(
+                    'CREATE INDEX IF NOT EXISTS idx_territoire_codgeo_', _level, '_parent ON fr.territory (nivgeo, codgeo_', _level, '_parent)'
+                );
+            END IF;
+            */
+        END LOOP;
+
+        CALL public.log_info('Création Index (niveau, code)');
+        CREATE UNIQUE INDEX IF NOT EXISTS iux_territory_nivgeo_codgeo ON fr.territory (nivgeo, codgeo);
     END IF;
 END
 $proc$ LANGUAGE plpgsql;
@@ -451,14 +504,7 @@ BEGIN
         END IF;
     END IF;
 
-    CALL public.log_info('Création Index (niveau: ' || municipality_subsection || ')');
-    _query := CONCAT(
-        'CREATE UNIQUE INDEX IF NOT EXISTS iux_territory_codgeo_'
-        , LOWER(municipality_subsection)
-        , ' ON fr.territory (codgeo) WHERE nivgeo = '
-        , quote_literal(municipality_subsection)
-    );
-    EXECUTE _query;
+    CALL fr.set_territory_index(set_case => 'ONLY_INFRA');
 
     -- initialize SUPRA levels
     PERFORM fr.set_territory_supra(
@@ -470,23 +516,7 @@ BEGIN
     -- update name, population, ...
     PERFORM fr.update_territory();
 
-    FOREACH _level IN ARRAY _levels LOOP
-        CALL public.log_info('Création Index (niveau: ' || _level || ')');
-        EXECUTE CONCAT(
-            'CREATE UNIQUE INDEX IF NOT EXISTS iux_territory_codgeo_', _level, ' ON fr.territory (codgeo) WHERE nivgeo = ''', _level, ''''
-        );
-        /*
-        --TODO : voir si ces indexes sont judicieux
-        IF column_exists('public', 'territory', CONCAT('codgeo_', _level, '_parent')) THEN
-            EXECUTE CONCAT(
-                'CREATE INDEX IF NOT EXISTS idx_territoire_codgeo_', _level, '_parent ON fr.territory (nivgeo, codgeo_', _level, '_parent)'
-            );
-        END IF;
-         */
-    END LOOP;
-
-    CALL public.log_info('Création Index (niveau, code)');
-    CREATE UNIQUE INDEX IF NOT EXISTS iux_territory_nivgeo_codgeo ON fr.territory (nivgeo, codgeo);
+    CALL fr.set_territory_index(set_case => 'ALL');
 
     RETURN TRUE;
 END $$ LANGUAGE plpgsql;

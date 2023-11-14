@@ -695,7 +695,7 @@ BEGIN
     --
     -- PART/5 : eval SUPRA for (simplified geometry, area)
     IF part_todo & 16 = 16 THEN
-        DROP INDEX IF EXISTS public.ix_territory_gm_contour;
+        CALL fr.drop_territory_index(drop_case => 'ONLY_GEOM');
 
         CALL public.log_info('remontée SUPRA : (superficie, contour simplifié)');
         PERFORM fr.set_territory_supra(
@@ -706,8 +706,7 @@ BEGIN
             , update_mode => TRUE
         );
 
-        CALL public.log_info('Création Index : (contour simplifié)');
-        CREATE INDEX IF NOT EXISTS ix_territory_gm_contour ON fr.territory USING GIST(nivgeo, gm_contour);
+        CALL fr.set_territory_index(set_case => 'ONLY_GEOM');
 
         COMMIT;
     END IF;

@@ -311,7 +311,7 @@ io_get_ids_integration() {
         [ -n "$_ids_ref" ] && _ids_ref+=,
         _ids_ref+=$(printf '"%s":%d' $_step ${_hash_ref[${_step}_i]})
     done
-    _ids_ref="{${_ids_ref}}"
+    [ -n "$_ids_ref" ] && _ids_ref="{${_ids_ref}}"
     return $SUCCESS_CODE
 }
 
