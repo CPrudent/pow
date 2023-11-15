@@ -125,7 +125,7 @@ io_history_begin \
                             SELECT COUNT(1) FROM fr.territory WHERE nivgeo = 'ZA'
                             " &&
                         execute_query \
-                            --name FR_AREA_GEOMETRY \
+                            --name FR_TERRITORY_GEOMETRY \
                             --query "CALL fr.set_territory_geometry()" && {
                                 _error=$(grep '^ERREUR' $POW_DIR_ARCHIVE/FR_AREA_GEOMETRY.notice.log)
                                 [ -n "$_error" ] && {
@@ -137,6 +137,7 @@ io_history_begin \
                     esac
                 } &&
                 io_get_ids_integration \
+                    --from HASH \
                     --name ${io_steps[$io_step]} \
                     --hash io_hash \
                     --ids _ids &&
@@ -152,7 +153,7 @@ io_history_begin \
             # not todo? only necessary to propagate (area, simplified geometry) on SUPRA
             elif (! is_yes --var io_hash[${io_steps[$io_step]}_t]); then
                 execute_query \
-                    --name FR_AREA_GEOMETRY \
+                    --name FR_TERRITORY_GEOMETRY \
                     --query "CALL fr.set_territory_geometry(part_todo => 16)" && {
                         _error=$(grep '^ERREUR' $POW_DIR_ARCHIVE/FR_AREA_GEOMETRY.notice.log)
                         [ -n "$_error" ] && {
@@ -172,13 +173,11 @@ io_history_begin \
 } &&
 
 [ $io_error -eq 0 ] && {
-    io_info=''
-    for (( io_step=0; io_step<${#io_steps[@]}; io_step++ )); do
-        [ ${io_ids[${io_step}]} -eq 0 ] && continue
-        [ -n "$io_info" ] && io_info+=,
-        io_info+=$(printf '"%s":%d' ${io_steps[$io_step]} ${io_ids[${io_step}]})
-    done
-    [ -n "$io_info" ] && io_info="{${io_info}}"
+    io_get_ids_integration \
+        --from ARRAY \
+        --hash io_hash \
+        --array io_ids \
+        --ids _ids
 } &&
 
 # build adjoining territories

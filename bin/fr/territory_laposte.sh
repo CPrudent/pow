@@ -107,6 +107,7 @@ io_history_begin \
                 esac
             } &&
             io_get_ids_integration \
+                --from HASH \
                 --name ${io_steps[$io_step]} \
                 --hash io_hash \
                 --ids _ids &&
@@ -123,15 +124,14 @@ io_history_begin \
     done
 } &&
 [ $io_error -eq 0 ] && {
-    io_info=''
-    for (( io_step=0; io_step<${#io_steps[@]}; io_step++ )); do
-        [ -n "$io_info" ] && io_info+=,
-        io_info+=$(printf '"%s":%d' ${io_steps[$io_step]} ${io_ids[${io_step}]})
-    done
-    [ -n "$io_info" ] && io_info="{${io_info}}"
+    io_get_ids_integration \
+        --from ARRAY \
+        --hash io_hash \
+        --array io_ids \
+        --ids _ids &&
     io_history_end_ok \
         --nrows_processed 1 \
-        --infos "$io_info" \
+        --infos "$_ids" \
         --id $io_main_id
 } || {
     on_integration_error --id $io_main_id

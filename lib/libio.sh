@@ -279,39 +279,81 @@ io_get_info_integration() {
 io_get_ids_integration() {
     bash_args \
         --args_p '
-            name:IO name;
+            from:méthode accès aux IDs de la dépendance à traiter;
             hash:tableau associatif de description de cette intégration;
-            ids:variable pour récupérer les IDs
+            array:tableau des IDs de cette intégration;
+            ids:variable pour récupérer les IDs;
+            name:nom de la dépendance à traiter
         ' \
         --args_o '
-            name;
+            from;
             hash;
             ids
+        ' \
+        --args_v '
+            from:HASH|ARRAY
+        ' \
+        --args_d '
+            from:HASH
         ' \
         "$@" || return $POW_IO_ERROR
 
     # https://stackoverflow.com/questions/13219634/easiest-way-to-check-for-an-index-or-a-key-in-an-array
+    # https://stackoverflow.com/questions/11180714/how-to-iterate-over-an-array-using-indirect-reference
 
     local -n _hash_ref=$get_arg_hash
     local -n _ids_ref=$get_arg_ids
-    local _steps _step
-    [[ -v "_hash_ref[${get_arg_name}_d]" ]] || {
-        log_error "manque dépendances IO=$get_arg_name"
-        return $ERROR_CODE
-    }
-    _steps=(${_hash_ref[${get_arg_name}_d]//:/ })
-    _ids_ref=''
-    for _step in "${_steps[@]}"; do
-        [[ -v "_hash_ref[${_step}_i]" ]] || {
-            log_error "manque ID IO=$_step"
+    local _depends _steps _step _array_ptr _i _key _value
+
+    [ -n "${get_arg_name}" ] && _depends=${get_arg_name}_d || _depends=DEPENDS
+
+    case "$get_arg_from" in
+    HASH)
+        [[ -v "_hash_ref[$_depends]" ]] || {
+            log_error "manque dépendances IO=($get_arg_name)"
             return $ERROR_CODE
         }
+
+        _steps=(${_hash_ref[$_depends]//:/ })
+        _array_ptr="_steps[@]"
+        ;;
+    ARRAY)
+        [ -z "$get_arg_array" ] && {
+            log_error "manque tableau IDs (option --array)"
+            return $ERROR_CODE
+        }
+        local -n _array_ref=$get_arg_array
+        _steps=(${_hash_ref[$_depends]//:/ })
+        _array_ptr="_array_ref[@]"
+        ;;
+    esac
+
+    _ids_ref=''
+    _i=0
+    for _step in "${!_array_ptr}"; do
+        case "$get_arg_from" in
+        HASH)
+            [[ -v "_hash_ref[${_step}_i]" ]] || {
+                log_error "manque ID IO=$_step"
+                return $ERROR_CODE
+            }
+            _key=$_step
+            _value=${_hash_ref[${_key}_i]}
+            ;;
+        ARRAY)
+            _key=${_steps[$_i]}
+            _value=$_step
+            ;;
+        esac
+
+        _i=$((_i +1))
         # IO condition ?
-        [ ${_hash_ref[${_step}_i]} -eq 0 ] && continue
+        [ $_value -eq 0 ] && continue
         [ -n "$_ids_ref" ] && _ids_ref+=,
-        _ids_ref+=$(printf '"%s":%d' $_step ${_hash_ref[${_step}_i]})
+        _ids_ref+=$(printf '"%s":%d' $_key $_value)
     done
     [ -n "$_ids_ref" ] && _ids_ref="{${_ids_ref}}"
+
     return $SUCCESS_CODE
 }
 

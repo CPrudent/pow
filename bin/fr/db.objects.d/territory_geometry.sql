@@ -631,7 +631,7 @@ BEGIN
         CALL fr.drop_territory_index(drop_case => 'ONLY_GEOM_NATIVE');
 
         CALL public.log_info(
-            message => 'Commande SH de suivi : watch -d -c "grep ''contours avec commune partielle'' $POW_DIR_TMP/FR_AREA_GEOMETRY.notice.log | wc -l"'
+            message => 'Commande SH de suivi : watch -d -c "grep ''contours avec commune partielle'' $POW_DIR_TMP/FR_TERRITORY_GEOMETRY.notice.log | wc -l"'
             , stamped => FALSE
         );
 
@@ -648,7 +648,7 @@ BEGIN
         CALL fr.drop_territory_index(drop_case => 'ONLY_GEOM_WORLD');
 
         CALL public.log_info(
-            message => 'Commande SH de suivi : watch -d -c "cat $POW_DIR_TMP/FR_AREA_GEOMETRY.notice.log | grep -o -P ''[0-9]+ traité'' | grep -o -P ''[0-9]+'' | awk ''{ SUM += \$1} END { print SUM }''"'
+            message => 'Commande SH de suivi : watch -d -c "cat $POW_DIR_TMP/FR_TERRITORY_GEOMETRY.notice.log | grep -o -P ''[0-9]+ traité'' | grep -o -P ''[0-9]+'' | awk ''{ SUM += \$1} END { print SUM }''"'
             , stamped => FALSE
         );
 
