@@ -762,9 +762,10 @@ BEGIN
     END IF;
 
     /*
-     IO_EXIST: integration already done, and all depended IO exist
+     IO_EXIST: IO already done
      IO_MORE_RECENT: at least one depended IO more recent
      IO_WITH_DIFFERENCE: with difference compared with previous result
+        IO condition allows comparison (not depended IO to process)
      */
     _result := NULL;
     _io_history := (SELECT get_last_io(io_is_todo.name));
@@ -797,23 +798,6 @@ BEGIN
                             JOIN get_last_io(l.name) h ON h.co_type = l.name
                 )
         );
-
-        -- missing IO ?
-        _io_missing := ARRAY_CAT(_io_depends, NULL);
-        -- no history (1st time) ?
-        IF ARRAY_UPPER(_io_lasts, 1) IS NOT NULL THEN
-            FOR _i IN 1 .. ARRAY_UPPER(_io_depends, 1) LOOP
-                FOR _j IN 1 .. ARRAY_UPPER(_io_lasts, 1) LOOP
-                    IF _io_lasts[_j].co_type = _io_depends[_i] THEN
-                        _io_missing := ARRAY_REMOVE(_io_missing, _io_depends[_i]);
-                        EXIT;
-                    END IF;
-                END LOOP;
-            END LOOP;
-        END IF;
-        IF ARRAY_LENGTH(_io_missing, 1) > 0 THEN
-            RAISE NOTICE '% (manque %)', _error_message, ARRAY_TO_STRING(_io_missing, ', ');
-        END IF;
     END IF;
 
     -- current history of depended IO
@@ -847,6 +831,7 @@ BEGIN
             _with_difference := FALSE;
             -- no history (1st time, IO condition) ?
             IF _k = 0 THEN
+                -- eval difference to known if todo
                 _more_recent := TRUE;
             ELSE
                 _more_recent := (_io_lasts[_j].dt_data_end > _io_currents[_k].dt_data_end);
@@ -886,7 +871,7 @@ BEGIN
             );
         END IF;
 
-        -- last history, if defined
+        -- last history, if defined (IO condition not exists in history, so id=0)
         _result := CONCAT_WS(','
             , _result
             , FORMAT('"%s"=>%s'
@@ -918,6 +903,7 @@ BEGIN
             schema_name ~ '^..$'
     )
     LOOP
+        -- initialize IOs (list and relation)
         IF procedure_exists(_schema_name, _procedure_name) THEN
             _query := CONCAT(
                 'CALL '

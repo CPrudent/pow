@@ -71,7 +71,17 @@ io_get_info_integration --name $io_name --to_hash io_hash --to_string io_str || 
     esac
 }
 
-echo $io_str | tr ',' '\n'
+[ "$POW_DEBUG" = yes ] && { echo $io_str | tr ',' '\n'; }
+_not_ok=''
+# check up-to-date dependences
+for _io in INSEE IGN LAPOSTE-AREA; do
+    [ -n "$_not_ok" ] && _not_ok+=", "
+    is_yes --var io_hash[FR-TERRITORY-${_io}_t] && _not_ok+=$_io
+done
+[ -n "$_not_ok" ] && {
+    log_error "IO $_not_ok non à jour des évènements Commune!"
+    exit $ERROR_CODE
+}
 log_info "Calcul des territoires français" &&
 io_history_begin \
     --type $io_name \
@@ -86,7 +96,9 @@ io_history_begin \
     io_counts=()
     io_error=0
 
-    # build low level (ZA or COM_CP), and propagate on supra territories
+    # process FR territories
+    #  if FR-TERRITORY-GEOMETRY todo then rebuild based level (ZA) else update them
+    #  build supra territories
     execute_query \
         --name FR_TERRITORY \
         --query "SELECT fr.set_territory('$io_str'::HSTORE)" &&
@@ -96,7 +108,7 @@ io_history_begin \
         io_ids[$io_step]=${io_hash[${io_steps[$io_step]}_i]}
 
         case ${io_steps[$io_step]} in
-        # only IO not already done
+        # only IOs not already done (above depends)
         FR-TERRITORY-GEOMETRY)
             # step todo or force it ?
             if ([ "$io_force" = yes ] || (is_yes --var io_hash[${io_steps[$io_step]}_t])); then
@@ -137,8 +149,8 @@ io_history_begin \
                     io_error=1
                     break
                 }
+            # not todo? only necessary to propagate (area, simplified geometry) on SUPRA
             elif (! is_yes --var io_hash[${io_steps[$io_step]}_t]); then
-                # eval only SUPRA (area, simplified geometry)
                 execute_query \
                     --name FR_AREA_GEOMETRY \
                     --query "CALL fr.set_territory_geometry(part_todo => 16)" && {
@@ -151,6 +163,7 @@ io_history_begin \
                     }
             fi
             ;;
+        # nothing todo for IOs already done
         *)
             continue
             ;;
