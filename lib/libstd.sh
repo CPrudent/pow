@@ -400,10 +400,12 @@ bash_args() {
         tmp_arg_d_name=$(echo $tmp_arg_d | grep -o '^[^:]*')
         tmp_arg_d_value=$(echo $tmp_arg_d | grep -o '[^:]*$')
         eval tmp_arg_value=\"\$get_arg_$tmp_arg_d_name\"
+        #echo "DEFAULT($tmp_arg_d_name)=($tmp_arg_value)"
         if [ -z "$tmp_arg_value" ]; then
             eval get_arg_$tmp_arg_d_name=\"$tmp_arg_d_value\"
             #eval tmp_arg_d_value=\"$tmp_arg_d_value\"
             #echo "Valeur par défaut $tmp_arg_d_value pour $tmp_arg_d_name"
+            _argv+=([$tmp_arg_d_name]=$tmp_arg_d_value)
         fi
     done
 
@@ -417,7 +419,7 @@ bash_args() {
             #si la valeur de l'argument est renseignée, la condition est remplie
             if [ -n "$tmp_arg_value" ]; then
                 tmp_arg_o_ok='O'
-                break;
+                break
             fi
         done
         if [ "$tmp_arg_o_ok" != 'O' ]; then
