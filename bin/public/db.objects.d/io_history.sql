@@ -17,32 +17,43 @@ CREATE TABLE IF NOT EXISTS public.io_history (
 
 DO $$
 BEGIN
-    IF column_exists('public', 'io_history', 'co_type')) THEN
+    IF column_exists('public', 'io_history', 'co_type') THEN
         ALTER TABLE public.io_history RENAME COLUMN co_type TO name;
     END IF;
-    IF column_exists('public', 'io_history', 'dt_exec_begin')) THEN
+    IF column_exists('public', 'io_history', 'dt_exec_begin') THEN
         ALTER TABLE public.io_history RENAME COLUMN dt_exec_begin TO date_exec_begin;
     END IF;
-    IF column_exists('public', 'io_history', 'dt_exec_end')) THEN
+    IF column_exists('public', 'io_history', 'dt_exec_end') THEN
         ALTER TABLE public.io_history RENAME COLUMN dt_exec_end TO date_exec_end;
     END IF;
-    IF column_exists('public', 'io_history', 'co_status')) THEN
+    IF column_exists('public', 'io_history', 'co_status') THEN
         ALTER TABLE public.io_history RENAME COLUMN co_status TO status;
     END IF;
-    IF column_exists('public', 'io_history', 'dt_data_begin')) THEN
+    IF column_exists('public', 'io_history', 'dt_data_begin') THEN
         ALTER TABLE public.io_history RENAME COLUMN dt_data_begin TO date_data_begin;
     END IF;
-    IF column_exists('public', 'io_history', 'dt_data_end')) THEN
+    IF column_exists('public', 'io_history', 'dt_data_end') THEN
         ALTER TABLE public.io_history RENAME COLUMN dt_data_end TO date_data_end;
     END IF;
-    IF column_exists('public', 'io_history', 'nb_rows_valid')) THEN
+    IF column_exists('public', 'io_history', 'nb_rows_valid') THEN
         ALTER TABLE public.io_history DROP COLUMN nb_rows_valid;
     END IF;
-    IF column_exists('public', 'io_history', 'co_status_integration')) THEN
+    IF column_exists('public', 'io_history', 'co_status_integration') THEN
         ALTER TABLE public.io_history DROP COLUMN co_status_integration;
     END IF;
-    IF column_exists('public', 'io_history', 'infos_data')) THEN
+    IF column_exists('public', 'io_history', 'infos_data') THEN
         ALTER TABLE public.io_history RENAME COLUMN infos_data TO attributes;
+    END IF;
+
+    IF (SELECT is_nullable
+        FROM information_schema.columns
+        WHERE table_name = 'io_history' AND column_name = 'nb_rows_todo') = 'NO' THEN
+        ALTER TABLE public.io_history ALTER COLUMN nb_rows_todo DROP NOT NULL;
+    END IF;
+    IF (SELECT is_nullable
+        FROM information_schema.columns
+        WHERE table_name = 'io_history' AND column_name = 'nb_rows_processed') = 'NO' THEN
+        ALTER TABLE public.io_history ALTER COLUMN nb_rows_processed DROP NOT NULL;
     END IF;
 END $$;
 
