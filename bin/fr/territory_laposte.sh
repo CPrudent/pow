@@ -49,7 +49,7 @@ io_get_info_integration --name $io_name --to_hash io_hash || exit $ERROR_CODE
     # already done or in progress ?
     io_todo_import \
         --force $io_force \
-        --type $io_name \
+        --name $io_name \
         --date_end "$io_date"
     case $? in
     $POW_IO_SUCCESSFUL)
@@ -63,10 +63,9 @@ io_get_info_integration --name $io_name --to_hash io_hash || exit $ERROR_CODE
 
 log_info "Calcul des territoires postaux français" &&
 io_history_begin \
-    --type $io_name \
+    --name $io_name \
     --date_begin "$io_date" \
     --date_end "$io_date" \
-    --nrows_todo 1 \
     --id io_main_id && {
 
     io_steps=(${io_hash[DEPENDS]//:/ })
@@ -81,7 +80,7 @@ io_history_begin \
         # step todo or force it ?
         ([ "$io_force" = no ] && (! is_yes --var io_hash[${io_steps[$io_step]}_t])) || {
             io_history_begin \
-                --type ${io_steps[$io_step]} \
+                --name ${io_steps[$io_step]} \
                 --date_begin "$io_date" \
                 --date_end "$io_date" \
                 --nrows_todo ${io_counts[$io_step]:-1} \

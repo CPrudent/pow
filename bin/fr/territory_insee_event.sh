@@ -18,7 +18,8 @@ bash_args \
     ' \
     "$@" || exit $ERROR_CODE
 
-co_type_import=FR-MUNICIPALITY-EVENT-INSEE
+io_name=FR-MUNICIPALITY-EVENT-INSEE
+io_force="$get_arg_force"
 # year of municipality events (w/ YYYY format)
 year=
 
@@ -28,7 +29,7 @@ on_import_error() {
     [ -n "$year_history_id" ] && io_history_end_ko --id $year_history_id
 
     # ignoring error if last year already exists
-    if io_history_exists --type $co_type_import --date_end "${years[$year_id]}"; then
+    if io_history_exists --name $io_name --date_end "${years[$year_id]}"; then
         if [ -z "$get_arg_year" ]; then
             log_info "Erreur ignorée car le millésime de l'année courante (${year}) a déjà été importé avec succès"
         else
@@ -43,7 +44,7 @@ on_import_error() {
 
 # get years
 io_get_list_online_available \
-    --type_import $co_type_import \
+    --name $io_name \
     --details_file years_list_path \
     --dates_list years || exit $ERROR_CODE
 [ "$POW_DEBUG" = yes ] && { declare -p years; declare -p years_list_path; }
@@ -54,13 +55,13 @@ if [ -z "$get_arg_year" ]; then
     year_id=0
 else
     in_array years "${get_arg_year}-01-01" year_id || {
-        log_error "Impossible de trouver le millésime $get_arg_year de $co_type_import, les millésimes disponibles sont ${years[@]}"
+        log_error "Impossible de trouver le millésime $get_arg_year de $io_name, les millésimes disponibles sont ${years[@]}"
         on_import_error
     }
 fi
 year=$(date -d ${years[$year_id]} +%Y)
 [ -z "$year" ] && {
-    log_error "Impossible de trouver le millésime de $co_type_import"
+    log_error "Impossible de trouver le millésime de $io_name"
     on_import_error
 }
 [ "$POW_DEBUG" = yes ] && { echo "year=$year (${years[$year_id]})"; }
@@ -90,8 +91,8 @@ rm --force "$years_list_path" "$POW_DIR_TMP/$year_information"
 
 set_env --schema_name fr &&
 io_todo_import \
-    --force $get_arg_force \
-    --type $co_type_import \
+    --force $io_force \
+    --name $io_name \
     --date_end "${years[$year_id]}"
 case $? in
 $POW_IO_SUCCESSFUL)
@@ -103,12 +104,12 @@ $POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
 esac
 
 # estimate to ~35000 municipalities
-log_info "Import du millésime $year de $co_type_import" &&
+log_info "Import du millésime $year de $io_name" &&
 execute_query \
-    --name "DELETE_IO_${co_type_import}" \
-    --query "DELETE FROM io_history WHERE co_type = '${co_type_import}'" &&
+    --name "DELETE_IO_${io_name}" \
+    --query "DELETE FROM io_history WHERE co_type = '${io_name}'" &&
 io_history_begin \
-    --type $co_type_import \
+    --name $io_name \
     --date_begin "${years[$year_id]}" \
     --date_end "${years[$year_id]}" \
     --nrows_todo 35000 \
@@ -135,5 +136,5 @@ vacuum \
     --mode ANALYZE &&
 rm --force "$year_ressource" || on_import_error
 
-log_info "Import du millésime $year de $co_type_import avec succès"
+log_info "Import du millésime $year de $io_name avec succès"
 exit $SUCCESS_CODE

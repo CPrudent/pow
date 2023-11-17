@@ -21,9 +21,9 @@ bash_args \
     ' \
     "$@" || exit $ERROR_CODE
 
-co_type_import=FR-TERRITORY-INSEE
-force="$get_arg_force"
-load_mode="$get_arg_load_mode"
+io_name=FR-TERRITORY-INSEE
+io_force="$get_arg_force"
+io_load_mode="$get_arg_load_mode"
 # year of administrative cutting (w/ YY format)
 year=
 
@@ -33,7 +33,7 @@ on_import_error() {
     [ -n "$year_history_id" ] && io_history_end_ko --id $year_history_id
 
     # ignoring error if last year already exists
-    if io_history_exists --type $co_type_import --date_end "${years[$year_id]}"; then
+    if io_history_exists --name $io_name --date_end "${years[$year_id]}"; then
         if [ -z "$get_arg_year" ]; then
             log_info "Erreur ignorée car le millésime de l'année courante (${year}) a déjà été importé avec succès"
         else
@@ -48,7 +48,7 @@ on_import_error() {
 
 # get years
 io_get_list_online_available \
-    --type_import $co_type_import \
+    --name $io_name \
     --details_file years_list_path \
     --dates_list years || exit $ERROR_CODE
 [ "$POW_DEBUG" = yes ] && { declare -p years; declare -p years_list_path; }
@@ -59,25 +59,25 @@ if [ -z "$get_arg_year" ]; then
     year_id=0
 elif [ "$get_arg_year" = ALL ]; then
     # get all available
-    load_mode_all=$load_mode
+    load_mode_all=$io_load_mode
     for _year in ${years[@]}; do
         _yy=$(date -d _year +%y)
         $POW_DIR_BATCH/territory_insee_hierarchy.sh \
             --year $_yy \
             --load_mode $load_mode_all \
-            --force $force || exit $ERROR_CODE
+            --force $io_force || exit $ERROR_CODE
         load_mode_all=APPEND
     done
     exit $SUCCESS_CODE
 else
     in_array years "$(date +%C)${get_arg_year}-01-01" year_id || {
-        log_error "Impossible de trouver le millésime $get_arg_year de $co_type_import, les millésimes disponibles sont ${years[@]}"
+        log_error "Impossible de trouver le millésime $get_arg_year de $io_name, les millésimes disponibles sont ${years[@]}"
         on_import_error
     }
 fi
 year=$(date -d ${years[$year_id]} +%y)
 [ -z "$year" ] && {
-    log_error "Impossible de trouver le millésime de $co_type_import"
+    log_error "Impossible de trouver le millésime de $io_name"
     on_import_error
 }
 [ "$POW_DEBUG" = yes ] && { echo "year=$year (${years[$year_id]})"; }
@@ -89,8 +89,8 @@ rm --force "$years_list_path"
 
 set_env --schema_name fr &&
 io_todo_import \
-    --force $get_arg_force \
-    --type $co_type_import \
+    --force $io_force \
+    --name $io_name \
     --date_end "${years[$year_id]}"
 case $? in
 $POW_IO_SUCCESSFUL)
@@ -125,25 +125,25 @@ fi
     echo "line_number_supra=$line_number_supra"
 }
 
-log_info "Import du millésime $year de $co_type_import" &&
+log_info "Import du millésime $year de $io_name" &&
 {
-    case "$load_mode" in
+    case "$io_load_mode" in
     OVERWRITE)
         execute_query \
-            --name "DELETE_IO_${co_type_import}" \
-            --query "DELETE FROM io_history WHERE co_type = '${co_type_import}'"
+            --name "DELETE_IO_${io_name}" \
+            --query "DELETE FROM io_history WHERE co_type = '${io_name}'"
         ;;
     APPEND)
         execute_query \
-            --name "DELETE_IO_${co_type_import}_${year}" \
+            --name "DELETE_IO_${io_name}_${year}" \
             --query "
                 DELETE FROM io_history
-                WHERE co_type = '${co_type_import}' AND dt_data_begin = '${years[$year_id]}'"
+                WHERE co_type = '${io_name}' AND dt_data_begin = '${years[$year_id]}'"
         ;;
     esac
 } &&
 io_history_begin \
-    --type $co_type_import \
+    --name $io_name \
     --date_begin "${years[$year_id]}" \
     --date_end "${years[$year_id]}" \
     --nrows_todo 35000 \
@@ -249,7 +249,7 @@ execute_query \
             ADD column millesime INTEGER DEFAULT 20${year};
         " &&
 {
-    case "$load_mode" in
+    case "$io_load_mode" in
     OVERWRITE)
         execute_query \
             --name TRUNCATE_DATA \
@@ -297,5 +297,5 @@ vacuum \
     --mode FULL &&
 rm --force "$year_ressource" || on_import_error
 
-log_info "Import du millésime $year de $co_type_import avec succès"
+log_info "Import du millésime $year de $io_name avec succès"
 exit $SUCCESS_CODE

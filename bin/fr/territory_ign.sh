@@ -59,8 +59,8 @@ bash_args \
     ' \
     "$@" || exit $ERROR_CODE
 
-co_type_import=FR-TERRITORY-IGN
-force="$get_arg_force_import"
+io_name=FR-TERRITORY-IGN
+io_force="$get_arg_force"
 
 on_import_error() {
     # import created?
@@ -95,22 +95,22 @@ if [ -z "$get_arg_item" ]; then
     # NOTE: some items seem not useful, and EPCI is taken elsewhere
     declare -a ITEMS=(COMMUNE ARRONDISSEMENT_MUNICIPAL DEPARTEMENT REGION)
 else
-	co_type_import=FR-TERRITORY-IGN_$get_arg_item
+	io_name=FR-TERRITORY-IGN-$get_arg_item
 	declare -a ITEMS=($get_arg_item)
 fi
 
 set_env --schema_name fr &&
 # get last import
 execute_query \
-    --name "LAST_IO_${co_type_import}" \
+    --name "LAST_IO_${io_name}" \
     --query "
         SELECT TO_CHAR(dt_data_end, 'YYYY-MM-DD')
-        FROM get_last_io('${co_type_import}')" \
+        FROM get_last_io('${io_name}')" \
     --psql_arguments 'tuples-only:pset=format=unaligned' \
     --return _last_io &&
 # get years
 io_get_list_online_available \
-    --type_import $co_type_import \
+    --name $io_name \
     --details_file years_list_path \
     --dates_list years || {
     [ -n "$_last_io" ] && _rc=$SUCCESS_CODE || _rc=$ERROR_CODE
@@ -124,20 +124,20 @@ if [ -z "$get_arg_year" ]; then
     year_id=0
 else
     in_array years "${get_arg_year}" year_id || {
-        log_error "Impossible de trouver le millésime $get_arg_year de $co_type_import, les millésimes disponibles sont ${years[@]}"
+        log_error "Impossible de trouver le millésime $get_arg_year de $io_name, les millésimes disponibles sont ${years[@]}"
         on_import_error
     }
 fi
 year=${years[$year_id]}
 [ -z "$year" ] && {
-    log_error "Impossible de trouver le millésime de $co_type_import"
+    log_error "Impossible de trouver le millésime de $io_name"
     on_import_error
 }
 [ "$POW_DEBUG" = yes ] && { echo "year=$year (${years[$year_id]})"; }
 
 io_todo_import \
-    --force $get_arg_force \
-    --type $co_type_import \
+    --force $io_force \
+    --name $io_name \
     --date_end "${years[$year_id]}"
 case $? in
 $POW_IO_SUCCESSFUL)
@@ -148,13 +148,13 @@ $POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
     ;;
 esac
 
-log_info "Import du millésime $year de $co_type_import" &&
+log_info "Import du millésime $year de $io_name" &&
 # # no history (think about requested item, so REGEX)
 # execute_query \
-#     --name "DELETE_IO_${co_type_import}" \
-#     --query "DELETE FROM io_history WHERE co_type ~ '^${co_type_import}'" &&
+#     --name "DELETE_IO_${io_name}" \
+#     --query "DELETE FROM io_history WHERE co_type ~ '^${io_name}'" &&
 io_history_begin \
-    --type $co_type_import \
+    --name $io_name \
     --date_begin "${years[$year_id]}" \
     --date_end "${years[$year_id]}" \
     --nrows_todo 35000 \
@@ -324,5 +324,5 @@ io_history_end_ok \
     --nrows_processed "($_query_count)" \
     --id $year_history_id || on_import_error
 
-log_info "Import du millésime $year de $co_type_import avec succès"
+log_info "Import du millésime $year de $io_name avec succès"
 exit $SUCCESS_CODE

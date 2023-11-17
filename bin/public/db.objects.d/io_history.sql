@@ -4,53 +4,80 @@
 
 CREATE TABLE IF NOT EXISTS public.io_history (
     id SERIAL NOT NULL -- after INSERT, do: SELECT CURRVAL('io_history_id_seq')
-    , co_type VARCHAR(50) NOT NULL
-    , dt_exec_begin TIMESTAMP NOT NULL DEFAULT NOW()
-    , dt_exec_end TIMESTAMP
-    , co_status VARCHAR(10) NOT NULL DEFAULT 'EN_COURS' -- [ERREUR, SUCCES]
-    , dt_data_begin TIMESTAMP NOT NULL
-    , dt_data_end TIMESTAMP NOT NULL
-    , nb_rows_todo INTEGER NOT NULL
-    , nb_rows_processed INTEGER NOT NULL DEFAULT 0
-    , nb_rows_valid INTEGER                             -- useful ?
-    , co_status_integration VARCHAR(10)                 -- useful ?
-    , infos_data VARCHAR
+    , name VARCHAR(50) NOT NULL
+    , date_exec_begin TIMESTAMP NOT NULL DEFAULT NOW()
+    , date_exec_end TIMESTAMP
+    , status VARCHAR(10) NOT NULL DEFAULT 'EN_COURS' -- [ERREUR, SUCCES]
+    , date_data_begin TIMESTAMP NOT NULL
+    , date_data_end TIMESTAMP NOT NULL
+    , nb_rows_todo INTEGER NULL
+    , nb_rows_processed INTEGER NULL
+    , attributes VARCHAR
 );
+
+DO $$
+BEGIN
+    IF column_exists('public', 'io_history', 'co_type')) THEN
+        ALTER TABLE public.io_history RENAME COLUMN co_type TO name;
+    END IF;
+    IF column_exists('public', 'io_history', 'dt_exec_begin')) THEN
+        ALTER TABLE public.io_history RENAME COLUMN dt_exec_begin TO date_exec_begin;
+    END IF;
+    IF column_exists('public', 'io_history', 'dt_exec_end')) THEN
+        ALTER TABLE public.io_history RENAME COLUMN dt_exec_end TO date_exec_end;
+    END IF;
+    IF column_exists('public', 'io_history', 'co_status')) THEN
+        ALTER TABLE public.io_history RENAME COLUMN co_status TO status;
+    END IF;
+    IF column_exists('public', 'io_history', 'dt_data_begin')) THEN
+        ALTER TABLE public.io_history RENAME COLUMN dt_data_begin TO date_data_begin;
+    END IF;
+    IF column_exists('public', 'io_history', 'dt_data_end')) THEN
+        ALTER TABLE public.io_history RENAME COLUMN dt_data_end TO date_data_end;
+    END IF;
+    IF column_exists('public', 'io_history', 'nb_rows_valid')) THEN
+        ALTER TABLE public.io_history DROP COLUMN nb_rows_valid;
+    END IF;
+    IF column_exists('public', 'io_history', 'co_status_integration')) THEN
+        ALTER TABLE public.io_history DROP COLUMN co_status_integration;
+    END IF;
+    IF column_exists('public', 'io_history', 'infos_data')) THEN
+        ALTER TABLE public.io_history RENAME COLUMN infos_data TO attributes;
+    END IF;
+END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS iux_io_history_id ON public.io_history(id);
 DROP INDEX IF EXISTS uix_io_history_co_type;
-CREATE INDEX IF NOT EXISTS ix_io_history_co_type ON public.io_history(co_type);
+CREATE INDEX IF NOT EXISTS ix_io_history_co_type ON public.io_history(name);
 
 COMMENT ON TABLE public.io_history IS 'Historique des Entrées/Sorties';
 SELECT set_column_comment('public', 'io_history', 'id', 'Identifiant de l''Entrée/Sortie');
-SELECT set_column_comment('public', 'io_history', 'co_type', 'Nom de l''Entrée/Sortie');
-SELECT set_column_comment('public', 'io_history', 'dt_exec_begin', 'Début d''exécution');
-SELECT set_column_comment('public', 'io_history', 'dt_exec_end', 'Fin d''exécution');
-SELECT set_column_comment('public', 'io_history', 'co_status', 'Etat : EN_COURS, SUCCES OU ERREUR');
-SELECT set_column_comment('public', 'io_history', 'dt_data_begin', 'Début des données');
-SELECT set_column_comment('public', 'io_history', 'dt_data_end', 'Fin des données');
+SELECT set_column_comment('public', 'io_history', 'name', 'Nom de l''Entrée/Sortie');
+SELECT set_column_comment('public', 'io_history', 'date_exec_begin', 'Début d''exécution');
+SELECT set_column_comment('public', 'io_history', 'date_exec_end', 'Fin d''exécution');
+SELECT set_column_comment('public', 'io_history', 'status', 'Etat : EN_COURS, SUCCES OU ERREUR');
+SELECT set_column_comment('public', 'io_history', 'date_data_begin', 'Début des données');
+SELECT set_column_comment('public', 'io_history', 'date_data_end', 'Fin des données');
 SELECT set_column_comment('public', 'io_history', 'nb_rows_todo', 'Nb enregistrements à traiter');
 SELECT set_column_comment('public', 'io_history', 'nb_rows_processed', 'Nb enregistrements traités');
-SELECT set_column_comment('public', 'io_history', 'nb_rows_valid', 'Nb enregistrements validés');
-SELECT set_column_comment('public', 'io_history', 'co_status_integration', 'Etat intégration des données : NULL (à intégrer)', 'Valeurs possibles : EN_COURS, ERREUR ou SUCCES');
-SELECT set_column_comment('public', 'io_history', 'infos_data', 'Informations supplémentaires');
+SELECT set_column_comment('public', 'io_history', 'attributes', 'Informations supplémentaires');
 
 -- get all IO
 SELECT public.drop_all_functions_if_exists('public', 'get_all_io');
 CREATE OR REPLACE FUNCTION public.get_all_io(
-    type_in TEXT
+    name TEXT
     , date_end TIMESTAMP
-    , status_in VARCHAR DEFAULT 'SUCCES'
+    , status VARCHAR DEFAULT 'SUCCES'
 )
 RETURNS SETOF public.io_history AS
 $func$
 BEGIN
     RETURN QUERY SELECT *
-        FROM public.io_history
-        WHERE co_type = type_in
-        AND dt_data_end = date_end
-        AND co_status = status_in
-        ORDER BY dt_data_begin
+        FROM public.io_history h
+        WHERE h.name = get_all_io.name
+        AND date_data_end = get_all_io.date_end
+        AND h.status = get_all_io.status
+        ORDER BY h.date_data_begin
     ;
 END
 $func$ LANGUAGE plpgsql;
@@ -58,18 +85,18 @@ $func$ LANGUAGE plpgsql;
 -- get last IO
 SELECT public.drop_all_functions_if_exists('public', 'get_last_io');
 CREATE OR REPLACE FUNCTION public.get_last_io(
-    type_in TEXT
-    , status_in VARCHAR DEFAULT 'SUCCES'
+    name TEXT
+    , status VARCHAR DEFAULT 'SUCCES'
 )
 RETURNS SETOF public.io_history AS
 $func$
 BEGIN
     RETURN QUERY
         SELECT *
-        FROM public.io_history
-        WHERE co_type = type_in
-            AND co_status = status_in
-        ORDER BY dt_data_end DESC
+        FROM public.io_history h
+        WHERE h.name = get_last_io.name
+            AND h.status = get_last_io.status
+        ORDER BY h.date_data_end DESC
         LIMIT 1
     ;
 END
@@ -94,10 +121,10 @@ BEGIN
     _io_history.id := 0;
     FOREACH _io IN ARRAY _ios LOOP
         -- IO already exists?
-        _date_io := (public.get_last_io(type_in => _io)).dt_data_end;
+        _date_io := (public.get_last_io(name => _io)).date_data_end;
         IF _date_io IS NULL THEN
-            _io_history.dt_exec_begin := TIMEOFDAY()::TIMESTAMP;
-            _io_history.infos_data := CONCAT(
+            _io_history.date_exec_begin := TIMEOFDAY()::TIMESTAMP;
+            _io_history.attributes := CONCAT(
                 '{ "import" : '
                 , '{ "from" : "backup" } }'
                 );
@@ -111,7 +138,7 @@ BEGIN
                         , MIN(dt_reference_za)
                     )
                 INTO
-                    _io_history.dt_data_begin
+                    _io_history.date_data_begin
                 FROM
                     fr.laposte_address
                     ;
@@ -125,18 +152,11 @@ BEGIN
                         , MAX(dt_reference_za)
                     )
                 INTO
-                    _io_history.dt_data_end
+                    _io_history.date_data_end
                 FROM
                     fr.laposte_address
                     ;
 
-                /*
-                SELECT COUNT(*) INTO _nb_rows[1] FROM fr.laposte_address;
-                SELECT COUNT(*) INTO _nb_rows[2] FROM fr.laposte_zone_address;
-                SELECT COUNT(*) INTO _nb_rows[3] FROM fr.laposte_street;
-                SELECT COUNT(*) INTO _nb_rows[4] FROM fr.laposte_housenumber;
-                SELECT COUNT(*) INTO _nb_rows[5] FROM fr.laposte_complement;
-                 */
                 _nb_rows[1] := COUNT(*) FROM fr.laposte_address;
                 _nb_rows[2] := COUNT(*) FROM fr.laposte_zone_address;
                 _nb_rows[3] := COUNT(*) FROM fr.laposte_street;
@@ -147,7 +167,7 @@ BEGIN
                 FOR _i IN 2..5 LOOP
                     _io_history.nb_rows_todo := _io_history.nb_rows_todo + _nb_rows[_i];
                 END LOOP;
-                _io_history.infos_data := CONCAT(
+                _io_history.attributes := CONCAT(
                     '{ "import" : '
                     , '{ "from" : "backup", "items" : '
                     , '{ "address" : { "rows" : ', _nb_rows[1], ' }'
@@ -163,8 +183,8 @@ BEGIN
                     MIN(pdi_dt_modification)
                     , MAX(pdi_dt_modification)
                 INTO
-                    _io_history.dt_data_begin
-                    , _io_history.dt_data_end
+                    _io_history.date_data_begin
+                    , _io_history.date_data_end
                 FROM
                     fr.laposte_delivery_point
                     ;
@@ -172,8 +192,8 @@ BEGIN
                 _io_history.nb_rows_todo := COUNT(*) FROM fr.laposte_delivery_point;
             ELSIF _io = 'FR-ADDRESS-LAPOSTE-DELIVERY-ORGANIZATION' THEN
                 _io_history.nb_rows_todo := COUNT(*) FROM fr.laposte_delivery_address;
-                _io_history.dt_data_end := '2022-12-09'::DATE;
-                _io_history.dt_data_begin := _io_history.dt_data_end;
+                _io_history.date_data_end := '2022-12-09'::DATE;
+                _io_history.date_data_begin := _io_history.date_data_end;
             ELSE
                 _io_history.nb_rows_todo := COUNT(*) FROM fr.laposte_organization;
                 SELECT
@@ -188,7 +208,7 @@ BEGIN
                         , 'YY-MM-DD'
                     )
                 INTO
-                    _io_history.dt_data_begin
+                    _io_history.date_data_begin
                 FROM
                     fr.laposte_organization_all
                     ;
@@ -201,7 +221,7 @@ BEGIN
                         , 'YY-MM-DD'
                     )
                 INTO
-                    _io_history.dt_data_end
+                    _io_history.date_data_end
                 FROM
                     fr.laposte_organization_all
                 WHERE
@@ -218,10 +238,10 @@ BEGIN
                 public.io_history;
 
             -- common values
-            _io_history.co_type := _io;
-            _io_history.co_status := 'SUCCES';
+            _io_history.name := _io;
+            _io_history.status := 'SUCCES';
             _io_history.nb_rows_processed := _io_history.nb_rows_todo;
-            _io_history.dt_exec_end := TIMEOFDAY()::TIMESTAMP;
+            _io_history.date_exec_end := TIMEOFDAY()::TIMESTAMP;
 
             INSERT INTO public.io_history VALUES (_io_history.*);
         END IF;

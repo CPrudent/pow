@@ -15,8 +15,8 @@ bash_args \
         force:no' \
     "$@" || exit $ERROR_CODE
 
-co_type_import=FR-TERRITORY-BANATIC
-force="$get_arg_force"
+io_name=FR-TERRITORY-BANATIC
+io_force="$get_arg_force"
 
 on_import_error() {
     # import created?
@@ -42,7 +42,7 @@ on_import_error() {
 
 # get years
 io_get_list_online_available \
-    --type_import $co_type_import \
+    --name $io_name \
     --details_file years_list_path \
     --dates_list years || exit $ERROR_CODE
 [ "$POW_DEBUG" = yes ] && { declare -p years; declare -p years_list_path; }
@@ -53,18 +53,18 @@ rm "$years_list_path"
 year_id=0
 year=$(date -d ${years[$year_id]} +%Y)
 [ -n "$get_arg_year" ] && [ "${get_arg_year}" != "year" ] && {
-    log_info "seule la dernière version ($co_type_import) est en ligne!"
+    log_info "seule la dernière version ($io_name) est en ligne!"
 }
 [ -z "$year" ] && {
-    log_error "Impossible de trouver le millésime de $co_type_import"
+    log_error "Impossible de trouver le millésime de $io_name"
     exit $ERROR_CODE
 }
 [ "$POW_DEBUG" = yes ] && { echo "year=$year (${years[$year_id]})"; }
 
 set_env --schema_name fr &&
 io_todo_import \
-    --force $get_arg_force \
-    --type $co_type_import \
+    --force $io_force \
+    --name $io_name \
     --date_end "${years[$year_id]}"
 case $? in
 $POW_IO_SUCCESSFUL)
@@ -79,12 +79,12 @@ url_data='https://www.banatic.interieur.gouv.fr/V5/fichiers-en-telechargement/te
 {
     [ "$POW_DEBUG" = yes ] && { echo "url_data=$url_data"; } || true
 } &&
-log_info "Import du millésime $year de $co_type_import" &&
+log_info "Import du millésime $year de $io_name" &&
 execute_query \
-    --name "DELETE_IO_${co_type_import}" \
-    --query "DELETE FROM io_history WHERE co_type = '${co_type_import}'" &&
+    --name "DELETE_IO_${io_name}" \
+    --query "DELETE FROM io_history WHERE co_type = '${io_name}'" &&
 io_history_begin \
-    --type $co_type_import \
+    --name $io_name \
     --date_begin "${years[$year_id]}" \
     --date_end "${years[$year_id]}" \
     --nrows_todo 1250 \
@@ -175,5 +175,5 @@ vacuum \
     --table_name banatic_siren_insee \
     --mode ANALYZE || on_import_error
 
-log_info "Import du millésime $year de $co_type_import avec succès"
+log_info "Import du millésime $year de $io_name avec succès"
 exit $SUCCESS_CODE

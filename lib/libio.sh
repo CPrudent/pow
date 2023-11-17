@@ -12,7 +12,7 @@ _io_history_manager() {
         --args_p '
             method:méthode de mise à jour;
             status:état IO;
-            type:code type IO;
+            name:nom IO;
             date_begin:date de début des données (format connu PostgreSQL);
             date_end:date de fin des données (format connu PostgreSQL);
             nrows_todo:nombre de données à traiter;
@@ -39,9 +39,9 @@ _io_history_manager() {
         _return='--return _io_id_manager'
         _query="
             SELECT id FROM get_all_io(
-                type_in => '$get_arg_type'
+                name => '$get_arg_name'
                 , date_end => '$get_arg_date_end'::TIMESTAMP
-                , status_in => '$get_arg_status'
+                , status => '$get_arg_status'
             )
         "
         ;;
@@ -50,15 +50,15 @@ _io_history_manager() {
         _return='--return _io_id_manager'
         _query="
             INSERT INTO public.io_history(
-                co_type
-                , dt_data_begin
-                , dt_data_end
-                , co_status
+                name
+                , date_data_begin
+                , date_data_end
+                , status
                 , nb_rows_todo
-                , infos_data
+                , attributes
             )
             VALUES (
-                '$get_arg_type'
+                '$get_arg_name'
                 , '$get_arg_date_begin'::TIMESTAMP
                 , '$get_arg_date_end'::TIMESTAMP
                 , '${get_arg_status:-EN_COURS}'
@@ -75,11 +75,11 @@ _io_history_manager() {
         # itself (if no defined) to remain previous value
         _query="
             UPDATE public.io_history SET
-                dt_exec_end = NOW()
-                , co_status = 'SUCCES'
+                date_exec_end = NOW()
+                , status = 'SUCCES'
                 , nb_rows_processed = $get_arg_nrows_processed
-                , infos_data =
-                    CASE WHEN LENGTH('$get_arg_infos') = 0 THEN infos_data
+                , attributes =
+                    CASE WHEN LENGTH('$get_arg_infos') = 0 THEN attributes
                     ELSE '$get_arg_infos'
                     END
             WHERE id = $get_arg_id
@@ -88,8 +88,8 @@ _io_history_manager() {
     UPDATE_KO)
         _query="
             UPDATE public.io_history SET
-                dt_exec_end = NOW()
-                , co_status = 'ERREUR'
+                date_exec_end = NOW()
+                , status = 'ERREUR'
             WHERE id = $get_arg_id
         "
         ;;
@@ -99,24 +99,23 @@ _io_history_manager() {
         _query="
             COPY (
                 SELECT
-                    co_type
-                    , dt_exec_begin
-                    , dt_exec_end
-                    , dt_data_begin
-                    , dt_data_end
-                    , co_status
+                    name
+                    , date_exec_begin
+                    , date_exec_end
+                    , status
+                    , date_data_begin
+                    , date_data_end
                     , nb_rows_todo
                     , nb_rows_processed
-                    , co_status_integration
-                    , infos_data
+                    , attributes
                 FROM
                     public.io_history
                 WHERE
-                    co_type ~ '$get_arg_type'
+                    name ~ '$get_arg_name'
                     AND
-                    co_status = 'SUCCES'
+                    status = 'SUCCES'
                 ORDER BY
-                    dt_exec_end DESC
+                    date_exec_end DESC
                 LIMIT
                     1
             ) TO STDOUT WITH (DELIMITER ';', FORMAT CSV, HEADER TRUE, ENCODING UTF8)
@@ -129,7 +128,7 @@ _io_history_manager() {
     esac
 
     execute_query \
-        --name IO_${get_arg_method}_${get_arg_type:-$get_arg_id} \
+        --name IO_${get_arg_method}_${get_arg_name:-$get_arg_id} \
         --query "$_query" \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         $_return \
@@ -149,13 +148,13 @@ _io_history_manager() {
 io_history_exists() {
     bash_args \
         --args_p '
-            type:code type IO;
+            name:nom IO;
             date_end:date de fin des données (format connu PostgreSQL);
             status:état IO;
             id:variable pour récupérer ID de IO
         ' \
         --args_o '
-            type;
+            name;
             date
         ' \
         --args_v '
@@ -171,7 +170,7 @@ io_history_exists() {
     _io_history_manager \
         --method EXISTS \
         --status $get_arg_status \
-        --type $get_arg_type \
+        --name $get_arg_name \
         --date_end "$get_arg_date_end" \
         --id _io_id || return $ERROR_CODE
 
@@ -189,13 +188,13 @@ io_todo_import() {
     bash_args \
         --args_p '
             force:option de forçage du traitement;
-            type:code type IO;
+            name:nom IO;
             date_end:date de fin des données (format connu PostgreSQL);
             purge:purge historique précédent;
             id:variable pour récupérer ID de IO
         ' \
         --args_o '
-            type;
+            name;
             date_end
         ' \
         --args_v '
@@ -212,30 +211,30 @@ io_todo_import() {
 
     [ "$get_arg_force" = no ] && {
         io_history_exists \
-            --type $get_arg_type \
+            --name $get_arg_name \
             --date_end "${get_arg_date_end}" \
             --status SUCCES \
             --id _io_id_todo
     } && {
-        log_info "Le traitement $get_arg_type a déjà été réalisé avec succès"
+        log_info "Le traitement $get_arg_name a déjà été réalisé avec succès"
         return $POW_IO_SUCCESSFUL
     }
 
     {
         io_history_exists \
-            --type $get_arg_type \
+            --name $get_arg_name \
             --date_end "${get_arg_date_end}" \
             --status EN_COURS \
             --id _io_id_todo
     } && {
-        log_info "Le traitement $get_arg_type est déjà en cours"
+        log_info "Le traitement $get_arg_name est déjà en cours"
         return $POW_IO_IN_PROGRESS
     }
     [ "$get_arg_purge" = yes ] && {
         # purge previous history
         execute_query \
-            --name "DELETE_IO_${get_arg_type}" \
-            --query "DELETE FROM io_history WHERE co_type = '${get_arg_type}'" || return $POW_IO_ERROR
+            --name "DELETE_IO_${get_arg_name}" \
+            --query "DELETE FROM io_history WHERE name = '${get_arg_name}'" || return $POW_IO_ERROR
     }
 
     return $POW_IO_TODO
@@ -360,7 +359,7 @@ io_get_ids_integration() {
 io_history_begin() {
     bash_args \
         --args_p '
-            type:code type IO;
+            name:nom IO;
             date_begin:date de début des données (format connu PostgreSQL);
             date_end:date de fin des données (format connu PostgreSQL);
             nrows_todo:nombre de données à traiter;
@@ -368,7 +367,7 @@ io_history_begin() {
             id:nom de la variable pour récupérer identifiant IO
         ' \
         --args_o '
-            type;
+            name;
             date_begin;
             date_end;
             nrows_todo;
@@ -380,7 +379,7 @@ io_history_begin() {
 
     _io_history_manager \
         --method APPEND \
-        --type $get_arg_type \
+        --name $get_arg_name \
         --status EN_COURS \
         --date_begin "$get_arg_date_begin" \
         --date_end "$get_arg_date_end" \
@@ -433,17 +432,17 @@ io_history_end_ko() {
 io_history_export_last() {
     bash_args \
         --args_p '
-            type:code type IO;
+            name:nom IO;
             output:sortie pour export
         ' \
         --args_o '
-            type;
+            name;
         ' \
         "$@" || return $ERROR_CODE
 
     _io_history_manager \
         --method EXPORT_LAST \
-        --type $get_arg_type \
+        --name $get_arg_name \
         --output "$get_arg_output" || return $ERROR_CODE
 
     return $SUCCESS_CODE
@@ -457,12 +456,12 @@ io_history_export_last() {
 io_get_list_online_available() {
     bash_args \
         --args_p '
-            type_import:Produit en ligne recherché;
+            name:nom IO recherché en ligne;
             details_file:Détail des millésimes disponibles;
             dates_list:Dates des millésimes disponibles
         ' \
         --args_o '
-            type_import;
+            name;
             details_file;
             dates_list
         ' \
@@ -472,7 +471,7 @@ io_get_list_online_available() {
     local -n _details_file_ref=$get_arg_details_file
     local -n _dates_ref=$get_arg_dates_list
 
-    case $get_arg_type_import in
+    case $get_arg_name in
     FR-TERRITORY-IGN)
         _url='https://geoservices.ign.fr/adminexpress'
         _re1='href="(http|ftp)[^"]+ADMIN-EXPRESS_(?(?!WM)[^"])+[0-9-]{10}\.7z[^"]*'
@@ -500,7 +499,7 @@ io_get_list_online_available() {
         _re2='[0-9]{4}'
         ;;
     *)
-        log_error "produit $get_arg_type_import non pris en charge!"
+        log_error "IO $get_arg_name non pris en charge!"
         return $ERROR_CODE
         ;;
     esac
@@ -509,14 +508,14 @@ io_get_list_online_available() {
     get_tmp_file --tmpext html --tmpfile _details_file_ref &&
     # download available dates
     io_download_file \
-        --name $get_arg_type_import \
+        --name $get_arg_name \
         --url "$_url" \
         --output_directory "$POW_DIR_TMP" \
         --output_file "$(basename $_details_file_ref)" \
         --overwrite yes &&
     # array of available dates (desc), transforming / to -
     _dates_ref=($(grep $_only_matching_re1 --perl-regexp "$_re1" $_details_file_ref | grep --only-matching --perl-regexp "$_re2" | sed -e 's@/@-@g' | uniq | sort --reverse)) || {
-        log_error "Impossible de consulter la liste des millésimes disponibles de $get_arg_type_import"
+        log_error "Impossible de consulter la liste des millésimes disponibles de $get_arg_name"
         return $ERROR_CODE
     }
 
