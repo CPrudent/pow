@@ -244,7 +244,7 @@ io_todo_import() {
 io_get_info_integration() {
     bash_args \
         --args_p '
-            name:IO name;
+            name:nom IO;
             to_hash:variable pour récupérer la description de cette intégration;
             to_string:variable pour récupérer la description de cette intégration
         ' \
@@ -274,7 +274,7 @@ io_get_info_integration() {
     return $SUCCESS_CODE
 }
 
-# build list of IDs as string (coded as JSON) for IO history
+# build list of IDs as string (coded as JSON) for IO history of IO (as DEPENDS) or given by name
 io_get_ids_integration() {
     bash_args \
         --args_p '
@@ -449,14 +449,14 @@ io_history_export_last() {
 }
 
     #
-    # manage transfer
+    # transfer
     #
 
 # get available dates (list, details as URL)
 io_get_list_online_available() {
     bash_args \
         --args_p '
-            name:nom IO recherché en ligne;
+            name:nom IO à rechercher (en ligne);
             details_file:Détail des millésimes disponibles;
             dates_list:Dates des millésimes disponibles
         ' \
@@ -658,6 +658,10 @@ io_download_file() {
 
     return $SUCCESS_CODE
 }
+
+    #
+    # ETL
+    #
 
 # BOM: byte-order mark
 # https://learn.microsoft.com/fr-fr/globalization/encoding/byte-order-mark
