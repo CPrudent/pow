@@ -104,7 +104,7 @@ set_env --schema_name fr &&
 execute_query \
     --name "LAST_IO_${io_name}" \
     --query "
-        SELECT TO_CHAR(dt_data_end, 'YYYY-MM-DD')
+        SELECT TO_CHAR(date_data_end, 'YYYY-MM-DD')
         FROM get_last_io('${io_name}')" \
     --psql_arguments 'tuples-only:pset=format=unaligned' \
     --return _last_io &&
@@ -152,7 +152,7 @@ log_info "Import du millésime $year de $io_name" &&
 # # no history (think about requested item, so REGEX)
 # execute_query \
 #     --name "DELETE_IO_${io_name}" \
-#     --query "DELETE FROM io_history WHERE co_type ~ '^${io_name}'" &&
+#     --query "DELETE FROM io_history WHERE name ~ '^${io_name}'" &&
 io_history_begin \
     --name $io_name \
     --date_begin "${years[$year_id]}" \

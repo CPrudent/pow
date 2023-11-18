@@ -7,9 +7,9 @@
 
 on_integration_error() {
     bash_args \
-        --args_p "
+        --args_p '
             id:ID historique en cours
-        " \
+        ' \
         --args_o '
             id
         ' \
@@ -23,9 +23,9 @@ on_integration_error() {
 }
 
 bash_args \
-    --args_p "
+    --args_p '
         force:Forcer le traitement même si celui-ci a déjà été fait
-    " \
+    ' \
     --args_v '
         force:yes|no
     ' \

@@ -99,7 +99,7 @@ BEGIN
     IF ARRAY_UPPER(from_array, 1) IS NULL THEN RETURN 0; END IF;
 
     FOR _i IN 1 .. ARRAY_UPPER(from_array, 1) LOOP
-        IF from_array[_i].co_type = name THEN
+        IF from_array[_i].name = name THEN
             _id := _i;
             EXIT;
         END IF;
@@ -139,13 +139,13 @@ DECLARE
     _last_io TIMESTAMP;
 BEGIN
     IF name = 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT-GEOMETRY' THEN
-        _last_io := (public.get_last_io(type_in => 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT')).dt_data_end;
+        _last_io := (public.get_last_io(name => 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT')).date_data_end;
     ELSIF name = 'FR-TERRITORY-IGN-EVENT' THEN
-        _last_io := (public.get_last_io(type_in => 'FR-TERRITORY-IGN')).dt_data_end;
+        _last_io := (public.get_last_io(name => 'FR-TERRITORY-IGN')).date_data_end;
     ELSIF name = 'FR-TERRITORY-INSEE-EVENT' THEN
-        _last_io := (public.get_last_io(type_in => 'FR-TERRITORY-INSEE')).dt_data_end;
+        _last_io := (public.get_last_io(name => 'FR-TERRITORY-INSEE')).date_data_end;
     ELSIF name = 'FR-TERRITORY-LAPOSTE-AREA-EVENT' THEN
-        _last_io := (public.get_last_io(type_in => 'FR-TERRITORY-LAPOSTE-AREA')).dt_data_end;
+        _last_io := (public.get_last_io(name => 'FR-TERRITORY-LAPOSTE-AREA')).date_data_end;
     END IF;
 
     _query := CASE name
@@ -795,7 +795,7 @@ BEGIN
                     SELECT h.id
                     FROM
                         (SELECT UNNEST(_io_depends) name) l
-                            JOIN get_last_io(l.name) h ON h.co_type = l.name
+                            JOIN get_last_io(l.name) h ON h.name = l.name
                 )
         );
     END IF;
@@ -811,7 +811,7 @@ BEGIN
                 SELECT io.id::TEXT::INT id
                 FROM (
                     SELECT value id
-                    FROM JSON_EACH((SELECT (get_last_io(io_is_todo.name)).infos_data::JSON))
+                    FROM JSON_EACH((SELECT (get_last_io(io_is_todo.name)).attributes::JSON))
                 ) io
             )
     );
@@ -834,7 +834,7 @@ BEGIN
                 -- eval difference to known if todo
                 _more_recent := TRUE;
             ELSE
-                _more_recent := (_io_lasts[_j].dt_data_end > _io_currents[_k].dt_data_end);
+                _more_recent := (_io_lasts[_j].date_data_end > _io_currents[_k].date_data_end);
             END IF;
         ELSE
             _relation := public.io_is_todo(name => _io_depends[_i]);

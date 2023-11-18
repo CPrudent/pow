@@ -80,9 +80,9 @@ url_data='https://www.banatic.interieur.gouv.fr/V5/fichiers-en-telechargement/te
     [ "$POW_DEBUG" = yes ] && { echo "url_data=$url_data"; } || true
 } &&
 log_info "Import du millésime $year de $io_name" &&
-execute_query \
-    --name "DELETE_IO_${io_name}" \
-    --query "DELETE FROM io_history WHERE co_type = '${io_name}'" &&
+# execute_query \
+#     --name "DELETE_IO_${io_name}" \
+#     --query "DELETE FROM io_history WHERE name = '${io_name}'" &&
 io_history_begin \
     --name $io_name \
     --date_begin "${years[$year_id]}" \

@@ -127,20 +127,11 @@ fi
 
 log_info "Import du millésime $year de $io_name" &&
 {
-    case "$io_load_mode" in
-    OVERWRITE)
-        execute_query \
-            --name "DELETE_IO_${io_name}" \
-            --query "DELETE FROM io_history WHERE co_type = '${io_name}'"
-        ;;
-    APPEND)
-        execute_query \
-            --name "DELETE_IO_${io_name}_${year}" \
-            --query "
-                DELETE FROM io_history
-                WHERE co_type = '${io_name}' AND dt_data_begin = '${years[$year_id]}'"
-        ;;
-    esac
+    execute_query \
+        --name "DELETE_IO_${io_name}_${year}" \
+        --query "
+            DELETE FROM io_history
+            WHERE name = '${io_name}' AND date_data_begin = '${years[$year_id]}'"
 } &&
 io_history_begin \
     --name $io_name \

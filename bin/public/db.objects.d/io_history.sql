@@ -58,8 +58,8 @@ BEGIN
 END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS iux_io_history_id ON public.io_history(id);
-DROP INDEX IF EXISTS uix_io_history_co_type;
-CREATE INDEX IF NOT EXISTS ix_io_history_co_type ON public.io_history(name);
+DROP INDEX IF EXISTS ix_io_history_co_type;
+CREATE INDEX IF NOT EXISTS ix_io_history_name ON public.io_history(name);
 
 COMMENT ON TABLE public.io_history IS 'Historique des Entrées/Sorties';
 SELECT set_column_comment('public', 'io_history', 'id', 'Identifiant de l''Entrée/Sortie');
@@ -73,9 +73,10 @@ SELECT set_column_comment('public', 'io_history', 'nb_rows_todo', 'Nb enregistre
 SELECT set_column_comment('public', 'io_history', 'nb_rows_processed', 'Nb enregistrements traités');
 SELECT set_column_comment('public', 'io_history', 'attributes', 'Informations supplémentaires');
 
--- get all IO
+-- get IO
 SELECT public.drop_all_functions_if_exists('public', 'get_all_io');
-CREATE OR REPLACE FUNCTION public.get_all_io(
+SELECT public.drop_all_functions_if_exists('public', 'get_io');
+CREATE OR REPLACE FUNCTION public.get_io(
     name TEXT
     , date_end TIMESTAMP
     , status VARCHAR DEFAULT 'SUCCES'
@@ -85,10 +86,10 @@ $func$
 BEGIN
     RETURN QUERY SELECT *
         FROM public.io_history h
-        WHERE h.name = get_all_io.name
-        AND date_data_end = get_all_io.date_end
-        AND h.status = get_all_io.status
-        ORDER BY h.date_data_begin
+        WHERE h.name = get_io.name
+        AND date_data_end = get_io.date_end
+        AND h.status = get_io.status
+        --ORDER BY h.date_data_begin ?
     ;
 END
 $func$ LANGUAGE plpgsql;

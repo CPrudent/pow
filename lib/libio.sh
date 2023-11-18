@@ -38,10 +38,10 @@ _io_history_manager() {
         local -n _io_id_manager=$get_arg_id
         _return='--return _io_id_manager'
         _query="
-            SELECT id FROM get_all_io(
+            SELECT id FROM get_io(
                 name => '$get_arg_name'
-                , date_end => '$get_arg_date_end'::TIMESTAMP
                 , status => '$get_arg_status'
+                , date_end => '$get_arg_date_end'::TIMESTAMP
             )
         "
         ;;
@@ -255,7 +255,7 @@ io_get_info_integration() {
         "$@" || return $POW_IO_ERROR
 
     local -n _hash_ref=$get_arg_to_hash
-    local -n _str_ref=$get_arg_to_string
+    [ -n "$get_arg_to_string" ] && local -n _str_ref=$get_arg_to_string
     local _tmpfile
     get_tmp_file --tmpfile _tmpfile &&
     execute_query \
@@ -269,7 +269,7 @@ io_get_info_integration() {
     while read; do
         _hash_ref[${REPLY%=*}]=${REPLY#*>}
     done < <(sed --expression 's/"//g' --expression 's/,/\n/g' < $_tmpfile | sed --expression 's/^[ ]*//')
-    _str_ref=$(< $_tmpfile)
+    [ -n "$get_arg_to_string" ] && _str_ref=$(< $_tmpfile)
     rm $_tmpfile
     return $SUCCESS_CODE
 }
