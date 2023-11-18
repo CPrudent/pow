@@ -77,8 +77,17 @@ io_history_begin \
     for (( io_step=0; io_step<${#io_steps[@]}; io_step++ )); do
         # last id
         io_ids[$io_step]=${io_hash[${io_steps[$io_step]}_i]}
+        case ${io_steps[$io_step]} in
+        FR-TERRITORY-LAPOSTE-AREA)
+            # only event is to do (others influence FR-TERRITORY or here FR_TERRITORY_LAPOSTE_SUPRA)
+            _step=${io_steps[$io_step]}_EVENT
+            ;;
+        *)
+            _step=${io_steps[$io_step]}
+            ;;
+        esac
         # step todo or force it ?
-        ([ "$io_force" = no ] && (! is_yes --var io_hash[${io_steps[$io_step]}_t])) || {
+        ([ "$io_force" = no ] && (! is_yes --var io_hash[${_step}_t])) || {
             io_history_begin \
                 --name ${io_steps[$io_step]} \
                 --date_begin "$io_date" \

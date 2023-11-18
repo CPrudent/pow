@@ -62,7 +62,7 @@ _io_history_manager() {
                 , '$get_arg_date_begin'::TIMESTAMP
                 , '$get_arg_date_end'::TIMESTAMP
                 , '${get_arg_status:-EN_COURS}'
-                , $get_arg_nrows_todo
+                , ${get_arg_nrows_todo:-NULL}
                 ,
                     CASE WHEN LENGTH('$get_arg_infos') = 0 THEN NULL
                     ELSE '$get_arg_infos'
@@ -77,7 +77,7 @@ _io_history_manager() {
             UPDATE public.io_history SET
                 date_exec_end = NOW()
                 , status = 'SUCCES'
-                , nb_rows_processed = $get_arg_nrows_processed
+                , nb_rows_processed = ${get_arg_nrows_processed:-NULL}
                 , attributes =
                     CASE WHEN LENGTH('$get_arg_infos') = 0 THEN attributes
                     ELSE '$get_arg_infos'
