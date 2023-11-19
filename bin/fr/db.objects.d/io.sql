@@ -42,6 +42,7 @@ BEGIN
     -- ADMIN EXPRESS
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN-MUNICIPALITY');
+    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN-MUNICIPALITY-POPULATION');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN-GEOMETRY');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN-EVENT');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-BANATIC');
@@ -153,11 +154,14 @@ BEGIN
     /*
        FR-TERRITORY-IGN
             |-> FR-TERRITORY-IGN-MUNICIPALITY
+            |-> FR-TERRITORY-IGN-MUNICIPALITY-POPULATION
             |-> FR-TERRITORY-IGN-EVENT
      */
 
     _id_2 := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-IGN');
     _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-IGN-MUNICIPALITY');
+    CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
+    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-IGN-MUNICIPALITY-POPULATION');
     CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
     _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-TERRITORY-IGN-EVENT');
     CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);

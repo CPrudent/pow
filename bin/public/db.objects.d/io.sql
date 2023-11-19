@@ -161,10 +161,10 @@ BEGIN
                         insee_com NOT IN (''75056'', ''13055'', ''69123'')
                     UNION
                     SELECT
-                        arm.insee_arm
-                        , arm.nom
+                        insee_arm
+                        , nom
                     FROM
-                        fr.admin_express_arrondissement_municipal AS arm
+                        fr.admin_express_arrondissement_municipal
                 ) x
 
                 FULL OUTER JOIN
@@ -190,6 +190,42 @@ BEGIN
                     OR
                     x.libgeo IS DISTINCT FROM t.libgeo
                 )
+            '
+        WHEN 'FR-TERRITORY-IGN-MUNICIPALITY-POPULATION' THEN
+            '
+                (
+                    SELECT
+                        insee_com AS codgeo
+                        , population
+                    FROM
+                        fr.admin_express_commune
+                    WHERE
+                        insee_com NOT IN (''75056'', ''13055'', ''69123'')
+                    UNION
+                    SELECT
+                        insee_arm
+                        , population
+                    FROM
+                        fr.admin_express_arrondissement_municipal
+                ) x
+
+                JOIN
+
+                (
+                    SELECT
+                        codgeo
+                        , population
+                    FROM
+                        fr.territory
+                    WHERE
+                        nivgeo = ''COM''
+                        AND
+                        codgeo !~ ''^(98|97[578])''
+                ) t
+
+                ON x.codgeo = t.codgeo
+            WHERE
+                x.population != t.population
             '
         WHEN 'FR-TERRITORY-IGN-GEOMETRY' THEN
             '
@@ -359,7 +395,6 @@ BEGIN
                 , '''::DATE
                 '
             )
-
         WHEN 'FR-TERRITORY-BANATIC-LIST' THEN
             '
                 (
