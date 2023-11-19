@@ -203,10 +203,10 @@ BEGIN
                         insee_com NOT IN (''75056'', ''13055'', ''69123'')
                     UNION
                     SELECT
-                        arm.insee_arm
-                        , arm.geom
+                        insee_arm
+                        , geom
                     FROM
-                        fr.admin_express_arrondissement_municipal AS arm
+                        fr.admin_express_arrondissement_municipal
                 ) x
 
                 JOIN
@@ -230,7 +230,19 @@ BEGIN
         WHEN 'FR-TERRITORY-IGN-EVENT' THEN
             CONCAT(
                 '
-                    fr.admin_express_commune ign
+                    (
+                        SELECT
+                            insee_com
+                        FROM
+                            fr.admin_express_commune
+                        WHERE
+                            insee_com NOT IN (''75056'', ''13055'', ''69123'')
+                        UNION
+                        SELECT
+                            insee_arm
+                        FROM
+                            fr.admin_express_arrondissement_municipal
+                    ) ign
                         CROSS JOIN fr.get_municipality_to_date(
                             code => ign.insee_com
                             , code_previous => ign.insee_com
