@@ -470,10 +470,10 @@ BEGIN
         -- France Métropolitaine, Monaco
         WHEN 2154 THEN
             --(x BETWEEN -357823.2365 AND 1313632.3628) AND (y BETWEEN 6037008.6939 AND 7230727.3772)
-            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'France métropolitaine hors Corse', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM ign.admin_express_commune WHERE insee_dep NOT LIKE '97%' AND insee_dep NOT IN ('2A', '2B')
+            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'France métropolitaine hors Corse', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM fr.ign_municipality WHERE insee_dep NOT LIKE '97%' AND insee_dep NOT IN ('2A', '2B')
             --> BOX(97038 6135116, 1084898 7112480)
             (x BETWEEN 97038 AND 1084898) AND (y BETWEEN 6135116 AND 7112480)
-            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Corse', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM ign.admin_express_commune WHERE insee_dep IN ('2A', '2B')
+            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Corse', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM fr.ign_municipality WHERE insee_dep IN ('2A', '2B')
             --> BOX(1154228 6044556, 1244436 6237452)
             OR (x BETWEEN 1154228 AND 1244436) AND (y BETWEEN 6044556 AND 6237452)
 
@@ -482,34 +482,34 @@ BEGIN
             * + Saint-Martin (978XX). Fait partie des îles Leeward dans la mer des Caraïbes. Elle est divisée entre 2 pays distincts : sa partie nord, appelée Saint-Martin, est française, et sa partie sud, Sint Maarten, est néerlandaise.
             */
         WHEN 4559 THEN (x BETWEEN 428749.41 AND 1079045.02) AND (y BETWEEN 1556673.78 AND 2058754.66)
-            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Guadeloupe', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM ign.admin_express_commune WHERE insee_dep = '971'
+            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Guadeloupe', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM fr.ign_municipality WHERE insee_dep = '971'
             --> BOX(625198 1748873, 715444 1828464)
-            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Martinique', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM ign.admin_express_commune WHERE insee_dep = '972'
+            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Martinique', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM fr.ign_municipality WHERE insee_dep = '972'
             --> BOX(688550 1589776, 738127 1647746)
-            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Saint-Barthélemy', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM ign.admin_express_commune WHERE insee_dep = '977'
+            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Saint-Barthélemy', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM fr.ign_municipality WHERE insee_dep = '977'
             --> NULL
-            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Saint-Martin', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM ign.admin_express_commune WHERE insee_dep = '978'
+            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Saint-Martin', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM fr.ign_municipality WHERE insee_dep = '978'
             --> NULL
 
         --Guyane française (973XX), région d'outre-mer située sur la côte nord-est de l'Amérique du Sud
         WHEN 2972 THEN (x BETWEEN 99415.20 AND 669342.50) AND (y BETWEEN 233683.27 AND 981936.72)
-            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Guyane', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM ign.admin_express_commune WHERE insee_dep = '973'
+            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Guyane', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM fr.ign_municipality WHERE insee_dep = '973'
             --> BOX(97207 231683, 433296 638175)
 
         --Ile de la Réunion (974XX)
         WHEN 2975 THEN (x BETWEEN -23344.18 AND 631069.19) AND (y BETWEEN 7256163.66 AND 7978390.98)
-            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Réunion', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM ign.admin_express_commune WHERE insee_dep = '974'
+            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Réunion', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM fr.ign_municipality WHERE insee_dep = '974'
             --> BOX(312668 7632101, 381239 7693275)
 
         --Mayotte (976XX), archipel de l'océan Indien situé entre Madagascar et la côte du Mozambique
         WHEN 4471 THEN (x BETWEEN 357748.31 AND 685530.19) AND (y BETWEEN 8397670.97 AND 8746991.06)
-            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Mayotte', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM ign.admin_express_commune WHERE insee_dep = '976'
+            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Mayotte', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM fr.ign_municipality WHERE insee_dep = '976'
             --> BOX(499991 8560261, 534560 8605052)
 
         /* Saint-Pierre-et-Miquelon (975XX), archipel français au sud de l'île canadienne de Terre-Neuve
             * Pas de code projection RAN défini, ni d'adresse RAN existante
         WHEN 4467
-            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Saint-Pierre-et-Miquelon', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM ign.admin_express_commune WHERE insee_dep = '975' OR insee_com LIKE '975%' OR nom ILIKE '%Miquelon%'
+            -- SELECT ST_Envelope(ST_Collect(ST_Transform(ST_Buffer(ST_Envelope(geom), 2000), 4326))), 'Saint-Pierre-et-Miquelon', ST_Extent(ST_Buffer(ST_Envelope(geom), 2000)) FROM fr.ign_municipality WHERE insee_dep = '975' OR insee_com LIKE '975%' OR nom ILIKE '%Miquelon%'
             --> NULL
         */
         END;

@@ -316,7 +316,7 @@ BEGIN
                         , insee_dep AS codgeo_dep_parent
                         , insee_reg AS codgeo_reg_parent
                     FROM
-                        fr.admin_express_commune
+                        fr.ign_municipality
                     WHERE
                         insee_com NOT IN ('75056', '13055', '69123')
                     UNION
@@ -326,8 +326,8 @@ BEGIN
                         , com.insee_dep
                         , com.insee_reg
                     FROM
-                        fr.admin_express_arrondissement_municipal AS arm
-                        INNER JOIN fr.admin_express_commune AS com
+                        fr.ign_municipal_district AS arm
+                        INNER JOIN fr.ign_municipality AS com
                         ON arm.insee_com = com.insee_com
                 )
                 AS commune_ign
@@ -370,7 +370,7 @@ BEGIN
                             , (
                                 -- région IGN du département retenu
                                 SELECT insee_reg
-                                FROM fr.admin_express_departement
+                                FROM fr.ign_department
                                 WHERE insee_dep = dep_parent.codgeo
                             )
                             -- c'est un département fictif, on créé une région fictive pour ce/ces départements (97/98/99)
@@ -560,7 +560,7 @@ BEGIN
                     insee_com AS codgeo
                     , population
                 FROM
-                    fr.admin_express_commune
+                    fr.ign_municipality
                 WHERE
                     insee_com NOT IN ('75056', '13055', '69123')
                 UNION
@@ -568,7 +568,7 @@ BEGIN
                     insee_arm
                     , population
                 FROM
-                    fr.admin_express_arrondissement_municipal
+                    fr.ign_municipal_district
             )
             AS commune_ign
         WHERE commune_ign.codgeo = territory.codgeo AND territory.nivgeo = 'COM';
@@ -620,7 +620,7 @@ BEGIN
                 , insee_com AS codgeo
                 , nom AS libgeo
             FROM
-                fr.admin_express_commune
+                fr.ign_municipality
             WHERE
                 insee_com NOT IN ('75056', '13055', '69123')
             UNION
@@ -629,14 +629,14 @@ BEGIN
                 , insee_arm
                 , nom
             FROM
-                fr.admin_express_arrondissement_municipal
+                fr.ign_municipal_district
             UNION
             SELECT
                 'COM_GLOBALE_ARM' AS nivgeo
                 , insee_com AS codgeo
                 , nom AS libgeo
             FROM
-                fr.admin_express_commune
+                fr.ign_municipality
             WHERE
                 insee_com IN ('75056', '13055', '69123')
     ) AS commune_ign

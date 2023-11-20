@@ -45,22 +45,41 @@ declare -a _AVAILABLE_ITEMS=(
 _AVAILABLE_ITEMS_JOIN_PIPE=${_AVAILABLE_ITEMS[@]}
 _AVAILABLE_ITEMS_JOIN_PIPE=${_AVAILABLE_ITEMS_JOIN_PIPE// /|}
 
+declare -A _TABLES=(
+    [ARRONDISSEMENT]=district
+    [ARRONDISSEMENT_MUNICIPAL]=municipal_district
+    [CANTON]=canton
+    [CHFLIEU_ARRONDISSEMENT_MUNICIPAL]=district_capital
+    [CHFLIEU_COMMUNE]=municipality_capital
+    [CHFLIEU_COMMUNE_ASSOCIEE_OU_DELEGUEE]=
+    [COLLECTIVITE_TERRITORIALE]=
+    [COMMUNE]=municipality
+    [COMMUNE_ASSOCIEE_OU_DELEGUEE]=old_municipality
+    [DEPARTEMENT]=department
+    [EPCI]=epci
+    [REGION]=region
+)
+
 bash_args \
     --args_p '
         force:Forcer le traitement même si celui-ci a déjà été fait;
         item:Type d élément a importer;
-        year:Importer un millésime spécifique (au format YYYY-MM-DD) au lieu du dernier millésime disponible
+        year:Importer un millésime spécifique (au format YYYY-MM-DD) au lieu du dernier millésime disponible;
+        clean:Effacer les résultats intermédiaires
     ' \
     --args_v '
         force:yes|no;
+        clean:yes|no;
         item:'$_AVAILABLE_ITEMS_JOIN_PIPE \
     --args_d '
-        force:no
+        force:no;
+        clean:yes
     ' \
     "$@" || exit $ERROR_CODE
 
 io_name=FR-TERRITORY-IGN
-io_force="$get_arg_force"
+io_force=$get_arg_force
+io_clean=$get_arg_clean
 
 on_import_error() {
     # import created?
@@ -95,8 +114,8 @@ if [ -z "$get_arg_item" ]; then
     # NOTE: some items seem not useful, and EPCI is taken elsewhere
     declare -a ITEMS=(COMMUNE ARRONDISSEMENT_MUNICIPAL DEPARTEMENT REGION)
 else
-	io_name=FR-TERRITORY-IGN-$get_arg_item
-	declare -a ITEMS=($get_arg_item)
+    io_name=FR-TERRITORY-IGN-$get_arg_item
+    declare -a ITEMS=($get_arg_item)
 fi
 
 set_env --schema_name fr &&
@@ -187,7 +206,7 @@ io_history_begin \
                 _query_union=
                 _query_drop=
                 _file_count=1
-                _table_name=$(echo 'admin_express_'$_item | tr '[:upper:]' '[:lower:]')
+                _table_name=ign_${_TABLES[$_item]}
                 [ "$POW_DEBUG" = yes ] && echo "table=${_table_name}"
                 for _shapefile_full_path in $(find "$POW_DIR_TMP/$year_data" -type f -iname ${_item}.shp); do
                     # NOTE: no spatial index (not slow down)
@@ -224,7 +243,7 @@ io_history_begin \
                                     DROP TABLE IF EXISTS fr.$_table_name CASCADE;
                                     CREATE TABLE fr.$_table_name AS ($_query_union);
                                     ALTER TABLE fr.$_table_name
-                                        ALTER COLUMN geom TYPE geometry(MultiPolygon);
+                                        ALTER COLUMN geom TYPE GEOMETRY(MULTIPOLYGON);
                                     "
                         else
                             # other loop, append
@@ -236,10 +255,13 @@ io_history_begin \
                         fi
                         set +o noglob
                     fi
-                } &&
-                execute_query \
-                    --name "DROP_TMP_${_table_name}" \
-                    --query "$_query_drop" || on_import_error
+                } && {
+                    if [ "$io_clean" = yes ]; then
+                        execute_query \
+                            --name "DROP_TMP_${_table_name}" \
+                            --query "$_query_drop"
+                    fi
+                } || on_import_error
             done
         } &&
         rm --recursive "$POW_DIR_TMP/$year_data" &&
@@ -251,7 +273,7 @@ io_history_begin \
         _query_union=
         _query_drop=
         _file_count=1
-        _table_name=$(echo 'admin_express_'$_item | tr '[:upper:]' '[:lower:]')
+        _table_name=ign_${_TABLES[$_item]}
         # NOTE: some geometry are invalid, correct them
         # TODO: give some examples
         execute_query \

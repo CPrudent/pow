@@ -110,14 +110,14 @@ BEGIN
                     SELECT
                         insee_com AS codgeo
                     FROM
-                        fr.admin_express_commune
+                        fr.ign_municipality
                     WHERE
                         insee_com NOT IN ('75056', '13055', '69123')
                     UNION
                     SELECT
                         insee_arm
                     FROM
-                        fr.admin_express_arrondissement_municipal
+                        fr.ign_municipal_district
                 ) AS commune_ign
                 WHERE commune_ign.codgeo = za.codgeo_com_parent
             )
@@ -141,7 +141,7 @@ BEGIN
                 insee_com AS codgeo
                 , geom
             FROM
-                fr.admin_express_commune
+                fr.ign_municipality
             WHERE
                 insee_com NOT IN ('75056', '13055', '69123')
             UNION
@@ -149,7 +149,7 @@ BEGIN
                 insee_arm
                 , geom
             FROM
-                fr.admin_express_arrondissement_municipal
+                fr.ign_municipal_district
         ) AS commune_ign
         WHERE
             nivgeo = municipality_subsection
@@ -182,7 +182,7 @@ BEGIN
                     insee_com AS codgeo
                     , geom
                 FROM
-                    fr.admin_express_commune
+                    fr.ign_municipality
                 WHERE
                     insee_com NOT IN ('75056', '13055', '69123')
                 UNION
@@ -190,7 +190,7 @@ BEGIN
                     insee_arm
                     , geom
                 FROM
-                    fr.admin_express_arrondissement_municipal
+                    fr.ign_municipal_district
             ) AS commune_ign ON commune_ign.codgeo = tmp_municipality_with_many_subsections.co_insee_commune
             ORDER BY 1
         )

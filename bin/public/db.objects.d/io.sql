@@ -156,7 +156,7 @@ BEGIN
                         insee_com AS codgeo
                         , nom AS libgeo
                     FROM
-                        fr.admin_express_commune
+                        fr.ign_municipality
                     WHERE
                         insee_com NOT IN (''75056'', ''13055'', ''69123'')
                     UNION
@@ -164,7 +164,7 @@ BEGIN
                         insee_arm
                         , nom
                     FROM
-                        fr.admin_express_arrondissement_municipal
+                        fr.ign_municipal_district
                 ) x
 
                 FULL OUTER JOIN
@@ -198,7 +198,7 @@ BEGIN
                         insee_com AS codgeo
                         , population
                     FROM
-                        fr.admin_express_commune
+                        fr.ign_municipality
                     WHERE
                         insee_com NOT IN (''75056'', ''13055'', ''69123'')
                     UNION
@@ -206,7 +206,7 @@ BEGIN
                         insee_arm
                         , population
                     FROM
-                        fr.admin_express_arrondissement_municipal
+                        fr.ign_municipal_district
                 ) x
 
                 JOIN
@@ -234,7 +234,7 @@ BEGIN
                         insee_com AS codgeo
                         , geom
                     FROM
-                        fr.admin_express_commune
+                        fr.ign_municipality
                     WHERE
                         insee_com NOT IN (''75056'', ''13055'', ''69123'')
                     UNION
@@ -242,7 +242,7 @@ BEGIN
                         insee_arm
                         , geom
                     FROM
-                        fr.admin_express_arrondissement_municipal
+                        fr.ign_municipal_district
                 ) x
 
                 JOIN
@@ -270,14 +270,14 @@ BEGIN
                         SELECT
                             insee_com
                         FROM
-                            fr.admin_express_commune
+                            fr.ign_municipality
                         WHERE
                             insee_com NOT IN (''75056'', ''13055'', ''69123'')
                         UNION
                         SELECT
                             insee_arm
                         FROM
-                            fr.admin_express_arrondissement_municipal
+                            fr.ign_municipal_district
                     ) ign
                         CROSS JOIN fr.get_municipality_to_date(
                             code => ign.insee_com
