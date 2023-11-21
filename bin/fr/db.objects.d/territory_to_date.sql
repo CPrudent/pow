@@ -1046,7 +1046,7 @@ BEGIN
         SELECT
             ARRAY_AGG(DISTINCT co_insee_commune) AS municipalities_now
             , 1::NUMERIC/COUNT(DISTINCT co_insee_commune) AS distribution
-        FROM fr.laposte_zone_address
+        FROM fr.laposte_address_area
         WHERE co_insee_commune_precedente = code
         --WHERE co_insee_commune_precedente = '05088'
         --WHERE co_insee_commune_precedente = '05043'
@@ -1078,10 +1078,11 @@ END
 $func$ LANGUAGE plpgsql;
 
 SELECT drop_all_functions_if_exists('fr', 'get_zone_address_to_now');
-CREATE OR REPLACE FUNCTION fr.get_zone_address_to_now(
-    zone_address fr.laposte_zone_address
+SELECT drop_all_functions_if_exists('fr', 'get_address_area_to_now');
+CREATE OR REPLACE FUNCTION fr.get_address_area_to_now(
+    zone_address fr.laposte_address_area
 )
-RETURNS fr.laposte_zone_address AS
+RETURNS fr.laposte_address_area AS
 $func$
 DECLARE
     _municipality_to_now RECORD;
@@ -1175,7 +1176,8 @@ END
 $func$ LANGUAGE plpgsql;
 
 SELECT drop_all_functions_if_exists('fr', 'set_zone_address_to_now');
-CREATE OR REPLACE FUNCTION fr.set_zone_address_to_now()
+SELECT drop_all_functions_if_exists('fr', 'set_address_area_to_now');
+CREATE OR REPLACE FUNCTION fr.set_address_area_to_now()
 RETURNS BOOLEAN AS
 $func$
 DECLARE
@@ -1207,8 +1209,8 @@ BEGIN
                 THEN TRUE
                 ELSE FALSE
             END AS modification
-        FROM fr.laposte_zone_address AS za
-        CROSS JOIN fr.get_zone_address_to_now(za) AS za_to_now
+        FROM fr.laposte_address_area AS za
+        CROSS JOIN fr.get_address_area_to_now(za) AS za_to_now
         WHERE za_to_now.dt_reference_commune != za.dt_reference_commune
     )
     LOOP
@@ -1227,14 +1229,14 @@ BEGIN
                 , ', ', quote_literal('AREA'), '
                 , ROW_TO_JSON(a.*)::JSONB
             FROM
-                fr.laposte_zone_address a
+                fr.laposte_address_area a
             WHERE
                 co_cea = ''', _zone_address_to_now.co_cea, '''
             '
         );
         EXECUTE _query;
 
-        UPDATE fr.laposte_zone_address za
+        UPDATE fr.laposte_address_area za
         SET co_insee_commune = _zone_address_to_now.co_insee_commune
             , co_insee_commune_precedente = _zone_address_to_now.co_insee_commune_precedente
             , dt_reference_commune = _zone_address_to_now.dt_reference_commune
@@ -1252,7 +1254,7 @@ BEGIN
             WHERE co_cea_za = _zone_address_to_now.co_cea;
 
             --MAJ du code INSEE commune dénormalisé sur les voies de la ZA
-            UPDATE fr.laposte_street street
+            UPDATE fr.laposte_address_street street
             SET co_insee_commune = _zone_address_to_now.co_insee_commune
             FROM fr.laposte_address address
             WHERE address.co_cea_determinant = street.co_cea
@@ -1298,8 +1300,8 @@ WHERE co_etat = 'SUCCES' AND co_type = 'WIKIPEDIA_COMMUNE_NOUVELLE';
 INSERT INTO historique_import (co_type, co_etat, dt_debut_donnees, dt_fin_donnees, nb_enregistrements_a_traiter)
 VALUES ('WIKIPEDIA_COMMUNE_NOUVELLE', 'SUCCES', '01/01/2020'::DATE, '01/01/2020'::DATE, 0);
 
-SELECT * FROM public.set_zone_address_to_now();
-SELECT * FROM fr.laposte_zone_address WHERE co_insee_commune != co_insee_commune_ran;
+SELECT * FROM public.set_address_area_to_now();
+SELECT * FROM fr.laposte_address_area WHERE co_insee_commune != co_insee_commune_ran;
  */
 
 /*
@@ -1321,7 +1323,7 @@ BEGIN
     PERFORM public.setTerritoireInseeGeoToNow();
     --déjà fait toutes les semaines lors de l'import de RAN, (cf /ran/structure/za.sql)
     --donc théoriquement inutile, sauf retard ou MAJ des sources d'évènement avant application dans RAN (evenements commune insee, commune nouvelle wikipedia)
-    PERFORM fr.set_zone_address_to_now();
+    PERFORM fr.set_address_area_to_now();
     --à faire régulièrement ?
     PERFORM fr.set_territory_to_date(
         table_name => 'territoire_has_insee'

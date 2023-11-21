@@ -51,24 +51,24 @@ BEGIN
                     ALTER TABLE fr.laposte_address OWNER TO fr;
                 END IF;
                 IF table_exists('fr', 'za') THEN
-                    ALTER TABLE fr.za RENAME TO laposte_zone_address;
-                    ALTER TABLE fr.laposte_zone_address OWNER TO fr;
+                    ALTER TABLE fr.za RENAME TO laposte_address_area;
+                    ALTER TABLE fr.laposte_address_area OWNER TO fr;
                 END IF;
                 IF table_exists('fr', 'voie') THEN
-                    ALTER TABLE fr.voie RENAME TO laposte_street;
-                    ALTER TABLE fr.laposte_street OWNER TO fr;
+                    ALTER TABLE fr.voie RENAME TO laposte_address_street;
+                    ALTER TABLE fr.laposte_address_street OWNER TO fr;
                 END IF;
                 IF table_exists('fr', 'numero') THEN
-                    ALTER TABLE fr.numero RENAME TO laposte_housenumber;
-                    ALTER TABLE fr.laposte_housenumber OWNER TO fr;
+                    ALTER TABLE fr.numero RENAME TO laposte_address_housenumber;
+                    ALTER TABLE fr.laposte_address_housenumber OWNER TO fr;
                 END IF;
                 IF table_exists('fr', 'l3') THEN
-                    ALTER TABLE fr.l3 RENAME TO laposte_complement;
-                    ALTER TABLE fr.laposte_complement OWNER TO fr;
+                    ALTER TABLE fr.l3 RENAME TO laposte_address_complement;
+                    ALTER TABLE fr.laposte_address_complement OWNER TO fr;
                 END IF;
                 IF table_exists('fr', 'coord') THEN
-                    ALTER TABLE fr.coord RENAME TO laposte_xy;
-                    ALTER TABLE fr.laposte_xy OWNER TO fr;
+                    ALTER TABLE fr.coord RENAME TO laposte_address_xy;
+                    ALTER TABLE fr.laposte_address_xy OWNER TO fr;
                 END IF;
                 IF table_exists('fr', 'perennite') THEN
                     ALTER TABLE fr.perennite RENAME TO laposte_address_redirect;

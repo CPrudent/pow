@@ -249,7 +249,7 @@ BEGIN
                         , za.co_insee_commune AS codgeo
                         , ', _columns_select, '
                     FROM ', _tmp_table_name, CASE WHEN _bigger_sublevel = base_level THEN '_base' END, ' AS source
-                    JOIN fr.laposte_zone_address za ON source.codgeo = za.co_cea AND za.fl_active
+                    JOIN fr.laposte_address_area za ON source.codgeo = za.co_cea AND za.fl_active
                     WHERE source.nivgeo = $1
                     GROUP BY za.co_insee_commune
                     ', CASE WHEN _columns_groupby IS NOT NULL THEN CONCAT(', ', _columns_groupby) END, '

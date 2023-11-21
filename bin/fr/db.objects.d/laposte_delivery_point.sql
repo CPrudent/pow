@@ -285,11 +285,11 @@ BEGIN
             , org.code_regate AS rao_co_regate
         FROM fr.laposte_delivery_point pdi
             LEFT OUTER JOIN fr.laposte_address adresse ON adresse.co_cea_determinant = pdi.adresse_id
-            LEFT OUTER JOIN fr.laposte_zone_address za ON za.co_cea = adresse.co_cea_za
-            LEFT OUTER JOIN fr.laposte_street voie ON voie.co_cea = adresse.co_cea_voie
-            LEFT OUTER JOIN fr.laposte_housenumber numero ON numero.co_cea = adresse.co_cea_numero
-            LEFT OUTER JOIN fr.laposte_complement l3 ON l3.co_cea = adresse.co_cea_l3
-            LEFT OUTER JOIN fr.laposte_xy coord ON coord.co_cea = adresse.co_cea_determinant
+            LEFT OUTER JOIN fr.laposte_address_area za ON za.co_cea = adresse.co_cea_za
+            LEFT OUTER JOIN fr.laposte_address_street voie ON voie.co_cea = adresse.co_cea_voie
+            LEFT OUTER JOIN fr.laposte_address_housenumber numero ON numero.co_cea = adresse.co_cea_numero
+            LEFT OUTER JOIN fr.laposte_address_complement l3 ON l3.co_cea = adresse.co_cea_l3
+            LEFT OUTER JOIN fr.laposte_address_xy coord ON coord.co_cea = adresse.co_cea_determinant
             LEFT OUTER JOIN fr.laposte_delivery_address rao ON rao.co_adr = adresse.co_cea_determinant
             LEFT OUTER JOIN fr.laposte_organization org ON org.code = rao.co_roc_site::VARCHAR
     ';

@@ -2,8 +2,15 @@
  * FR: add LAPOSTE/RAN complement
  */
 
+DO $COMPLEMENT$
+BEGIN
+    ALTER TABLE IF EXISTS fr.laposte_complement RENAME TO laposte_address_complement;
+    ALTER INDEX IF EXISTS fr.iux_laposte_complement_co_cea RENAME TO iux_laposte_address_complement_co_cea;
+    ALTER INDEX IF EXISTS fr.ix_laposte_complement_lb_standard_nn RENAME TO ix_laposte_address_complement_lb_standard_nn;
+END $COMPLEMENT$;
+
 -- address-complement with history (date & type of last change)
-CREATE TABLE IF NOT EXISTS fr.laposte_complement (
+CREATE TABLE IF NOT EXISTS fr.laposte_address_complement (
     co_cea CHAR(10) NOT NULL,
     dt_reference DATE NOT NULL,
     co_mouvement CHAR(1) NOT NULL,
@@ -38,39 +45,39 @@ CREATE TABLE IF NOT EXISTS fr.laposte_complement (
 ;
 
 -- manual VACUUM
-ALTER TABLE fr.laposte_complement SET (
+ALTER TABLE fr.laposte_address_complement SET (
     AUTOVACUUM_ENABLED = FALSE
 );
 
-SELECT drop_all_functions_if_exists('fr', 'setLaPosteIndexComplement');
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_complement_index');
-CREATE OR REPLACE PROCEDURE fr.set_laposte_complement_index()
+SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_complement_index');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_address_complement_index()
 AS
 $proc$
 BEGIN
     -- uniq CEA
-    IF index_exists('fr', 'idx_l3_co_cea') AND NOT index_exists('fr', 'iux_laposte_complement_co_cea') THEN
-        ALTER INDEX idx_l3_co_cea RENAME TO iux_laposte_complement_co_cea;
+    IF index_exists('fr', 'idx_l3_co_cea') AND NOT index_exists('fr', 'iux_laposte_address_complement_co_cea') THEN
+        ALTER INDEX idx_l3_co_cea RENAME TO iux_laposte_address_complement_co_cea;
     ELSE
-        CREATE UNIQUE INDEX IF NOT EXISTS iux_laposte_complement_co_cea ON fr.laposte_complement (co_cea);
+        CREATE UNIQUE INDEX IF NOT EXISTS iux_laposte_address_complement_co_cea ON fr.laposte_address_complement (co_cea);
     END IF;
 
     -- similar labels
     -- lb_standard_nn
-    IF index_exists('fr', 'idx_l3_lb_standard_nn') AND NOT index_exists('fr', 'ix_laposte_complement_lb_standard_nn') THEN
-        ALTER INDEX idx_l3_lb_standard_nn RENAME TO ix_laposte_complement_lb_standard_nn;
+    IF index_exists('fr', 'idx_l3_lb_standard_nn') AND NOT index_exists('fr', 'ix_laposte_address_complement_lb_standard_nn') THEN
+        ALTER INDEX idx_l3_lb_standard_nn RENAME TO ix_laposte_address_complement_lb_standard_nn;
     ELSE
-        CREATE INDEX IF NOT EXISTS ix_laposte_complement_lb_standard_nn ON fr.laposte_complement USING GIN(lb_standard_nn GIN_TRGM_OPS);
+        CREATE INDEX IF NOT EXISTS ix_laposte_address_complement_lb_standard_nn ON fr.laposte_address_complement USING GIN(lb_standard_nn GIN_TRGM_OPS);
     END IF;
 
     DROP INDEX IF EXISTS fr.idx_l3_histo_key;
-    --CREATE UNIQUE INDEX IF NOT EXISTS idx_l3_histo_key ON fr.laposte_complement_histo (co_cea, dt_reference);
+    --CREATE UNIQUE INDEX IF NOT EXISTS idx_l3_histo_key ON fr.laposte_address_complement_histo (co_cea, dt_reference);
 END
 $proc$ LANGUAGE plpgsql;
 
 DO $$
 BEGIN
     -- manage indexes
-    CALL fr.set_laposte_complement_index();
+    CALL fr.set_laposte_address_complement_index();
 END
 $$;

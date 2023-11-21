@@ -489,7 +489,7 @@ BEGIN
                     SELECT
                         co_cea codgeo
                     FROM
-                        fr.laposte_zone_address
+                        fr.laposte_address_area
                     WHERE
                         fl_active
                         AND
@@ -528,7 +528,7 @@ BEGIN
                         , CASE WHEN co_insee_commune ~ ''^98[78]'' THEN lb_l5_nn ELSE lb_ach_nn END libgeo_l6
                         , co_postal
                     FROM
-                        fr.laposte_zone_address
+                        fr.laposte_address_area
                     WHERE
                         fl_active
                         AND
@@ -584,7 +584,7 @@ BEGIN
         WHEN 'FR-TERRITORY-LAPOSTE-AREA-EVENT' THEN
             CONCAT(
                 '
-                    fr.laposte_zone_address area
+                    fr.laposte_address_area area
                         CROSS JOIN fr.get_municipality_to_date(
                             code => area.co_insee_commune
                             , code_previous => COALESCE(area.co_insee_commune_precedente, area.co_insee_commune)

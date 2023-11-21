@@ -11,8 +11,8 @@ execute_query \
     --name SET_CONSTANTS \
     --query "
         CALL fr.set_laposte_municipality_normalized_label_exception();
-        CALL fr.set_laposte_street_type();
-        CALL fr.set_laposte_street_firstname();
+        CALL fr.set_laposte_address_street_type();
+        CALL fr.set_laposte_address_street_firstname();
         DELETE FROM fr.constant WHERE list = 'LAPOSTE_STREET_TITLE';
         CALL fr.set_laposte_extension_of_housenumber();
         CALL fr.set_laposte_address_correction_list();

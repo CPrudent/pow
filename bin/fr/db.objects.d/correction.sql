@@ -26,7 +26,7 @@ BEGIN
         DROP TABLE IF EXISTS fr.tmp_address_correction;
         _query := 'CREATE UNLOGGED TABLE fr.tmp_address_correction AS';
         IF _correction.key = 'TOO_SPACE' THEN
-            _table_from := 'fr.laposte_street';
+            _table_from := 'fr.laposte_address_street';
             _column_from := 'co_cea';
             _columns_to := 'lb_voie = ac.name, lb_voie_normalise = ac.name_normalized';
             _kind := 'STREET';
@@ -36,7 +36,7 @@ BEGIN
                     co_cea code_address
                     , REGEXP_REPLACE(lb_voie, ''[ ]{2,}'', '' '') name
                     , REGEXP_REPLACE(lb_voie_normalise, ''[ ]{2,}'', '' '') name_normalized
-                FROM fr.laposte_street
+                FROM fr.laposte_address_street
                 WHERE
                     fl_active
                     AND

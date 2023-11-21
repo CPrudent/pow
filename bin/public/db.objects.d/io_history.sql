@@ -170,10 +170,10 @@ BEGIN
                     ;
 
                 _nb_rows[1] := COUNT(*) FROM fr.laposte_address;
-                _nb_rows[2] := COUNT(*) FROM fr.laposte_zone_address;
-                _nb_rows[3] := COUNT(*) FROM fr.laposte_street;
-                _nb_rows[4] := COUNT(*) FROM fr.laposte_housenumber;
-                _nb_rows[5] := COUNT(*) FROM fr.laposte_complement;
+                _nb_rows[2] := COUNT(*) FROM fr.laposte_address_area;
+                _nb_rows[3] := COUNT(*) FROM fr.laposte_address_street;
+                _nb_rows[4] := COUNT(*) FROM fr.laposte_address_housenumber;
+                _nb_rows[5] := COUNT(*) FROM fr.laposte_address_complement;
 
                 _io_history.nb_rows_todo := _nb_rows[1];
                 FOR _i IN 2..5 LOOP

@@ -26,7 +26,6 @@ ALTER TABLE fr.laposte_address SET (
     AUTOVACUUM_ENABLED = FALSE
 );
 
-SELECT drop_all_functions_if_exists('fr', 'setLaPosteIndexAddress');
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_index');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_index(
     simulation BOOLEAN DEFAULT FALSE
@@ -182,11 +181,11 @@ BEGIN
             , source_orga.libelle AS rao_libelle_site
             , NULLIF(CONCAT(rao.co_type, rao.lb_libelle), '''') AS rao_co_tournee
         FROM fr.laposte_address adresse
-        LEFT OUTER JOIN fr.laposte_zone_address za ON za.co_cea = adresse.co_cea_za
-        LEFT OUTER JOIN fr.laposte_street voie ON voie.co_cea = adresse.co_cea_voie
-        LEFT OUTER JOIN fr.laposte_housenumber numero ON numero.co_cea = adresse.co_cea_numero
-        LEFT OUTER JOIN fr.laposte_complement l3 ON l3.co_cea = adresse.co_cea_l3
-        LEFT OUTER JOIN fr.laposte_xy coord ON coord.co_cea = adresse.co_cea_determinant
+        LEFT OUTER JOIN fr.laposte_address_area za ON za.co_cea = adresse.co_cea_za
+        LEFT OUTER JOIN fr.laposte_address_street voie ON voie.co_cea = adresse.co_cea_voie
+        LEFT OUTER JOIN fr.laposte_address_housenumber numero ON numero.co_cea = adresse.co_cea_numero
+        LEFT OUTER JOIN fr.laposte_address_complement l3 ON l3.co_cea = adresse.co_cea_l3
+        LEFT OUTER JOIN fr.laposte_address_xy coord ON coord.co_cea = adresse.co_cea_determinant
 
         LEFT OUTER JOIN fr.laposte_delivery_address rao ON rao.co_adr = adresse.co_cea_determinant
             --TODO : modifier le type de la colonne source_orga.code : alter table source_orga alter column code type CHAR(6);
@@ -206,6 +205,6 @@ BEGIN
         ' '
         , 'CREATE VIEW fr.address_view AS'
         , _query
-        , 'WHERE adresse.fl_active = TRUE AND adresse.fl_diffusable = TRUE'
+        , 'WHERE adresse.fl_active AND adresse.fl_diffusable'
     );
 END $$;

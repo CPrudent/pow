@@ -80,7 +80,7 @@ FROM (
         , fr.normalize_municipality_name(c.insee_com, c.nom) AS name_normalized
         , za.lb_ach_nn AS name_normalized_laposte
     FROM
-        fr.laposte_zone_address za
+        fr.laposte_address_area za
             JOIN fr.ign_municipality c ON za.co_insee_commune = c.insee_com
     WHERE
         za.fl_active

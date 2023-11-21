@@ -22,7 +22,7 @@ CREATE OR REPLACE PROCEDURE fr.set_laposte_municipality_normalized_label_excepti
 AS
 $proc$
 BEGIN
-    IF NOT table_exists('fr', 'laposte_zone_address') THEN
+    IF NOT table_exists('fr', 'laposte_address_area') THEN
         RAISE 'Données LAPOSTE non présentes';
     END IF;
 
@@ -35,7 +35,7 @@ BEGIN
             SELECT
                 co_insee_commune
                 , lb_ach_nn
-            FROM fr.laposte_zone_address
+            FROM fr.laposte_address_area
             WHERE
                 fl_active
                 AND
@@ -55,7 +55,7 @@ BEGIN
                 co_insee_commune
                 , lb_ach_nn
             FROM
-                fr.laposte_zone_address
+                fr.laposte_address_area
                     JOIN fr.insee_municipality
                         ON co_insee_commune = codgeo
             WHERE
@@ -75,47 +75,48 @@ $proc$ LANGUAGE plpgsql;
 
 -- build LAPOSTE street : list of types
 SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_street_type');
-CREATE OR REPLACE PROCEDURE fr.set_laposte_street_type()
+SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_street_type');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_type()
 AS
 $proc$
 BEGIN
-    IF NOT table_exists('fr', 'laposte_street') THEN
+    IF NOT table_exists('fr', 'laposte_address_street') THEN
         RAISE 'Données LAPOSTE non présentes';
     END IF;
 
-    DROP TABLE IF EXISTS fr.laposte_street_type;
-    CREATE TABLE fr.laposte_street_type AS
+    DROP TABLE IF EXISTS fr.laposte_address_street_type;
+    CREATE TABLE fr.laposte_address_street_type AS
         SELECT DISTINCT
             lb_type AS type
             , NULL::VARCHAR AS type_abbreviated
             , NULL::VARCHAR AS first_word
             , NULL::INT AS same_first_word
             , NULL::INT AS occurs
-        FROM fr.laposte_street
+        FROM fr.laposte_address_street
         WHERE lb_type IS NOT NULL
         ;
-    --SELECT * FROM fr.laposte_street_type ORDER BY first_word, type;
-    UPDATE fr.laposte_street_type st SET
+    --SELECT * FROM fr.laposte_address_street_type ORDER BY first_word, type;
+    UPDATE fr.laposte_address_street_type st SET
         type_abbreviated = s.lb_type_abrege
-        FROM fr.laposte_street s
+        FROM fr.laposte_address_street s
         WHERE
             s.lb_type = st.type
             ;
     WITH
     first_word_of_type AS (
         SELECT type, (REGEXP_MATCHES(type, '([^ ]*)'))[1] first_word
-        FROM fr.laposte_street_type
+        FROM fr.laposte_address_street_type
     )
     , occurs_type AS (
         SELECT
             lb_type type
             , COUNT(*) occurs
-        FROM fr.laposte_street
+        FROM fr.laposte_address_street
         WHERE lb_type IS NOT NULL
         GROUP BY
             lb_type
     )
-    UPDATE fr.laposte_street_type st SET
+    UPDATE fr.laposte_address_street_type st SET
         first_word = fw.first_word
         , occurs = ot.occurs
         FROM
@@ -129,10 +130,10 @@ BEGIN
     WITH
     first_word_of_type AS (
         SELECT first_word, COUNT(*) same_first_word
-        FROM fr.laposte_street_type
+        FROM fr.laposte_address_street_type
         GROUP BY first_word
     )
-    UPDATE fr.laposte_street_type st SET
+    UPDATE fr.laposte_address_street_type st SET
         same_first_word = fw.same_first_word
         FROM first_word_of_type fw
         WHERE
@@ -143,11 +144,12 @@ $proc$ LANGUAGE plpgsql;
 
 -- build LAPOSTE street : list of firstnames
 SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_street_firstname');
-CREATE OR REPLACE PROCEDURE fr.set_laposte_street_firstname()
+SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_street_firstname');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_firstname()
 AS
 $proc$
 BEGIN
-    IF NOT table_exists('fr', 'laposte_street') THEN
+    IF NOT table_exists('fr', 'laposte_address_street') THEN
         RAISE 'Données LAPOSTE non présentes';
     END IF;
 
@@ -156,7 +158,7 @@ BEGIN
         SELECT DISTINCT
             'LAPOSTE_STREET_FIRSTNAME'
             , mots.mot
-        FROM fr.laposte_street AS voie_ran
+        FROM fr.laposte_address_street AS voie_ran
         INNER JOIN LATERAL UNNEST(REGEXP_SPLIT_TO_ARRAY(voie_ran.lb_voie, '\s+'))
             WITH ORDINALITY AS mots(mot, ordre)
             ON TRUE
@@ -175,7 +177,7 @@ CREATE OR REPLACE PROCEDURE fr.set_laposte_extension_of_housenumber()
 AS
 $proc$
 BEGIN
-    IF NOT table_exists('fr', 'laposte_housenumber') THEN
+    IF NOT table_exists('fr', 'laposte_address_housenumber') THEN
         RAISE 'Données LAPOSTE non présentes';
     END IF;
 
@@ -186,7 +188,7 @@ BEGIN
             , t.*
         FROM (
             SELECT lb_ext, lb_abr_nn FROM (
-            SELECT DISTINCT lb_ext, lb_abr_nn FROM fr.laposte_housenumber
+            SELECT DISTINCT lb_ext, lb_abr_nn FROM fr.laposte_address_housenumber
             WHERE fl_active AND lb_ext IS NOT NULL ) t
             ORDER BY
                 CASE

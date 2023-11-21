@@ -230,7 +230,7 @@ BEGIN
                         , ')') AS libgeo
                     , co_postal
                     , co_insee_commune
-                FROM fr.laposte_zone_address AS za
+                FROM fr.laposte_address_area AS za
                 WHERE
                     municipality_subsection = 'COM_CP'
                 GROUP BY co_postal, co_insee_commune
@@ -247,7 +247,7 @@ BEGIN
                     )
                     , co_postal
                     , co_insee_commune
-                FROM fr.laposte_zone_address AS za
+                FROM fr.laposte_address_area AS za
                 WHERE
                     municipality_subsection = 'ZA'
                     AND
@@ -407,7 +407,7 @@ BEGIN
                     )
                 , codgeo_com_parent = area.co_insee_commune
                 , codgeo_cp_parent = area.co_postal
-            FROM fr.laposte_zone_address area
+            FROM fr.laposte_address_area area
             WHERE
                 (
                     t.nivgeo = municipality_subsection
@@ -653,7 +653,7 @@ BEGIN
                 WHEN lb_l5_nn IS NOT NULL THEN INITCAP(lb_l5_nn)
                 ELSE INITCAP(lb_ach_nn)
             END libgeo
-        FROM fr.laposte_zone_address AS za
+        FROM fr.laposte_address_area AS za
         WHERE za.co_insee_commune ~ '^98'
     ) AS commune_ran
     WHERE territory.nivgeo IN ('COM')
@@ -938,7 +938,7 @@ BEGIN
                     SELECT DISTINCT
                         co_insee_commune
                         , CASE WHEN co_insee_commune ~ '^98' THEN lb_l5_nn ELSE lb_ach_nn END l6_norm
-                    FROM fr.laposte_zone_address
+                    FROM fr.laposte_address_area
                     WHERE
                         -- avoid duplicate code !
                         ((co_insee_commune ~ '^98') AND (lb_l5_nn IS NOT NULL))
@@ -952,7 +952,7 @@ BEGIN
                             WHEN co_insee_commune ~ '^98' AND lb_ach_nn IS NOT NULL THEN lb_ach_nn
                             WHEN co_insee_commune !~ '^98' AND lb_l5_nn IS NOT NULL THEN lb_l5_nn
                         END l5_norm
-                    FROM fr.laposte_zone_address
+                    FROM fr.laposte_address_area
                 ) y ON t.nivgeo = 'ZA' AND t.codgeo = y.co_cea
             WHERE
                 -- exclude MONACO !

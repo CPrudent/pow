@@ -23,12 +23,12 @@
 
 -- LAPOSTE
 
+\include_relative laposte_address_area.sql
+\include_relative laposte_address_street.sql
+\include_relative laposte_address_housenumber.sql
+\include_relative laposte_address_complement.sql
+\include_relative laposte_address_xy.sql
 \include_relative laposte_address.sql
-\include_relative laposte_zone_address.sql
-\include_relative laposte_street.sql
-\include_relative laposte_housenumber.sql
-\include_relative laposte_complement.sql
-\include_relative laposte_xy.sql
 \include_relative laposte_delivery_point.sql
 \include_relative laposte_delivery_address.sql
 \include_relative laposte_organization.sql

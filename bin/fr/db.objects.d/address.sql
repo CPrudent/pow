@@ -73,7 +73,7 @@ BEGIN
                 , ARRAY_AGG(DISTINCT lb_type) typeof
                 -- trick to ignore different descriptors if typeof is null (by order)
                 , ARRAY_AGG(DISTINCT lb_desc ORDER BY lb_desc DESC) descriptors
-            FROM fr.laposte_street
+            FROM fr.laposte_address_street
             -- except MONACO
             WHERE fl_active AND co_insee_commune != '99138'
             GROUP BY
@@ -251,7 +251,7 @@ BEGIN
             SELECT DISTINCT
                 no_voie number
                 , lb_ext extension
-            FROM fr.laposte_housenumber
+            FROM fr.laposte_address_housenumber
             WHERE fl_active
         )
         , changes AS (
@@ -422,7 +422,7 @@ BEGIN
                         , lb_groupe3
                     ) name
                     , ARRAY_AGG(DISTINCT lb_standard_nn /*ORDER BY lb_standard_nn*/) name_normalized
-                FROM fr.laposte_complement
+                FROM fr.laposte_address_complement
                 WHERE fl_active
                 GROUP BY
                     CONCAT_WS(' '
@@ -619,7 +619,7 @@ DECLARE
         WHEN 'VOIE' THEN
             '
                 s2.id
-            FROM fr.laposte_street s1, public.address_street s2
+            FROM fr.laposte_address_street s1, public.address_street s2
             WHERE
                 s1.co_cea = n.code_address
                 AND
@@ -628,7 +628,7 @@ DECLARE
         WHEN 'NUMERO' THEN
             '
                 hn2.id
-            FROM fr.laposte_housenumber hn1, public.address_housenumber hn2
+            FROM fr.laposte_address_housenumber hn1, public.address_housenumber hn2
             WHERE
                 hn1.co_cea = n.code_address
                 AND
@@ -637,7 +637,7 @@ DECLARE
         WHEN 'L3' THEN
             '
                 c2.id
-            FROM fr.laposte_complement c1, public.address_complement c2
+            FROM fr.laposte_address_complement c1, public.address_complement c2
             WHERE
                 c1.co_cea = n.code_address
                 AND
@@ -1010,7 +1010,7 @@ BEGIN
                     , a.co_cea_numero code_housenumber
                     , a.co_cea_l3 code_complement
                 FROM fr.laposte_address a
-                    JOIN fr.laposte_zone_address za ON za.co_cea = a.co_cea_za
+                    JOIN fr.laposte_address_area za ON za.co_cea = a.co_cea_za
                 WHERE
                     a.fl_active
                     AND
@@ -1020,7 +1020,7 @@ BEGIN
                     to avoid them, add a join
                     */
                     EXISTS (
-                        SELECT 1 FROM fr.laposte_street s WHERE s.co_cea = a.co_cea_voie
+                        SELECT 1 FROM fr.laposte_address_street s WHERE s.co_cea = a.co_cea_voie
                     )
                     AND
                     -- except MONACO
@@ -1285,9 +1285,9 @@ BEGIN
                     ELSE          'UNKNOWN'
                 END kind
                 , xy.gm_coord geom
-            FROM fr.laposte_xy xy
+            FROM fr.laposte_address_xy xy
                 JOIN fr.laposte_address a ON xy.co_cea = a.co_cea_determinant
-                LEFT OUTER JOIN fr.laposte_xy xy2 ON xy2.co_cea = a.co_cea_parent
+                LEFT OUTER JOIN fr.laposte_address_xy xy2 ON xy2.co_cea = a.co_cea_parent
             WHERE
                 a.fl_active
                 AND
