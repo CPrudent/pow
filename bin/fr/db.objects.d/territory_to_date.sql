@@ -480,16 +480,16 @@ HAVING COUNT(*) > 1
 
 WITH millesime_a_to_now AS (
     --SELECT commune_to_now.codgeo, commune_to_now.dt_reference, ROUND(commune_to_now.distribution, 1)
-    --FROM fr.insee_administrative_cutting_municipality_and_district AS dcca
+    --FROM fr.insee_municipality AS dcca
     --INNER JOIN get_municipality_to_date_from_insee(dcca.codgeo, TO_DATE(dcca.millesime::VARCHAR, 'YYYY')) AS commune_to_now ON TRUE
-    --WHERE dcca.millesime = (SELECT MAX(millesime) FROM fr.insee_administrative_cutting_municipality_and_district)
+    --WHERE dcca.millesime = (SELECT MAX(millesime) FROM fr.insee_municipality)
     SELECT codgeo, TO_DATE(millesime::VARCHAR, 'YYYY') AS dt_reference, NULL::TEXT AS information, 1::DECIMAL AS distribution
-    FROM fr.insee_administrative_cutting_municipality_and_district AS dcca
+    FROM fr.insee_municipality AS dcca
     WHERE dcca.millesime = '2019'
 )
 , millesime_b_to_now AS (
     SELECT commune_to_now.codgeo, commune_to_now.dt_reference, commune_to_now.information, ROUND(commune_to_now.distribution, 1)
-    FROM fr.insee_administrative_cutting_municipality_and_district AS dcca
+    FROM fr.insee_municipality AS dcca
     INNER JOIN get_municipality_to_date_from_insee(
         code => dcca.codgeo
         , date_geography_from => TO_DATE(dcca.millesime::VARCHAR, 'YYYY')
@@ -509,13 +509,13 @@ OR millesime_b_to_now.codgeo IS NULL
 
 --> 2014 : problème avec Loisey-Culey (55298) qui aurait dû être rétabli en Cyley 55298 + Loisey 55138 le 01/01/2014, mais toujours présent dans le referentiel insee du 1er janvier 2014
     SELECT * FROM getCommuneToNowFromEvenementInsee('55298', TO_DATE('31/12/2013', 'DD/MM/YYYY'), 1, TRUE)
-    SELECT * FROM fr.insee_administrative_cutting_municipality_and_district WHERE millesime = '2014' AND codgeo = '55298'
+    SELECT * FROM fr.insee_municipality WHERE millesime = '2014' AND codgeo = '55298'
     SELECT * FROM fr.insee_municipality_event WHERE date_eff = '2014-01-01' AND com_av = '55298' AND typecom_av = 'COM' AND typecom_ap = 'COM'
     https://fr.wikipedia.org/wiki/Loisey-Culey : Au 1er janvier 2014, les communes devaient retrouver leur indépendance, mais la procédure est reportée au 1er janvier 2015, ne pouvant avoir lieu dans l'année précédant une échéance électorale. Cependant, lors des élections municipales de 2014, un maire est élu dans chaque commune, et finalement, par décision du tribunal le 1er juillet 2014, les deux communes sont indépendantes.
     --> on retarde l'evenement au 1er juillet 2014
 --> 2015 : problème avec Oudon (14697) qui aurait dû changer de code le 07/01/2014 (14472) et à nouveau en 2017 (14654), mais toujours présent dans le referentiel insee du 1er janvier 2015
     SELECT * FROM getCommuneToNowFromEvenementInsee('14697', TO_DATE('06/01/2014', 'DD/MM/YYYY'), 1, TRUE)
-    SELECT * FROM fr.insee_administrative_cutting_municipality_and_district WHERE millesime = '2015' AND codgeo = '14697'
+    SELECT * FROM fr.insee_municipality WHERE millesime = '2015' AND codgeo = '14697'
     SELECT * FROM fr.insee_municipality_event WHERE date_eff = '2014-01-07' AND typecom_av = 'COM' AND typecom_ap = 'COM' AND com_av = '14697'
     https://fr.wikipedia.org/wiki/L%27Oudon : Un nouvel arrêté préfectoral, le 7 janvier 2014, fait de la commune de Notre-Dame-de-Fresnay le nouveau chef-lieu. Afin de prendre en compte ce transfert de chef lieu, lors de la publication du COG 2016 l'INSEE décide de modifier le code commune de L'Oudon pour reprendre l'ancien code de Notre-Dame-de-Fresnay (14472).
     --> on retarde l'evenement au 1er janvier 2016
@@ -686,15 +686,15 @@ SELECT * FROM get_municipality_to_date_from_wikipedia('49144', TO_DATE('2014', '
 
 WITH millesime_20xx_to_now AS (
     SELECT commune_to_now.codgeo, commune_to_now.dt_reference, ROUND(commune_to_now.distribution, 1), commune_to_now.information
-    FROM fr.insee_administrative_cutting_municipality_and_district AS dcca
+    FROM fr.insee_municipality AS dcca
     INNER JOIN get_municipality_to_date_from_wikipedia(dcca.codgeo, TO_DATE(dcca.millesime::VARCHAR, 'YYYY')) AS commune_to_now ON TRUE
     WHERE dcca.millesime = '2015'
 )
 , millesime_last_to_now AS (
     SELECT commune_to_now.codgeo, commune_to_now.dt_reference, ROUND(commune_to_now.distribution, 1), commune_to_now.information
-    FROM fr.insee_administrative_cutting_municipality_and_district AS dcca
+    FROM fr.insee_municipality AS dcca
     INNER JOIN get_municipality_to_date_from_wikipedia(dcca.codgeo, TO_DATE(dcca.millesime::VARCHAR, 'YYYY')) AS commune_to_now ON TRUE
-    WHERE dcca.millesime = (SELECT MAX(millesime) FROM fr.insee_administrative_cutting_municipality_and_district)
+    WHERE dcca.millesime = (SELECT MAX(millesime) FROM fr.insee_municipality)
 )
 SELECT
     millesime_last_to_now.codgeo AS codgeo_last_to_now

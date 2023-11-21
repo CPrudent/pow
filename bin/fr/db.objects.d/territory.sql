@@ -305,7 +305,7 @@ BEGIN
                 , territory_laposte.codgeo_dex_parent
             FROM set_of_subsection subsection
                 -- INSEE municipalities
-                LEFT OUTER JOIN fr.insee_administrative_cutting_municipality_and_district
+                LEFT OUTER JOIN fr.insee_municipality
                 AS commune_insee
                 ON commune_insee.codgeo = subsection.co_insee_commune
                 -- IGN municipalities
@@ -469,13 +469,13 @@ BEGIN
                 , codgeo_arr_parent = insee.arr
                 , codgeo_dep_parent = insee.dep
                 , codgeo_reg_parent = insee.reg
-            FROM fr.insee_administrative_cutting_municipality_and_district insee
+            FROM fr.insee_municipality insee
             WHERE
                 (
                     t.nivgeo = municipality_subsection
                     AND t.codgeo_com_parent = insee.codgeo
                     AND insee.millesime = (
-                        SELECT MAX(millesime) FROM fr.insee_administrative_cutting_municipality_and_district
+                        SELECT MAX(millesime) FROM fr.insee_municipality
                     )
                 )
                 AND
@@ -673,11 +673,11 @@ BEGIN
     RAISE NOTICE 'Libellés des territoires : ARR, CV, DEP, REG';
     UPDATE fr.territory
     SET libgeo = insee.libgeo
-    FROM fr.insee_administrative_cutting_supra insee
+    FROM fr.insee_supra insee
     WHERE territory.nivgeo IN ('ARR', 'CV', 'DEP', 'REG')
     AND insee.nivgeo = territory.nivgeo
     AND insee.codgeo = territory.codgeo
-    AND insee.millesime = (SELECT MAX(millesime) FROM fr.insee_administrative_cutting_supra);
+    AND insee.millesime = (SELECT MAX(millesime) FROM fr.insee_supra);
 
     -- set name (postal levels) from LAPOSTE
     RAISE NOTICE 'Libellés des territoires : SUPRA CP';

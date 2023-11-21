@@ -301,10 +301,10 @@ BEGIN
                         codgeo
                         --, libgeo
                     FROM
-                        fr.insee_administrative_cutting_municipality_and_district
+                        fr.insee_municipality
                     WHERE
                         millesime = (
-                            SELECT MAX(millesime) FROM fr.insee_administrative_cutting_municipality_and_district
+                            SELECT MAX(millesime) FROM fr.insee_municipality
                         )
                 ) x
 
@@ -338,10 +338,10 @@ BEGIN
                         , codgeo
                         , libgeo
                     FROM
-                        fr.insee_administrative_cutting_supra
+                        fr.insee_supra
                     WHERE
                         millesime = (
-                            SELECT MAX(millesime) FROM fr.insee_administrative_cutting_municipality_and_district
+                            SELECT MAX(millesime) FROM fr.insee_municipality
                         )
                 ) x
 
@@ -375,7 +375,7 @@ BEGIN
         WHEN 'FR-TERRITORY-INSEE-EVENT' THEN
             CONCAT(
                 '
-                    fr.insee_administrative_cutting_municipality_and_district insee
+                    fr.insee_municipality insee
                         CROSS JOIN fr.get_municipality_to_date(
                             code => insee.codgeo
                             , code_previous => insee.codgeo
@@ -387,7 +387,7 @@ BEGIN
                         ) to_now
                 WHERE
                     millesime = (
-                        SELECT MAX(millesime) FROM fr.insee_administrative_cutting_municipality_and_district
+                        SELECT MAX(millesime) FROM fr.insee_municipality
                     )
                     AND
                     to_now.date_geography != '''

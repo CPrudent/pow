@@ -56,7 +56,7 @@ BEGIN
                 , lb_ach_nn
             FROM
                 fr.laposte_zone_address
-                    JOIN fr.insee_administrative_cutting_municipality_and_district
+                    JOIN fr.insee_municipality
                         ON co_insee_commune = codgeo
             WHERE
                 -- some municipality w/ () in its name

@@ -3,7 +3,7 @@
  */
 
 -- municipalities (except global ones, w/ districts)
-INSERT INTO fr.insee_administrative_cutting_municipality_and_district
+INSERT INTO fr.insee_municipality
 (
     millesime
     , codgeo
@@ -26,13 +26,13 @@ INSERT INTO fr.insee_administrative_cutting_municipality_and_district
         , "NATURE_EPCI"
         , "ARR"
         , "CV"
-    FROM fr.insee_administrative_cutting_municipality_tmp
+    FROM fr.tmp_insee_municipality
     -- "global" municipalities (w/ districts) are thought as supra-territory
     WHERE "CODGEO" NOT IN ('75056', '13055', '69123')
 );
 
 -- districts for Paris/Lyon/Marseille
-INSERT INTO fr.insee_administrative_cutting_municipality_and_district
+INSERT INTO fr.insee_municipality
 (
     millesime
     , codgeo
@@ -57,11 +57,11 @@ INSERT INTO fr.insee_administrative_cutting_municipality_and_district
         , "NATURE_EPCI"
         , "ARR"
         , "CV"
-    FROM fr.insee_administrative_cutting_district_tmp
+    FROM fr.tmp_insee_municipal_district
 );
 
 -- supra-territories
-INSERT INTO fr.insee_administrative_cutting_supra
+INSERT INTO fr.insee_supra
 (
     millesime
     , nivgeo
@@ -74,9 +74,9 @@ INSERT INTO fr.insee_administrative_cutting_supra
         , "NIVGEO"
         , "CODGEO"
         , "LIBGEO"
-    FROM fr.insee_administrative_cutting_supra_tmp
+    FROM fr.tmp_insee_supra
 );
-INSERT INTO fr.insee_administrative_cutting_supra
+INSERT INTO fr.insee_supra
 (
     millesime
     , nivgeo
@@ -89,6 +89,6 @@ INSERT INTO fr.insee_administrative_cutting_supra
         , 'COM_GLOBALE_ARM'
         , "CODGEO"
         , "LIBGEO"
-    FROM fr.insee_administrative_cutting_municipality_tmp
+    FROM fr.tmp_insee_municipality
     WHERE "CODGEO" IN ('75056', '13055', '69123')
 );
