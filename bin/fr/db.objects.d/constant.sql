@@ -223,4 +223,133 @@ BEGIN
 END;
 $proc$ LANGUAGE plpgsql;
 
+SELECT public.drop_all_functions_if_exists('fr', 'set_territory_overseas');
+CREATE OR REPLACE PROCEDURE fr.set_set_territory_overseas()
+AS
+$proc$
+BEGIN
+    DELETE FROM fr.constant WHERE usecase = 'TERRITORY_OVERSEAS_NAME';
+    INSERT INTO fr.constant (usecase, key, value) VALUES
+          ('TERRITORY_OVERSEAS_NAME', '97501', 'Miquelon-Langlade')
+        , ('TERRITORY_OVERSEAS_NAME', '97502', 'Saint-Pierre')
+        , ('TERRITORY_OVERSEAS_NAME', '97701', 'Saint-Barthélemy')
+        , ('TERRITORY_OVERSEAS_NAME', '97801', 'Saint-Martin')
+
+        , ('TERRITORY_OVERSEAS_NAME', '9871', 'Îles Marquises')
+        , ('TERRITORY_OVERSEAS_NAME', '9872', 'Îles Tuamotu-Gambier')
+        , ('TERRITORY_OVERSEAS_NAME', '9873', 'Îles du Vent')
+        , ('TERRITORY_OVERSEAS_NAME', '9874', 'Îles Sous-le-Vent')
+        , ('TERRITORY_OVERSEAS_NAME', '9875', 'Îles Australes')
+        , ('TERRITORY_OVERSEAS_NAME', '9881', 'Province Sud')
+        , ('TERRITORY_OVERSEAS_NAME', '9882', 'Province Nord')
+        , ('TERRITORY_OVERSEAS_NAME', '9883', 'Îles Loyauté')
+
+        , ('TERRITORY_OVERSEAS_NAME', '975', 'Saint-Pierre-et-Miquelon')
+        , ('TERRITORY_OVERSEAS_NAME', '977', 'Saint-Barthélemy')
+        , ('TERRITORY_OVERSEAS_NAME', '978', 'Saint-Martin')
+        , ('TERRITORY_OVERSEAS_NAME', '986', 'Wallis et Futuna')
+        , ('TERRITORY_OVERSEAS_NAME', '987', 'Polynésie française')
+        , ('TERRITORY_OVERSEAS_NAME', '988', 'Nouvelle Calédonie')
+        , ('TERRITORY_OVERSEAS_NAME', '989', 'Île de Clipperton')
+
+        , ('TERRITORY_OVERSEAS_NAME', '97', 'Îles en Atlantique')
+        , ('TERRITORY_OVERSEAS_NAME', '98', 'Îles en Pacifique')
+
+    DELETE FROM fr.constant WHERE usecase = 'TERRITORY_OVERSEAS_RELATION';
+    INSERT INTO fr.constant (usecase, key, value) VALUES
+        --9871 Îles Marquises
+          ('TERRITORY_OVERSEAS_RELATION', '9871', '98718')
+        , ('TERRITORY_OVERSEAS_RELATION', '9871', '98723')
+        , ('TERRITORY_OVERSEAS_RELATION', '9871', '98731')
+        , ('TERRITORY_OVERSEAS_RELATION', '9871', '98746')
+        , ('TERRITORY_OVERSEAS_RELATION', '9871', '98756')
+        , ('TERRITORY_OVERSEAS_RELATION', '9871', '98757')
+        --9872 Îles Tuamotu-Gambier
+        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98711')
+        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98713')
+        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98716')
+        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98717')
+        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98719')
+        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98720')
+        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98721')
+        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98726')
+        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98727')
+        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98730')
+        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98732')
+        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98737')
+        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98740')
+        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98742')
+        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98749')
+        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98751')
+        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98755')
+        --9873 Îles du Vent
+        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98729')
+        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98712')
+        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98715')
+        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98722')
+        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98725')
+        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98733')
+        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98734')
+        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98735')
+        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98736')
+        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98738')
+        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98747')
+        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98748')
+        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98752')
+        --9874 Îles Sous-le-Vent
+        , ('TERRITORY_OVERSEAS_RELATION', '9874', '98714')
+        , ('TERRITORY_OVERSEAS_RELATION', '9874', '98724')
+        , ('TERRITORY_OVERSEAS_RELATION', '9874', '98728')
+        , ('TERRITORY_OVERSEAS_RELATION', '9874', '98745')
+        , ('TERRITORY_OVERSEAS_RELATION', '9874', '98750')
+        , ('TERRITORY_OVERSEAS_RELATION', '9874', '98754')
+        , ('TERRITORY_OVERSEAS_RELATION', '9874', '98758')
+        --9875 Îles Australes
+        , ('TERRITORY_OVERSEAS_RELATION', '9875', '98739')
+        , ('TERRITORY_OVERSEAS_RELATION', '9875', '98741')
+        , ('TERRITORY_OVERSEAS_RELATION', '9875', '98743')
+        , ('TERRITORY_OVERSEAS_RELATION', '9875', '98744')
+        , ('TERRITORY_OVERSEAS_RELATION', '9875', '98753')
+
+        --9881 Province Sud
+        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98829')
+        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98832')
+        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98809')
+        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98817')
+        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98818')
+        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98805')
+        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98821')
+        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98802')
+        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98813')
+        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98828')
+        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98806')
+        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98816')
+        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98803')
+        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98827') -- 'SUD'
+        --9882 Province Nord
+        --, ('TERRITORY_OVERSEAS_RELATION', '9882', '98827') -- 'NORD' !
+        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98825')
+        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98811')
+        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98831')
+        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98810')
+        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98812')
+        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98826')
+        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98801')
+        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98819')
+        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98824')
+        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98807')
+        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98830')
+        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98822')
+        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98823')
+        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98808')
+        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98833')
+        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98804')
+        --9883 Îles Loyauté
+        , ('TERRITORY_OVERSEAS_RELATION', '9883', '98820')
+        , ('TERRITORY_OVERSEAS_RELATION', '9883', '98814')
+        , ('TERRITORY_OVERSEAS_RELATION', '9883', '98815')
+    ;
+END;
+$proc$ LANGUAGE plpgsql;
+
 CREATE INDEX IF NOT EXISTS ix_constant_usecase_key ON fr.constant (usecase, key);

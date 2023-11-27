@@ -323,40 +323,38 @@ execute_query \
     --name PREPARE_TERRITORY_ALTITUDE \
     --query "
         CREATE TABLE IF NOT EXISTS fr.municipality_altitude AS
-            WITH
-            municipality_namesake AS (
-                SELECT
-                    name
-                FROM
-                    public.territory
-                WHERE
-                    country = 'FR'
-                    AND
-                    level = 'COM'
-                GROUP BY
-                    name
-                HAVING
-                    COUNT(*) > 1
-            )
+        WITH
+        municipality_namesake AS (
             SELECT
-                t.code
-                , REGEXP_REPLACE(t.name, '\(Canton ', '(canton ') municipality
-                , CASE WHEN mns.name IS NULL THEN NULL::VARCHAR
-                ELSE
-                    d.name
-                END department
-                , CASE WHEN g.name IS NULL THEN NULL::VARCHAR
-                ELSE
-                    CONCAT(REGEXP_REPLACE(REGEXP_REPLACE(t.name, '^[^0-9]*', ''), ' A', '_a'), '_de_', g.name)
-                END district
-                , NULL::INT z_min, NULL::INT z_max
-                , FALSE done
-            FROM public.territory t
-                LEFT OUTER JOIN municipality_namesake mns ON t.name = mns.name
-                CROSS JOIN get_territory_from_query(get_query_territory_extended_to_level('fr', get_query_territory('fr', 'COM', t.code), 'DEP')) d
-                LEFT OUTER JOIN get_territory_from_query(get_query_territory_extended_to_level('fr', get_query_territory('fr', 'COM', t.code), 'COM_GLOBALE_ARM')) g ON TRUE
+                libgeo
+            FROM
+                fr.territory
             WHERE
-                t.country = 'FR' AND t.level = 'COM' AND t.code !~ '^(98|97[578])' $_where
+                nivgeo = 'COM'
+            GROUP BY
+                libgeo
+            HAVING
+                COUNT(*) > 1
+        )
+        SELECT
+            t.codgeo code
+            , REGEXP_REPLACE(t.libgeo, '\(Canton ', '(canton ') municipality
+            , CASE WHEN mns.libgeo IS NULL THEN NULL::VARCHAR
+            ELSE
+                d.libgeo
+            END department
+            , CASE WHEN t.codgeo_com_globale_arm_parent IS NULL THEN NULL::VARCHAR
+            ELSE
+                CONCAT(REGEXP_REPLACE(REGEXP_REPLACE(t.libgeo, '^[^0-9]*', ''), ' A', '_a'), '_de_', cg.libgeo)
+            END district
+            , NULL::INT z_min, NULL::INT z_max
+            , FALSE done
+        FROM fr.territory t
+            LEFT OUTER JOIN municipality_namesake mns ON t.libgeo = mns.libgeo
+            JOIN fr.territory d ON d.nivgeo = 'DEP' AND d.codgeo = t.codgeo_dep_parent
+            LEFT OUTER JOIN fr.territory cg ON cg.nivgeo = 'COM_GLOBALE_ARM' AND cg.codgeo = t.codgeo_com_globale_arm_parent
+        WHERE
+            t.nivgeo = 'COM' AND t.codgeo !~ '^98' $_where
         " && {
 execute_query \
     --name WITH_TERRITORY_ALTITUDE \

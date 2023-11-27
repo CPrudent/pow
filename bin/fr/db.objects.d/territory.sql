@@ -430,6 +430,8 @@ BEGIN
             ;
             GET DIAGNOSTICS _nrows = ROW_COUNT;
             CALL public.log_info('LAPOSTE: mise à jour #' || _nrows || ' libellé(s), lien(s) COM/CP');
+
+            CALL fr.set_territory_exceptions(municipality_subsection);
         END IF;
 
         -- LAPOSTE : SUPRA CP
@@ -532,6 +534,32 @@ BEGIN
 
     RETURN TRUE;
 END $$ LANGUAGE plpgsql;
+
+-- deal w/ exceptions (as overseas territories)
+SELECT drop_all_functions_if_exists('fr', 'set_territory_exceptions');
+CREATE OR REPLACE PROCEDURE fr.set_territory_exceptions(
+    municipality_subsection VARCHAR DEFAULT 'ZA'
+)
+AS
+$proc$
+DECLARE
+    _nrows INTEGER;
+BEGIN
+    UPDATE fr.territory t SET
+        codgeo_cv_parent = RPAD(r.key, 5, 'Z')
+        , codgeo_arr_parent = RPAD(r.key, 4, 'Z')
+    FROM fr.constant c
+    WHERE
+        t.nivgeo = municipality_subsection
+        AND
+        c.usecase = 'TERRITORY_OVERSEAS_RELATION'
+        AND
+        t.codgeo_com_parent = r.value
+    ;
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info('POW: mise à jour #' || _nrows || ' ' || municipality_subsection || ' (liens CV/ARR)');
+END
+$proc$ LANGUAGE plpgsql;
 
 SELECT drop_all_functions_if_exists('fr', 'update_territory');
 CREATE OR REPLACE FUNCTION fr.update_territory()
