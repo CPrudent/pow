@@ -224,7 +224,7 @@ END;
 $proc$ LANGUAGE plpgsql;
 
 SELECT public.drop_all_functions_if_exists('fr', 'set_territory_overseas');
-CREATE OR REPLACE PROCEDURE fr.set_set_territory_overseas()
+CREATE OR REPLACE PROCEDURE fr.set_territory_overseas()
 AS
 $proc$
 BEGIN
@@ -254,6 +254,7 @@ BEGIN
 
         , ('TERRITORY_OVERSEAS_NAME', '97', 'Îles en Atlantique')
         , ('TERRITORY_OVERSEAS_NAME', '98', 'Îles en Pacifique')
+    ;
 
     DELETE FROM fr.constant WHERE usecase = 'TERRITORY_OVERSEAS_RELATION';
     INSERT INTO fr.constant (usecase, key, value) VALUES

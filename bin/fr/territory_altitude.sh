@@ -231,6 +231,37 @@ altitude_set_url() {
     return $SUCCESS_CODE
 }
 
+# set (min, max) values for exceptions (not found elsewhere)
+altitude_set_exceptions() {
+    execute_query \
+        --name TODO_TERRITORY_ALTITUDE \
+        --query "
+            WITH
+            missing_altitude AS (
+                SELECT
+                    codgeo
+                    , z_min
+                    , z_max
+                FROM (
+                    VALUES
+                        ('97501', 'Miquelon-Langlade', 0, 240)
+                        , ('97502', 'Saint-Pierre', 0, 207)
+                        , ('97701', 'Saint-Barthélemy', 0, 286)
+                        , ('97801', 'Saint-Martin', 0, 424)
+                        , ('97607', 'Dembeni', 0, 651)
+                ) AS t(codgeo, libgeo, z_min, z_max)
+            )
+            UPDATE fr.municipality_altitude SET
+                z_min = m.z_min
+                , z_max = m.z_max
+                FROM missing_altitude m
+                WHERE
+                    code = m.codgeo
+        " || return $ERROR_CODE
+
+    return $SUCCESS_CODE
+}
+
 # get (min, max) values from downloaded HTML
 altitude_set_values() {
     bash_args \
@@ -355,7 +386,8 @@ execute_query \
             LEFT OUTER JOIN fr.territory cg ON cg.nivgeo = 'COM_GLOBALE_ARM' AND cg.codgeo = t.codgeo_com_globale_arm_parent
         WHERE
             t.nivgeo = 'COM' AND t.codgeo !~ '^98' $_where
-        " && {
+        " &&
+altitude_set_exceptions && {
 execute_query \
     --name WITH_TERRITORY_ALTITUDE \
     --query 'SELECT COUNT(1) FROM fr.municipality_altitude' \

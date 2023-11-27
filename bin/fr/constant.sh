@@ -16,6 +16,7 @@ execute_query \
         DELETE FROM fr.constant WHERE list = 'LAPOSTE_STREET_TITLE';
         CALL fr.set_laposte_extension_of_housenumber();
         CALL fr.set_laposte_address_correction_list();
+        CALL fr.set_territory_overseas();
         " &&
 import_file \
     --file_path "$POW_DIR_COMMON_GLOBAL_SCHEMA/constant/laposte_title.csv" \

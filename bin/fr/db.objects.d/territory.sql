@@ -390,8 +390,8 @@ BEGIN
 
         CALL fr.set_territory_exceptions(
             usecase => 'SUBDIVISION'
-            municipality_subsection => municipality_subsection)
-        ;
+            , municipality_subsection => municipality_subsection
+        );
     ELSE
         -- update base level, delete others
         DELETE FROM fr.territory
@@ -730,9 +730,8 @@ BEGIN
     AND insee.codgeo = territory.codgeo
     AND insee.millesime = (SELECT MAX(millesime) FROM fr.insee_supra);
 
-    CALL fr.set_territory_exceptions(
-        usecase => 'NAME'
-    );
+    -- set name (territory overseas)
+    CALL fr.set_territory_exceptions(usecase => 'NAME');
 
     -- set name (postal levels) from LAPOSTE
     RAISE NOTICE 'Libellés des territoires : SUPRA CP';
