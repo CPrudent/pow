@@ -387,6 +387,11 @@ BEGIN
         );
         GET DIAGNOSTICS _nrows = ROW_COUNT;
         RAISE NOTICE 'LAPOSTE: insertion #% infra-commune(s)', _nrows;
+
+        CALL fr.set_territory_exceptions(
+            usecase => 'SUBDIVISION'
+            municipality_subsection => municipality_subsection)
+        ;
     ELSE
         -- update base level, delete others
         DELETE FROM fr.territory
@@ -430,8 +435,6 @@ BEGIN
             ;
             GET DIAGNOSTICS _nrows = ROW_COUNT;
             CALL public.log_info('LAPOSTE: mise à jour #' || _nrows || ' libellé(s), lien(s) COM/CP');
-
-            CALL fr.set_territory_exceptions(municipality_subsection);
         END IF;
 
         -- LAPOSTE : SUPRA CP
@@ -538,26 +541,46 @@ END $$ LANGUAGE plpgsql;
 -- deal w/ exceptions (as overseas territories)
 SELECT drop_all_functions_if_exists('fr', 'set_territory_exceptions');
 CREATE OR REPLACE PROCEDURE fr.set_territory_exceptions(
-    municipality_subsection VARCHAR DEFAULT 'ZA'
+    usecase VARCHAR
+    , municipality_subsection VARCHAR DEFAULT 'ZA'
 )
 AS
 $proc$
 DECLARE
     _nrows INTEGER;
 BEGIN
-    UPDATE fr.territory t SET
-        codgeo_cv_parent = RPAD(r.key, 5, 'Z')
-        , codgeo_arr_parent = RPAD(r.key, 4, 'Z')
-    FROM fr.constant c
-    WHERE
-        t.nivgeo = municipality_subsection
-        AND
-        c.usecase = 'TERRITORY_OVERSEAS_RELATION'
-        AND
-        t.codgeo_com_parent = r.value
-    ;
-    GET DIAGNOSTICS _nrows = ROW_COUNT;
-    CALL public.log_info('POW: mise à jour #' || _nrows || ' ' || municipality_subsection || ' (liens CV/ARR)');
+    IF usecase = 'SUBDIVISION' THEN
+        UPDATE fr.territory t SET
+            codgeo_cv_parent = RPAD(c.key, 5, 'Z')
+            , codgeo_arr_parent = RPAD(c.key, 4, 'Z')
+        FROM fr.constant c
+        WHERE
+            t.nivgeo = municipality_subsection
+            AND
+            c.usecase = 'TERRITORY_OVERSEAS_RELATION'
+            AND
+            t.codgeo_com_parent = c.value
+        ;
+        GET DIAGNOSTICS _nrows = ROW_COUNT;
+        CALL public.log_info('POW: mise à jour #' || _nrows || ' ' || municipality_subsection || ' (liens CV/ARR)');
+    ELSIF usecase = 'NAME' THEN
+        UPDATE fr.territory t SET
+            libgeo = c.value
+        FROM fr.constant c
+        WHERE
+            t.nivgeo = ANY('{COM,CV,ARR,DEP,REG}')
+            AND
+            c.usecase = 'TERRITORY_OVERSEAS_NAME'
+            AND
+            t.codgeo = CASE
+                        WHEN t.nivgeo = 'CV' THEN RPAD(c.key, 5, 'Z')
+                        WHEN t.nivgeo = 'ARR' THEN RPAD(c.key, 4, 'Z')
+                        ELSE c.key
+                       END
+        ;
+        GET DIAGNOSTICS _nrows = ROW_COUNT;
+        CALL public.log_info('POW: mise à jour #' || _nrows || ' (libellés COM/CV/ARR/DEP/REG)');
+    END IF;
 END
 $proc$ LANGUAGE plpgsql;
 
@@ -706,6 +729,10 @@ BEGIN
     AND insee.nivgeo = territory.nivgeo
     AND insee.codgeo = territory.codgeo
     AND insee.millesime = (SELECT MAX(millesime) FROM fr.insee_supra);
+
+    CALL fr.set_territory_exceptions(
+        usecase => 'NAME'
+    );
 
     -- set name (postal levels) from LAPOSTE
     RAISE NOTICE 'Libellés des territoires : SUPRA CP';
