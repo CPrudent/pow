@@ -215,22 +215,24 @@ BEGIN
             WITH
             set_of_subsection AS (
                 SELECT
-                    CONCAT_WS('-', za.co_insee_commune, za.co_postal) AS codgeo
-                    , MAX(za.dt_reference) AS dt_reference_geo
-                    , CONCAT(
-                        FIRST(co_postal)
-                        , ' ('
+                    CONCAT_WS('-'
+                        , co_insee_commune
+                        , co_postal
+                    ) AS codgeo
+                    , MAX(dt_reference) AS dt_reference_geo
+                    , CONCAT_WS(' '
+                        , co_postal
                         /* NOTE
                         L5/L6 are inverted for Polynésie & Nouvelle Calédonie (98)
                         */
                         , STRING_AGG(
-                            DISTINCT CASE WHEN co_insee_commune ~ '^98[78]' THEN lb_l5_nn ELSE lb_ach_nn END
+                            DISTINCT CASE WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN lb_l5_nn ELSE lb_ach_nn END
                             , ', '
-                            ORDER BY CASE WHEN co_insee_commune ~ '^98[78]' THEN lb_l5_nn ELSE lb_ach_nn END)
-                        , ')') AS libgeo
+                            ORDER BY CASE WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN lb_l5_nn ELSE lb_ach_nn END)
+                    ) AS libgeo
                     , co_postal
                     , co_insee_commune
-                FROM fr.laposte_address_area AS za
+                FROM fr.laposte_address_area
                 WHERE
                     municipality_subsection = 'COM_CP'
                 GROUP BY co_postal, co_insee_commune
@@ -241,13 +243,13 @@ BEGIN
                     co_cea
                     , dt_reference
                     , CONCAT_WS('-'
-                        , CASE WHEN co_insee_commune ~ '^98[78]' THEN lb_ach_nn ELSE lb_l5_nn END
+                        , CASE WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN lb_ach_nn ELSE lb_l5_nn END
                         , co_postal
-                        , CASE WHEN co_insee_commune ~ '^98[78]' THEN lb_l5_nn ELSE lb_ach_nn END
+                        , CASE WHEN co_insee_commune ~ '^98[78]' THEN COALESCE(lb_l5_nn, lb_ach_nn) ELSE lb_ach_nn END
                     )
                     , co_postal
                     , co_insee_commune
-                FROM fr.laposte_address_area AS za
+                FROM fr.laposte_address_area
                 WHERE
                     municipality_subsection = 'ZA'
                     AND
@@ -406,10 +408,10 @@ BEGIN
                 dt_reference_geo = TIMEOFDAY()::DATE
                 -- TODO: for ZA only (modify if COM_CP)
                 , libgeo = CONCAT_WS('-'
-                        , CASE WHEN co_insee_commune ~ '^98[78]' THEN lb_ach_nn ELSE lb_l5_nn END
-                        , co_postal
-                        , CASE WHEN co_insee_commune ~ '^98[78]' THEN lb_l5_nn ELSE lb_ach_nn END
-                    )
+                    , CASE WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN lb_ach_nn ELSE lb_l5_nn END
+                    , co_postal
+                    , CASE WHEN co_insee_commune ~ '^98[78]' THEN COALESCE(lb_l5_nn, lb_ach_nn) ELSE lb_ach_nn END
+                )
                 , codgeo_com_parent = area.co_insee_commune
                 , codgeo_cp_parent = area.co_postal
             FROM fr.laposte_address_area area
@@ -423,9 +425,9 @@ BEGIN
                 (
                     t.libgeo IS DISTINCT FROM
                         CONCAT_WS('-'
-                            , CASE WHEN co_insee_commune ~ '^98[78]' THEN lb_ach_nn ELSE lb_l5_nn END
+                            , CASE WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN lb_ach_nn ELSE lb_l5_nn END
                             , co_postal
-                            , CASE WHEN co_insee_commune ~ '^98[78]' THEN lb_l5_nn ELSE lb_ach_nn END
+                            , CASE WHEN co_insee_commune ~ '^98[78]' THEN COALESCE(lb_l5_nn, lb_ach_nn) ELSE lb_ach_nn END
                         )
                     OR
                     t.codgeo_com_parent IS DISTINCT FROM area.co_insee_commune
@@ -1003,7 +1005,7 @@ BEGIN
                     SELECT DISTINCT
                         co_cea
                         , CASE
-                            WHEN co_insee_commune ~ '^98' AND lb_ach_nn IS NOT NULL THEN lb_ach_nn
+                            WHEN co_insee_commune ~ '^98' AND lb_ach_nn IS NOT NULL AND lb_l5_nn != lb_ach_nn THEN lb_ach_nn
                             WHEN co_insee_commune !~ '^98' AND lb_l5_nn IS NOT NULL THEN lb_l5_nn
                         END l5_norm
                     FROM fr.laposte_address_area

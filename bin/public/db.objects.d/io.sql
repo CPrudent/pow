@@ -524,8 +524,8 @@ BEGIN
                     SELECT
                         co_cea codgeo
                         , co_insee_commune codgeo_com
-                        , CASE WHEN co_insee_commune ~ ''^98[78]'' THEN lb_ach_nn ELSE lb_l5_nn END libgeo_l5
-                        , CASE WHEN co_insee_commune ~ ''^98[78]'' THEN lb_l5_nn ELSE lb_ach_nn END libgeo_l6
+                        , CASE WHEN co_insee_commune ~ ''^98[78]'' AND lb_l5_nn IS NOT NULL THEN lb_ach_nn ELSE lb_l5_nn END libgeo_l5
+                        , CASE WHEN co_insee_commune ~ ''^98[78]'' THEN COALESCE(lb_l5_nn, lb_ach_nn) ELSE lb_ach_nn END libgeo_l6
                         , co_postal
                     FROM
                         fr.laposte_address_area
