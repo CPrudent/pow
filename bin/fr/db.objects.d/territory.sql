@@ -391,7 +391,7 @@ BEGIN
         RAISE NOTICE 'LAPOSTE: insertion #% infra-commune(s)', _nrows;
 
         CALL fr.set_territory_exceptions(
-            usecase => 'SUBDIVISION'
+            usecase => 'RELATION'
             , municipality_subsection => municipality_subsection
         );
     ELSE
@@ -551,7 +551,7 @@ $proc$
 DECLARE
     _nrows INTEGER;
 BEGIN
-    IF usecase = 'SUBDIVISION' THEN
+    IF usecase = 'RELATION' THEN
         UPDATE fr.territory t SET
             codgeo_cv_parent = RPAD(c.key, 5, 'Z')
             , codgeo_arr_parent = RPAD(c.key, 4, 'Z')
@@ -564,7 +564,7 @@ BEGIN
             t.codgeo_com_parent = c.value
         ;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
-        CALL public.log_info('POW: mise à jour #' || _nrows || ' ' || municipality_subsection || ' (liens CV/ARR)');
+        CALL public.log_info('Mise à jour ' || municipality_subsection || ' : #' || _nrows || '  liens CV/ARR (source POW)');
     ELSIF usecase = 'NAME' THEN
         UPDATE fr.territory t SET
             libgeo = c.value
@@ -581,7 +581,7 @@ BEGIN
                        END
         ;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
-        CALL public.log_info('POW: mise à jour #' || _nrows || ' (libellés COM/CV/ARR/DEP/REG)');
+        CALL public.log_info('Mise à jour COM, CV, ARR, DEP, REG : #' || _nrows || ' Nommage (source POW)');
     END IF;
 END
 $proc$ LANGUAGE plpgsql;
@@ -593,7 +593,7 @@ AS $$
 BEGIN
     -- set population (COM level)
     IF column_exists('public', 'territoire_has_insee_histo', 'pmun') THEN
-        RAISE NOTICE 'Population issue des séries historiques INSEE';
+        CALL public.log_info('Mise à jour COM : Population (source INSEE séries historiques)');
         UPDATE fr.territory
         SET population = (
             SELECT insee_histo.pmun
@@ -605,7 +605,7 @@ BEGIN
         )
         WHERE territory.nivgeo = 'COM';
     ELSE
-        RAISE NOTICE 'Population issue de ADMIN-EXPRESS IGN';
+        CALL public.log_info('Mise à jour COM : Population (source IGN ADMIN-EXPRESS)');
         UPDATE fr.territory
         SET population = commune_ign.population
         FROM (
@@ -627,7 +627,7 @@ BEGIN
         WHERE commune_ign.codgeo = territory.codgeo AND territory.nivgeo = 'COM';
     END IF;
     -- set population (SUPRA levels)
-    CALL public.log_info('remontée SUPRA : (population)');
+    CALL public.log_info('Mise à jour SUPRA : (Population)');
     PERFORM fr.set_territory_supra(
         table_name => 'territory'
         , schema_name => 'fr'
@@ -637,7 +637,7 @@ BEGIN
     );
 
     -- set link for EPCI level w/ majority DEP & REG levels
-    RAISE NOTICE 'Calcul département/région majoriaire pour les EPCI';
+    CALL public.log_info('Mise à jour EPCI : département/région majoritaire (calcul)');
     WITH com_groupby_epci AS (
         SELECT
             codgeo_epci_parent AS codgeo
@@ -664,7 +664,7 @@ BEGIN
     WHERE com_groupby_epci.codgeo = territory.codgeo AND territory.nivgeo = 'EPCI';
 
     -- set name (COM & COM_GLOBALE_ARM levels) from IGN ...
-    RAISE NOTICE 'Libellés des territoires : COM, COM_GLOBALE_ARM';
+    CALL public.log_info('Mise à jour COM, COM_GLOBALE_ARM : Nommage (source IGN)');
     UPDATE fr.territory
     SET libgeo = commune_ign.libgeo
     FROM (
@@ -696,6 +696,7 @@ BEGIN
     WHERE territory.nivgeo IN ('COM', 'COM_GLOBALE_ARM')
     AND commune_ign.nivgeo = territory.nivgeo
     AND commune_ign.codgeo = territory.codgeo;
+    CALL public.log_info('Mise à jour COM(98*) : Nommage (source LAPOSTE)');
     -- ... and from RAN (Polynésie française: 987* & Nouvelle Calédonie: 988*)
     UPDATE fr.territory
     SET libgeo = commune_ran.libgeo
@@ -714,7 +715,7 @@ BEGIN
     ;
 
     -- set name, type (EPCI level) from DGCL/BANATIC
-    RAISE NOTICE 'Libellés des territoires : EPCI';
+    CALL public.log_info('Mise à jour EPCI : Nommage (source BANATIC)');
     UPDATE fr.territory
     SET libgeo = epci.nom_du_groupement
         , typgeo = epci.nature_juridique
@@ -723,7 +724,7 @@ BEGIN
     AND territory.codgeo = epci.n_siren;
 
     -- set name (ARR & CV & DEP & REG levels) from INSEE
-    RAISE NOTICE 'Libellés des territoires : ARR, CV, DEP, REG';
+    CALL public.log_info('Mise à jour ARR, CV, DEP, REG : Nommage (source INSEE)');
     UPDATE fr.territory
     SET libgeo = insee.libgeo
     FROM fr.insee_supra insee
@@ -736,7 +737,7 @@ BEGIN
     CALL fr.set_territory_exceptions(usecase => 'NAME');
 
     -- set name (postal levels) from LAPOSTE
-    RAISE NOTICE 'Libellés des territoires : SUPRA CP';
+    CALL public.log_info('Mise à jour SUPRA CP : Nommage (source LAPOSTE)');
     UPDATE fr.territory
     SET libgeo = territory_laposte.libgeo
     FROM fr.territory_laposte
@@ -744,14 +745,15 @@ BEGIN
     AND territory_laposte.nivgeo = territory.nivgeo
     AND territory_laposte.codgeo = territory.codgeo;
 
-    RAISE NOTICE 'Libellés des territoires : CP';
+    /*
+    CALL public.log_info('Mise à jour CP : Nommage (source POW)');
     WITH name_of_CP AS (
         SELECT
             za.codgeo_cp_parent AS codgeo
             , STRING_AGG(DISTINCT com.libgeo, ', ' ORDER BY com.libgeo) AS libgeo
         FROM fr.territory AS com
         INNER JOIN fr.territory AS za
-            ON za.nivgeo = 'COM_CP'
+            ON za.nivgeo = 'ZA'
             AND za.codgeo_com_parent = com.codgeo
         WHERE com.nivgeo = 'COM'
         GROUP BY za.codgeo_cp_parent
@@ -761,6 +763,7 @@ BEGIN
     FROM name_of_CP
     WHERE territory.nivgeo = 'CP'
     AND territory.codgeo = name_of_CP.codgeo;
+     */
 
     -- set name (COUNTRY levels)
     UPDATE fr.territory
@@ -836,7 +839,8 @@ BEGIN
         WHERE nivgeo = ANY(public.get_levels('fr'));
     END IF;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    RAISE NOTICE 'Calcul voisinage de territoires #%', _nrows_affected;
+    CALL public.log_info('Mise à jour Territoires : #' || _nrows_affected || ' Voisinage (source POW)');
+
     RETURN _nrows_affected > 0;
 END $$ LANGUAGE plpgsql;
 

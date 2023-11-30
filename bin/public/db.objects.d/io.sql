@@ -493,8 +493,8 @@ BEGIN
                     WHERE
                         fl_active
                         AND
-                        -- exclude MONACO, and trick for bug #45
-                        co_insee_commune !~ ''^9[89]''
+                        -- exclude MONACO
+                        co_insee_commune !~ ''^99''
                 ) x
 
                 FULL OUTER JOIN
@@ -506,8 +506,6 @@ BEGIN
                         fr.territory
                     WHERE
                         nivgeo = ''ZA''
-                        AND
-                        codgeo !~ ''^9[89]''
                 ) t
 
                 ON x.codgeo = t.codgeo
@@ -532,8 +530,8 @@ BEGIN
                     WHERE
                         fl_active
                         AND
-                        -- exclude MONACO, and trick for bug #45
-                        co_insee_commune !~ ''^9[89]''
+                        -- exclude MONACO
+                        co_insee_commune !~ ''^99''
                 ) x
 
                 JOIN
@@ -550,8 +548,6 @@ BEGIN
                             fr.territory
                         WHERE
                             nivgeo = ''ZA''
-                            AND
-                            codgeo !~ ''^9[89]''
                     )
                     SELECT
                         codgeo_za
