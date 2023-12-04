@@ -1080,7 +1080,7 @@ $func$ LANGUAGE plpgsql;
 SELECT drop_all_functions_if_exists('fr', 'get_zone_address_to_now');
 SELECT drop_all_functions_if_exists('fr', 'get_address_area_to_now');
 CREATE OR REPLACE FUNCTION fr.get_address_area_to_now(
-    zone_address fr.laposte_address_area
+    address_area fr.laposte_address_area
 )
 RETURNS fr.laposte_address_area AS
 $func$
@@ -1088,18 +1088,18 @@ DECLARE
     _municipality_to_now RECORD;
 BEGIN
     --Cas de réactivation non géré pour le moment : est-ce un cas possible ?
-    IF NOT zone_address.fl_active THEN RETURN zone_address; END IF;
+    IF NOT address_area.fl_active THEN RETURN address_area; END IF;
 
     SELECT *
     INTO _municipality_to_now
     FROM fr.get_municipality_to_date(
-        code => zone_address.co_insee_commune
+        code => address_area.co_insee_commune
         --On force l'algo à considérer en cas de fusion que cette ZA correspond à la portion avant fusion, même pour la commune déléguée chef lieu
         , code_previous => COALESCE(
-            zone_address.co_insee_commune_precedente
-            , zone_address.co_insee_commune
+            address_area.co_insee_commune_precedente
+            , address_area.co_insee_commune
         )
-        , date_geography_from => zone_address.dt_reference_commune
+        , date_geography_from => address_area.dt_reference_commune
         , with_deleted => TRUE --Cas de suppression/désactivation non géré pour le moment : est-ce un cas possible ?
         , check_exists => FALSE --Ce test n'aurait pas de sens, puisque la liste des communes de la table territory est issue de RAN
     ) AS commune_to_now
@@ -1115,10 +1115,10 @@ BEGIN
 
     IF _municipality_to_now.distribution = 1 THEN
         RAISE NOTICE 'Cas de (fusion de commune / création commune nouvelle) géré pour maj GEO de RAN ZA : %, % / %, % -> %, %'
-            , zone_address.co_cea
-            , zone_address.co_insee_commune
-            , zone_address.co_insee_commune_precedente
-            , zone_address.lb_nn
+            , address_area.co_cea
+            , address_area.co_insee_commune
+            , address_area.co_insee_commune_precedente
+            , address_area.lb_nn
             , _municipality_to_now.code
             , _municipality_to_now.name;
 
@@ -1127,51 +1127,51 @@ BEGIN
             -- merged municipality (save name into L5 as old municipality)
             IF _municipality_to_now.code != _municipality_to_now.code_previous THEN
                 -- keep eventualy previuous code (if not already merged)
-                IF zone_address.co_insee_commune_precedente IS NULL THEN
-                    zone_address.co_insee_commune_precedente := zone_address.co_insee_commune;
+                IF address_area.co_insee_commune_precedente IS NULL THEN
+                    address_area.co_insee_commune_precedente := address_area.co_insee_commune;
                 END IF;
-                zone_address.lb_l5_nn := zone_address.lb_ach_nn;
+                address_area.lb_l5_nn := address_area.lb_ach_nn;
             END IF;
         END IF;
 
-        zone_address.co_insee_commune := _municipality_to_now.code;
-        zone_address.lb_ach_nn := fr.normalize_municipality_name(_municipality_to_now.code, _municipality_to_now.name);
-        zone_address.co_insee_departement :=            fr.get_department_code_from_municipality_code(zone_address.co_insee_commune);
-        zone_address.dt_reference_commune := _municipality_to_now.date_geography;
+        address_area.co_insee_commune := _municipality_to_now.code;
+        address_area.lb_ach_nn := fr.normalize_municipality_name(_municipality_to_now.code, _municipality_to_now.name);
+        address_area.co_insee_departement :=            fr.get_department_code_from_municipality_code(address_area.co_insee_commune);
+        address_area.dt_reference_commune := _municipality_to_now.date_geography;
 
     ELSIF _municipality_to_now.distribution < 1 AND _municipality_to_now.distribution > 0 THEN
         RAISE NOTICE 'Cas de rétablissement de commune géré pour maj GEO de RAN ZA : %, % / %, % -> %, %'
-            , zone_address.co_cea
-            , zone_address.co_insee_commune
-            , zone_address.co_insee_commune_precedente
-            , zone_address.lb_nn
+            , address_area.co_cea
+            , address_area.co_insee_commune
+            , address_area.co_insee_commune_precedente
+            , address_area.lb_nn
             , _municipality_to_now.code
             , _municipality_to_now.name;
 
-        zone_address.co_insee_commune := zone_address.co_insee_commune_precedente;
-        zone_address.co_insee_departement := fr.get_department_code_from_municipality_code(zone_address.co_insee_commune);
-        zone_address.co_insee_commune_precedente := NULL;
-        zone_address.dt_reference_commune := _municipality_to_now.date_geography;
+        address_area.co_insee_commune := address_area.co_insee_commune_precedente;
+        address_area.co_insee_departement := fr.get_department_code_from_municipality_code(address_area.co_insee_commune);
+        address_area.co_insee_commune_precedente := NULL;
+        address_area.dt_reference_commune := _municipality_to_now.date_geography;
 
         /* NOTE : Cas rare de division non géré pour le moment, pourrait être :
-        zone_address.lb_nn := lb_l5_nn;
-        zone_address.lb_ach_nn := lb_l5_nn;
-        zone_address.co_insee_commune_precedente := NULL;
-        zone_address.dt_reference_commune = _municipality_to_now.date_geography;
+        address_area.lb_nn := lb_l5_nn;
+        address_area.lb_ach_nn := lb_l5_nn;
+        address_area.co_insee_commune_precedente := NULL;
+        address_area.dt_reference_commune = _municipality_to_now.date_geography;
          */
     ELSIF _municipality_to_now.distribution = 0 THEN
         RAISE NOTICE 'Cas de suppression de commune non géré pour maj GEO de RAN ZA : %, % / %, %'
-            , zone_address.co_cea
-            , zone_address.co_insee_commune
-            , zone_address.co_insee_commune_precedente
-            , zone_address.lb_nn;
+            , address_area.co_cea
+            , address_area.co_insee_commune
+            , address_area.co_insee_commune_precedente
+            , address_area.lb_nn;
         /* NOTE : Cas rare (inexistant ?) de suppression non géré pour le moment, pourrait être
-        zone_address.fl_active := FALSE;
-        zone_address.dt_reference_commune := _municipality_to_now.date_geography;
+        address_area.fl_active := FALSE;
+        address_area.dt_reference_commune := _municipality_to_now.date_geography;
          */
     END IF;
 
-    RETURN zone_address;
+    RETURN address_area;
 END
 $func$ LANGUAGE plpgsql;
 

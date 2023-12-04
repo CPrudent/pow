@@ -453,8 +453,9 @@ SELECT  ST_SplitFour(
 
 -- BBOX for all parts of France (according to SRID)
 SELECT public.drop_all_functions_if_exists('public', 'coordIsInSridBounds');
+SELECT public.drop_all_functions_if_exists('public', 'is_valid_geometry_in_SRID_bounds');
 -- from (x, y, SRID)
-CREATE OR REPLACE FUNCTION coordIsInSridBounds(
+CREATE OR REPLACE FUNCTION is_valid_geometry_in_SRID_bounds(
     x DOUBLE PRECISION
     , y DOUBLE PRECISION
     , srid INTEGER
@@ -517,7 +518,7 @@ END
 $func$ LANGUAGE plpgsql;
 
 -- from POINT
-CREATE OR REPLACE FUNCTION coordIsInSridBounds(
+CREATE OR REPLACE FUNCTION is_valid_geometry_in_SRID_bounds(
     point_in GEOMETRY(POINT)
 )
 RETURNS BOOLEAN
@@ -526,7 +527,7 @@ AS
 $func$
 DECLARE
 BEGIN
-	RETURN coordIsInSridBounds(ST_X(point_in), ST_Y(point_in), ST_SRID(point_in));
+	RETURN is_valid_geometry_in_SRID_bounds(ST_X(point_in), ST_Y(point_in), ST_SRID(point_in));
 END
 $func$ LANGUAGE plpgsql;
 
@@ -534,7 +535,7 @@ $func$ LANGUAGE plpgsql;
 DROP TABLE IF EXISTS tmp_pdi_srid_out_bounds;
 CREATE TABLE tmp_pdi_srid_out_bounds AS
     SELECT * FROM geopad.pdi
-    WHERE NOT coordIsInSridBounds(adresse_x, adresse_y, getSridCoordRanFromCodeInseeDepartement(getCodeInseeDepartementFromCodeInseeCommune(COALESCE(adresse_id, agg_adresse_id))));
+    WHERE NOT is_valid_geometry_in_SRID_bounds(adresse_x, adresse_y, getSridCoordRanFromCodeInseeDepartement(getCodeInseeDepartementFromCodeInseeCommune(COALESCE(adresse_id, agg_adresse_id))));
 
 SELECT COALESCE(ST_SetSRID(ST_MakePoint(1, 1), NULL), ST_MakePoint(2, 2));
 
@@ -580,7 +581,7 @@ FROM tmp_pdi_srid_out_bounds
 LIMIT 1
 --WHERE
 WHERE NOT
-    coordIsInSridBounds(
+    is_valid_geometry_in_SRID_bounds(
         ST_Transform(
             ST_SetSRID(
                 ST_MakePoint(adresse_x, adresse_y)
@@ -607,7 +608,7 @@ LIMIT 1;
 SELECT pdi_id, adresse_x, adresse_y, getSridCoordRanFromCodeInseeDepartement(
     getCodeInseeDepartementFromCodeInseeCommune(COALESCE(adresse_id, agg_adresse_id))) AS srid
 FROM geopad.pdi
-WHERE NOT coordIsInSridBounds(adresse_x, adresse_y, getSridCoordRanFromCodeInseeDepartement(
+WHERE NOT is_valid_geometry_in_SRID_bounds(adresse_x, adresse_y, getSridCoordRanFromCodeInseeDepartement(
     getCodeInseeDepartementFromCodeInseeCommune(COALESCE(adresse_id, agg_adresse_id)))
 )
 LIMIT 1;

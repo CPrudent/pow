@@ -14,6 +14,10 @@ BEGIN
         ALTER TABLE fr.constant RENAME COLUMN "list" TO usecase;
         DROP INDEX IF EXISTS ix_constant_list_key;
     END IF;
+
+    IF table_exists('fr', 'laposte_street_type') AND NOT table_exists('fr', 'laposte_address_street_type') THEN
+        ALTER TABLE fr.laposte_street_type RENAME TO laposte_address_street_type;
+    END IF;
 END $$;
 
 -- build LAPOSTE municipality : list of normalized label exceptions
