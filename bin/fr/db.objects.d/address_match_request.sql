@@ -24,8 +24,8 @@ DECLARE
     _result RECORD;
 BEGIN
     SELECT
-        id
-        , suffix
+        mr.id
+        , mr.suffix
     INTO
         _id
         , _suffix
@@ -49,8 +49,8 @@ BEGIN
 END $$ LANGUAGE plpgsql;
 
 /* TEST
-SELECT fr.add_address_match('dir1/file1.csv') AS (id INT, suffix VARCHAR);
-SELECT fr.add_address_match('dir1/file2.csv', 'test1') AS (id, suffix);
+SELECT * FROM fr.add_address_match('dir1/file1.csv') AS (id INT, suffix VARCHAR);
+SELECT * FROM fr.add_address_match('dir1/file2.csv', 'test1') AS (id INT, suffix VARCHAR);
 -- already exists
-SELECT fr.add_address_match('dir1/file1.csv') AS (id, suffix);
+SELECT fr.add_address_match('dir1/file1.csv') AS (id INT, suffix VARCHAR);
  */
