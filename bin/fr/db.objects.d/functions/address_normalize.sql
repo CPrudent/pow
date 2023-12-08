@@ -2,40 +2,10 @@
  * add FR-ADDRESS facilities (normalized label, following AFNOR NF Z 10-011 (1/2013))
  */
 
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'address_normalized')
-    OR NOT EXISTS (
-        SELECT 1 FROM information_schema.attributes
-        WHERE udt_name = 'address_normalized' AND attribute_name = 'municipality_name')
-    THEN
-        DROP TYPE IF EXISTS fr.address_normalized CASCADE;
-        CREATE TYPE fr.address_normalized AS (
-            _order_code_area VARCHAR
-            , _order_code_street VARCHAR
-            , _order_code_housenumber VARCHAR
-            , _order_code_complement VARCHAR
-            , id VARCHAR
-            , complement VARCHAR
-            , housenumber INTEGER
-            , housenumber_extension VARCHAR
-            , street VARCHAR
-            , street_type VARCHAR
-            , street_type_short VARCHAR
-            , geom GEOMETRY(POINT, 3857)
-            , level VARCHAR
-            , postcode VARCHAR
-            , municipality_old_name VARCHAR
-            , municipality_code VARCHAR
-            , municipality_name VARCHAR
-        );
-    END IF;
-END $$;
-
 SELECT drop_all_functions_if_exists('fr', 'normalize_address');
 CREATE OR REPLACE FUNCTION fr.normalize_address(
-    address IN RECORD                 -- public.adresse_client
-    , columns_map IN VARCHAR[]
+    address IN RECORD                   -- address to normalize
+    , columns_map IN VARCHAR[]          -- mapping address(client)/address(reference)
 )
 RETURNS fr.address_normalized AS
 $func$

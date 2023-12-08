@@ -45,3 +45,4 @@
 \include_relative territory.sql
 \include_relative address.sql
 \include_relative address_match_request.sql
+\include_relative address_match_normalize.sql
