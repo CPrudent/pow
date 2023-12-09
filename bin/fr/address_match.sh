@@ -57,7 +57,6 @@ match_request=($_request) &&
     exit $ERROR_CODE
 }
 
-declare -p match_var
 match_var[TABLE_NAME]=address_match_${match_request[$MATCH_REQUEST_SUFFIX]}
 match_var[FORMAT_PATH]="${POW_DIR_BIN}/${match_var[FORMAT]}_format.sql"
 {
@@ -72,16 +71,15 @@ match_var[FORMAT_PATH]="${POW_DIR_BIN}/${match_var[FORMAT]}_format.sql"
             --import_options "${match_var[IMPORT_OPTIONS]}"
     }
 } && {
-    expect file "${match_var[FORMAT_PATH]}" &&
+    [ -f "${match_var[FORMAT_PATH]}" ] &&
     match_var[FORMAT_SQL]=$(cat "${match_var[FORMAT_PATH]}") || {
-        expect file "${match_var[FORMAT]}" &&
+        [ -f "${match_var[FORMAT]}" ] &&
         match_var[FORMAT_SQL]=$(cat "${match_var[FORMAT]}") || {
             log_error "Le format ${match_var[FORMAT]} n'existe pas"
             false
         }
     }
 } &&
-declare -p match_var &&
 log_info "demande de Rapprochement (étape Normalisation)" &&
 execute_query \
     --name NORMALIZE_MATCH_REQUEST \
