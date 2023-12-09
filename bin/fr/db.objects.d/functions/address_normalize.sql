@@ -5,7 +5,7 @@
 SELECT drop_all_functions_if_exists('fr', 'normalize_address');
 CREATE OR REPLACE FUNCTION fr.normalize_address(
     address IN RECORD                   -- address to normalize
-    , columns_map IN VARCHAR[]          -- mapping address(client)/address(reference)
+    , columns_map IN HSTORE             -- mapping address(client)/address(reference)
 )
 RETURNS fr.address_normalized AS
 $func$
@@ -23,7 +23,7 @@ DECLARE
     _street_type VARCHAR;
     _street_type_short VARCHAR;
 BEGIN
-    FOREACH _column_map SLICE 1 IN ARRAY columns_map LOOP
+    FOREACH _column_map SLICE 1 IN ARRAY %# columns_map LOOP
         _column_map[2] := CONCAT('$1.', _column_map[2]);
         BEGIN
             CASE _column_map[1]

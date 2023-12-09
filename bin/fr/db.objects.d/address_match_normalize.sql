@@ -44,7 +44,7 @@ CREATE INDEX IF NOT EXISTS ix_address_match_normalize_id_request ON fr.address_m
 SELECT drop_all_functions_if_exists('fr', 'set_normalize');
 CREATE OR REPLACE PROCEDURE fr.set_normalize(
     file_path VARCHAR
-    , mapping TEXT[]
+    , mapping HSTORE
 )
 AS
 $proc$
@@ -66,7 +66,12 @@ BEGIN
     END IF;
 
     DELETE FROM fr.address_match_normalize WHERE id_request = _id_request;
-    _table := CONCAT('fr.address_match_', _suffix);
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    IF _nrows > 0 THEN
+        CALL public.log_info(CONCAT('purge Rapprochement (', _id_request, ') : #', _nrows));
+    END IF;
+
+    _table := CONCAT('address_match_', _suffix);
     _query := CONCAT(
         '
         INSERT INTO fr.address_match_normalize(
@@ -78,14 +83,14 @@ BEGIN
         '
         , _id_request
         , '
-        , na.*
-            FROM
+        , ROW(na.*)::address_normalized
+            FROM fr.
         '
         , _table
         , '
             LEFT OUTER JOIN fr.normalize_address(
                 address => ', _table, '
-                , columns_map => ', mapping, '
+                , columns_map => ''', mapping, '''::HSTORE
             ) AS na ON TRUE
         )
         '
@@ -93,18 +98,5 @@ BEGIN
     EXECUTE _query;
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT('demande Rapprochement (', _id_request, ') : #', _nrows));
-END
-$proc$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE PROCEDURE fr.set_normalize(
-    file_path VARCHAR
-    , mapping HSTORE
-)
-AS
-$proc$
-DECLARE
-    _map_array TEXT[] := %# mapping;
-BEGIN
-    CALL fr.set_normalize(file_path => file_path, mapping => _map_array);
 END
 $proc$ LANGUAGE plpgsql;
