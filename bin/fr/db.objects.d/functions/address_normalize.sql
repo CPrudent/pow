@@ -2,6 +2,248 @@
  * add FR-ADDRESS facilities (normalized label, following AFNOR NF Z 10-011 (1/2013))
  */
 
+-- abbreviate holy word(s)
+SELECT drop_all_functions_if_exists('fr', 'normalize_abbreviate_holy');
+CREATE OR REPLACE FUNCTION fr.normalize_abbreviate_holy(
+    name IN VARCHAR
+)
+RETURNS VARCHAR AS
+$func$
+BEGIN
+    -- replace (SAINT|SAINTE)
+    IF name LIKE '% SAINT' OR name LIKE '% SAINTE' THEN
+        -- exception if it's the name itself
+        RETURN name;
+    END IF;
+    -- as starting word
+    IF name LIKE 'SAINT %' THEN
+        name := CONCAT('ST ', SUBSTR(name, 7));
+    ELSIF name LIKE 'SAINTE %' THEN
+        name := CONCAT('STE ', SUBSTR(name, 8));
+    END IF;
+    -- else anywhere (but at the end)
+    RETURN REPLACE(REPLACE(name, ' SAINTE ', ' STE '), ' SAINT ', ' ST ');
+
+    /* NOTE
+DECLARE
+    _name VARCHAR;
+    _name_normalized VARCHAR;
+    _words TEXT[];
+    _words_normalized VARCHAR[];
+    _word_end VARCHAR;
+
+     avoid REGEX because too expansive! in run-time
+    _words := REGEXP_SPLIT_TO_ARRAY(_name, '\s+');
+    FOR _i IN 1..ARRAY_LENGTH(_words, 1) LOOP
+        IF _words[_i] ~* '^SAINT[E]?$' THEN
+            -- exception if it's the name itself
+            IF _i = 2 THEN
+                IF _words[_i -1] ~* '^(LE|LA)$' THEN
+                    _words_normalized := ARRAY_APPEND(_words_normalized, _words[_i]);
+                    CONTINUE;
+                END IF;
+            END IF;
+            _word_end := (REGEXP_MATCH(_words[_i], 'SAINT([E]?)', 'i'))[1];
+            _words_normalized := ARRAY_APPEND(_words_normalized, CONCAT('ST', UPPER(_word_end)));
+            CONTINUE;
+        END IF;
+        _words_normalized := ARRAY_APPEND(_words_normalized, _words[_i]);
+    END LOOP;
+    RETURN ARRAY_TO_STRING(_words_normalized, ' ');
+     */
+END
+$func$ LANGUAGE plpgsql;
+
+-- normalize name of municipality
+SELECT public.drop_all_functions_if_exists('fr', 'normalize_municipality_name');
+CREATE OR REPLACE FUNCTION fr.normalize_municipality_name(
+    code VARCHAR
+    , name VARCHAR
+)
+RETURNS CHARACTER VARYING AS
+$func$
+DECLARE
+    _name_normalized VARCHAR;
+    _name VARCHAR;
+BEGIN
+    -- deal w/ exceptions
+    SELECT value
+    INTO _name_normalized
+    FROM fr.constant
+    WHERE
+        usecase = 'LAPOSTE_MUNICIPALITY_EXCEPTION'
+        AND
+        key = code
+        ;
+    IF FOUND THEN
+        RETURN _name_normalized;
+    END IF;
+
+    -- only upper and not special characters
+    _name := clean_address_label(name);
+    -- replace (SAINT|SAINTE)
+    RETURN fr.normalize_abbreviate_holy(_name);
+END
+$func$ LANGUAGE plpgsql;
+
+/* TEST
+-- municipality differences
+SELECT *
+FROM (
+    SELECT
+        za.co_insee_commune AS municipality_code
+        , c.nom AS name
+        , fr.normalize_municipality_name(c.insee_com, c.nom) AS name_normalized
+        , za.lb_ach_nn AS name_normalized_laposte
+    FROM
+        fr.laposte_address_area za
+            JOIN fr.ign_municipality c ON za.co_insee_commune = c.insee_com
+    WHERE
+        za.fl_active
+        AND
+        za.lb_l5_nn IS NULL
+    ) t
+WHERE
+    name_normalized != name_normalized_laposte
+ORDER BY
+    1
+    ;
+ */
+
+-- normalize name of street
+SELECT public.drop_all_functions_if_exists('fr', 'normalize_street_name');
+CREATE OR REPLACE FUNCTION fr.normalize_street_name(
+    name VARCHAR
+)
+RETURNS CHARACTER VARYING AS
+$func$
+DECLARE
+    _name VARCHAR;
+    _name_tmp VARCHAR;
+    _type VARCHAR;
+    _type_abbreviated VARCHAR;
+    _type_is_abbreviated BOOLEAN := TRUE;
+    _len INT;
+    _words TEXT[];
+    _words_i INT := 0;
+    _words_len INT;
+    _i INT;
+    _j INT;
+    _articles TEXT[] := '{AU,AUX,DE,DES,DU,EN,ET,LA,LE,LES,SOUS,SUR,UN,UNE}'::TEXT[];
+    _found_article BOOLEAN;
+    _STEP_HOLY INT := 2;
+    _STEP_TYPEOF INT := 3;
+    _STEP_ARTICLE INT := 1;
+    _step INT := _STEP_ARTICLE;
+    _step_change BOOLEAN;
+BEGIN
+    -- only upper and not special characters
+    _name := clean_address_label(name);
+    -- unabbreviated type of street
+    SELECT type, type_abbreviated, type_is_abbreviated
+    INTO _type, _type_abbreviated, _type_is_abbreviated
+    FROM fr.get_type_of_street(_name)
+    AS (type VARCHAR, type_abbreviated VARCHAR, type_is_abbreviated BOOLEAN);
+    IF _type_is_abbreviated THEN
+        _name_tmp := REGEXP_REPLACE(_name, '^\S+', _type);
+        IF LENGTH(_name_tmp) <= 32 THEN
+            RETURN _name_tmp;
+        END IF;
+    END IF;
+
+    _len := LENGTH(_name);
+    IF _len <= 32 THEN
+        RETURN _name;
+    END IF;
+
+    WHILE _len > 32 AND _step < 5 LOOP
+        _step_change := TRUE;
+
+        -- abbreviate type of street
+        IF _step = _STEP_TYPEOF THEN
+            IF NOT _type_is_abbreviated THEN
+                _name := CONCAT(_type_abbreviated, SUBSTR(_name, LENGTH(_type) +1));
+                _len := LENGTH(_name);
+            END IF;
+        -- abbreviate holy word(s)
+        ELSIF _step = _STEP_HOLY THEN
+            _name := fr.normalize_abbreviate_holy(_name);
+            _len := LENGTH(_name);
+        -- abbreviate holy word(s)
+        ELSIF _step = _STEP_ARTICLE THEN
+            IF _words_i = 0 THEN
+                _words := REGEXP_SPLIT_TO_ARRAY(_name, '\s+');
+                _words_i := 1;
+                _words_len := ARRAY_LENGTH(_words, 1);
+                _name_tmp := _name;
+                _name := '';
+            ELSE
+                _name := _words[1];
+                FOR _i IN 2 .. _words_i -1
+                LOOP
+                    _name := CONCAT_WS(' ', _name, _words[_i]);
+                END LOOP;
+            END IF;
+
+            -- delete array item
+            -- https://dba.stackexchange.com/questions/94639/delete-array-element-by-index
+            _found_article := FALSE;
+            FOR _i IN _words_i .. _words_len
+            LOOP
+                IF _words[_i] = ANY(_articles) THEN
+                    _words_i := _i;
+                    _found_article := TRUE;
+                    _words := _words[:_i-1] || _words[_i+1:];
+                    _words_len := _words_len -1;
+                    FOR _j IN _i .. _words_len
+                    LOOP
+                        _name := CONCAT_WS(' ', _name, _words[_j]);
+                    END LOOP;
+                    EXIT;
+                ELSE
+                    _name := CONCAT_WS(' ', _name, _words[_i]);
+                END IF;
+            END LOOP;
+            IF _found_article THEN
+                _step_change := FALSE;
+            END IF;
+
+            _len := LENGTH(_name);
+        END IF;
+
+        IF _step_change THEN
+            _step := _step +1;
+        END IF;
+    END LOOP;
+
+    RETURN _name;
+END
+$func$ LANGUAGE plpgsql;
+
+/* TEST
+-- street differences
+SELECT *
+FROM (
+    SELECT
+        co_cea code
+        , lb_voie name
+        , fr.normalize_street_name(lb_voie) AS name_normalized
+        , lb_voie_normalise AS name_normalized_laposte
+    FROM
+        fr.laposte_address_street
+    WHERE
+        lb_voie_normalise IS DISTINCT FROM lb_voie
+    LIMIT
+        100
+    ) t
+WHERE
+    name_normalized != name_normalized_laposte
+ORDER BY
+    1
+    ;
+ */
+
+-- normalize one address
 SELECT drop_all_functions_if_exists('fr', 'normalize_address');
 CREATE OR REPLACE FUNCTION fr.normalize_address(
     address IN RECORD                   -- address to normalize
@@ -20,8 +262,8 @@ DECLARE
     _cadastre_parcel_number VARCHAR;
     _cadastre_parcel_section VARCHAR;
     _cadastre_parcel_prefix CHAR(3);
-    _street_type VARCHAR;
-    _street_type_short VARCHAR;
+    _street_type_is_abbreviated BOOLEAN;
+    _exists BOOLEAN;
 BEGIN
     FOREACH _column_map SLICE 1 IN ARRAY %# columns_map LOOP
         _column_map[2] := CONCAT('$1.', _column_map[2]);
@@ -56,38 +298,29 @@ BEGIN
                     EXECUTE CONCAT('SELECT ', _column_map[2])
                         INTO _address_normalized.street
                         USING address;
+
                     _address_normalized.street := NULLIF(TRIM(public.clean_address_label(_address_normalized.street)), '');
 
-                    -- 1st word = type of street (abbreviated ?)
-                    _street_type_short := (REGEXP_MATCH(_address_normalized.street, '^\S+'))[1];
-
-                    SELECT type
-                    INTO _street_type
-                    FROM fr.laposte_address_street_type
-                    WHERE type_abbreviated = _street_type_short
-                    ORDER BY occurs DESC;
-                    -- not abbreviated?
-                    IF _street_type IS NULL THEN
-                        SELECT type
-                        INTO _street_type
-                        FROM fr.laposte_address_street_type
-                        WHERE type = _street_type_short
-                        ORDER BY occurs DESC;
-                        _street_type_short := NULL;
-                    END IF;
-                    _address_normalized.street_type := _street_type;
-                    -- abbreviated: extend name (w/ full type)
-                    IF _street_type_short IS NOT NULL THEN
-                        _address_normalized.street_type_short := _street_type_short;
+                    SELECT type, type_abbreviated, type_is_abbreviated
+                    INTO _address_normalized.street_type
+                        , _address_normalized.street_type_short
+                        , _street_type_is_abbreviated
+                    FROM fr.get_type_of_street(_address_normalized.street)
+                    AS (type VARCHAR, type_abbreviated VARCHAR, type_is_abbreviated BOOLEAN);
+                    IF _street_type_is_abbreviated THEN
                         _address_normalized.street := REGEXP_REPLACE(_address_normalized.street, '^\S+', _address_normalized.street_type);
                     END IF;
                 WHEN 'municipality_code' THEN
                     EXECUTE CONCAT('SELECT ', _column_map[2])
                         INTO _address_normalized.municipality_code
                         USING address;
-                    -- SELECT '33063' ~ '^([0-9]{5}|2[1-9AB][0-9]{3})$'
-                    -- SELECT '2A001' ~ '^([0-9]{5}|2[1-9AB][0-9]{3})$'
-                    IF _address_normalized.municipality_code !~ '^([0-9]{5}|2[1-9AB][0-9]{3})$' THEN
+
+                    SELECT EXISTS(
+                        SELECT 1 FROM fr.laposte_address_area
+                        WHERE co_insee_commune = _address_normalized.municipality_code
+                        AND fl_active)
+                    INTO _exists;
+                    IF NOT _exists THEN
                         RAISE NOTICE 'Code INSEE commune ignoré car invalide : %', _address_normalized.municipality_code;
                         _address_normalized.municipality_code := NULL;
                     END IF;
@@ -95,8 +328,12 @@ BEGIN
                     EXECUTE CONCAT('SELECT ', _column_map[2])
                         INTO _address_normalized.postcode
                         USING address;
-                    --SELECT '33000' ~ '^[0-9]{5}$'
-                    IF _address_normalized.postcode !~ '^[0-9]{5}$' THEN
+                    SELECT EXISTS(
+                        SELECT 1 FROM fr.laposte_address_area
+                        WHERE co_postal = _address_normalized.postcode
+                        AND fl_active)
+                    INTO _exists;
+                    IF NOT _exists THEN
                         RAISE NOTICE 'Code Postal commune ignoré car invalide : %', _address_normalized.postcode;
                         _address_normalized.postcode := NULL;
                     END IF;
@@ -104,9 +341,6 @@ BEGIN
                     EXECUTE CONCAT('SELECT ', _column_map[2])
                         INTO _address_normalized.municipality_name
                         USING address;
-                    -- transform SAINT|SAINTE in ST|STE
-                    _address_normalized.municipality_name := REGEXP_REPLACE(NULLIF(TRIM(public.clean_address_label(_address_normalized.municipality_name)), ''), '\mSAINT([E]?)\M', 'ST\1', 'g');
-
                 -- TODO à intégrer dans lb_ligneX
                 -- mention CEDEX OU libellé Ancienne Commune OU les 2 accollées
                 -- RE=^((BP|CS|CE|CP) *[0-9]+)? *([A-Z ]+)?$
@@ -114,10 +348,6 @@ BEGIN
                     EXECUTE CONCAT('SELECT ', _column_map[2])
                         INTO _address_normalized.municipality_old_name
                         USING address;
-
-                    --RAISE NOTICE '%: ligne5=% (avant normalisation)', _address_normalized.id, _address_normalized.municipality_old_name;
-                    _address_normalized.municipality_old_name := REGEXP_REPLACE(NULLIF(TRIM(public.clean_address_label(_address_normalized.municipality_old_name)), ''), '\mSAINT([E]?)\M', 'ST\1', 'g');
-                    --RAISE NOTICE '%: ligne5=% (après normalisation)', _address_normalized.id, _address_normalized.municipality_old_name;
 
                 WHEN 'geo_xy' THEN
                     EXECUTE CONCAT('SELECT REPLACE(SPLIT_PART(', _column_map[2], ','','',1)::VARCHAR, '','', ''.'')::DOUBLE PRECISION')
@@ -187,6 +417,36 @@ BEGIN
         RAISE 'Vous devez spécifier un code identifiant de l''adresse';
     END IF;
 
+    _address_normalized.municipality_name := fr.normalize_municipality_name(
+        code => _address_normalized.municipality_code
+        , name => _address_normalized.municipality_name
+    );
+    IF _address_normalized.municipality_old_name IS NOT NULL THEN
+        _address_normalized.municipality_old_name := fr.normalize_municipality_name(
+            name => _address_normalized.municipality_old_name
+        );
+    END IF;
+    IF _address_normalized.municipality_code IS NULL AND _address_normalized.municipality_name IS NOT NULL THEN
+        BEGIN
+            SELECT DISTINCT co_insee_commune
+            INTO _address_normalized.municipality_code
+            FROM fr.laposte_address_area
+            WHERE lb_ach_nn = _address_normalized.municipality_name AND fl_active;
+        EXCEPTION WHEN OTHERS THEN
+            RAISE NOTICE 'Déduction code Commune à partir du nom % provoquant une erreur : %', _address_normalized.municipality_name,  SQLERRM;
+        END;
+    END IF;
+    IF _address_normalized.municipality_name IS NULL AND _address_normalized.municipality_code IS NOT NULL THEN
+        BEGIN
+            SELECT DISTINCT lb_ach_nn
+            INTO _address_normalized.municipality_name
+            FROM fr.laposte_address_area
+            WHERE co_insee_commune = _address_normalized.municipality_code AND fl_active;
+        EXCEPTION WHEN OTHERS THEN
+            RAISE NOTICE 'Déduction libellé Commune à partir du code % provoquant une erreur : %', _address_normalized.municipality_code,  SQLERRM;
+        END;
+    END IF;
+
     IF _geom IS NULL
     AND _geom_x IS NOT NULL
     AND _geom_y IS NOT NULL THEN
@@ -238,95 +498,3 @@ BEGIN
     RETURN _address_normalized;
 END
 $func$ LANGUAGE plpgsql;
-
-SELECT public.drop_all_functions_if_exists('fr', 'normalize_municipality_name');
-CREATE OR REPLACE FUNCTION fr.normalize_municipality_name(
-    code VARCHAR
-    , name VARCHAR
-)
-RETURNS CHARACTER VARYING AS
-$func$
-DECLARE
-    _name VARCHAR;
-    _name_normalized VARCHAR;
-    _words TEXT[];
-    _words_normalized VARCHAR[];
-    _word_end VARCHAR;
-BEGIN
-    -- deal w/ exceptions
-    SELECT value
-    INTO _name_normalized
-    FROM fr.constant
-    WHERE
-        usecase = 'LAPOSTE_MUNICIPALITY_EXCEPTION'
-        AND
-        key = code
-        ;
-    IF FOUND THEN
-        return _name_normalized;
-    END IF;
-
-    -- only upper and not special characters
-    _name := clean_address_label(name);
-
-    -- replace (SAINT|SAINTE)
-    IF _name LIKE '% SAINT' OR _name LIKE '% SAINTE' THEN
-        -- exception if it's the name itself
-        return _name;
-    END IF;
-    -- as starting word
-    IF _name LIKE 'SAINT %' THEN
-        _name := CONCAT('ST ', SUBSTR(_name, 7));
-    ELSIF _name LIKE 'SAINTE %' THEN
-        _name := CONCAT('STE ', SUBSTR(_name, 8));
-    END IF;
-    -- else anywhere (but at the end)
-    return REPLACE(REPLACE(_name, ' SAINTE ', ' STE '), ' SAINT ', ' ST ');
-
-    /* NOTE
-     avoid REGEX because too expansive! in run-time
-     */
-    _words := REGEXP_SPLIT_TO_ARRAY(_name, '\s+');
-    FOR _i IN 1..ARRAY_LENGTH(_words, 1) LOOP
-        IF _words[_i] ~* '^SAINT[E]?$' THEN
-            -- exception if it's the name itself
-            IF _i = 2 THEN
-                IF _words[_i -1] ~* '^(LE|LA)$' THEN
-                    _words_normalized := ARRAY_APPEND(_words_normalized, _words[_i]);
-                    CONTINUE;
-                END IF;
-            END IF;
-            _word_end := (REGEXP_MATCH(_words[_i], 'SAINT([E]?)', 'i'))[1];
-            _words_normalized := ARRAY_APPEND(_words_normalized, CONCAT('ST', UPPER(_word_end)));
-            CONTINUE;
-        END IF;
-        _words_normalized := ARRAY_APPEND(_words_normalized, _words[_i]);
-    END LOOP;
-
-    return ARRAY_TO_STRING(_words_normalized, ' ');
-END
-$func$ LANGUAGE plpgsql;
-
-/* TEST
--- municipality differences
-SELECT *
-FROM (
-    SELECT
-        za.co_insee_commune AS municipality_code
-        , c.nom AS name
-        , fr.normalize_municipality_name(c.insee_com, c.nom) AS name_normalized
-        , za.lb_ach_nn AS name_normalized_laposte
-    FROM
-        fr.laposte_address_area za
-            JOIN fr.ign_municipality c ON za.co_insee_commune = c.insee_com
-    WHERE
-        za.fl_active
-        AND
-        za.lb_l5_nn IS NULL
-    ) t
-WHERE
-    name_normalized != name_normalized_laposte
-ORDER BY
-    1
-    ;
- */

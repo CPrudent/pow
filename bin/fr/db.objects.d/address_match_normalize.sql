@@ -7,7 +7,7 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'address_normalized')
     OR NOT EXISTS (
         SELECT 1 FROM information_schema.attributes
-        WHERE udt_name = 'address_normalized' AND attribute_name = 'municipality_name')
+        WHERE udt_name = 'address_normalized' AND attribute_name = 'municipality_old_code')
     THEN
         DROP TYPE IF EXISTS fr.address_normalized CASCADE;
         CREATE TYPE fr.address_normalized AS (
@@ -25,10 +25,14 @@ BEGIN
             , geom GEOMETRY(POINT, 3857)
             , level VARCHAR
             , postcode VARCHAR
-            , municipality_old_name VARCHAR
             , municipality_code VARCHAR
             , municipality_name VARCHAR
+            , municipality_old_code VARCHAR
+            , municipality_old_name VARCHAR
         );
+
+        -- has to be rebuild!
+        DROP TABLE IF EXISTS fr.address_match_normalize;
     END IF;
 END $$;
 

@@ -118,3 +118,68 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+-- get type of street (from full name)
+SELECT drop_all_functions_if_exists('fr', 'get_type_of_street');
+CREATE OR REPLACE FUNCTION fr.get_type_of_street(
+    name IN VARCHAR                   -- name of street
+)
+RETURNS RECORD AS
+$func$
+DECLARE
+    -- 1st word = type of street, eventually abbreviated
+    _first_word VARCHAR := (REGEXP_MATCH(name, '^\S+'))[1];
+    _type RECORD;
+    _exists BOOLEAN := TRUE;
+    _found BOOLEAN := FALSE;
+BEGIN
+    SELECT *
+    INTO _type
+    FROM fr.laposte_address_street_type
+    WHERE type_abbreviated = _first_word
+    ORDER BY occurs
+    LIMIT 1;
+    IF FOUND THEN
+        IF _type.type != _type.type_abbreviated THEN
+            RETURN (_type.type, _type.type_abbreviated, TRUE);
+        END IF;
+    ELSE
+        SELECT EXISTS(
+            SELECT 1 FROM fr.laposte_address_street_type
+            WHERE first_word = _first_word
+        ) INTO _exists;
+    END IF;
+
+    IF _exists THEN
+        FOR _type IN (
+            SELECT * FROM fr.laposte_address_street_type
+            WHERE first_word = _first_word
+            ORDER BY LENGTH(type) DESC
+        )
+        LOOP
+            IF name ~ CONCAT('^', _type.type, '[ ]+') THEN
+                _found := TRUE;
+                EXIT;
+            END IF;
+        END LOOP;
+    END IF;
+
+    IF NOT _found THEN
+        RETURN (NULL::VARCHAR, NULL::VARCHAR, FALSE);
+    ELSE
+        RETURN (_type.type, _type.type_abbreviated, (_first_word IS NOT DISTINCT FROM _type.type_abbreviated));
+    END IF;
+END
+$func$ LANGUAGE plpgsql;
+
+/* TEST
+SELECT * FROM fr.get_type_of_street('CHEMIN DES SANSONNIERES LE VIEIL BAUGE')
+    AS (type VARCHAR, type_abbreviated VARCHAR, type_is_abbreviated BOOLEAN);
+SELECT * FROM fr.get_type_of_street('LD KER FRANCOIS BONEN')
+    AS (type VARCHAR, type_abbreviated VARCHAR, type_is_abbreviated BOOLEAN);
+SELECT * FROM fr.get_type_of_street('LE PONT D OIR MONTGOTHIER')
+    AS (type VARCHAR, type_abbreviated VARCHAR, type_is_abbreviated BOOLEAN);
+SELECT * FROM fr.get_type_of_street('ZONE D AMENAGEMENT CONCERTE DES GRANDS CHAMPS')
+    AS (type VARCHAR, type_abbreviated VARCHAR, type_is_abbreviated BOOLEAN);
+SELECT * FROM fr.get_type_of_street('ZA DES GRANDS CHAMPS')
+    AS (type VARCHAR, type_abbreviated VARCHAR, type_is_abbreviated BOOLEAN);
+ */
