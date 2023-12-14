@@ -2,6 +2,33 @@
  * add FR-ADDRESS facilities (normalized label, following AFNOR NF Z 10-011 (1/2013))
  */
 
+-- concat n items of array to string (w/ separator)
+SELECT drop_all_functions_if_exists('fr', 'items_of_array_to_string');
+CREATE OR REPLACE FUNCTION fr.items_of_array_to_string(
+    elements IN VARCHAR[]
+    , separator VARCHAR DEFAULT ' '
+    , items IN INT DEFAULT NULL
+)
+RETURNS VARCHAR AS
+$func$
+DECLARE
+    _items INT := COALESCE(items, ARRAY_LENGTH(elements, 1));
+    _i INT;
+    _string VARCHAR;
+BEGIN
+    FOR _i IN 1 .. _items
+    LOOP
+        IF _string IS NOT NULL THEN
+            _string := CONCAT(_string, separator, elements[_i]);
+        ELSE
+            _string := elements[_i];
+        END IF;
+    END LOOP;
+
+    RETURN _string;
+END
+$func$ LANGUAGE plpgsql;
+
 -- abbreviate holy word(s)
 SELECT drop_all_functions_if_exists('fr', 'normalize_abbreviate_holy');
 CREATE OR REPLACE FUNCTION fr.normalize_abbreviate_holy(
@@ -114,31 +141,54 @@ ORDER BY
 SELECT public.drop_all_functions_if_exists('fr', 'normalize_street_name');
 CREATE OR REPLACE FUNCTION fr.normalize_street_name(
     name VARCHAR
+    , steps INT[] DEFAULT ARRAY[2,5,4,1]::INT[]
 )
 RETURNS CHARACTER VARYING AS
 $func$
 DECLARE
     _name VARCHAR;
     _name_tmp VARCHAR;
+    _name_rebuild BOOLEAN;
     _type VARCHAR;
     _type_abbreviated VARCHAR;
     _type_is_abbreviated BOOLEAN := TRUE;
+    _type_diff INT;
     _len INT;
     _words TEXT[];
     _words_i INT := 0;
     _words_len INT;
+    _words_rebuild BOOLEAN;
     _i INT;
     _j INT;
-    _articles TEXT[] := '{AU,AUX,DE,DES,DU,EN,ET,LA,LE,LES,SOUS,SUR,UN,UNE}'::TEXT[];
-    _found_article BOOLEAN;
-    _STEP_HOLY INT := 2;
-    _STEP_TYPEOF INT := 3;
-    _STEP_ARTICLE INT := 1;
-    _step INT := _STEP_ARTICLE;
+    _found BOOLEAN;
+    _ABBR_HOLY INT               := 1;
+    _ABBR_TYPE INT               := 2;
+    _DELETE_ARTICLE_FIRST INT    := 3;
+    _DELETE_ARTICLE INT          := 4;
+    _ABBR_TITLE INT              := 5;
     _step_change BOOLEAN;
+    _step_i INT := 1;
+    _step_words TEXT[];
+    _step_words_len INT;
+    _steps_done BOOLEAN[] := ARRAY_FILL(FALSE, ARRAY[ARRAY_LENGTH(steps, 1)]);
+    _articles TEXT[] := '{AU,AUX,DE,DES,DU,EN,ET,LA,LE,LES,SOUS,SUR,UN,UNE}'::TEXT[];
+    _titles VARCHAR[] :=
+        ARRAY(SELECT key FROM fr.constant WHERE usecase = 'LAPOSTE_STREET_TITLE');
+    _titles_abbr VARCHAR[] :=
+        ARRAY(SELECT value FROM fr.constant WHERE usecase = 'LAPOSTE_STREET_TITLE');
+    _titles_i INT;
+    _titles_diff INT;
+    _types VARCHAR[] :=
+        ARRAY(SELECT type FROM fr.laposte_address_street_type);
+    _types_abbr VARCHAR[] :=
+        ARRAY(SELECT type_abbreviated FROM fr.laposte_address_street_type);
+    _types_1st_word VARCHAR[] :=
+        ARRAY(SELECT first_word FROM fr.laposte_address_street_type);
+    _types_i INT;
 BEGIN
     -- only upper and not special characters
     _name := clean_address_label(name);
+
     -- unabbreviated type of street
     SELECT type, type_abbreviated, type_is_abbreviated
     INTO _type, _type_abbreviated, _type_is_abbreviated
@@ -149,70 +199,157 @@ BEGIN
         IF LENGTH(_name_tmp) <= 32 THEN
             RETURN _name_tmp;
         END IF;
+        _name := _name_tmp;
     END IF;
 
+    -- already ok ?
     _len := LENGTH(_name);
     IF _len <= 32 THEN
         RETURN _name;
     END IF;
 
-    WHILE _len > 32 AND _step < 5 LOOP
-        _step_change := TRUE;
+    RAISE NOTICE 'name=% len=%', _name, _len;
+    _words := REGEXP_SPLIT_TO_ARRAY(_name, '\s+');
+    _words_len := ARRAY_LENGTH(_words, 1);
+    -- dynamic steps!
+    _type_diff := LENGTH(_type) - LENGTH(_type_abbreviated);
+    -- only _ABBR_TYPE: _len - LENGTH(_type_abbreviated) <= 32
+    IF _type_diff < 3 THEN
+        steps := ARRAY[5,2,4,1]::INT[];
+    END IF;
 
-        -- abbreviate type of street
-        IF _step = _STEP_TYPEOF THEN
-            IF NOT _type_is_abbreviated THEN
-                _name := CONCAT(_type_abbreviated, SUBSTR(_name, LENGTH(_type) +1));
-                _len := LENGTH(_name);
-            END IF;
-        -- abbreviate holy word(s)
-        ELSIF _step = _STEP_HOLY THEN
-            _name := fr.normalize_abbreviate_holy(_name);
-            _len := LENGTH(_name);
-        -- abbreviate holy word(s)
-        ELSIF _step = _STEP_ARTICLE THEN
-            IF _words_i = 0 THEN
-                _words := REGEXP_SPLIT_TO_ARRAY(_name, '\s+');
-                _words_i := 1;
-                _words_len := ARRAY_LENGTH(_words, 1);
-                _name_tmp := _name;
-                _name := '';
-            ELSE
-                _name := _words[1];
-                FOR _i IN 2 .. _words_i -1
+    WHILE _len > 32 AND _step_i < ARRAY_LENGTH(steps, 1) LOOP
+        _step_change := TRUE;
+        _found := FALSE;
+        _name_rebuild := FALSE;
+        _words_rebuild := FALSE;
+
+        IF NOT _steps_done[_step_i] THEN
+            RAISE NOTICE 'step: %', steps[_step_i];
+
+            -- abbreviate title(s), if not type (of street!)
+            IF steps[_step_i] = _ABBR_TITLE THEN
+                IF _words_i = 0 THEN _words_i := 1; END IF;
+                FOR _i IN _words_i .. _words_len
                 LOOP
-                    _name := CONCAT_WS(' ', _name, _words[_i]);
+                    -- TODO include types of street (into name, not at beginning)
+                    IF _words[_i] = ANY(_titles) THEN
+                        _titles_i := ARRAY_POSITION(_titles, _words[_i]);
+                        RAISE NOTICE ' title=% i=% titles_i=% (_titles_abbr=%)', _words[_i], _i, _titles_i, _titles_abbr[_titles_i];
+                        _titles_diff := LENGTH(_words[_i]) - LENGTH(_titles_abbr[_titles_i]);
+                        RAISE NOTICE ' titles_diff=% (type_diff=%)', _titles_diff, _type_diff;
+                        IF (NOT _steps_done[_ABBR_TYPE] AND (_titles_diff >= COALESCE(_type_diff, 0))) OR _steps_done[_ABBR_TYPE] THEN
+                            _types_i := ARRAY_POSITION(
+                                _types
+                                , fr.items_of_array_to_string(elements => _words, items => _i)
+                            );
+                            RAISE NOTICE ' types_i=%', _types_i;
+                            IF COALESCE(_types_i, 0) = 0  AND _titles_i > 0 THEN
+                                _found := TRUE;
+                                _words_i := _i;
+                                RAISE NOTICE ' title (at %) replaced', _words_i;
+                                EXIT;
+                            END IF;
+                        END IF;
+                    END IF;
+                END LOOP;
+                IF _found THEN
+                    _len := _len - _titles_diff;
+                    _words[_words_i] := _titles_abbr[_titles_i];
+                    RAISE NOTICE ' words=% len=%', _words, _len;
+                    _name_rebuild := TRUE;
+                    _step_change := FALSE;
+                END IF;
+
+            -- abbreviate type of street
+            ELSIF steps[_step_i] = _ABBR_TYPE THEN
+                IF NOT _type_is_abbreviated AND _type_abbreviated IS NOT NULL THEN
+                    _name := CONCAT(_type_abbreviated, SUBSTR(_name, LENGTH(_type) +1));
+                    _len := LENGTH(_name);
+                    RAISE NOTICE ' name=% len=%', _name, _len;
+                    _words_rebuild := TRUE;
+                END IF;
+
+            -- abbreviate holy word(s)
+            ELSIF steps[_step_i] = _ABBR_HOLY THEN
+                _name := fr.normalize_abbreviate_holy(_name);
+                _len := LENGTH(_name);
+                RAISE NOTICE ' name=% len=%', _name, _len;
+                _words_rebuild := TRUE;
+
+            -- delete _article(s)
+            ELSIF steps[_step_i] = _DELETE_ARTICLE THEN
+                IF _words_i = 0 THEN
+                    _words_i := 1;
+                    _name_tmp := _name;
+                    _name := '';
+                ELSE
+                    _name := _words[1];
+                    FOR _i IN 2 .. _words_i -1
+                    LOOP
+                        _name := CONCAT(_name, ' ', _words[_i]);
+                    END LOOP;
+                END IF;
+
+                -- delete array item
+                -- https://dba.stackexchange.com/questions/94639/delete-array-element-by-index
+                FOR _i IN _words_i .. _words_len
+                LOOP
+                    IF _words[_i] = ANY(_articles) THEN
+                        RAISE NOTICE ' artcile=% i=%', _words[_i], _i;
+                        _found := TRUE;
+                        _words_i := _i;
+                        EXIT;
+                    ELSE
+                        IF LENGTH(_name) > 0 THEN
+                            _name := CONCAT(_name, ' ', _words[_i]);
+                        ELSE
+                            _name := _words[_i];
+                        END IF;
+                    END IF;
+                END LOOP;
+                IF _found THEN
+                    _step_change := FALSE;
+                    _words := _words[:_words_i-1] || _words[_words_i+1:];
+                    _words_len := _words_len -1;
+                    RAISE NOTICE ' name=%', _name;
+                    FOR _j IN _words_i .. _words_len
+                    LOOP
+                        _name := CONCAT(_name, ' ', _words[_j]);
+                        RAISE NOTICE ' name=%', _name;
+                    END LOOP;
+                END IF;
+
+                _len := LENGTH(_name);
+                RAISE NOTICE ' words=% len=%', _words, _len;
+
+            -- delete 1st article suffisant ?
+            ELSIF steps[_step_i] = _DELETE_ARTICLE_FIRST THEN
+                FOR _i IN 1 .. _words_len
+                LOOP
+                    IF _words[_i] = ANY(_articles) THEN
+                        IF (_len - LENGTH(_words[_i]) <= 32) THEN
+                            _words := _words[:_i-1] || _words[_i+1:];
+                            EXIT;
+                        END IF;
+                    END IF;
                 END LOOP;
             END IF;
-
-            -- delete array item
-            -- https://dba.stackexchange.com/questions/94639/delete-array-element-by-index
-            _found_article := FALSE;
-            FOR _i IN _words_i .. _words_len
-            LOOP
-                IF _words[_i] = ANY(_articles) THEN
-                    _words_i := _i;
-                    _found_article := TRUE;
-                    _words := _words[:_i-1] || _words[_i+1:];
-                    _words_len := _words_len -1;
-                    FOR _j IN _i .. _words_len
-                    LOOP
-                        _name := CONCAT_WS(' ', _name, _words[_j]);
-                    END LOOP;
-                    EXIT;
-                ELSE
-                    _name := CONCAT_WS(' ', _name, _words[_i]);
-                END IF;
-            END LOOP;
-            IF _found_article THEN
-                _step_change := FALSE;
-            END IF;
-
-            _len := LENGTH(_name);
         END IF;
 
+        IF _name_rebuild THEN
+            _name := ARRAY_TO_STRING(_words, ' ');
+        END IF;
+        IF _words_rebuild THEN
+            _words := REGEXP_SPLIT_TO_ARRAY(_name, '\s+');
+            _words_len := ARRAY_LENGTH(_words, 1);
+        END IF;
         IF _step_change THEN
-            _step := _step +1;
+            _steps_done[_step_i] := TRUE;
+            _step_words := _words;
+            _step_words_len := _words_len;
+            _step_i := _step_i +1;
+            _words_i := 0;
         END IF;
     END LOOP;
 

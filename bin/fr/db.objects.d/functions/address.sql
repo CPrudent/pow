@@ -132,13 +132,16 @@ DECLARE
     _exists BOOLEAN := TRUE;
     _found BOOLEAN := FALSE;
 BEGIN
+    --RAISE NOTICE 'name=% word1=%', name, _first_word;
+
     SELECT *
     INTO _type
     FROM fr.laposte_address_street_type
     WHERE type_abbreviated = _first_word
-    ORDER BY occurs
+    ORDER BY occurs DESC
     LIMIT 1;
     IF FOUND THEN
+        --RAISE NOTICE 'type=%', _type;
         IF _type.type != _type.type_abbreviated THEN
             RETURN (_type.type, _type.type_abbreviated, TRUE);
         END IF;
@@ -166,7 +169,9 @@ BEGIN
     IF NOT _found THEN
         RETURN (NULL::VARCHAR, NULL::VARCHAR, FALSE);
     ELSE
-        RETURN (_type.type, _type.type_abbreviated, (_first_word IS NOT DISTINCT FROM _type.type_abbreviated));
+        RETURN (_type.type, _type.type_abbreviated
+            , (_first_word IS NOT DISTINCT FROM _type.type_abbreviated) AND (_type.type != _type.type_abbreviated)
+        );
     END IF;
 END
 $func$ LANGUAGE plpgsql;
