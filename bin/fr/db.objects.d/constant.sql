@@ -171,6 +171,9 @@ BEGIN
             ON mots.ordre = descripteurs.ordre AND descripteurs.descripteur = 'P'
         WHERE
             LENGTH(mots.mot) > 1
+            AND
+            -- not article!
+            NOT mots.mot = ANY('{AU,AUX,D,DE,DES,DU,EN,ET,LA,LE,LES,SOUS,SUR,UN,UNE}')
     );
 END;
 $proc$ LANGUAGE plpgsql;
