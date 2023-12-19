@@ -188,3 +188,116 @@ SELECT * FROM fr.get_type_of_street('ZONE D AMENAGEMENT CONCERTE DES GRANDS CHAM
 SELECT * FROM fr.get_type_of_street('ZA DES GRANDS CHAMPS')
     AS (type VARCHAR, type_abbreviated VARCHAR, type_is_abbreviated BOOLEAN);
  */
+
+ -- get descriptor of street (from full name)
+SELECT drop_all_functions_if_exists('fr', 'get_descriptor_of_street');
+CREATE OR REPLACE FUNCTION fr.get_descriptor_of_street(
+    name IN VARCHAR                   -- name of street
+    , type IN VARCHAR DEFAULT NULL
+)
+RETURNS VARCHAR AS
+$func$
+DECLARE
+    _type VARCHAR;
+    _type_abbreviated VARCHAR;
+    _type_is_abbreviated BOOLEAN := TRUE;
+    _descriptor VARCHAR := '';
+    _words TEXT[];
+    _words_i INT := 0;
+    _words_len INT;
+    _words_desc VARCHAR;
+    _i INT;
+    _articles TEXT[] := '{A,AU,AUX,D,DE,DES,DU,EN,ET,L,LA,LE,LES,SOUS,SUR,UN,UNE}'::TEXT[];
+    _titles VARCHAR[] :=
+        ARRAY(SELECT key FROM fr.constant WHERE usecase = 'LAPOSTE_STREET_TITLE');
+    _found BOOLEAN;
+BEGIN
+    RAISE NOTICE 'name= %', name;
+    IF type IS NULL THEN
+        SELECT type_, type_abbreviated, type_is_abbreviated
+        INTO _type, _type_abbreviated, _type_is_abbreviated
+        FROM fr.get_type_of_street(name)
+        AS (type_ VARCHAR, type_abbreviated VARCHAR, type_is_abbreviated BOOLEAN);
+    ELSE
+        _type := type;
+    END IF;
+    IF _type IS NOT NULL THEN
+        _words_i := (LENGTH(_type) - LENGTH(REPLACE(_type, ' ', ''))) +1;
+        _descriptor := LPAD(_descriptor, _words_i, 'V');
+        _words_i := _words_i +1;
+    ELSE
+        _words_i := 1;
+    END IF;
+    RAISE NOTICE ' descriptor= %, _words_i=%', _descriptor, _words_i;
+    _words := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
+    _words_len := ARRAY_LENGTH(_words, 1);
+    FOR _i IN _words_i .. _words_len
+    LOOP
+        RAISE NOTICE ' word= %, i=%', _words[_i], _i;
+        -- roman number
+        -- https://www.geeksforgeeks.org/validating-roman-numerals-using-regular-expression/
+        IF _words[_i] ~ '^[0-9]+$' OR _words[_i] ~ '^M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$' THEN
+            IF _i > 1 AND RIGHT(_descriptor, 1) = ANY('{A,V}') AND _words[_i] = ANY('{D,L}') THEN
+                _words_desc := 'A';
+            ELSE
+                _words_desc := 'C';
+            END IF;
+        ELSE
+            _words_desc := 'N';
+            IF _i < _words_len THEN
+                IF _words[_i] = ANY(_articles) THEN
+                    -- not if previous is firstname
+                    RAISE NOTICE ' last= %', RIGHT(_descriptor, 1);
+                    IF _i > 1 AND RIGHT(_descriptor, 1) = 'P' THEN
+                        _words_desc := 'N';
+                    ELSE
+                        _words_desc := 'A';
+                    END IF;
+                ELSIF _words[_i] = ANY(_titles) THEN
+                    _words_desc := 'T';
+                ELSE
+                    -- not if previous is (article|number)
+                    RAISE NOTICE ' last= %', RIGHT(_descriptor, 1);
+                    IF _i > 1 AND RIGHT(_descriptor, 1) = ANY('{A,C}') THEN
+                        _words_desc := 'N';
+                    ELSE
+                        SELECT EXISTS(
+                            SELECT 1
+                            FROM fr.constant
+                            WHERE
+                                usecase = 'LAPOSTE_STREET_FIRSTNAME'
+                                AND
+                                key = _words[_i]
+                        )
+                        INTO _found
+                        ;
+                        IF _found THEN
+                            _words_desc := 'P';
+                        END IF;
+                    END IF;
+                END IF;
+            -- as last word
+            ELSIF _words[_i] ~ '^(INFERIEUR|SUPERIEUR|PROLONGE)(ES)?$' THEN
+                _words_desc := 'E';
+            END IF;
+        END IF;
+
+        -- fix bad uses
+        -- 'LA METAIRIE D EN HAUT' not roman number D, but article
+        IF _i > 1
+            AND _words_desc = ANY('{A,N}')
+            AND LEFT(_words[_i], 1) = ANY('{A,E,I,O,U,Y}')
+            AND RIGHT(_descriptor, 1) = 'C'
+            AND _words[_i -1] = ANY('{D,L}') THEN
+            _descriptor := CONCAT(
+                SUBSTR(_descriptor, 1, LENGTH(_descriptor) - 1)
+                , 'A'
+            );
+        END IF;
+        _descriptor := CONCAT(_descriptor, _words_desc);
+    END LOOP;
+
+    RAISE NOTICE 'descriptor= %', _descriptor;
+    RETURN _descriptor;
+END
+$func$ LANGUAGE plpgsql;
