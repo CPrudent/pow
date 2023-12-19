@@ -171,7 +171,7 @@ DECLARE
     _step_words TEXT[];
     _step_words_len INT;
     _steps_done BOOLEAN[];
-    _articles TEXT[] := '{AU,AUX,D,DE,DES,DU,EN,ET,LA,LE,LES,SOUS,SUR,UN,UNE}'::TEXT[];
+    _articles TEXT[] := '{A,AU,AUX,D,DE,DES,DU,EN,ET,L,LA,LE,LES,SOUS,SUR,UN,UNE}'::TEXT[];
     _titles VARCHAR[] :=
         ARRAY(SELECT key FROM fr.constant WHERE usecase = 'LAPOSTE_STREET_TITLE');
     _titles_abbr VARCHAR[] :=

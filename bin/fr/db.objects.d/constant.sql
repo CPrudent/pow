@@ -173,7 +173,7 @@ BEGIN
             LENGTH(mots.mot) > 1
             AND
             -- not article!
-            NOT mots.mot = ANY('{AU,AUX,D,DE,DES,DU,EN,ET,LA,LE,LES,SOUS,SUR,UN,UNE}')
+            NOT mots.mot = ANY('{A,AU,AUX,D,DE,DES,DU,EN,ET,L,LA,LE,LES,SOUS,SUR,UN,UNE}')
     );
 END;
 $proc$ LANGUAGE plpgsql;
