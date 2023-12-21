@@ -2,33 +2,6 @@
  * add FR-ADDRESS facilities (normalized label, following AFNOR NF Z 10-011 (1/2013))
  */
 
--- concat n items of array to string (w/ separator)
-SELECT drop_all_functions_if_exists('fr', 'items_of_array_to_string');
-CREATE OR REPLACE FUNCTION fr.items_of_array_to_string(
-    elements IN VARCHAR[]
-    , separator VARCHAR DEFAULT ' '
-    , items IN INT DEFAULT NULL
-)
-RETURNS VARCHAR AS
-$func$
-DECLARE
-    _items INT := COALESCE(items, ARRAY_LENGTH(elements, 1));
-    _i INT;
-    _string VARCHAR;
-BEGIN
-    FOR _i IN 1 .. _items
-    LOOP
-        IF _string IS NOT NULL THEN
-            _string := CONCAT(_string, separator, elements[_i]);
-        ELSE
-            _string := elements[_i];
-        END IF;
-    END LOOP;
-
-    RETURN _string;
-END
-$func$ LANGUAGE plpgsql;
-
 -- abbreviate holy word(s)
 SELECT drop_all_functions_if_exists('fr', 'normalize_abbreviate_holy');
 CREATE OR REPLACE FUNCTION fr.normalize_abbreviate_holy(
@@ -255,7 +228,10 @@ BEGIN
                          */
                             _types_i := ARRAY_POSITION(
                                 _types
-                                , fr.items_of_array_to_string(elements => _words, items => _i)
+                                , public.items_of_array_to_string(
+                                    elements => _words
+                                    , _to_ => _i
+                                )
                             );
                             RAISE NOTICE ' types_i=%', _types_i;
                             -- replace title if not type too
