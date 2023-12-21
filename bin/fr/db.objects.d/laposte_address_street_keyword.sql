@@ -54,7 +54,7 @@ BEGIN
     ELSE
         SELECT EXISTS(
             SELECT 1 FROM fr.laposte_address_street_keyword k
-            WHERE k.first_word = _word
+            WHERE COALESCE(k.first_word, k.name) = _word
             AND k.group = group_
         ) INTO _exists;
     END IF;
@@ -74,7 +74,7 @@ BEGIN
     IF _exists THEN
         FOR _kw IN (
             SELECT * FROM fr.laposte_address_street_keyword k
-            WHERE k.first_word = _word
+            WHERE COALESCE(k.first_word, k.name) = _word
             AND k.group = group_
             -- keyword composed by many words (decreasing order)
             ORDER BY (LENGTH(k.name) - LENGTH(REPLACE(k.name, ' ', ''))) DESC
