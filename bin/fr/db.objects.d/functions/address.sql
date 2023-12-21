@@ -125,13 +125,16 @@ CREATE OR REPLACE FUNCTION fr.get_type_of_street(
 )
 RETURNS RECORD AS
 $func$
+/*
 DECLARE
     -- 1st word = type of street, eventually abbreviated
     _first_word VARCHAR := (REGEXP_MATCH(name, '^\S+'))[1];
     _type RECORD;
     _exists BOOLEAN := TRUE;
     _found BOOLEAN := FALSE;
+ */
 BEGIN
+/*
     --RAISE NOTICE 'name=% word1=%', name, _first_word;
 
     SELECT *
@@ -173,6 +176,11 @@ BEGIN
             , (_first_word IS NOT DISTINCT FROM _type.type_abbreviated) AND (_type.type != _type.type_abbreviated)
         );
     END IF;
+ */
+    RETURN fr.get_keyword_of_street(
+        name => name
+        , group_ => 'TYPE'
+    );
 END
 $func$ LANGUAGE plpgsql;
 

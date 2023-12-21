@@ -203,22 +203,22 @@ SELECT array_merge(NULL::INT[], ARRAY[2, 4, 8]) -> {2,4,8}
 SELECT array_merge(ARRAY[2, 4, 8], NULL) -> {2,4,8}
  */
 
--- concat items of array[_from_ .. _to_] to string (w/ separator)
+-- concat items of array[from_ .. to_] to string (w/ separator)
 SELECT drop_all_functions_if_exists('public', 'items_of_array_to_string');
 CREATE OR REPLACE FUNCTION public.items_of_array_to_string(
     elements ANYARRAY
     , separator VARCHAR DEFAULT ' '
-    , _from_ INT DEFAULT 1
-    , _to_ INT DEFAULT NULL
+    , from_ INT DEFAULT 1
+    , to_ INT DEFAULT NULL
 )
 RETURNS VARCHAR AS
 $func$
 DECLARE
-    _items INT := COALESCE(_to_, ARRAY_LENGTH(elements, 1));
+    _items INT := COALESCE(to_, ARRAY_LENGTH(elements, 1));
     _i INT;
     _string VARCHAR;
 BEGIN
-    FOR _i IN _from_ .. _items
+    FOR _i IN from_ .. _items
     LOOP
         IF _string IS NOT NULL THEN
             _string := CONCAT(_string, separator, elements[_i]);

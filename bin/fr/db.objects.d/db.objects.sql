@@ -25,6 +25,7 @@
 
 \include_relative laposte_address_area.sql
 \include_relative laposte_address_street.sql
+\include_relative laposte_address_street_keyword.sql
 \include_relative laposte_address_housenumber.sql
 \include_relative laposte_address_complement.sql
 \include_relative laposte_address_xy.sql

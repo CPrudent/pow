@@ -230,7 +230,7 @@ BEGIN
                                 _types
                                 , public.items_of_array_to_string(
                                     elements => _words
-                                    , _to_ => _i
+                                    , to_ => _i
                                 )
                             );
                             RAISE NOTICE ' types_i=%', _types_i;

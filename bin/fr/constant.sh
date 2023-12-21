@@ -12,16 +12,12 @@ execute_query \
     --query "
         CALL fr.set_laposte_municipality_normalized_label_exception();
         CALL fr.set_laposte_address_street_type();
+        CALL fr.set_laposte_address_extension_of_housenumber();
+        CALL fr.set_laposte_address_titles();
         CALL fr.set_laposte_address_street_firstname();
-        DELETE FROM fr.constant WHERE list = 'LAPOSTE_STREET_TITLE';
-        CALL fr.set_laposte_extension_of_housenumber();
         CALL fr.set_laposte_address_correction_list();
         CALL fr.set_territory_overseas();
-        " &&
-import_file \
-    --file_path "$POW_DIR_COMMON_GLOBAL_SCHEMA/constant/laposte_title.csv" \
-    --table_name constant \
-    --load_mode APPEND &&
+        "
 vacuum \
     --schema_name fr \
     --table_name constant \
