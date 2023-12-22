@@ -28,11 +28,12 @@ DECLARE
     _found BOOLEAN := FALSE;
     _begin VARCHAR;
 BEGIN
-    IF group_ != 'TYPE' AND words IS NULL THEN
-        RAISE 'recherche mot clé VOIE nécessite: liste des mots de la voie (TITLE,EXT)';
+    IF NOT (group_ = 'TYPE' AND at_ = 1) AND words IS NULL THEN
+        RAISE 'recherche mot clé VOIE nécessite: liste des mots de la voie (TITLE,EXT,TYPE)';
     END IF;
 
     _word :=
+        -- 1st word, eventually abbreviated
         CASE WHEN group_ = 'TYPE' AND at_ = 1 THEN (REGEXP_MATCH(name, '^\S+'))[1]
         ELSE words[at_]
         END;
@@ -47,9 +48,9 @@ BEGIN
     ORDER BY k.occurs DESC
     LIMIT 1;
     IF FOUND THEN
-        --RAISE NOTICE 'type=%', _kw;
+        --RAISE NOTICE 'kw=%', _kw;
         IF _kw.name != _kw.name_abbreviated THEN
-            RETURN (_kw.name, _kw.name_abbreviated, TRUE);
+            RETURN (group_, _kw.name, _kw.name_abbreviated, TRUE, public.count_words(_kw.name));
         END IF;
     ELSE
         SELECT EXISTS(
@@ -77,7 +78,7 @@ BEGIN
             WHERE COALESCE(k.first_word, k.name) = _word
             AND k.group = group_
             -- keyword composed by many words (decreasing order)
-            ORDER BY (LENGTH(k.name) - LENGTH(REPLACE(k.name, ' ', ''))) DESC
+            ORDER BY public.count_words(k.name) DESC
         )
         LOOP
             IF name ~ CONCAT('^', _begin, _kw.name, ' ?') THEN
@@ -88,10 +89,11 @@ BEGIN
     END IF;
 
     IF NOT _found THEN
-        RETURN (NULL::VARCHAR, NULL::VARCHAR, FALSE);
+        RETURN (group_, NULL::VARCHAR, NULL::VARCHAR, FALSE, NULL::INT);
     ELSE
-        RETURN (_kw.name, _kw.name_abbreviated
+        RETURN (group_, _kw.name, _kw.name_abbreviated
             , (_word IS NOT DISTINCT FROM _kw.name_abbreviated) AND (_kw.name != _kw.name_abbreviated)
+            , public.count_words(_kw.name)
         );
     END IF;
 END
@@ -106,31 +108,33 @@ CREATE OR REPLACE FUNCTION fr.get_keyword_of_street(
 RETURNS RECORD AS
 $func$
 DECLARE
+    _kw_group VARCHAR;
     _kw VARCHAR;
     _kw_abbreviated VARCHAR;
     _kw_is_abbreviated BOOLEAN;
+    _kw_nwords INT;
     _i INT;
 BEGIN
     IF groups IS NULL THEN
-        RAISE 'recherche mot clé VOIE nécessite: liste des mots-clé (TYPE,TITLE,EXT)';
+        RAISE 'recherche mot clé VOIE nécessite: liste des mots-clé {TYPE,TITLE,EXT}';
     END IF;
 
     FOR _i IN 1 .. ARRAY_LENGTH(groups, 1)
     LOOP
-        SELECT kw, kw_abbreviated, kw_is_abbreviated
-        INTO _kw, _kw_abbreviated, _kw_is_abbreviated
+        SELECT kw_group, kw, kw_abbreviated, kw_is_abbreviated, kw_nwords
+        INTO _kw_group, _kw, _kw_abbreviated, _kw_is_abbreviated, _kw_nwords
         FROM fr.get_keyword_of_street(
             name => name
             , at_ => at_
             , words => words
             , group_ => groups[_i]
         )
-        AS (kw VARCHAR, kw_abbreviated VARCHAR, kw_is_abbreviated BOOLEAN);
+        AS (kw_group VARCHAR, kw VARCHAR, kw_abbreviated VARCHAR, kw_is_abbreviated BOOLEAN, kw_nwords INT);
 
         IF _kw IS NOT NULL THEN
-            RETURN (_kw, _kw_abbreviated, _kw_is_abbreviated);
+            RETURN (_kw_group, _kw, _kw_abbreviated, _kw_is_abbreviated, _kw_nwords);
         END IF;
     END LOOP;
-    RETURN (NULL::VARCHAR, NULL::VARCHAR, FALSE);
+    RETURN (NULL::VARCHAR, NULL::VARCHAR, NULL::VARCHAR, FALSE, NULL::INT);
 END
 $func$ LANGUAGE plpgsql;

@@ -32,3 +32,27 @@ $func$ LANGUAGE plpgsql;
 /* TEST
 SELECT alias_words('id1, id2, id3', ',[ ]*', 'c');
  */
+
+SELECT public.drop_all_functions_if_exists('public', 'count_words');
+CREATE OR REPLACE FUNCTION public.count_words(
+    str VARCHAR
+)
+RETURNS INT AS
+$func$
+DECLARE
+    _nwords INT;
+BEGIN
+    _nwords := CASE
+        WHEN str IS NULL THEN NULL::INT
+        ELSE (LENGTH(str) - LENGTH(REPLACE(str, ' ', '')) +1)
+        END;
+    RETURN _nwords;
+END
+$func$ LANGUAGE plpgsql;
+
+/* TEST
+SELECT count_words(NULL);
+SELECT count_words('ONE');
+SELECT count_words('TWO WORDS');
+SELECT count_words('ONE MORE TIME!');
+ */
