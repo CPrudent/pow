@@ -216,9 +216,9 @@ DECLARE
     _kw_nwords INT;
     _descriptor VARCHAR := '';
     _words TEXT[];
-    _words_i INT := 0;
     _words_len INT;
-    _words_desc VARCHAR;
+    _words_i INT := 0;
+    _words_d VARCHAR;
     _words_skip INT := 0;
     _i INT;
     _articles TEXT[] := '{A,AU,AUX,D,DE,DES,DU,EN,ET,L,LA,LE,LES,SOUS,SUR,UN,UNE}'::TEXT[];
@@ -258,24 +258,24 @@ BEGIN
 
         -- roman number
         -- https://www.geeksforgeeks.org/validating-roman-numerals-using-regular-expression/
-        IF _words[_i] ~ '^[0-9]+$'
+        IF _words[_i] ~ '^1(ER)?|[2-9][0-9]*(E|EME)?$'
             OR
             _words[_i] ~ '^M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$' THEN
             IF _i > 1 AND RIGHT(_descriptor, 1) = ANY('{A,V}') AND _words[_i] = ANY('{D,L}') THEN
-                _words_desc := 'A';
+                _words_d := 'A';
             ELSE
-                _words_desc := 'C';
+                _words_d := 'C';
             END IF;
         ELSIF _words[_i] = ANY(_articles) THEN
             -- not if previous is firstname
             RAISE NOTICE ' last= %', RIGHT(_descriptor, 1);
-            IF _i > 1 AND RIGHT(_descriptor, 1) = 'P' THEN
-                _words_desc := 'N';
+            IF _i > 1 AND RIGHT(_descriptor, 1) = ANY('{P,T}') THEN
+                _words_d := 'N';
             ELSE
-                _words_desc := 'A';
+                _words_d := 'A';
             END IF;
         ELSE
-            _words_desc := 'N';
+            _words_d := 'N';
             IF _i < _words_len THEN
                 SELECT kw_group, kw, kw_is_abbreviated, kw_nwords
                 INTO _kw_group, _kw, _kw_is_abbreviated, _kw_nwords
@@ -290,14 +290,14 @@ BEGIN
                 AS (kw_group VARCHAR, kw VARCHAR, kw_abbreviated VARCHAR, kw_is_abbreviated BOOLEAN, kw_nwords INT);
 
                 IF _i = 1 AND _kw_group = 'TYPE' AND _kw IS NOT NULL THEN
-                    _words_desc := REPEAT('V', _kw_nwords);
+                    _words_d := REPEAT('V', _kw_nwords);
                 ELSIF _kw IS NOT NULL THEN
-                    _words_desc := REPEAT('T', _kw_nwords);
+                    _words_d := REPEAT('T', _kw_nwords);
                 ELSE
                     -- not if previous is (article|number)
                     RAISE NOTICE ' last= %', RIGHT(_descriptor, 1);
                     IF _i > 1 AND RIGHT(_descriptor, 1) = ANY('{A,C}') THEN
-                        _words_desc := 'N';
+                        _words_d := 'N';
                     ELSE
                         SELECT EXISTS(
                             SELECT 1
@@ -310,19 +310,19 @@ BEGIN
                         INTO _found
                         ;
                         IF _found THEN
-                            _words_desc := 'P';
+                            _words_d := 'P';
                         END IF;
                     END IF;
                 END IF;
             ELSIF _words[_i] ~ '^(INFERIEUR|SUPERIEUR|PROLONGE)E?S?$' THEN
-                _words_desc := 'E';
+                _words_d := 'E';
             END IF;
         END IF;
 
         -- fix bad uses
         -- 'LA METAIRIE D EN HAUT' not roman number D, but article
         IF _i > 1
-            AND _words_desc = ANY('{A,N}')
+            AND _words_d = ANY('{A,N}')
             AND LEFT(_words[_i], 1) = ANY('{A,E,I,O,U,Y}')
             AND RIGHT(_descriptor, 1) = 'C'
             AND _words[_i -1] = ANY('{D,L}') THEN
@@ -332,12 +332,17 @@ BEGIN
             );
         END IF;
 
-        _descriptor := CONCAT(_descriptor, _words_desc);
+        _descriptor := CONCAT(_descriptor, _words_d);
         _words_skip := _i;
         IF _kw_nwords > 1 THEN
             _words_skip := _words_skip + _kw_nwords;
         END IF;
     END LOOP;
+
+    -- not type only (eventually followed by number)
+    IF _descriptor ~ '^V+C*$' THEN
+        _descriptor := REPLACE(_descriptor, 'V', 'N');
+    END IF;
 
     RAISE NOTICE 'descriptor= %', _descriptor;
     RETURN _descriptor;
