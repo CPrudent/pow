@@ -77,6 +77,11 @@ BEGIN
             SELECT * FROM fr.laposte_address_street_keyword k
             WHERE COALESCE(k.first_word, k.name) = _word
             AND k.group = group_
+            AND (
+                ((group_ = 'EXT') AND (LENGTH(_word) > 1))
+                OR
+                (group_ != 'EXT')
+            )
             -- keyword composed by many words (decreasing order)
             ORDER BY public.count_words(k.name) DESC
         )
