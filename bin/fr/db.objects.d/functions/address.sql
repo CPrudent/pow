@@ -201,14 +201,10 @@ SELECT * FROM fr.get_type_of_street('ZA DES GRANDS CHAMPS')
 SELECT drop_all_functions_if_exists('fr', 'get_descriptor_of_street');
 CREATE OR REPLACE FUNCTION fr.get_descriptor_of_street(
     name IN VARCHAR                   -- name of street
-    , type IN VARCHAR DEFAULT NULL
 )
 RETURNS VARCHAR AS
 $func$
 DECLARE
-    _type VARCHAR;
-    _type_abbreviated VARCHAR;
-    _type_is_abbreviated BOOLEAN := TRUE;
     _kw_group VARCHAR;
     _kw VARCHAR;
     _kw_abbreviated VARCHAR;
@@ -222,28 +218,10 @@ DECLARE
     _words_skip INT := 0;
     _i INT;
     _articles TEXT[] := '{A,AU,AUX,D,DE,DES,DU,EN,ET,L,LA,LE,LES,SOUS,SUR,UN,UNE}'::TEXT[];
+    _not_a_if_n TEXT[] := '{AU,AUX,EN,LA,LE,LES,SUR}'::TEXT[];
     _found BOOLEAN;
 BEGIN
     RAISE NOTICE 'name= %', name;
-
-    /*
-    IF type IS NULL THEN
-        SELECT type_, type_abbreviated, type_is_abbreviated
-        INTO _type, _type_abbreviated, _type_is_abbreviated
-        FROM fr.get_type_of_street(name)
-        AS (type_ VARCHAR, type_abbreviated VARCHAR, type_is_abbreviated BOOLEAN);
-    ELSE
-        _type := type;
-    END IF;
-    IF _type IS NOT NULL THEN
-        _words_i := (LENGTH(_type) - LENGTH(REPLACE(_type, ' ', ''))) +1;
-        _descriptor := LPAD(_descriptor, _words_i, 'V');
-        _words_i := _words_i +1;
-    ELSE
-        _words_i := 1;
-    END IF;
-    RAISE NOTICE ' descriptor= %, _words_i=%', _descriptor, _words_i;
-     */
 
     _words := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
     _words_len := ARRAY_LENGTH(_words, 1);
@@ -267,13 +245,7 @@ BEGIN
                 _words_d := 'C';
             END IF;
         ELSIF _words[_i] = ANY(_articles) THEN
-            -- not if previous is firstname
-            RAISE NOTICE ' last= %', RIGHT(_descriptor, 1);
-            IF _i > 1 AND RIGHT(_descriptor, 1) = ANY('{P,T}') THEN
-                _words_d := 'N';
-            ELSE
-                _words_d := 'A';
-            END IF;
+            _words_d := 'A';
         ELSE
             _words_d := 'N';
             IF _i < _words_len THEN
@@ -342,6 +314,19 @@ BEGIN
     -- not type only (eventually followed by number)
     IF _descriptor ~ '^V+C*$' THEN
         _descriptor := REPLACE(_descriptor, 'V', 'N');
+    -- not article, but lastname
+    ELSIF _descriptor ~ 'PAN' THEN
+        _descriptor := REPLACE(_descriptor, 'PAN', 'PNN');
+    /*
+    -- not article, but name
+    ELSIF _descriptor ~ '^AN$' THEN
+        IF _words[1] = ANY(_not_a_if_n) THEN
+            _descriptor := REPLACE(_descriptor, 'AN', 'NN');
+        END IF;
+     */
+
+    ELSIF _descriptor ~ '^V[PT]C$' THEN
+        _descriptor := REGEXP_REPLACE(_descriptor, '^V[PT]C$', 'VNC');
     END IF;
 
     RAISE NOTICE 'descriptor= %', _descriptor;

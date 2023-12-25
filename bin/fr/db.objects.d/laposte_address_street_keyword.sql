@@ -86,7 +86,8 @@ BEGIN
             ORDER BY public.count_words(k.name) DESC
         )
         LOOP
-            IF name ~ CONCAT('^', _begin, _kw.name, ' ?') THEN
+            -- not last word!
+            IF name ~ CONCAT('^', _begin, _kw.name, ' +') THEN
                 _found := TRUE;
                 EXIT;
             END IF;
