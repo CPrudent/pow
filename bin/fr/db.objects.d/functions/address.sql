@@ -118,6 +118,135 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+-- split name of street as words (w/ same descriptor)
+SELECT drop_all_functions_if_exists('fr', 'split_name_of_street_as_descriptor');
+CREATE OR REPLACE FUNCTION fr.split_name_of_street_as_descriptor(
+    --words IN TEXT[]
+    name IN VARCHAR
+    , descriptor IN VARCHAR
+    , fullname IN BOOLEAN DEFAULT TRUE
+    , set_w OUT TEXT[]
+    , set_d OUT TEXT[]
+)
+AS
+$func$
+DECLARE
+    _words TEXT[] := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
+    _kw VARCHAR;
+    _kw_is_abbreviated BOOLEAN;
+    _kw_nwords INT;
+    _descriptor VARCHAR;
+    _descriptor_len INT := LENGTH(descriptor);
+    _descriptor_prev VARCHAR := 'Z';
+    _descriptor_word VARCHAR := NULL;
+    _descriptor_same VARCHAR := NULL;
+    _i INT;
+    _n INT;
+    _offset INT;
+    _last BOOLEAN := FALSE;
+    _articles TEXT[] := '{A,AU,AUX,D,DE,DES,DU,EN,ET,L,LA,LE,LES,SOUS,SUR,UN,UNE}'::TEXT[];
+BEGIN
+    /* NOTE
+    not fullname, as normalized name (eventually w/ deleted article, or abbreviated _words)
+
+    -- deleted article
+    AVENUE DE LA 9E DIVISION INFANTERIE DE CAVALERIE
+        descriptor=VAACTTAN
+        normalized=AV LA 9E DIV INFANT DE CAVALERIE
+    CHEMIN D EXPLOITATION DU MAS SAINT PAUL
+        descriptor=VANATTN
+        normalized=CHEMIN EXPLOITATION MAS ST PAUL
+
+    -- abbreviated title
+    ZONE ARTISANALE CENTRE COMMERCIAL BEAUGE
+        descriptor=VVTTN
+        normalized=ZONE ARTISANALE CCIAL BEAUGE
+    PLACE NOTRE DAME DE LA LEGION D HONNEUR
+        descriptor=VTTAANAN
+        normalized=PL ND DE LA LEGION D HONNEUR
+
+    -- abbreviated type
+    LIEU DIT LE GRAND BOIS DE LA DURANDIERE
+        descriptor=VVATTAAN
+        normalized=LD LE GD BOIS DE LA DURANDIERE
+     */
+    _offset := 1;
+    _n := ARRAY_LENGTH(_words, 1);
+    FOR _i IN 1 .. _n
+    LOOP
+        IF (_i + _offset -1) > _descriptor_len THEN
+            EXIT;
+        END IF;
+
+        RAISE NOTICE 'i=% ofs=% d=%', _i, _offset, _descriptor;
+        _descriptor := SUBSTR(descriptor, (_i + _offset -1), 1);
+        IF ((NOT fullname)
+                AND _n < _descriptor_len
+                AND _descriptor = 'A'
+                AND (NOT _words[_i] = ANY(_articles))) THEN
+            FOR _j IN (_i + _offset) .. _n
+            LOOP
+                _descriptor := SUBSTR(descriptor, _j, 1);
+                _offset := _offset +1;
+                IF RIGHT(_descriptor_same, 1) = 'A' THEN
+                    _descriptor_same := CONCAT(_descriptor_same, 'A');
+                END IF;
+                IF _descriptor != 'A' THEN
+                    EXIT;
+                END IF;
+            END LOOP;
+            IF (_i + _offset) > _descriptor_len THEN
+                RAISE 'découpage libellé % en erreur (desc=%)', _words, descriptor;
+            END IF;
+        ELSIF ((NOT fullname)
+                AND _n < _descriptor_len
+                AND _descriptor = 'V'
+                AND _i = 1) THEN
+                SELECT kw, kw_is_abbreviated, kw_nwords
+                INTO _kw, _kw_is_abbreviated, _kw_nwords
+                FROM fr.get_type_of_street(
+                    name => name
+                )
+                AS (kw_group VARCHAR, kw VARCHAR, kw_abbreviated VARCHAR, kw_is_abbreviated BOOLEAN, kw_nwords INT);
+                IF _kw_is_abbreviated THEN
+                    _offset := count_words(_kw);
+                    _descriptor_word := _words[_i];
+                    _descriptor_same := REPEAT('V', _offset);
+                    CONTINUE;
+                END IF;
+        ELSIF ((NOT fullname)
+                AND _n < _descriptor_len
+                AND _descriptor = 'T'
+                AND _i = _n) THEN
+            _descriptor = 'N';
+            _descriptor_same := CONCAT(_descriptor_same, 'T');
+        END IF;
+
+        IF (_descriptor != _descriptor_prev) THEN
+            IF _descriptor_word IS NOT NULL THEN
+                set_w := ARRAY_APPEND(set_w, _descriptor_word);
+                set_d := ARRAY_APPEND(set_d, _descriptor_same);
+            END IF;
+            _descriptor_word := _words[_i];
+            _descriptor_same := _descriptor;
+        ELSE
+            _descriptor_word := CONCAT(_descriptor_word, ' ', _words[_i]);
+            _descriptor_same := CONCAT(_descriptor_same, _descriptor);
+            IF _i = _n THEN
+                set_w := ARRAY_APPEND(set_w, _descriptor_word);
+                set_d := ARRAY_APPEND(set_d, _descriptor_same);
+                _last := TRUE;
+            END IF;
+        END IF;
+        _descriptor_prev := _descriptor;
+    END LOOP;
+    IF NOT _last THEN
+        set_w := ARRAY_APPEND(set_w, _descriptor_word);
+        set_d := ARRAY_APPEND(set_d, _descriptor_same);
+    END IF;
+END
+$func$ LANGUAGE plpgsql;
+
 -- get type of street (from full name)
 SELECT drop_all_functions_if_exists('fr', 'get_type_of_street');
 CREATE OR REPLACE FUNCTION fr.get_type_of_street(
@@ -125,58 +254,7 @@ CREATE OR REPLACE FUNCTION fr.get_type_of_street(
 )
 RETURNS RECORD AS
 $func$
-/*
-DECLARE
-    -- 1st word = type of street, eventually abbreviated
-    _first_word VARCHAR := (REGEXP_MATCH(name, '^\S+'))[1];
-    _type RECORD;
-    _exists BOOLEAN := TRUE;
-    _found BOOLEAN := FALSE;
- */
 BEGIN
-/*
-    --RAISE NOTICE 'name=% word1=%', name, _first_word;
-
-    SELECT *
-    INTO _type
-    FROM fr.laposte_address_street_type
-    WHERE type_abbreviated = _first_word
-    ORDER BY occurs DESC
-    LIMIT 1;
-    IF FOUND THEN
-        --RAISE NOTICE 'type=%', _type;
-        IF _type.type != _type.type_abbreviated THEN
-            RETURN (_type.type, _type.type_abbreviated, TRUE);
-        END IF;
-    ELSE
-        SELECT EXISTS(
-            SELECT 1 FROM fr.laposte_address_street_type
-            WHERE first_word = _first_word
-        ) INTO _exists;
-    END IF;
-
-    IF _exists THEN
-        FOR _type IN (
-            SELECT * FROM fr.laposte_address_street_type
-            WHERE first_word = _first_word
-            ORDER BY LENGTH(type) DESC
-        )
-        LOOP
-            IF name ~ CONCAT('^', _type.type, '[ ]+') THEN
-                _found := TRUE;
-                EXIT;
-            END IF;
-        END LOOP;
-    END IF;
-
-    IF NOT _found THEN
-        RETURN (NULL::VARCHAR, NULL::VARCHAR, FALSE);
-    ELSE
-        RETURN (_type.type, _type.type_abbreviated
-            , (_first_word IS NOT DISTINCT FROM _type.type_abbreviated) AND (_type.type != _type.type_abbreviated)
-        );
-    END IF;
- */
     RETURN fr.get_keyword_of_street(
         name => name
         , group_ => 'TYPE'
