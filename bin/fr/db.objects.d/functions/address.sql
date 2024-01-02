@@ -118,44 +118,62 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
--- split name of street as words (w/ same descriptor)
+-- split name of street as words, descriptors (w/ same descriptor)
 SELECT drop_all_functions_if_exists('fr', 'split_name_of_street_as_descriptor');
 CREATE OR REPLACE FUNCTION fr.split_name_of_street_as_descriptor(
-    --words IN TEXT[]
     name IN VARCHAR
     , descriptor IN VARCHAR
-    , fullname IN BOOLEAN DEFAULT TRUE
-    , set_w OUT TEXT[]
-    , set_d OUT TEXT[]
+    , is_normalized IN BOOLEAN DEFAULT FALSE
+    , words OUT TEXT[]
+    , descriptors OUT TEXT[]
 )
 AS
 $func$
 DECLARE
     _words TEXT[] := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
     _kw VARCHAR;
+    _kw_more VARCHAR;
     _kw_is_abbreviated BOOLEAN;
     _kw_nwords INT;
     _descriptor VARCHAR;
     _descriptor_len INT := LENGTH(descriptor);
+    _descriptor_tmp VARCHAR;
     _descriptor_prev VARCHAR := 'Z';
     _descriptor_word VARCHAR := NULL;
     _descriptor_same VARCHAR := NULL;
+    _descriptor_remainder VARCHAR;
+    _descriptor_type VARCHAR;
+    _descriptor_title VARCHAR;
+    _descriptor_others VARCHAR;
+    _descriptor_next VARCHAR;
+    _descriptor_wo_a VARCHAR;
+    _descriptor_only_a VARCHAR;
     _i INT;
+    _j INT;
+    _k INT;
     _n INT;
-    _offset INT;
+    _offset INT := 1;
     _last BOOLEAN := FALSE;
-    _articles TEXT[] := '{A,AU,AUX,D,DE,DES,DU,EN,ET,L,LA,LE,LES,SOUS,SUR,UN,UNE}'::TEXT[];
 BEGIN
     /* NOTE
-    not fullname, as normalized name (eventually w/ deleted article, or abbreviated _words)
+    not is_normalized, as normalized name (eventually w/ deleted article, or abbreviated _words)
 
-    -- deleted article
+    -- deleted article (one)
     AVENUE DE LA 9E DIVISION INFANTERIE DE CAVALERIE
         descriptor=VAACTTAN
         normalized=AV LA 9E DIV INFANT DE CAVALERIE
+    -- deleted article (all)
     CHEMIN D EXPLOITATION DU MAS SAINT PAUL
         descriptor=VANATTN
         normalized=CHEMIN EXPLOITATION MAS ST PAUL
+    CHEMIN DE NOTRE DAME DES CHAMPS ET DES VIGNES
+        descriptor=VATTANAAN
+        normalized=CHEMIN ND CHAMPS ET DES VIGNES
+
+    -- deleted (word of) title
+    CHEMIN RURAL DIT ANCIEN CHEMIN DE BRISON A THUET
+        descriptor=VNNTTANAN
+        normalized=CHEM R DIT ANCIEN BRISON THUET
 
     -- abbreviated title
     ZONE ARTISANALE CENTRE COMMERCIAL BEAUGE
@@ -170,62 +188,128 @@ BEGIN
         descriptor=VVATTAAN
         normalized=LD LE GD BOIS DE LA DURANDIERE
      */
-    _offset := 1;
     _n := ARRAY_LENGTH(_words, 1);
+    RAISE NOTICE '#d=%, #w=%', _descriptor_len, _n;
     FOR _i IN 1 .. _n
     LOOP
-        IF (_i + _offset -1) > _descriptor_len THEN
+        _k := (_i + _offset -1);
+        IF _k > _descriptor_len THEN
             EXIT;
         END IF;
+        _descriptor := SUBSTR(descriptor, _k, 1);
+        RAISE NOTICE '(i=% ofs=%): d=% (pd=%), w=%', _i, _offset, _descriptor, _descriptor_prev, _words[_i];
 
-        RAISE NOTICE 'i=% ofs=% d=%', _i, _offset, _descriptor;
-        _descriptor := SUBSTR(descriptor, (_i + _offset -1), 1);
-        IF ((NOT fullname)
+        -- deleted article
+        /*
+        name => 'CHEMIN EXPLOITATION MAS ST PAUL'
+        , descriptor => 'VANATTN'
+         */
+        IF (is_normalized
                 AND _n < _descriptor_len
                 AND _descriptor = 'A'
-                AND (NOT _words[_i] = ANY(_articles))) THEN
-            FOR _j IN (_i + _offset) .. _n
+                -- current word not an article
+                AND (NOT fr.is_normalized_article(_words[_i]))) THEN
+            FOR _j IN (_k + 1) .. _n
             LOOP
                 _descriptor := SUBSTR(descriptor, _j, 1);
-                _offset := _offset +1;
-                IF RIGHT(_descriptor_same, 1) = 'A' THEN
-                    _descriptor_same := CONCAT(_descriptor_same, 'A');
-                END IF;
                 IF _descriptor != 'A' THEN
+                    IF _descriptor_word IS NOT NULL THEN
+                        words := ARRAY_APPEND(words, _descriptor_word);
+                        descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
+                    END IF;
+                    _descriptor_word := _words[_i];
+                    _descriptor_same := _descriptor;
+                    _descriptor_prev := _descriptor;
+                    _offset := _offset +1;
                     EXIT;
                 END IF;
             END LOOP;
             IF (_i + _offset) > _descriptor_len THEN
-                RAISE 'découpage libellé % en erreur (desc=%)', _words, descriptor;
+                RAISE 'découpage (A) % en erreur (desc=%) pos=%', _words, descriptor, _k;
+            ELSE
+                CONTINUE;
             END IF;
-        ELSIF ((NOT fullname)
+        END IF;
+
+        -- abbreviated type
+        IF (is_normalized
                 AND _n < _descriptor_len
                 AND _descriptor = 'V'
                 AND _i = 1) THEN
-                SELECT kw, kw_is_abbreviated, kw_nwords
-                INTO _kw, _kw_is_abbreviated, _kw_nwords
-                FROM fr.get_type_of_street(
-                    name => name
-                )
-                AS (kw_group VARCHAR, kw VARCHAR, kw_abbreviated VARCHAR, kw_is_abbreviated BOOLEAN, kw_nwords INT);
-                IF _kw_is_abbreviated THEN
-                    _offset := count_words(_kw);
+            SELECT kw, kw_is_abbreviated, kw_nwords
+            INTO _kw, _kw_is_abbreviated, _kw_nwords
+            FROM fr.get_type_of_street(
+                name => name
+            )
+            AS (kw_group VARCHAR, kw VARCHAR, kw_abbreviated VARCHAR, kw_is_abbreviated BOOLEAN, kw_nwords INT);
+            IF _kw_is_abbreviated THEN
+                _descriptor_type := (REGEXP_MATCHES(descriptor, '^(V+)([^V])'))[1];
+                -- be careful w/ multiple abbreviated type (as ZA, PCH) !
+                IF count_words(_kw) != LENGTH(_descriptor_type) THEN
+                    SELECT k.name
+                    INTO _kw_more
+                    FROM fr.laposte_address_street_keyword k
+                    WHERE k.group = 'TYPE'
+                    AND k.name_abbreviated = _words[_i]
+                    AND count_words(k.name) = LENGTH(_descriptor_type)
+                    ORDER BY occurs DESC
+                    LIMIT 1;
+                    IF FOUND THEN
+                        _kw := _kw_more;
+                    ELSE
+                        RAISE NOTICE 'indécision libellé normalisé (lib=%, abr=%)', name, _kw_is_abbreviated;
+                    END IF;
+                END IF;
+                _offset := count_words(_kw);
+                _descriptor_word := _words[_i];
+                _descriptor_same := REPEAT('V', _offset);
+                CONTINUE;
+            END IF;
+        -- abbreviated or deleted title
+        ELSIF (is_normalized
+                AND _n < _descriptor_len
+                AND _descriptor = 'T') THEN
+            _descriptor_remainder := SUBSTR(descriptor, _k);
+            _descriptor_title := (REGEXP_MATCHES(_descriptor_remainder, '(T+)([^T])'))[1];
+            -- title w/ many words, but remains one only
+            IF LENGTH(_descriptor_title) > 1 THEN
+                _descriptor_others := (REGEXP_MATCHES(_descriptor_remainder, '(T+)(.*)$'))[2];
+                _descriptor_wo_a := REGEXP_REPLACE(_descriptor_others, '[A]', '', 'gi');
+                _descriptor_only_a := REGEXP_REPLACE(_descriptor_others, '[^A]', '', 'gi');
+                _descriptor_next := SUBSTR(descriptor, (_k + LENGTH(_descriptor_title)), 1);
+
+                IF  (
+                        -- remains others than article less or equal to articles
+                        (((_n - _i) - LENGTH(_descriptor_wo_a)) <= LENGTH(_descriptor_only_a))
+                    )
+                    OR
+                    (
+                        ((_descriptor_next = 'A' AND fr.is_normalized_article(_words[_i +1]))
+                        OR
+                        (_descriptor_next = 'C' AND fr.is_normalized_number(_words[_i +1]))
+                        OR
+                        (_descriptor_next = 'N' AND ((_i +1) = _n))
+                        OR
+                        (_descriptor_next = 'P' AND fr.is_normalized_firstname(_words[_i +1])))
+                    )
+                    THEN
+                    _descriptor_prev := _descriptor;
+                    _offset := _offset + LENGTH(_descriptor_title) -1;
+                    IF _descriptor_word IS NOT NULL THEN
+                        words := ARRAY_APPEND(words, _descriptor_word);
+                        descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
+                    END IF;
                     _descriptor_word := _words[_i];
-                    _descriptor_same := REPEAT('V', _offset);
+                    _descriptor_same := REPEAT('T', LENGTH(_descriptor_title));
                     CONTINUE;
                 END IF;
-        ELSIF ((NOT fullname)
-                AND _n < _descriptor_len
-                AND _descriptor = 'T'
-                AND _i = _n) THEN
-            _descriptor = 'N';
-            _descriptor_same := CONCAT(_descriptor_same, 'T');
+            END IF;
         END IF;
 
         IF (_descriptor != _descriptor_prev) THEN
             IF _descriptor_word IS NOT NULL THEN
-                set_w := ARRAY_APPEND(set_w, _descriptor_word);
-                set_d := ARRAY_APPEND(set_d, _descriptor_same);
+                words := ARRAY_APPEND(words, _descriptor_word);
+                descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
             END IF;
             _descriptor_word := _words[_i];
             _descriptor_same := _descriptor;
@@ -233,16 +317,16 @@ BEGIN
             _descriptor_word := CONCAT(_descriptor_word, ' ', _words[_i]);
             _descriptor_same := CONCAT(_descriptor_same, _descriptor);
             IF _i = _n THEN
-                set_w := ARRAY_APPEND(set_w, _descriptor_word);
-                set_d := ARRAY_APPEND(set_d, _descriptor_same);
+                words := ARRAY_APPEND(words, _descriptor_word);
+                descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
                 _last := TRUE;
             END IF;
         END IF;
         _descriptor_prev := _descriptor;
     END LOOP;
     IF NOT _last THEN
-        set_w := ARRAY_APPEND(set_w, _descriptor_word);
-        set_d := ARRAY_APPEND(set_d, _descriptor_same);
+        words := ARRAY_APPEND(words, _descriptor_word);
+        descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
     END IF;
 END
 $func$ LANGUAGE plpgsql;
@@ -295,7 +379,6 @@ DECLARE
     _words_d VARCHAR;
     _words_skip INT := 0;
     _i INT;
-    _articles TEXT[] := '{A,AU,AUX,D,DE,DES,DU,EN,ET,L,LA,LE,LES,SOUS,SUR,UN,UNE}'::TEXT[];
     _not_a_if_n TEXT[] := '{AU,AUX,EN,LA,LE,LES,SUR}'::TEXT[];
     _found BOOLEAN;
 BEGIN
@@ -312,17 +395,13 @@ BEGIN
 
         RAISE NOTICE ' word= %, i=%', _words[_i], _i;
 
-        -- roman number
-        -- https://www.geeksforgeeks.org/validating-roman-numerals-using-regular-expression/
-        IF _words[_i] ~ '^1(ER)?|[2-9][0-9]*(E|EME)?$'
-            OR
-            _words[_i] ~ '^M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$' THEN
+        IF fr.is_normalized_number(_words[_i]) THEN
             IF _i > 1 AND RIGHT(_descriptor, 1) = ANY('{A,V}') AND _words[_i] = ANY('{D,L}') THEN
                 _words_d := 'A';
             ELSE
                 _words_d := 'C';
             END IF;
-        ELSIF _words[_i] = ANY(_articles) THEN
+        ELSIF fr.is_normalized_article(_words[_i]) THEN
             _words_d := 'A';
         ELSE
             _words_d := 'N';
@@ -349,22 +428,12 @@ BEGIN
                     IF _i > 1 AND RIGHT(_descriptor, 1) = ANY('{A,C}') THEN
                         _words_d := 'N';
                     ELSE
-                        SELECT EXISTS(
-                            SELECT 1
-                            FROM fr.constant
-                            WHERE
-                                usecase = 'LAPOSTE_STREET_FIRSTNAME'
-                                AND
-                                key = _words[_i]
-                        )
-                        INTO _found
-                        ;
-                        IF _found THEN
+                        IF fr.is_normalized_firstname(_words[_i]) THEN
                             _words_d := 'P';
                         END IF;
                     END IF;
                 END IF;
-            ELSIF _words[_i] ~ '^(INFERIEUR|SUPERIEUR|PROLONGE)E?S?$' THEN
+            ELSIF fr.is_normalized_reserved_word(_words[_i]) THEN
                 _words_d := 'E';
             END IF;
         END IF;

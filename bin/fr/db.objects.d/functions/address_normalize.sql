@@ -2,6 +2,98 @@
  * add FR-ADDRESS facilities (normalized label, following AFNOR NF Z 10-011 (1/2013))
  */
 
+/* NOTE
+LAPOSTE descriptor items
+ A article
+ C number
+ E reserved word
+ N name
+ P firstname
+ T title
+ V type
+ */
+
+-- is number (date, roman, arabic)
+SELECT public.drop_all_functions_if_exists('fr', 'is_normalized_number');
+CREATE OR REPLACE FUNCTION fr.is_normalized_number(
+    word VARCHAR
+)
+RETURNS BOOLEAN AS
+$func$
+DECLARE
+    _is_number BOOLEAN := FALSE;
+BEGIN
+    -- roman number
+    -- https://www.geeksforgeeks.org/validating-roman-numerals-using-regular-expression/
+    IF word ~ '^1(ER)?|[2-9][0-9]*(E|EME)?$'
+        OR
+        word ~ '^M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$' THEN
+        _is_number := TRUE;
+    END IF;
+    RETURN _is_number;
+END
+$func$ LANGUAGE plpgsql;
+
+-- is article
+SELECT public.drop_all_functions_if_exists('fr', 'is_normalized_article');
+CREATE OR REPLACE FUNCTION fr.is_normalized_article(
+    word VARCHAR
+)
+RETURNS BOOLEAN AS
+$func$
+DECLARE
+    _articles TEXT[] := '{A,AU,AUX,D,DE,DES,DU,EN,ET,L,LA,LE,LES,SOUS,SUR,UN,UNE}'::TEXT[];
+    _is_article BOOLEAN := FALSE;
+BEGIN
+    IF word = ANY(_articles) THEN
+        _is_article := TRUE;
+    END IF;
+    RETURN _is_article;
+END
+$func$ LANGUAGE plpgsql;
+
+-- is reserved word
+SELECT public.drop_all_functions_if_exists('fr', 'is_normalized_reserved_word');
+CREATE OR REPLACE FUNCTION fr.is_normalized_reserved_word(
+    word VARCHAR
+)
+RETURNS BOOLEAN AS
+$func$
+DECLARE
+    _is_reserved BOOLEAN := FALSE;
+BEGIN
+    IF word ~ '^(INFERIEUR|SUPERIEUR|PROLONGE)E?S?$' THEN
+        _is_reserved := TRUE;
+    END IF;
+    RETURN _is_reserved;
+END
+$func$ LANGUAGE plpgsql;
+
+-- is firstname
+SELECT public.drop_all_functions_if_exists('fr', 'is_normalized_firstname');
+CREATE OR REPLACE FUNCTION fr.is_normalized_firstname(
+    word VARCHAR
+)
+RETURNS BOOLEAN AS
+$func$
+DECLARE
+    _is_firstname BOOLEAN;
+BEGIN
+    SELECT EXISTS(
+        SELECT 1
+        FROM fr.constant
+        WHERE
+            usecase = 'LAPOSTE_STREET_FIRSTNAME'
+            AND
+            key = word
+    )
+    INTO _is_firstname
+    ;
+
+    RETURN _is_firstname;
+END
+$func$ LANGUAGE plpgsql;
+
 -- abbreviate holy word(s)
 SELECT drop_all_functions_if_exists('fr', 'normalize_abbreviate_holy');
 CREATE OR REPLACE FUNCTION fr.normalize_abbreviate_holy(
@@ -144,7 +236,6 @@ DECLARE
     _step_words TEXT[];
     _step_words_len INT;
     _steps_done BOOLEAN[];
-    _articles TEXT[] := '{A,AU,AUX,D,DE,DES,DU,EN,ET,L,LA,LE,LES,SOUS,SUR,UN,UNE}'::TEXT[];
     _titles VARCHAR[] :=
         ARRAY(SELECT key FROM fr.constant WHERE usecase = 'LAPOSTE_STREET_TITLE');
     _titles_abbr VARCHAR[] :=
@@ -278,16 +369,7 @@ BEGIN
                 FOR _i IN _words_i .. _words_len -1
                 LOOP
                     RAISE NOTICE ' search firstname : %', _words[_i];
-                    SELECT EXISTS(
-                        SELECT 1
-                        FROM fr.constant
-                        WHERE
-                            usecase = 'LAPOSTE_STREET_FIRSTNAME'
-                            AND
-                            key = _words[_i]
-                    )
-                    INTO _found
-                    ;
+                    _found := fr.is_normalized_firstname(_words[_i]);
                     IF _found THEN
                         _words_i := _i;
                         RAISE NOTICE ' firstname (at %)', _words_i;
@@ -319,9 +401,9 @@ BEGIN
 
                 FOR _i IN _words_i .. _words_len
                 LOOP
-                    IF _words[_i] = ANY(_articles) THEN
-                        RAISE NOTICE ' artcile=% i=%', _words[_i], _i;
-                        _found := TRUE;
+                    _found := fr.is_normalized_article(_words[_i]);
+                    IF _found THEN
+                        RAISE NOTICE ' article=% i=%', _words[_i], _i;
                         _words_i := _i;
                         EXIT;
                     ELSE
@@ -348,18 +430,6 @@ BEGIN
 
                 _len := LENGTH(_name);
                 RAISE NOTICE ' words=% len=%', _words, _len;
-
-            -- delete 1st article suffisant ?
-            ELSIF _steps[_step_i] = _DELETE_ARTICLE_FIRST THEN
-                FOR _i IN 1 .. _words_len
-                LOOP
-                    IF _words[_i] = ANY(_articles) THEN
-                        IF (_len - LENGTH(_words[_i]) <= 32) THEN
-                            _words := _words[:_i-1] || _words[_i+1:];
-                            EXIT;
-                        END IF;
-                    END IF;
-                END LOOP;
             END IF;
         END IF;
 
