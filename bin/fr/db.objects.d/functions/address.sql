@@ -118,6 +118,43 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+-- get title(s) from name of street
+SELECT drop_all_functions_if_exists('fr', 'get_titles_from_name');
+CREATE OR REPLACE FUNCTION fr.get_titles_from_name(
+    name IN VARCHAR
+    , descriptor IN VARCHAR
+    , titles OUT TEXT[]
+)
+AS
+$func$
+DECLARE
+    _words TEXT[] := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
+    _title TEXT;
+    _descriptor VARCHAR;
+    _descriptor_len INT := LENGTH(descriptor);
+    _descriptor_prev VARCHAR := 'Z';
+    _i INT;
+BEGIN
+    FOR _i IN 1 .. _descriptor_len
+    LOOP
+        _descriptor := SUBSTR(descriptor, _i, 1);
+        IF _descriptor = 'T' THEN
+            _title :=
+                CASE WHEN _descriptor_prev = 'T' THEN CONCAT(_title, ' ', _words[_i])
+                ELSE _words[_i]
+                END;
+        ELSE
+            IF _title IS NOT NULL THEN
+                titles := ARRAY_APPEND(titles, _title);
+                _title := NULL;
+            END IF;
+        END IF;
+        _descriptor_prev := _descriptor;
+    END LOOP;
+END
+$func$ LANGUAGE plpgsql;
+
+
 -- split name of street as words, descriptors (w/ same descriptor)
 SELECT drop_all_functions_if_exists('fr', 'split_name_of_street_as_descriptor');
 CREATE OR REPLACE FUNCTION fr.split_name_of_street_as_descriptor(
@@ -200,18 +237,15 @@ BEGIN
         RAISE NOTICE '(i=% ofs=%): d=% (pd=%), w=%', _i, _offset, _descriptor, _descriptor_prev, _words[_i];
 
         -- deleted article
-        /*
-        name => 'CHEMIN EXPLOITATION MAS ST PAUL'
-        , descriptor => 'VANATTN'
-         */
         IF (is_normalized
                 AND _n < _descriptor_len
                 AND _descriptor = 'A'
                 -- current word not an article
                 AND (NOT fr.is_normalized_article(_words[_i]))) THEN
-            FOR _j IN (_k + 1) .. _n
+            FOR _j IN (_k + 1) .. _descriptor_len
             LOOP
                 _descriptor := SUBSTR(descriptor, _j, 1);
+                _offset := _offset +1;
                 IF _descriptor != 'A' THEN
                     IF _descriptor_word IS NOT NULL THEN
                         words := ARRAY_APPEND(words, _descriptor_word);
@@ -220,7 +254,6 @@ BEGIN
                     _descriptor_word := _words[_i];
                     _descriptor_same := _descriptor;
                     _descriptor_prev := _descriptor;
-                    _offset := _offset +1;
                     EXIT;
                 END IF;
             END LOOP;
