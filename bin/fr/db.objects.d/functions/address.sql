@@ -195,38 +195,51 @@ DECLARE
     _last BOOLEAN := FALSE;
 BEGIN
     /* NOTE
-    not is_normalized, as normalized name (eventually w/ deleted article, or abbreviated _words)
+    when is_normalized, normalized name (eventually w/ deleted article, or abbreviated _words)
+    is_normalized => TRUE
 
     -- deleted article (one)
     AVENUE DE LA 9E DIVISION INFANTERIE DE CAVALERIE
-        descriptor=VAACTTAN
-        normalized=AV LA 9E DIV INFANT DE CAVALERIE
+        name => 'AV LA 9E DIV INFANT DE CAVALERIE'
+        , descriptor => 'VAACTTAN'
     -- deleted article (all)
     CHEMIN D EXPLOITATION DU MAS SAINT PAUL
-        descriptor=VANATTN
-        normalized=CHEMIN EXPLOITATION MAS ST PAUL
+        name => 'CHEMIN EXPLOITATION MAS ST PAUL'
+        , descriptor => 'VANATTN'
     CHEMIN DE NOTRE DAME DES CHAMPS ET DES VIGNES
-        descriptor=VATTANAAN
-        normalized=CHEMIN ND CHAMPS ET DES VIGNES
+        name => 'CHEMIN ND CHAMPS ET DES VIGNES'
+        , descriptor => 'VATTANAAN'
+    -- not an article!
+    PARC D ACTIVITES NURIEUX CROIX CHALON'
+        name => 'PARC A NURIEUX CRX CHALON'
+        , descriptor => 'VANNTN'
+    AVENUE DES ANCIENS COMBATTANTS FRANCAIS D INDOCHINE
+        name => 'AV A COMBATTANTS FR INDOCHINE'
+        , descriptor => 'VANNTAN'
 
     -- deleted (word of) title
     CHEMIN RURAL DIT ANCIEN CHEMIN DE BRISON A THUET
-        descriptor=VNNTTANAN
-        normalized=CHEM R DIT ANCIEN BRISON THUET
+        name => 'CHEM R DIT ANCIEN BRISON THUET'
+        , descriptor => 'VNNTTANAN'
 
     -- abbreviated title
     ZONE ARTISANALE CENTRE COMMERCIAL BEAUGE
-        descriptor=VVTTN
-        normalized=ZONE ARTISANALE CCIAL BEAUGE
+        name => 'ZONE ARTISANALE CCIAL BEAUGE'
+        , descriptor => 'VVTTN'
     PLACE NOTRE DAME DE LA LEGION D HONNEUR
-        descriptor=VTTAANAN
-        normalized=PL ND DE LA LEGION D HONNEUR
+        name => 'PL ND DE LA LEGION D HONNEUR'
+        , descriptor => 'VTTAANAN'
+    -- w/ deleted article (prev='T')
+    CHEMIN DE NOTRE DAME DES CHAMPS ET DES VIGNES
+        name => 'CHEMIN ND CHAMPS ET DES VIGNES'
+        , descriptor => 'VATTANAAN'
 
     -- abbreviated type
     LIEU DIT LE GRAND BOIS DE LA DURANDIERE
-        descriptor=VVATTAAN
-        normalized=LD LE GD BOIS DE LA DURANDIERE
+        name => 'LD LE GD BOIS DE LA DURANDIERE'
+        , descriptor => 'VVATTAAN'
      */
+
     _n := ARRAY_LENGTH(_words, 1);
     RAISE NOTICE '#d=%, #w=%', _descriptor_len, _n;
     FOR _i IN 1 .. _n
@@ -238,31 +251,48 @@ BEGIN
         _descriptor := SUBSTR(descriptor, _k, 1);
         RAISE NOTICE '(i=% ofs=%): d=% (pd=%), w=%', _i, _offset, _descriptor, _descriptor_prev, _words[_i];
 
-        -- deleted article
+        -- deleted article (or not an article!)
         IF (is_normalized
                 AND _n < _descriptor_len
-                AND _descriptor = 'A'
-                -- current word not an article
-                AND (NOT fr.is_normalized_article(_words[_i]))) THEN
-            FOR _j IN (_k + 1) .. _descriptor_len
-            LOOP
-                _descriptor := SUBSTR(descriptor, _j, 1);
-                _offset := _offset +1;
-                IF _descriptor != 'A' THEN
-                    IF _descriptor_word IS NOT NULL AND (
-                        (split_only IS NULL)
-                        OR
-                        (_descriptor_same ~ split_only)
-                    ) THEN
-                        words := ARRAY_APPEND(words, _descriptor_word);
-                        descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
-                    END IF;
-                    _descriptor_word := _words[_i];
-                    _descriptor_same := _descriptor;
-                    _descriptor_prev := _descriptor;
-                    EXIT;
+                AND _descriptor = 'A') THEN
+            -- this is not an article
+            _descriptor_remainder := SUBSTR(descriptor, _k +1);
+            _descriptor_only_a := REGEXP_REPLACE(_descriptor_remainder, '[^A]', '', 'gi');
+            IF (LENGTH(_descriptor_remainder) - LENGTH(_descriptor_only_a)) = (_n - _i +1) THEN
+                IF _descriptor_word IS NOT NULL AND (
+                    (split_only IS NULL)
+                    OR
+                    (_descriptor_same ~ split_only)
+                ) THEN
+                    words := ARRAY_APPEND(words, _descriptor_word);
+                    descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
                 END IF;
-            END LOOP;
+                _descriptor_word := _words[_i];
+                _descriptor_same := SUBSTR(descriptor, _k +1, 1);
+                _descriptor_prev := _descriptor_same;
+                _offset := _offset +1;
+            -- current word not an article
+            ELSIF (NOT fr.is_normalized_article(_words[_i])) THEN
+                FOR _j IN (_k + 1) .. _descriptor_len
+                LOOP
+                    _descriptor := SUBSTR(descriptor, _j, 1);
+                    _offset := _offset +1;
+                    IF _descriptor != 'A' THEN
+                        IF _descriptor_word IS NOT NULL AND (
+                            (split_only IS NULL)
+                            OR
+                            (_descriptor_same ~ split_only)
+                        ) THEN
+                            words := ARRAY_APPEND(words, _descriptor_word);
+                            descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
+                        END IF;
+                        _descriptor_word := _words[_i];
+                        _descriptor_same := _descriptor;
+                        _descriptor_prev := _descriptor;
+                        EXIT;
+                    END IF;
+                END LOOP;
+            END IF;
             CONTINUE;
         -- abbreviated type
         ELSIF (is_normalized
