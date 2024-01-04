@@ -208,6 +208,9 @@ BEGIN
     END IF;
 
     DELETE FROM fr.laposte_address_street_keyword WHERE "group" = 'TITLE';
+
+    /* TODO
+    -- only one word (w/ abbreviation)
     INSERT INTO fr.laposte_address_street_keyword(
         "group", name, name_abbreviated, first_word, occurs
     ) VALUES
@@ -423,7 +426,6 @@ BEGIN
         , ('TITLE', 'LABORATOIRE', 'LABORATOIRE', NULL, 1)
         , ('TITLE', 'LEVEE', 'LEVEE', NULL, 1)
         , ('TITLE', 'LIEUTENANT', 'LT', NULL, 2)
-        , ('TITLE', 'LIEUTENANT DE VAISSEAU', 'LTDV', 'LIEUTENANT', 1)
         , ('TITLE', 'MADAME', 'MME', NULL, 1)
         , ('TITLE', 'MADEMOISELLE', 'MLLE', NULL, 1)
         , ('TITLE', 'MAGASIN', 'MAG', NULL, 1)
@@ -455,7 +457,6 @@ BEGIN
         , ('TITLE', 'MUNICIPAL', 'MUN', NULL, 1)
         , ('TITLE', 'MUSEE', 'MUSE', NULL, 1)
         , ('TITLE', 'NATIONAL', 'NAT', NULL, 1)
-        , ('TITLE', 'NOTRE DAME', 'ND', 'NOTRE', 1)
         , ('TITLE', 'NOUVEAU', 'NOUV', NULL, 1)
         , ('TITLE', 'NOUVELLE', 'NOUV', NULL, 1)
         , ('TITLE', 'OBSERVATOIRE', 'OBSERVATOIRE', NULL, 1)
@@ -565,6 +566,52 @@ BEGIN
         , ('TITLE', 'VOIE', 'V', NULL, 1)
         , ('TITLE', 'VOIES', 'V', NULL, 1)
         ;
+
+    -- more than one word
+    INSERT INTO fr.laposte_address_street_keyword(
+        "group", name, first_word, occurs
+    )
+    WITH
+    double_title AS (
+        SELECT
+            lb_voie name
+            , lb_desc descriptor_
+            , (REGEXP_MATCHES(lb_desc, 'TT+'))[1] more_title
+        FROM fr.laposte_address_street
+        WHERE lb_desc ~ 'TT+'
+    )
+    , as_words AS (
+        SELECT
+            name
+            , more_title
+            , POSITION(more_title IN descriptor_) position_more_title
+            , LENGTH(more_title) len_more_title
+            , REGEXP_SPLIT_TO_ARRAY(name, '\s+') words
+        FROM
+            double_title
+    )
+    SELECT
+        'TITLE'
+        , items_of_array_to_string(
+            elements => words
+            , from_ => position_more_title
+            , to_ => position_more_title + len_more_title -1
+        )
+        , words[position_more_title] first_word
+        , COUNT(*) occurs
+    FROM
+        as_words
+    GROUP BY
+        items_of_array_to_string(
+            elements => words
+            , from_ => position_more_title
+            , to_ => position_more_title + len_more_title -1
+        )
+        , words[position_more_title]
+    ORDER BY
+        1
+    ;
+     */
 END;
 $proc$ LANGUAGE plpgsql;
 
