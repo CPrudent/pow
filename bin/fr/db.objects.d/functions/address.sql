@@ -403,11 +403,31 @@ BEGIN
                     WHEN LENGTH(_descriptor_remainder) = (_n - _i +1) THEN 1
                     -- same number of remaining words (w/o article)
                     WHEN (_n - _i) = LENGTH(_descriptor_wo_a) THEN 2
+                    -- same number of remaining words
+                    WHEN LENGTH(_descriptor_others) = (_n - _i +1) THEN 3
+                    -- remains others (as words), eventually w/ deleted article(s)
+                    WHEN (LENGTH(_descriptor_others) >= (_n - _i +1))
+                        AND
+                        (LENGTH(_descriptor_only_a) >= (LENGTH(_descriptor_others) - (_n - _i +1))) THEN 4
+                    /*
+                    WHEN
+                    (
+                        -- useful ?
+                        ((_descriptor_next = 'A' AND fr.is_normalized_article(_words[_i +1]))
+                        OR
+                        (_descriptor_next = 'C' AND fr.is_normalized_number(_words[_i +1]))
+                        OR
+                        (_descriptor_next = 'N' AND ((_i +1) = _n))
+                        OR
+                        (_descriptor_next = 'P' AND fr.is_normalized_firstname(_words[_i +1])))
+                    ) THEN x
+                     */
                     ELSE 0
                     END;
+                RAISE NOTICE ' usecase_title=%', _usecase_title;
+
                 -- take title(s) one by one
                 IF _usecase_title = ANY('{1,2}') THEN
-                    RAISE NOTICE ' usecase_title=%', _usecase_title;
                     IF (_descriptor != _descriptor_prev) THEN
                         IF _descriptor_word IS NOT NULL AND (
                             (split_only IS NULL)
@@ -434,37 +454,12 @@ BEGIN
                     _descriptor_prev := _descriptor;
 
                     -- abbreviated or deleted title ?
-                    -- LD LE "GD BOIS" "DE LA" DURANDIERE
+                    -- RUE DU LTDV D ESTIENNE D ORVES
                     IF _usecase_title = 2 AND LENGTH(_descriptor_title) > 1 THEN
                         _offset := _offset + LENGTH(_descriptor_title) -1;
                     END IF;
                     CONTINUE;
-                ELSIF
-                    (
-                        -- same number of remaining words
-                        LENGTH(_descriptor_others) = (_n - _i +1)
-                    )
-                    OR
-                    (
-                        -- remains others (as words), eventually w/ deleted article(s)
-                        (LENGTH(_descriptor_others) >= (_n - _i +1))
-                        AND
-                        (LENGTH(_descriptor_only_a) >= (LENGTH(_descriptor_others) - (_n - _i +1)))
-                    )
-                    /*
-                    OR
-                    (
-                        -- useful ?
-                        ((_descriptor_next = 'A' AND fr.is_normalized_article(_words[_i +1]))
-                        OR
-                        (_descriptor_next = 'C' AND fr.is_normalized_number(_words[_i +1]))
-                        OR
-                        (_descriptor_next = 'N' AND ((_i +1) = _n))
-                        OR
-                        (_descriptor_next = 'P' AND fr.is_normalized_firstname(_words[_i +1])))
-                    )
-                     */
-                    THEN
+                ELSIF _usecase_title = ANY('{3,4}') THEN
                     IF _descriptor_word IS NOT NULL AND (
                         (split_only IS NULL)
                         OR
