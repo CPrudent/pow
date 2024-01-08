@@ -169,6 +169,7 @@ AS
 $func$
 DECLARE
     _words TEXT[] := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
+    --_words_i INT;
     _kw VARCHAR;
     _kw_more VARCHAR;
     _kw_is_abbreviated BOOLEAN;
@@ -187,6 +188,9 @@ DECLARE
     _descriptor_next VARCHAR;
     _descriptor_wo_a VARCHAR;
     _descriptor_only_a VARCHAR;
+    _descriptor_only_t VARCHAR;
+    _descriptor_start_a VARCHAR;
+    _usecase_title INT;
     _i INT;
     _j INT;
     _k INT;
@@ -248,53 +252,93 @@ BEGIN
         IF _k > _descriptor_len THEN
             EXIT;
         END IF;
+        IF (_i = _n) AND (_k < _descriptor_len) THEN
+            _k := _descriptor_len;
+        END IF;
         _descriptor := SUBSTR(descriptor, _k, 1);
-        RAISE NOTICE '(i=% ofs=%): d=% (pd=%), w=%', _i, _offset, _descriptor, _descriptor_prev, _words[_i];
+        RAISE NOTICE '(i=% ofs=% k=%): d=% (pd=%), w=%', _i, _offset, _k, _descriptor, _descriptor_prev, _words[_i];
 
         -- deleted article (or not an article!)
         IF (is_normalized
                 AND _n < _descriptor_len
+                -- less words than descriptors , so deleted one or more
+                --AND ((_n - _i +1) < (_descriptor_len - _k))
                 AND _descriptor = 'A') THEN
-            -- this is not an article
-            _descriptor_remainder := SUBSTR(descriptor, _k +1);
-            _descriptor_only_a := REGEXP_REPLACE(_descriptor_remainder, '[^A]', '', 'gi');
-            IF (LENGTH(_descriptor_remainder) - LENGTH(_descriptor_only_a)) = (_n - _i +1) THEN
-                IF _descriptor_word IS NOT NULL AND (
-                    (split_only IS NULL)
-                    OR
-                    (_descriptor_same ~ split_only)
-                ) THEN
-                    words := ARRAY_APPEND(words, _descriptor_word);
-                    descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
-                END IF;
-                _descriptor_word := _words[_i];
-                _descriptor_same := SUBSTR(descriptor, _k +1, 1);
-                _descriptor_prev := _descriptor_same;
-                _offset := _offset +1;
-            -- current word not an article
-            ELSIF (NOT fr.is_normalized_article(_words[_i])) THEN
-                FOR _j IN (_k + 1) .. _descriptor_len
-                LOOP
-                    _descriptor := SUBSTR(descriptor, _j, 1);
-                    _offset := _offset +1;
-                    IF _descriptor != 'A' THEN
-                        IF _descriptor_word IS NOT NULL AND (
-                            (split_only IS NULL)
-                            OR
-                            (_descriptor_same ~ split_only)
-                        ) THEN
-                            words := ARRAY_APPEND(words, _descriptor_word);
-                            descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
-                        END IF;
-                        _descriptor_word := _words[_i];
-                        _descriptor_same := _descriptor;
-                        _descriptor_prev := _descriptor;
-                        EXIT;
+
+            IF (_descriptor_len - _k) != (_n - _i) THEN
+                _descriptor_from := CASE WHEN _descriptor_prev = 'A' THEN _k ELSE _k +1 END;
+                --_descriptor_from := _k +1;
+                _descriptor_remainder := SUBSTR(descriptor, _descriptor_from);
+                _descriptor_only_a := REGEXP_REPLACE(_descriptor_remainder, '[^A]', '', 'gi');
+
+                -- remains only words except article, this is not an article
+                IF (LENGTH(_descriptor_remainder) - LENGTH(_descriptor_only_a)) = (_n - _i +1) THEN
+                    IF _descriptor_word IS NOT NULL AND (
+                        (split_only IS NULL)
+                        OR
+                        (_descriptor_same ~ split_only)
+                    ) THEN
+                        words := ARRAY_APPEND(words, _descriptor_word);
+                        descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
                     END IF;
-                END LOOP;
+                    _descriptor_wo_a := REGEXP_REPLACE(_descriptor_remainder, '[A]', '', 'gi');
+                    _descriptor_word := _words[_i];
+                    _descriptor_same := SUBSTR(_descriptor_wo_a, 1, 1);
+                    _descriptor_prev := _descriptor_same;
+                    _descriptor_start_a := (REGEXP_MATCHES(_descriptor_remainder, '^([A]+)'))[1];
+                    IF _descriptor_start_a IS NOT NULL THEN
+                        _offset := _offset + LENGTH(_descriptor_start_a);
+                    ELSE
+                        _offset := _offset + 1;
+                    END IF;
+
+                    RAISE NOTICE ' remainder=%', _descriptor_remainder;
+                    RAISE NOTICE ' only_a=%', _descriptor_only_a;
+                    RAISE NOTICE ' wo_a=%', _descriptor_wo_a;
+                    RAISE NOTICE ' start_a=%', _descriptor_start_a;
+                    RAISE NOTICE ' offset=%', _offset;
+
+                -- current word not an article
+                ELSIF (NOT fr.is_normalized_article(_words[_i])) THEN
+                    FOR _j IN (_k + 1) .. _descriptor_len
+                    LOOP
+                        _descriptor := SUBSTR(descriptor, _j, 1);
+                        _offset := _offset +1;
+                        IF _descriptor != 'A' THEN
+                            IF _descriptor_word IS NOT NULL AND (
+                                (split_only IS NULL)
+                                OR
+                                (_descriptor_same ~ split_only)
+                            ) THEN
+                                words := ARRAY_APPEND(words, _descriptor_word);
+                                descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
+                            END IF;
+                            _descriptor_word := _words[_i];
+                            _descriptor_same := _descriptor;
+                            _descriptor_prev := _descriptor;
+
+                            RAISE NOTICE ' descriptor=%', _descriptor;
+                            RAISE NOTICE ' offset=%', _offset;
+                            EXIT;
+                        END IF;
+                    END LOOP;
+                -- remain at least one article
+                ELSE
+                    IF _descriptor_word IS NOT NULL AND (
+                        (split_only IS NULL)
+                        OR
+                        (_descriptor_same ~ split_only)
+                    ) THEN
+                        words := ARRAY_APPEND(words, _descriptor_word);
+                        descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
+                    END IF;
+                    _descriptor_word := _words[_i];
+                    _descriptor_same := _descriptor;
+                    _descriptor_prev := _descriptor;
+                END IF;
+                CONTINUE;
             END IF;
-            CONTINUE;
-        -- abbreviated type
+        -- type
         ELSIF (is_normalized
                 AND _n < _descriptor_len
                 AND _descriptor = 'V'
@@ -305,6 +349,7 @@ BEGIN
                 name => name
             )
             AS (kw_group VARCHAR, kw VARCHAR, kw_abbreviated VARCHAR, kw_is_abbreviated BOOLEAN, kw_nwords INT);
+            -- abbreviated ?
             IF _kw_is_abbreviated THEN
                 _descriptor_type := (REGEXP_MATCHES(descriptor, '^(V+)([^V])'))[1];
                 -- be careful w/ multiple abbreviated type (as ZA, PCH) !
@@ -325,29 +370,91 @@ BEGIN
                 END IF;
                 _offset := count_words(_kw);
                 _descriptor_word := _words[_i];
-                _descriptor_same := REPEAT('V', _offset);
+                _descriptor_same := _descriptor;
                 CONTINUE;
             END IF;
-        -- abbreviated or deleted title
+        -- title
         ELSIF (is_normalized
                 AND _n < _descriptor_len
                 AND _descriptor = 'T') THEN
-            _descriptor_from := CASE WHEN _descriptor_prev = 'T' THEN _k -1 ELSE _k END;
+                --AND _descriptor_prev != 'T') THEN
+
+            -- forward if previous T, else title can be one word only!
+            --_descriptor_from := CASE WHEN _descriptor_prev = 'T' THEN _k -1 ELSE _k END;
+
+            _descriptor_from := _k;
             _descriptor_remainder := SUBSTR(descriptor, _descriptor_from);
             _descriptor_title := (REGEXP_MATCHES(_descriptor_remainder, '(T+)([^T])'))[1];
-            -- title w/ many words, but remains one only
-            IF LENGTH(_descriptor_title) > 1 THEN
+
+            --IF LENGTH(_descriptor_title) > 1 THEN
                 _descriptor_others := (REGEXP_MATCHES(_descriptor_remainder, '(T+)(.*)$'))[2];
                 _descriptor_wo_a := REGEXP_REPLACE(_descriptor_others, '[A]', '', 'gi');
                 _descriptor_only_a := REGEXP_REPLACE(_descriptor_others, '[^A]', '', 'gi');
+                _descriptor_only_t := REGEXP_REPLACE(_descriptor_others, '[^T]', '', 'gi');
                 _descriptor_next := SUBSTR(descriptor, (_descriptor_from + LENGTH(_descriptor_title)), 1);
 
-                IF  (
-                        -- remains others than article less or equal to articles
-                        (((_n - _i) - LENGTH(_descriptor_wo_a)) <= LENGTH(_descriptor_only_a))
+                /*
+                -- remains others than article less or equal to articles
+                (((_n - _i) - LENGTH(_descriptor_wo_a)) < LENGTH(_descriptor_only_a))
+                 */
+
+                _usecase_title := CASE
+                    -- remains as such words than descriptor items
+                    WHEN LENGTH(_descriptor_remainder) = (_n - _i +1) THEN 1
+                    -- same number of remaining words (w/o article)
+                    WHEN (_n - _i) = LENGTH(_descriptor_wo_a) THEN 2
+                    ELSE 0
+                    END;
+                -- take title(s) one by one
+                IF _usecase_title = ANY('{1,2}') THEN
+                    RAISE NOTICE ' usecase_title=%', _usecase_title;
+                    IF (_descriptor != _descriptor_prev) THEN
+                        IF _descriptor_word IS NOT NULL AND (
+                            (split_only IS NULL)
+                            OR
+                            (_descriptor_same ~ split_only)
+                        ) THEN
+                            words := ARRAY_APPEND(words, _descriptor_word);
+                            descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
+                        END IF;
+                        /*
+                        _descriptor_word := items_of_array_to_string(
+                            elements => _words
+                            , from_ => _i
+                            , to_ => (_i + LENGTH(_descriptor_title) -1)
+                        );
+                        _descriptor_same := _descriptor_title;
+                        */
+                        _descriptor_word := _words[_i];
+                        _descriptor_same := _descriptor;
+                    ELSE
+                        _descriptor_word := CONCAT(_descriptor_word, ' ', _words[_i]);
+                        _descriptor_same := CONCAT(_descriptor_same, _descriptor);
+                    END IF;
+                    _descriptor_prev := _descriptor;
+
+                    -- abbreviated or deleted title ?
+                    -- LD LE "GD BOIS" "DE LA" DURANDIERE
+                    IF _usecase_title = 2 AND LENGTH(_descriptor_title) > 1 THEN
+                        _offset := _offset + LENGTH(_descriptor_title) -1;
+                    END IF;
+                    CONTINUE;
+                ELSIF
+                    (
+                        -- same number of remaining words
+                        LENGTH(_descriptor_others) = (_n - _i +1)
                     )
                     OR
                     (
+                        -- remains others (as words), eventually w/ deleted article(s)
+                        (LENGTH(_descriptor_others) >= (_n - _i +1))
+                        AND
+                        (LENGTH(_descriptor_only_a) >= (LENGTH(_descriptor_others) - (_n - _i +1)))
+                    )
+                    /*
+                    OR
+                    (
+                        -- useful ?
                         ((_descriptor_next = 'A' AND fr.is_normalized_article(_words[_i +1]))
                         OR
                         (_descriptor_next = 'C' AND fr.is_normalized_number(_words[_i +1]))
@@ -356,6 +463,7 @@ BEGIN
                         OR
                         (_descriptor_next = 'P' AND fr.is_normalized_firstname(_words[_i +1])))
                     )
+                     */
                     THEN
                     IF _descriptor_word IS NOT NULL AND (
                         (split_only IS NULL)
@@ -363,13 +471,39 @@ BEGIN
                         (_descriptor_same ~ split_only)
                     ) THEN
                         words := ARRAY_APPEND(words, _descriptor_word);
-                        IF _descriptor_prev = 'T' THEN
-                            descriptors := ARRAY_APPEND(descriptors, REPEAT('T', LENGTH(_descriptor_title)));
-                        ELSE
-                            descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
-                        END IF;
+                        descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
                     END IF;
+
+                    -- next word
                     _descriptor_word := _words[_i];
+                    -- search for next descriptor by adjusting offset
+                    FOR _j IN (_descriptor_from + LENGTH(_descriptor_title)) .. _descriptor_len
+                    LOOP
+                        _descriptor_tmp := SUBSTR(descriptor, _j, 1);
+                        IF (_descriptor_tmp != 'A')
+                            OR
+                            (
+                                (_descriptor_tmp = 'A')
+                                AND
+                                fr.is_normalized_article(_words[_i])
+                            )
+                        THEN
+                            EXIT;
+                        END IF;
+                        _offset := _offset +1;
+                    END LOOP;
+                    _descriptor_same := _descriptor_tmp;
+
+                    --_offset := _offset + LENGTH(_descriptor_title) -1;
+                    _descriptor_prev := _descriptor_same;
+                    RAISE NOTICE ' remainder=%', _descriptor_remainder;
+                    RAISE NOTICE ' others=%', _descriptor_others;
+                    RAISE NOTICE ' only_a=%', _descriptor_only_a;
+                    RAISE NOTICE ' wo_a=%', _descriptor_wo_a;
+                    RAISE NOTICE ' offset=%', _offset;
+                    CONTINUE;
+
+                    /*
                     IF _descriptor_prev = 'T' THEN
                         FOR _j IN (_k + 1) .. _descriptor_len
                         LOOP
@@ -380,17 +514,20 @@ BEGIN
                         END LOOP;
                         _descriptor_same := _descriptor_tmp;
                     ELSE
-                        _descriptor_same := REPEAT('T', LENGTH(_descriptor_title));
                     END IF;
+                     */
 
-                    _offset := _offset + LENGTH(_descriptor_title);
+                    /*
+                    _offset := _offset + LENGTH(_descriptor_title) -1;
                     IF _descriptor_prev != 'T' THEN
                         _offset := _offset -1;
                     END IF;
                     _descriptor_prev := _descriptor;
+
                     CONTINUE;
+                     */
                 END IF;
-            END IF;
+            --END IF;
         END IF;
 
         IF (_descriptor != _descriptor_prev) THEN
@@ -402,6 +539,15 @@ BEGIN
                 words := ARRAY_APPEND(words, _descriptor_word);
                 descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
             END IF;
+            /* NOTE
+            at the end (descriptor), specially after title (TT), word index (_i) is not
+            the last word!
+            _words_i := CASE
+                WHEN _k = _descriptor_len THEN _n
+                ELSE _i
+                END;
+            _descriptor_word := _words[_words_i];
+             */
             _descriptor_word := _words[_i];
             _descriptor_same := _descriptor;
         ELSE
