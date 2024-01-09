@@ -154,6 +154,31 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+-- count potential number of words (w/ _descriptor)
+SELECT drop_all_functions_if_exists('fr', 'count_potential_nof_words');
+CREATE OR REPLACE FUNCTION fr.count_potential_nof_words(
+    descriptor IN VARCHAR
+    , nof OUT INT
+)
+AS
+$func$
+DECLARE
+    _descriptor VARCHAR;
+    _descriptor_len INT := LENGTH(descriptor);
+    _descriptor_prev VARCHAR := 'Z';
+    _i INT;
+BEGIN
+    nof := 0;
+    FOR _i IN 1 .. _descriptor_len
+    LOOP
+        _descriptor := SUBSTR(descriptor, _i, 1);
+        IF (_descriptor != _descriptor_prev) THEN
+            nof := nof +1;
+        END IF;
+        _descriptor_prev := _descriptor;
+    END LOOP;
+END
+$func$ LANGUAGE plpgsql;
 
 -- split name of street as words, descriptors (w/ same descriptor)
 SELECT drop_all_functions_if_exists('fr', 'split_name_of_street_as_descriptor');
@@ -177,10 +202,11 @@ DECLARE
     _words TEXT[] := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
     _descriptor VARCHAR;
     _descriptor_len INT := LENGTH(descriptor);
-    _descriptor_tmp VARCHAR;
     _descriptor_prev VARCHAR := 'Z';
     _descriptor_word VARCHAR := NULL;
     _descriptor_same VARCHAR := NULL;
+    _descriptor_before  VARCHAR;
+    _descriptor_with_a  VARCHAR;
     _descriptor_remainder VARCHAR;
     _descriptor_from INT;
     _descriptor_type VARCHAR;
@@ -196,6 +222,7 @@ DECLARE
     _kw_more VARCHAR;
     _kw_is_abbreviated BOOLEAN;
     _kw_nwords INT;
+    _descriptor_tmp VARCHAR;
 BEGIN
     /* NOTE
     when is_normalized, normalized name (eventually w/ deleted article, or abbreviated _words)
@@ -383,6 +410,17 @@ BEGIN
             AND _descriptor = 'T'
         ) THEN
             _descriptor_from := _k;
+
+            -- previous deleted article (descriptor T already consumed)
+            _descriptor_before := SUBSTR(descriptor, 1, _descriptor_from);
+            _descriptor_with_a := (REGEXP_MATCHES(_descriptor_before, '(A+)(T+)$'))[1];
+            IF (_descriptor_with_a IS NOT NULL
+                AND
+                (descriptors[ARRAY_UPPER(descriptors, 1)] !~ 'A')
+            ) THEN
+                _descriptor_from := _descriptor_from -1;
+            END IF;
+
             _descriptor_remainder := SUBSTR(descriptor, _descriptor_from);
             _descriptor_title := (REGEXP_MATCHES(_descriptor_remainder, '(T+)([^T])'))[1];
             _descriptor_others := (REGEXP_MATCHES(_descriptor_remainder, '(T+)(.*)$'))[2];
@@ -397,14 +435,17 @@ BEGIN
              */
 
             _usecase_title := CASE
-                -- remains as such words than descriptor items
-                WHEN LENGTH(_descriptor_remainder) = (_n - _i +1) THEN 1
+                -- same number of remaining words
+                WHEN (_n - _i +1) = LENGTH(_descriptor_remainder) THEN 1
                 -- same number of remaining words (w/o article), except current one
                 WHEN (_n - _i) = LENGTH(_descriptor_wo_a) THEN 2
-                -- same number of remaining words
-                WHEN LENGTH(_descriptor_others) = (_n - _i +1) THEN 3
+                -- same number of remaining words, except current one
+                WHEN (_n - _i) = LENGTH(_descriptor_others) THEN 3
+                -- same number of remaining words, except current one (potentially abbreviated)
+                WHEN (_n - _i) = (LENGTH(_descriptor_only_a) + fr.count_potential_nof_words(_descriptor_wo_a)) THEN 5
+                WHEN LENGTH(_descriptor_title) = 1 THEN 6
                 -- remains others (as words), eventually w/ deleted article(s)
-                WHEN (LENGTH(_descriptor_others) >= (_n - _i +1))
+                WHEN ((_n - _i +1) <= LENGTH(_descriptor_others))
                     AND
                     (LENGTH(_descriptor_only_a) >= (LENGTH(_descriptor_others) - (_n - _i +1))) THEN 4
                 /*
@@ -425,7 +466,7 @@ BEGIN
             RAISE NOTICE ' usecase_title=%', _usecase_title;
 
             -- as such number of words
-            IF _usecase_title = ANY('{1,2}') THEN
+            IF _usecase_title = ANY('{1,2,3,5,6}') THEN
                 IF (_descriptor != _descriptor_prev) THEN
                     IF _descriptor_word IS NOT NULL AND (
                         (split_only IS NULL)
@@ -445,12 +486,18 @@ BEGIN
 
                 -- abbreviated or deleted title ?
                 -- RUE DU LTDV D ESTIENNE D ORVES
-                IF _usecase_title = 2 AND LENGTH(_descriptor_title) > 1 THEN
+                IF ((_usecase_title = ANY('{2,3}'))
+                    AND
+                    (LENGTH(_descriptor_title) > 1)
+                    AND
+                    -- not many words
+                    (count_words(_descriptor_word) = 1)
+                ) THEN
                     _offset := _offset + LENGTH(_descriptor_title) -1;
                 END IF;
                 CONTINUE;
             -- more descriptors, so deleted word(s)
-            ELSIF _usecase_title = ANY('{3,4}') THEN
+            ELSIF _usecase_title = ANY('{4}') THEN
                 IF _descriptor_word IS NOT NULL AND (
                     (split_only IS NULL)
                     OR
