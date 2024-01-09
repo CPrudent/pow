@@ -198,6 +198,7 @@ DECLARE
     _k INT;
     _n INT;
     _offset INT := 1;
+    _usecase_article INT;
     _usecase_title INT;
     _words TEXT[] := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
     _descriptor VARCHAR;
@@ -217,7 +218,6 @@ DECLARE
     _descriptor_only_a VARCHAR;
     --_descriptor_only_t VARCHAR;
     _descriptor_start_a VARCHAR;
-    _last BOOLEAN := FALSE;
     _kw VARCHAR;
     _kw_more VARCHAR;
     _kw_is_abbreviated BOOLEAN;
@@ -291,12 +291,22 @@ BEGIN
             AND _descriptor = 'A'
         ) THEN
             IF (_descriptor_len - _k) != (_n - _i) THEN
-                _descriptor_from := CASE WHEN _descriptor_prev = 'A' THEN _k ELSE _k +1 END;
+                --_descriptor_from := CASE WHEN _descriptor_prev = 'A' THEN _k ELSE _k +1 END;
+                _descriptor_from := _k;
                 _descriptor_remainder := SUBSTR(descriptor, _descriptor_from);
                 _descriptor_only_a := REGEXP_REPLACE(_descriptor_remainder, '[^A]', '', 'gi');
 
-                -- remains only words except article, this is not an article
-                IF (LENGTH(_descriptor_remainder) - LENGTH(_descriptor_only_a)) = (_n - _i +1) THEN
+                _usecase_article := CASE
+                    -- remains only words except article, this is not an article
+                    WHEN (LENGTH(_descriptor_remainder) - LENGTH(_descriptor_only_a)) = (_n - _i +1) THEN 1
+                    -- current word not an article, so deleted article
+                    WHEN (NOT fr.is_normalized_article(_words[_i])) THEN 2
+                    ELSE 0
+                    END;
+                RAISE NOTICE ' usecase article=%', _usecase_article;
+
+                -- as such number of words
+                IF _usecase_article = ANY('{1}') THEN
                     IF _descriptor_word IS NOT NULL AND (
                         (split_only IS NULL)
                         OR
@@ -321,9 +331,8 @@ BEGIN
                     RAISE NOTICE ' wo_a=%', _descriptor_wo_a;
                     RAISE NOTICE ' start_a=%', _descriptor_start_a;
                     RAISE NOTICE ' offset=%', _offset;
-
-                -- current word not an article, so deleted article
-                ELSIF (NOT fr.is_normalized_article(_words[_i])) THEN
+                -- deleted article
+                ELSIF _usecase_article = ANY('{2}') THEN
                     FOR _j IN (_k + 1) .. _descriptor_len
                     LOOP
                         _descriptor := SUBSTR(descriptor, _j, 1);
@@ -411,7 +420,7 @@ BEGIN
         ) THEN
             _descriptor_from := _k;
 
-            -- previous deleted article (descriptor T already consumed)
+            -- previous deleted article (one descriptor T already consumed)
             _descriptor_before := SUBSTR(descriptor, 1, _descriptor_from);
             _descriptor_with_a := (REGEXP_MATCHES(_descriptor_before, '(A+)(T+)$'))[1];
             IF (_descriptor_with_a IS NOT NULL
@@ -552,20 +561,10 @@ BEGIN
         ELSE
             _descriptor_word := CONCAT(_descriptor_word, ' ', _words[_i]);
             _descriptor_same := CONCAT(_descriptor_same, _descriptor);
-            IF _i = _n AND (
-                (split_only IS NULL)
-                OR
-                (_descriptor_same ~ split_only)
-            ) THEN
-                words := ARRAY_APPEND(words, _descriptor_word);
-                descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
-                _last := TRUE;
-            END IF;
         END IF;
         _descriptor_prev := _descriptor;
     END LOOP;
-    IF NOT _last AND (
-        (split_only IS NULL)
+    IF ((split_only IS NULL)
         OR
         (_descriptor_same ~ split_only)
     ) THEN

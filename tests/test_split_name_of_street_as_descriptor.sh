@@ -27,6 +27,7 @@ declare -a TEST_STREET_NAME=(
     'CHEMIN RURAL DIT ANCIENNE ROUTE DE SEYSSEL A ANNECY'                   # 19
     'CHEMIN RURAL DIT ANCIEN CHEMIN DE BRISON A THUET'                      # 20
     'RUE DU TERTRE DE NOTRE DAME DE LA SALETTE'                             # 21
+    'RUE DE L ADJUDANT BESNAULT ET DU GENDARME LEFORT'                      # 22
 )
 
 declare -a TEST_STREET_NAME_NORMALIZED=(
@@ -51,6 +52,7 @@ declare -a TEST_STREET_NAME_NORMALIZED=(
     'CHEM R D ANCIENNE SEYSSEL ANNECY'                                      # 19
     'CHEM R DIT ANCIEN BRISON THUET'                                        # 20
     'RUE DU TERT DE ND DE LA SALETTE'                                       # 21
+    'RUE ADJ BESNAULT GENDARME LEFORT'                                      # 22
 )
 
 declare -a TEST_STREET_DESCRIPTOR=(
@@ -75,6 +77,7 @@ declare -a TEST_STREET_DESCRIPTOR=(
     VNNTTANAN                                                               # 19
     VNNTTANAN                                                               # 20
     VATATTAAN                                                               # 21
+    VAATNAANN                                                               # 22
 )
 
 declare -a SPLIT_NORMALIZED_NAME=(
@@ -99,6 +102,7 @@ declare -a SPLIT_NORMALIZED_NAME=(
     '{CHEM,"R D",ANCIENNE,"SEYSSEL ANNECY"}'                                # 19
     '{CHEM,"R DIT",ANCIEN,"BRISON THUET"}'                                  # 20
     '{RUE,DU,TERT,DE,ND,"DE LA",SALETTE}'                                   # 21
+    '{RUE,ADJ,"BESNAULT GENDARME LEFORT"}'                                  # 22
 )
 
 declare -a SPLIT_NORMALIZED_DESCRIPTOR=(
@@ -123,6 +127,7 @@ declare -a SPLIT_NORMALIZED_DESCRIPTOR=(
     '{V,NN,T,NN}'                                                           # 19
     '{V,NN,T,NN}'                                                           # 20
     '{V,A,T,A,T,AA,N}'                                                      # 21
+    '{V,T,NNN}'                                                             # 22
 )
 
 declare -a _array
