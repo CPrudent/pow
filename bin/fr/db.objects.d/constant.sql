@@ -202,416 +202,254 @@ SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_titles');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_titles()
 AS
 $proc$
+DECLARE
+    _set RECORD;
+    _words TEXT[];
+    _descriptors TEXT[];
+    _words_normalized TEXT[];
+    _descriptors_normalized TEXT[];
+    _i INT;
+    _abbr_i INT;
 BEGIN
     IF NOT table_exists('fr', 'laposte_address_street') THEN
         RAISE 'Données LAPOSTE non présentes';
     END IF;
 
-    DELETE FROM fr.laposte_address_street_keyword WHERE "group" = 'TITLE';
-
-    /* TODO
-    -- only one word (w/ abbreviation)
-    INSERT INTO fr.laposte_address_street_keyword(
-        "group", name, name_abbreviated, first_word, occurs
-    ) VALUES
-        ('TITLE', 'ABBAYE', 'ABBA', NULL, 1)
-        , ('TITLE', 'ABBE', 'ABBE', NULL, 1)
-        , ('TITLE', 'ACTIVITE', 'A', NULL, 1)
-        , ('TITLE', 'ADJUDANT', 'ADJ', NULL, 1)
-        , ('TITLE', 'AERODROME', 'AER', NULL, 1)
-        , ('TITLE', 'AEROGARE', 'AEROGARE', NULL, 1)
-        , ('TITLE', 'AERONAUTIQUE', 'AERONAUTIQUE', NULL, 1)
-        , ('TITLE', 'AEROPORT', 'AERP', NULL, 1)
-        , ('TITLE', 'AGENCE', 'AGENCE', NULL, 1)
-        , ('TITLE', 'AGGLOMERATION', 'AGGL', NULL, 1)
-        , ('TITLE', 'AGRICOLE', 'AGRIC', NULL, 1)
-        , ('TITLE', 'AIRE', 'AIRE', NULL, 1)
-        , ('TITLE', 'AIRES', 'AIRE', NULL, 1)
-        , ('TITLE', 'ALLEE', 'ALL', NULL, 1)
-        , ('TITLE', 'ALLEES', 'ALL', NULL, 1)
-        , ('TITLE', 'AMENAGEMENT', 'A', NULL, 1)
-        , ('TITLE', 'AMIRAL', 'AMIRAL', NULL, 1)
-        , ('TITLE', 'ANCIEN', 'ANC', NULL, 1)
-        , ('TITLE', 'ANCIENNE', 'ANCI', NULL, 1)
-        , ('TITLE', 'ANSE', 'ANSE', NULL, 1)
-        , ('TITLE', 'APPARTEMENT', 'APPT', NULL, 1)
-        , ('TITLE', 'ARCADE', 'ARCA', NULL, 1)
-        , ('TITLE', 'ARCADES', 'ARCA', NULL, 1)
-        , ('TITLE', 'ARMEMENT', 'ARMEMENT', NULL, 1)
-        , ('TITLE', 'ARRONDISSEMENT', 'ARR', NULL, 1)
-        , ('TITLE', 'ARTISANALE', 'ARTISANALE', NULL, 1)
-        , ('TITLE', 'ASPIRANT', 'ASP', NULL, 1)
-        , ('TITLE', 'ASSOCIATION', 'ASSOCIATION', NULL, 1)
-        , ('TITLE', 'ATELIER', 'ATELIER', NULL, 1)
-        , ('TITLE', 'AUTOROUTE', 'AUTO', NULL, 1)
-        , ('TITLE', 'BARRIERE', 'BARR', NULL, 1)
-        , ('TITLE', 'BARRIERES', 'BARR', NULL, 1)
-        , ('TITLE', 'BAS', 'BAS', NULL, 1)
-        , ('TITLE', 'BASSE', 'BAS', NULL, 1)
-        , ('TITLE', 'BASSES', 'BAS', NULL, 1)
-        , ('TITLE', 'BASTIDE', 'BAST', NULL, 1)
-        , ('TITLE', 'BASTION', 'BASTION', NULL, 1)
-        , ('TITLE', 'BATAILLON', 'BTN', NULL, 1)
-        , ('TITLE', 'BATAILLONS', 'BTN', NULL, 1)
-        , ('TITLE', 'BATIMENT', 'BAT', NULL, 1)
-        , ('TITLE', 'BATIMENTS', 'BAT', NULL, 1)
-        , ('TITLE', 'BEGUINAGE', 'BEGUINAGE', NULL, 1)
-        , ('TITLE', 'BERGE', 'BERG', NULL, 1)
-        , ('TITLE', 'BERGES', 'BERG', NULL, 1)
-        , ('TITLE', 'BOIS', 'BOIS', NULL, 1)
-        , ('TITLE', 'BOUCLE', 'BOUC', NULL, 1)
-        , ('TITLE', 'BOURG', 'BOUR', NULL, 1)
-        , ('TITLE', 'BUTTE', 'BUTT', NULL, 1)
-        , ('TITLE', 'CABINET', 'CABINET', NULL, 1)
-        , ('TITLE', 'CALE', 'CALE', NULL, 1)
-        , ('TITLE', 'CAMP', 'CAMP', NULL, 1)
-        , ('TITLE', 'CAMPAGNE', 'CAMP', NULL, 1)
-        , ('TITLE', 'CAMPING', 'CAMPING', NULL, 1)
-        , ('TITLE', 'CANAL', 'CANAL', NULL, 1)
-        , ('TITLE', 'CANTON', 'CANT', NULL, 1)
-        , ('TITLE', 'CAPITAINE', 'C', NULL, 1)
-        , ('TITLE', 'CARDINAL', 'CDL', NULL, 1)
-        , ('TITLE', 'CARRE', 'CARR', NULL, 1)
-        , ('TITLE', 'CARREAU', 'CARR', NULL, 1)
-        , ('TITLE', 'CARREFOUR', 'CARR', NULL, 1)
-        , ('TITLE', 'CARRIERE', 'CARR', NULL, 1)
-        , ('TITLE', 'CARRIERES', 'CARR', NULL, 1)
-        , ('TITLE', 'CASERNE', 'CASR', NULL, 1)
-        , ('TITLE', 'CASTEL', 'CASTEL', NULL, 1)
-        , ('TITLE', 'CAVEE', 'CAVE', NULL, 1)
-        , ('TITLE', 'CENTRAL', 'CENTRAL', NULL, 1)
-        , ('TITLE', 'CENTRE', 'CTRE', NULL, 1)
-        , ('TITLE', 'CHALET', 'CHALET', NULL, 1)
-        , ('TITLE', 'CHAMBRE', 'CHAMBRE', NULL, 1)
-        , ('TITLE', 'CHANOINE', 'CHANOINE', NULL, 1)
-        , ('TITLE', 'CHAPELLE', 'CHAP', NULL, 1)
-        , ('TITLE', 'CHARMILLE', 'CHARMILLE', NULL, 1)
-        , ('TITLE', 'CHATEAU', 'CHAT', NULL, 1)
-        , ('TITLE', 'CHAUSSEE', 'CHAUSSEE', NULL, 1)
-        , ('TITLE', 'CHAUSSEES', 'CHAUSSEES', NULL, 1)
-        , ('TITLE', 'CHEMIN', 'CHEM', NULL, 1)
-        , ('TITLE', 'CHEMINS', 'CHEM', NULL, 1)
-        , ('TITLE', 'CHEZ', 'CHEZ', NULL, 1)
-        , ('TITLE', 'CITADELLE', 'CITADELLE', NULL, 1)
-        , ('TITLE', 'CITES', 'CITES', NULL, 1)
-        , ('TITLE', 'CLOITRE', 'CLOITRE', NULL, 1)
-        , ('TITLE', 'COL', 'COL', NULL, 1)
-        , ('TITLE', 'COLLEGE', 'COLLEGE', NULL, 1)
-        , ('TITLE', 'COLLINE', 'COLL', NULL, 1)
-        , ('TITLE', 'COLLINES', 'COLL', NULL, 1)
-        , ('TITLE', 'COLONEL', 'COL', NULL, 1)
-        , ('TITLE', 'COLONIE', 'COLO', NULL, 1)
-        , ('TITLE', 'COMITE', 'COMITE', NULL, 1)
-        , ('TITLE', 'COMMANDANT', 'CDT', NULL, 1)
-        , ('TITLE', 'COMMERCIAL', 'CIAL', NULL, 1)
-        , ('TITLE', 'COMMUNAL', 'COM', NULL, 1)
-        , ('TITLE', 'COMMUNALE', 'C', NULL, 1)
-        , ('TITLE', 'COMMUNAUX', 'COM', NULL, 1)
-        , ('TITLE', 'COMMUNE', 'COM', NULL, 1)
-        , ('TITLE', 'COMPAGNIE', 'CIE', NULL, 1)
-        , ('TITLE', 'COMPAGNON', 'COMP', NULL, 1)
-        , ('TITLE', 'COMPAGNONS', 'COMP', NULL, 1)
-        , ('TITLE', 'CONCERTE', 'CONCERTE', NULL, 1)
-        , ('TITLE', 'CONTOUR', 'CONTOUR', NULL, 1)
-        , ('TITLE', 'COOPERATIVE', 'COOP', NULL, 1)
-        , ('TITLE', 'CORNICHE', 'CORNICHE', NULL, 1)
-        , ('TITLE', 'CORNICHES', 'CORNICHES', NULL, 1)
-        , ('TITLE', 'COTE', 'COTE', NULL, 1)
-        , ('TITLE', 'COTEAU', 'COTE', NULL, 1)
-        , ('TITLE', 'COTTAGE', 'COTT', NULL, 1)
-        , ('TITLE', 'COTTAGES', 'COTT', NULL, 1)
-        , ('TITLE', 'COULOIR', 'COULOIR', NULL, 1)
-        , ('TITLE', 'COUR', 'COUR', NULL, 1)
-        , ('TITLE', 'COURS', 'COUR', NULL, 1)
-        , ('TITLE', 'CROIX', 'CRX', NULL, 1)
-        , ('TITLE', 'DEGRE', 'DEGRE', NULL, 1)
-        , ('TITLE', 'DEGRES', 'DEGRES', NULL, 1)
-        , ('TITLE', 'DEPARTEMENTAL', 'DEP', NULL, 1)
-        , ('TITLE', 'DESCENTE', 'DESCENTE', NULL, 1)
-        , ('TITLE', 'DIGUE', 'DIGU', NULL, 1)
-        , ('TITLE', 'DIRECTEUR', 'DIRECTEUR', NULL, 1)
-        , ('TITLE', 'DIRECTION', 'DIR', NULL, 1)
-        , ('TITLE', 'DIT', 'D', NULL, 1)
-        , ('TITLE', 'DIVISION', 'DIV', NULL, 1)
-        , ('TITLE', 'DOCTEUR', 'DR', NULL, 1)
-        , ('TITLE', 'DOMAINE', 'DOMA', NULL, 1)
-        , ('TITLE', 'DOMAINES', 'DOMA', NULL, 1)
-        , ('TITLE', 'ECLUSE', 'ECLU', NULL, 1)
-        , ('TITLE', 'ECLUSES', 'ECLU', NULL, 1)
-        , ('TITLE', 'ECOLE', 'ECOLE', NULL, 1)
-        , ('TITLE', 'ECONOMIQUE', 'ECO', NULL, 1)
-        , ('TITLE', 'ECRIVAINS', 'ECRIV', NULL, 1)
-        , ('TITLE', 'EGLISE', 'EGLI', NULL, 1)
-        , ('TITLE', 'ENCEINTE', 'ENCEINTE', NULL, 1)
-        , ('TITLE', 'ENCLAVE', 'ENCL', NULL, 1)
-        , ('TITLE', 'ENCLOS', 'ENCL', NULL, 1)
-        , ('TITLE', 'ENSEIGNEMENT', 'ENST', NULL, 1)
-        , ('TITLE', 'ENSEMBLE', 'ENSEMBLE', NULL, 1)
-        , ('TITLE', 'ENTREE', 'ENT', NULL, 1)
-        , ('TITLE', 'ENTREES', 'ENT', NULL, 1)
-        , ('TITLE', 'ENTREPRISE', 'ENTR', NULL, 1)
-        , ('TITLE', 'EPOUX', 'EP', NULL, 1)
-        , ('TITLE', 'ESCALIER', 'ESC', NULL, 1)
-        , ('TITLE', 'ESCALIERS', 'ESC', NULL, 1)
-        , ('TITLE', 'ESPACE', 'ESPA', NULL, 1)
-        , ('TITLE', 'ESPLANADE', 'ESPL', NULL, 1)
-        , ('TITLE', 'ESPLANADES', 'ESPL', NULL, 1)
-        , ('TITLE', 'ETABLISSEMENT', 'ETABLISSEMENT', NULL, 1)
-        , ('TITLE', 'ETABLISSEMENTS', 'ETABLISSEMENT', NULL, 1)
-        , ('TITLE', 'ETANG', 'ETAN', NULL, 1)
-        , ('TITLE', 'EVEQUE', 'EVEQUE', NULL, 1)
-        , ('TITLE', 'FACULTE', 'FACULTE', NULL, 1)
-        , ('TITLE', 'FAUBOURG', 'FAUB', NULL, 1)
-        , ('TITLE', 'FERME', 'FERM', NULL, 1)
-        , ('TITLE', 'FERMES', 'FERM', NULL, 1)
-        , ('TITLE', 'FONTAINE', 'FONT', NULL, 1)
-        , ('TITLE', 'FORESTIER', 'FORESTIER', NULL, 1)
-        , ('TITLE', 'FORESTIERE', 'FORESTIERE', NULL, 1)
-        , ('TITLE', 'FORET', 'FOR', NULL, 1)
-        , ('TITLE', 'FORT', 'FORT', NULL, 1)
-        , ('TITLE', 'FORUM', 'FORUM', NULL, 1)
-        , ('TITLE', 'FOSSE', 'FOSS', NULL, 1)
-        , ('TITLE', 'FOSSES', 'FOSS', NULL, 1)
-        , ('TITLE', 'FOYER', 'FOYE', NULL, 1)
-        , ('TITLE', 'FRANCAIS', 'FR', NULL, 1)
-        , ('TITLE', 'FRANCAISE', 'FR', NULL, 1)
-        , ('TITLE', 'FUSILIERS', 'FUSILIERS', NULL, 1)
-        , ('TITLE', 'GALERIE', 'GALE', NULL, 1)
-        , ('TITLE', 'GALERIES', 'GALE', NULL, 1)
-        , ('TITLE', 'GARE', 'GARE', NULL, 1)
-        , ('TITLE', 'GARENNE', 'GARE', NULL, 1)
-        , ('TITLE', 'GENDARMERIE', 'GENDARMERIE', NULL, 1)
-        , ('TITLE', 'GENERAL', 'GAL', NULL, 1)
-        , ('TITLE', 'GOUVERNEUR', 'GOUV', NULL, 1)
-        , ('TITLE', 'GRAND', 'GD', NULL, 1)
-        , ('TITLE', 'GRANDE', 'GDE', NULL, 1)
-        , ('TITLE', 'GRANDES', 'GDES', NULL, 1)
-        , ('TITLE', 'GRANDS', 'GDS', NULL, 1)
-        , ('TITLE', 'GRILLE', 'GRI', NULL, 1)
-        , ('TITLE', 'GRIMPETTE', 'GRIMPETTE', NULL, 1)
-        , ('TITLE', 'GROUPE', 'GROU', NULL, 1)
-        , ('TITLE', 'GROUPEMENT', 'GROUPEMENT', NULL, 1)
-        , ('TITLE', 'HALAGE', 'HALAGE', NULL, 1)
-        , ('TITLE', 'HALLE', 'HALL', NULL, 1)
-        , ('TITLE', 'HALLES', 'HALL', NULL, 1)
-        , ('TITLE', 'HAMEAU', 'HAME', NULL, 1)
-        , ('TITLE', 'HAMEAUX', 'HAME', NULL, 1)
-        , ('TITLE', 'HAUT', 'HT', NULL, 1)
-        , ('TITLE', 'HAUTE', 'HTE', NULL, 1)
-        , ('TITLE', 'HAUTES', 'HTES', NULL, 1)
-        , ('TITLE', 'HAUTS', 'HTS', NULL, 1)
-        , ('TITLE', 'HIPPODROME', 'HIPP', NULL, 1)
-        , ('TITLE', 'HLM', 'HLM', NULL, 1)
-        , ('TITLE', 'HOPITAL', 'HOP', NULL, 1)
-        , ('TITLE', 'HOSPICE', 'HOSPICE', NULL, 1)
-        , ('TITLE', 'HOSPITALIER', 'HOSPITALIER', NULL, 1)
-        , ('TITLE', 'HOTEL', 'HOT', NULL, 1)
-        , ('TITLE', 'ILE', 'ILE', NULL, 1)
-        , ('TITLE', 'ILOT', 'ILOT', NULL, 1)
-        , ('TITLE', 'IMMEUBLE', 'IMM', NULL, 1)
-        , ('TITLE', 'IMMEUBLES', 'IMM', NULL, 1)
-        , ('TITLE', 'IMPASSE', 'IMP', NULL, 1)
-        , ('TITLE', 'IMPASSES', 'IMP', NULL, 1)
-        , ('TITLE', 'INFANTERIE', 'INFANT', NULL, 1)
-        , ('TITLE', 'INFERIEUR', 'INF', NULL, 1)
-        , ('TITLE', 'INFERIEURE', 'INF', NULL, 1)
-        , ('TITLE', 'INGENIEUR', 'ING', NULL, 1)
-        , ('TITLE', 'INSPECTEUR', 'INSPECTEUR', NULL, 1)
-        , ('TITLE', 'INSTITUT', 'INST', NULL, 1)
-        , ('TITLE', 'INTERNATIONAL', 'INTERN', NULL, 1)
-        , ('TITLE', 'INTERNATIONALE', 'INTERN', NULL, 1)
-        , ('TITLE', 'JARDIN', 'JARD', NULL, 1)
-        , ('TITLE', 'JARDINS', 'JARD', NULL, 1)
-        , ('TITLE', 'JETEE', 'JETEE', NULL, 1)
-        , ('TITLE', 'LABORATOIRE', 'LABORATOIRE', NULL, 1)
-        , ('TITLE', 'LEVEE', 'LEVEE', NULL, 1)
-        , ('TITLE', 'LIEUTENANT', 'LT', NULL, 2)
-        , ('TITLE', 'MADAME', 'MME', NULL, 1)
-        , ('TITLE', 'MADEMOISELLE', 'MLLE', NULL, 1)
-        , ('TITLE', 'MAGASIN', 'MAG', NULL, 1)
-        , ('TITLE', 'MAIL', 'MAIL', NULL, 1)
-        , ('TITLE', 'MAIRIE', 'MAIRIE', NULL, 1)
-        , ('TITLE', 'MAISON', 'MAIS', NULL, 1)
-        , ('TITLE', 'MAITRE', 'MAITRE', NULL, 1)
-        , ('TITLE', 'MANOIR', 'MANOIR', NULL, 1)
-        , ('TITLE', 'MARAIS', 'MARAIS', NULL, 1)
-        , ('TITLE', 'MARCHE', 'MARC', NULL, 1)
-        , ('TITLE', 'MARCHES', 'MARC', NULL, 1)
-        , ('TITLE', 'MARECHAL', 'MAL', NULL, 1)
-        , ('TITLE', 'MARITIME', 'MARITIME', NULL, 1)
-        , ('TITLE', 'MARTYR', 'MYR', NULL, 1)
-        , ('TITLE', 'MARTYRS', 'MYR', NULL, 1)
-        , ('TITLE', 'MAS', 'MAS', NULL, 1)
-        , ('TITLE', 'MEDECIN', 'MED', NULL, 1)
-        , ('TITLE', 'MEDICAL', 'MED', NULL, 1)
-        , ('TITLE', 'MESDEMOISELLES', 'MESDEMOISELLES', NULL, 1)
-        , ('TITLE', 'MESSIEURS', 'MESSIEURS', NULL, 1)
-        , ('TITLE', 'METRO', 'METR', NULL, 1)
-        , ('TITLE', 'MILITAIRE', 'MIL', NULL, 1)
-        , ('TITLE', 'MONSEIGNEUR', 'MGR', NULL, 1)
-        , ('TITLE', 'MONSIEUR', 'M', NULL, 1)
-        , ('TITLE', 'MONTEE', 'MONT', NULL, 1)
-        , ('TITLE', 'MONTEES', 'MONT', NULL, 1)
-        , ('TITLE', 'MOULIN', 'MOUL', NULL, 1)
-        , ('TITLE', 'MOULINS', 'MOUL', NULL, 1)
-        , ('TITLE', 'MUNICIPAL', 'MUN', NULL, 1)
-        , ('TITLE', 'MUSEE', 'MUSE', NULL, 1)
-        , ('TITLE', 'NATIONAL', 'NAT', NULL, 1)
-        , ('TITLE', 'NOUVEAU', 'NOUV', NULL, 1)
-        , ('TITLE', 'NOUVELLE', 'NOUV', NULL, 1)
-        , ('TITLE', 'OBSERVATOIRE', 'OBSERVATOIRE', NULL, 1)
-        , ('TITLE', 'PALAIS', 'PALA', NULL, 1)
-        , ('TITLE', 'PARC', 'PARC', NULL, 1)
-        , ('TITLE', 'PARCS', 'PARC', NULL, 1)
-        , ('TITLE', 'PARKING', 'PARK', NULL, 1)
-        , ('TITLE', 'PARVIS', 'PARV', NULL, 1)
-        , ('TITLE', 'PASSAGE', 'PAS', NULL, 1)
-        , ('TITLE', 'PASSE', 'PASS', NULL, 1)
-        , ('TITLE', 'PASSERELLE', 'PASS', NULL, 1)
-        , ('TITLE', 'PASSERELLES', 'PASS', NULL, 1)
-        , ('TITLE', 'PASSES', 'PASSES', NULL, 1)
-        , ('TITLE', 'PASTEUR', 'PAST', NULL, 1)
-        , ('TITLE', 'PATIO', 'PATIO', NULL, 1)
-        , ('TITLE', 'PAVILLON', 'PAVI', NULL, 1)
-        , ('TITLE', 'PAVILLONS', 'PAVI', NULL, 1)
-        , ('TITLE', 'PETIT', 'PT', NULL, 1)
-        , ('TITLE', 'PETITE', 'PTE', NULL, 1)
-        , ('TITLE', 'PETITES', 'PTE', NULL, 1)
-        , ('TITLE', 'PETITS', 'PT', NULL, 1)
-        , ('TITLE', 'PLACE', 'PL', NULL, 1)
-        , ('TITLE', 'PLACIS', 'PLACIS', NULL, 1)
-        , ('TITLE', 'PLAGE', 'PLAG', NULL, 1)
-        , ('TITLE', 'PLAGES', 'PLAG', NULL, 1)
-        , ('TITLE', 'PLAINE', 'PLAI', NULL, 1)
-        , ('TITLE', 'PLAN', 'PLAN', NULL, 1)
-        , ('TITLE', 'PLATEAU', 'PLAT', NULL, 1)
-        , ('TITLE', 'PLATEAUX', 'PLAT', NULL, 1)
-        , ('TITLE', 'POINTE', 'POIN', NULL, 1)
-        , ('TITLE', 'POLICE', 'POL', NULL, 1)
-        , ('TITLE', 'PONT', 'PONT', NULL, 1)
-        , ('TITLE', 'PONTS', 'PONT', NULL, 1)
-        , ('TITLE', 'PORCHE', 'PORCHE', NULL, 1)
-        , ('TITLE', 'PORT', 'PORT', NULL, 1)
-        , ('TITLE', 'PORTE', 'PORT', NULL, 1)
-        , ('TITLE', 'PORTIQUES', 'PORTIQUES', NULL, 1)
-        , ('TITLE', 'POTERNE', 'POTERNE', NULL, 1)
-        , ('TITLE', 'POURTOUR', 'POURTOUR', NULL, 1)
-        , ('TITLE', 'PRE', 'PRE', NULL, 1)
-        , ('TITLE', 'PREFET', 'PREFET', NULL, 1)
-        , ('TITLE', 'PRESIDENT', 'PDT', NULL, 1)
-        , ('TITLE', 'PRESQU', 'PRESQU', NULL, 1)
-        , ('TITLE', 'PROFESSEUR', 'PR', NULL, 1)
-        , ('TITLE', 'PROFESSIONNEL', 'PROF', NULL, 1)
-        , ('TITLE', 'PROLONGE', 'PROL', NULL, 1)
-        , ('TITLE', 'PROLONGEE', 'PROL', NULL, 1)
-        , ('TITLE', 'PROMENADE', 'PROM', NULL, 1)
-        , ('TITLE', 'PROPRIETE', 'PROPRIETE', NULL, 1)
-        , ('TITLE', 'QUAI', 'QUAI', NULL, 1)
-        , ('TITLE', 'QUARTIER', 'QUAR', NULL, 1)
-        , ('TITLE', 'QUINQUIES', 'QUINQUIES', NULL, 1)
-        , ('TITLE', 'RACCOURCI', 'RACC', NULL, 1)
-        , ('TITLE', 'RAIDILLON', 'RAIDILLON', NULL, 1)
-        , ('TITLE', 'RAMPE', 'RAMPE', NULL, 1)
-        , ('TITLE', 'RECTEUR', 'RECT', NULL, 1)
-        , ('TITLE', 'REGIMENT', 'RGT', NULL, 1)
-        , ('TITLE', 'REGIONAL', 'REGIONAL', NULL, 1)
-        , ('TITLE', 'REMPART', 'REMPART', NULL, 1)
-        , ('TITLE', 'REPUBLIQUE', 'REP', NULL, 1)
-        , ('TITLE', 'RESIDENCE', 'RES', NULL, 1)
-        , ('TITLE', 'RESIDENCES', 'RESI', NULL, 1)
-        , ('TITLE', 'RESTAURANT', 'REST', NULL, 1)
-        , ('TITLE', 'ROC', 'ROC', NULL, 1)
-        , ('TITLE', 'ROCADE', 'ROCADE', NULL, 1)
-        , ('TITLE', 'ROQUET', 'ROQUET', NULL, 1)
-        , ('TITLE', 'ROTONDE', 'ROTO', NULL, 1)
-        , ('TITLE', 'SAINT', 'ST', NULL, 1)
-        , ('TITLE', 'SAINTE', 'STE', NULL, 1)
-        , ('TITLE', 'SAINTS', 'ST', NULL, 1)
-        , ('TITLE', 'SAINTES', 'STS', NULL, 1)
-        , ('TITLE', 'SERGENT', 'SGT', NULL, 1)
-        , ('TITLE', 'SERVICE', 'SCE', NULL, 1)
-        , ('TITLE', 'SOCIETE', 'SOC', NULL, 1)
-        , ('TITLE', 'STADE', 'STAD', NULL, 1)
-        , ('TITLE', 'STATION', 'STAT', NULL, 1)
-        , ('TITLE', 'SUPERIEUR', 'SUP', NULL, 1)
-        , ('TITLE', 'SUPERIEURE', 'SUP', NULL, 1)
-        , ('TITLE', 'SYNDICAT', 'SYNDICAT', NULL, 1)
-        , ('TITLE', 'TECHNICIEN', 'TECHNICIEN', NULL, 1)
-        , ('TITLE', 'TECHNIQUE', 'TECHNIQUE', NULL, 1)
-        , ('TITLE', 'TERRAIN', 'TERR', NULL, 1)
-        , ('TITLE', 'TERRASSE', 'TERR', NULL, 1)
-        , ('TITLE', 'TERRASSES', 'TERR', NULL, 1)
-        , ('TITLE', 'TERTRE', 'TERT', NULL, 1)
-        , ('TITLE', 'TERTRES', 'TERT', NULL, 1)
-        , ('TITLE', 'TOUR', 'TOUR', NULL, 1)
-        , ('TITLE', 'TRAVERSE', 'TRAV', NULL, 1)
-        , ('TITLE', 'TUNNEL', 'TUN', NULL, 1)
-        , ('TITLE', 'UNIVERSITAIRE', 'UNVT', NULL, 1)
-        , ('TITLE', 'UNIVERSITE', 'UNIV', NULL, 1)
-        , ('TITLE', 'VAL', 'VAL', NULL, 1)
-        , ('TITLE', 'VALLEE', 'VALL', NULL, 1)
-        , ('TITLE', 'VALLON', 'VALL', NULL, 1)
-        , ('TITLE', 'VELODROME', 'VELOD', NULL, 1)
-        , ('TITLE', 'VENELLE', 'VENE', NULL, 1)
-        , ('TITLE', 'VENELLES', 'VENE', NULL, 1)
-        , ('TITLE', 'VIEILLE', 'VIEI', NULL, 1)
-        , ('TITLE', 'VIEILLES', 'VIEL', NULL, 1)
-        , ('TITLE', 'VIEUX', 'VX', NULL, 1)
-        , ('TITLE', 'VILLA', 'VILL', NULL, 1)
-        , ('TITLE', 'VILLAGE', 'VLGE', NULL, 1)
-        , ('TITLE', 'VILLAGES', 'VILL', NULL, 1)
-        , ('TITLE', 'VILLAS', 'VILL', NULL, 1)
-        , ('TITLE', 'VILLE', 'V', NULL, 1)
-        , ('TITLE', 'VILLES', 'V', NULL, 1)
-        , ('TITLE', 'VOIE', 'V', NULL, 1)
-        , ('TITLE', 'VOIES', 'V', NULL, 1)
-        ;
-
-    -- more than one word
-    INSERT INTO fr.laposte_address_street_keyword(
-        "group", name, first_word, occurs
-    )
-    WITH
-    double_title AS (
-        SELECT
+    -- prepare working tables (no log)
+    DROP TABLE IF EXISTS fr.tmp_address_street_uniq;
+    CREATE UNLOGGED TABLE IF NOT EXISTS fr.tmp_address_street_uniq AS
+        SELECT DISTINCT
             lb_voie name
-            , lb_desc descriptor_
-            , (REGEXP_MATCHES(lb_desc, 'TT+'))[1] more_title
-        FROM fr.laposte_address_street
-        WHERE lb_desc ~ 'TT+'
-    )
-    , as_words AS (
+            , CASE WHEN lb_voie != lb_voie_normalise THEN lb_voie_normalise
+                ELSE NULL
+                END name_normalized
+            , lb_desc descriptor
+        FROM
+            fr.laposte_address_street
+        WHERE
+            fl_active
+        ;
+    DROP TABLE IF EXISTS fr.tmp_address_street_title;
+    CREATE UNLOGGED TABLE fr.tmp_address_street_title (
+        title VARCHAR NOT NULL
+    );
+    DROP TABLE IF EXISTS fr.tmp_address_street_title_abbr;
+    CREATE UNLOGGED TABLE fr.tmp_address_street_title_abbr (
+        title VARCHAR NOT NULL
+        , title_abbreviated VARCHAR
+    );
+
+    TRUNCATE TABLE fr.tmp_address_street_title;
+    FOR _set IN (
+        WITH
+        with_title AS (
         SELECT
             name
-            , more_title
-            , POSITION(more_title IN descriptor_) position_more_title
-            , LENGTH(more_title) len_more_title
-            , REGEXP_SPLIT_TO_ARRAY(name, '\s+') words
+            , name_normalized
+            , descriptor
         FROM
-            double_title
+            fr.tmp_address_street_uniq us
+        WHERE
+            POSITION('T' IN descriptor) > 0
+        )
+        SELECT DISTINCT
+            UNNEST(t.titles) title
+        FROM
+            with_title wt
+            , fr.get_titles_from_name(
+                name => wt.name
+                , descriptor => wt.descriptor
+            ) t
     )
-    SELECT
-        'TITLE'
-        , items_of_array_to_string(
-            elements => words
-            , from_ => position_more_title
-            , to_ => position_more_title + len_more_title -1
+    LOOP
+        INSERT INTO fr.tmp_address_street_title(title) VALUES(_set.title);
+    END LOOP;
+
+    TRUNCATE TABLE fr.tmp_address_street_title_abbr;
+    FOR _set IN (
+        SELECT
+            t.title
+            , wt.name
+            , wt.name_normalized
+            , wt.descriptor
+        FROM
+            fr.tmp_address_street_uniq wt
+            , fr.tmp_address_street_title t
+            , fr.get_titles_from_name(
+                name => wt.name
+                , descriptor => wt.descriptor
+            ) tw
+        WHERE
+            -- name w/ this title
+            POSITION(REPEAT('T', count_words(t.title)) IN wt.descriptor) > 0
+            AND
+            tw.titles @> ARRAY[t.title]::TEXT[]
+            AND
+            -- w/ normalization
+            wt.name != wt.name_normalized
+            AND
+            -- w/ abbreviation
+            POSITION(CONCAT(t.title, ' ') IN wt.name_normalized) = 0
+    )
+    LOOP
+        SELECT words, descriptors
+        INTO _words_normalized, _descriptors_normalized
+        FROM
+            fr.split_name_of_street_as_descriptor(
+                name => _set.name_normalized
+                , descriptor => _set.descriptor
+                , split_only => 'T'
+                , is_normalized => TRUE
+            )
+        ;
+        SELECT words, descriptors
+        INTO _words, _descriptors
+        FROM
+            fr.split_name_of_street_as_descriptor(
+                name => _set.name
+                , descriptor => _set.descriptor
+                , split_only => 'T'
+            )
+        ;
+
+        _abbr_i := ARRAY_POSITION(_words, _set.title);
+        RAISE NOTICE 'title=% abbr=% (at %)', _set.title, _words_normalized[_abbr_i], _abbr_i;
+        INSERT INTO fr.tmp_address_street_title_abbr
+            VALUES (_set.title, _words_normalized[_abbr_i])
+        ;
+    END LOOP;
+
+    -- populate titles
+    DELETE FROM fr.laposte_address_street_keyword WHERE "group" = 'TITLE';
+    INSERT INTO fr.laposte_address_street_keyword("group", name)
+        SELECT 'TITLE', title FROM fr.tmp_address_street_title
+        ;
+
+    -- delete kw, if exists other w/ same abbr (or w/o, never abbreviated)
+    WITH
+    title_abbr AS (
+        SELECT title, FIRST(title_abbreviated) abbr
+        FROM fr.tmp_address_street_title_abbr
+        WHERE count_words(title) = 1
+        GROUP BY title
+        HAVING COUNT(DISTINCT title_abbreviated) <= 1
+        UNION
+        SELECT title, NULL abbr
+        FROM fr.tmp_address_street_title t
+        WHERE count_words(title) = 1
+        AND NOT EXISTS(
+            SELECT 1 FROM fr.tmp_address_street_title_abbr ta WHERE ta.title = t.title
         )
-        , words[position_more_title] first_word
-        , COUNT(*) occurs
-    FROM
-        as_words
-    GROUP BY
-        items_of_array_to_string(
-            elements => words
-            , from_ => position_more_title
-            , to_ => position_more_title + len_more_title -1
-        )
-        , words[position_more_title]
-    ORDER BY
-        1
-    ;
-     */
+    )
+    , other_abbr AS (
+        SELECT
+            ok.name
+            --, ok.name_abbreviated
+            --, ta.abbr
+        FROM
+            fr.laposte_address_street_keyword ok
+                JOIN title_abbr ta ON ok.name = ta.title
+        WHERE
+            "group" != 'TITLE'
+            AND
+            (
+                name_abbreviated = ta.abbr
+                OR
+                ta.abbr IS NULL
+            )
+    )
+    --SELECT * FROM other_abbr ORDER BY 1
+    DELETE FROM fr.laposte_address_street_keyword kt
+        USING other_abbr ko
+        WHERE kt.group = 'TITLE' AND kt.name = ko.name
+        ;
+
+    -- delete no titles
+    DELETE FROM fr.laposte_address_street_keyword kt
+        WHERE kt.group = 'TITLE' AND
+            name ~ '^BIS '
+        ;
+
+    -- update abbreviation (one-word title only)
+    WITH
+    title_abbr AS (
+        SELECT title, FIRST(title_abbreviated) abbr
+        FROM fr.tmp_address_street_title_abbr
+        WHERE count_words(title) = 1
+        GROUP BY title
+        HAVING COUNT(DISTINCT title_abbreviated) = 1
+    )
+    UPDATE fr.laposte_address_street_keyword kt SET
+        name_abbreviated = ta.abbr
+        FROM title_abbr ta
+        WHERE
+            kt.group = 'TITLE'
+            AND
+            kt.name = ta.title
+        ;
+
+    -- update first word
+    UPDATE fr.laposte_address_street_keyword kt SET
+        first_word = (REGEXP_MATCH(kt.name, '^\S+'))[1]
+        WHERE
+            kt.group = 'TITLE'
+            AND
+            count_words(kt.name) > 1
+        ;
+
+    -- update missing abbreviation (n-words)
+    WITH
+    correction_abbr AS (
+        SELECT *
+        FROM (
+            VALUES
+            ('ANCIENNE ROUTE', 'ANCI ROUTE', 'ANCIENNE', 1)
+            , ('NOTRE DAME', 'ND', 'NOTRE', 1)
+            , ('LIEUTENANT DE VAISSEAU', 'LTDV', 'LIEUTENANT', 1)
+        ) AS t(name, name_abbreviated, first_word, occurs)
+    )
+    UPDATE fr.laposte_address_street_keyword kt SET
+        name_abbreviated = ca.name_abbreviated
+        FROM correction_abbr ca
+        WHERE
+            kt.group = 'TITLE'
+            AND
+            kt.name = ca.name
+        ;
+
+    -- update occurs
+    WITH
+    title_occurs AS (
+        SELECT
+            kt.name
+            , COUNT(*) occurs
+        FROM
+            fr.laposte_address_street_keyword kt
+            , fr.laposte_address_street las
+            , fr.get_titles_from_name(
+                name => las.lb_voie
+                , descriptor => las.lb_desc
+            ) t
+        WHERE
+            kt.group = 'TITLE'
+            AND
+            las.fl_active
+            AND
+            POSITION('T' IN las.lb_desc) > 0
+            AND
+            t.titles @> ARRAY[kt.name]::TEXT[]
+        GROUP BY
+            kt.name
+    )
+    --SELECT * FROM title_occurs ORDER BY 1
+    UPDATE fr.laposte_address_street_keyword kt SET
+        occurs = sto.occurs
+        FROM title_occurs sto
+        WHERE
+            kt.group = 'TITLE'
+            AND
+            kt.name = sto.name
+        ;
 END;
 $proc$ LANGUAGE plpgsql;
 
