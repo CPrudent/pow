@@ -154,6 +154,57 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+/*
+-- get keyword(s) from name of street
+SELECT drop_all_functions_if_exists('fr', 'get_keywords_from_name');
+CREATE OR REPLACE FUNCTION fr.get_keywords_from_name(
+    descriptor IN VARCHAR
+    , descriptors IN VARCHAR
+    , name IN VARCHAR DEFAULT NULL
+    , words IN TEXT[] DEFAULT NULL
+    , keywords OUT TEXT[]
+)
+AS
+$func$
+DECLARE
+    _words TEXT[];
+    _kw TEXT;
+    _descriptor VARCHAR;
+    _descriptor_len INT := LENGTH(descriptors);
+    _descriptor_prev VARCHAR := 'Z';
+    _i INT;
+BEGIN
+    IF name IS NULL AND words IS NULL THEN
+        RAISE 'indiquer le nom de la voie (par son libellé OU par ses mots)';
+    ELSIF name IS NOT NULL AND words IS NULL THEN
+        _words := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
+    ELSIF name IS NULL AND words IS NOT NULL THEN
+        _words := ARRAY_CAT(_words, words);
+    END IF;
+    IF _descriptor_len != ARRAY_UPPER(_words, 1) THEN
+        RAISE 'traiter le nom de la voie avec un descripteur de même taille';
+    END IF;
+
+    FOR _i IN 1 .. _descriptor_len
+    LOOP
+        _descriptor := SUBSTR(descriptors, _i, 1);
+        IF _descriptor = descriptor THEN
+            _kw :=
+                CASE WHEN _descriptor_prev = descriptor THEN CONCAT(_kw, ' ', _words[_i])
+                ELSE _words[_i]
+                END;
+        ELSE
+            IF _kw IS NOT NULL THEN
+                keywords := ARRAY_APPEND(keywords, _kw);
+                _kw := NULL;
+            END IF;
+        END IF;
+        _descriptor_prev := _descriptor;
+    END LOOP;
+END
+$func$ LANGUAGE plpgsql;
+ */
+
 -- count potential number of words (w/ _descriptor)
 SELECT drop_all_functions_if_exists('fr', 'count_potential_nof_words');
 CREATE OR REPLACE FUNCTION fr.count_potential_nof_words(
@@ -292,13 +343,42 @@ BEGIN
         ) THEN
             IF (_descriptor_len - _k) != (_n - _i) THEN
                 --_descriptor_from := CASE WHEN _descriptor_prev = 'A' THEN _k ELSE _k +1 END;
-                _descriptor_from := _k;
+                _descriptor_from := _k +1;
                 _descriptor_remainder := SUBSTR(descriptor, _descriptor_from);
                 _descriptor_only_a := REGEXP_REPLACE(_descriptor_remainder, '[^A]', '', 'gi');
+                _descriptor_tmp := SUBSTR(_descriptor_remainder, 1, 1);
 
                 _usecase_article := CASE
                     -- remains only words except article, this is not an article
-                    WHEN (LENGTH(_descriptor_remainder) - LENGTH(_descriptor_only_a)) = (_n - _i +1) THEN 1
+                    /* TODO
+                    not fully OK !
+                    RUE ADJ BESNAULT GENDARME LEFORT (VAATNAANN): add-on 1
+                    RUE DU LTDV LE BRIS (VATTTAN): add-on 2
+                     */
+                    WHEN (((LENGTH(_descriptor_remainder) - LENGTH(_descriptor_only_a)) = (_n - _i +1))
+                        AND
+                        (
+                            -- add-on 1
+                            (
+                                (_descriptor_tmp != 'A')
+                                OR
+                                (
+                                    (_descriptor_tmp = 'A')
+                                    AND
+                                    fr.is_normalized_article(_words[_i])
+                                )
+                            )
+                    /*
+                            OR
+                            -- add-on 2
+                            (
+                                (_descriptor_tmp != 'A')
+                                AND
+                                (fr.count_potential_nof_words(_descriptor_remainder) != (_n - _i))
+                            )
+                     */
+                        )
+                    ) THEN 1
                     -- current word not an article, so deleted article
                     WHEN (NOT fr.is_normalized_article(_words[_i])) THEN 2
                     ELSE 0
@@ -553,8 +633,21 @@ BEGIN
                 OR
                 (_descriptor_same ~ split_only)
             ) THEN
-                words := ARRAY_APPEND(words, _descriptor_word);
-                descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
+                -- last item already w/ same descriptor
+                IF (descriptors[ARRAY_UPPER(descriptors, 1)] ~ SUBSTR(_descriptor_same, 1, 1)) THEN
+                    words[ARRAY_UPPER(words, 1)] := CONCAT(
+                        words[ARRAY_UPPER(words, 1)]
+                        , ' '
+                        , _descriptor_word
+                    );
+                    descriptors[ARRAY_UPPER(descriptors, 1)] := CONCAT(
+                        descriptors[ARRAY_UPPER(descriptors, 1)]
+                        , _descriptor_same
+                    );
+                ELSE
+                    words := ARRAY_APPEND(words, _descriptor_word);
+                    descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
+                END IF;
             END IF;
             _descriptor_word := _words[_i];
             _descriptor_same := _descriptor;
@@ -568,8 +661,21 @@ BEGIN
         OR
         (_descriptor_same ~ split_only)
     ) THEN
-        words := ARRAY_APPEND(words, _descriptor_word);
-        descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
+        -- last item already w/ same descriptor
+        IF (descriptors[ARRAY_UPPER(descriptors, 1)] ~ SUBSTR(_descriptor_same, 1, 1)) THEN
+            words[ARRAY_UPPER(words, 1)] := CONCAT(
+                words[ARRAY_UPPER(words, 1)]
+                , ' '
+                , _descriptor_word
+            );
+            descriptors[ARRAY_UPPER(descriptors, 1)] := CONCAT(
+                descriptors[ARRAY_UPPER(descriptors, 1)]
+                , _descriptor_same
+            );
+        ELSE
+            words := ARRAY_APPEND(words, _descriptor_word);
+            descriptors := ARRAY_APPEND(descriptors, _descriptor_same);
+        END IF;
     END IF;
 END
 $func$ LANGUAGE plpgsql;
