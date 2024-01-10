@@ -198,6 +198,7 @@ END;
 $proc$ LANGUAGE plpgsql;
 
 -- build LAPOSTE titles
+-- Query returned successfully in 1 min 24 secs.
 SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_titles');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_titles()
 AS
@@ -208,7 +209,6 @@ DECLARE
     _descriptors TEXT[];
     _words_normalized TEXT[];
     _descriptors_normalized TEXT[];
-    _i INT;
     _abbr_i INT;
 BEGIN
     IF NOT table_exists('fr', 'laposte_address_street') THEN
@@ -370,53 +370,6 @@ BEGIN
             name ~ '^BIS '
         ;
 
-    -- update abbreviation (one-word title only)
-    WITH
-    title_abbr AS (
-        SELECT title, FIRST(title_abbreviated) abbr
-        FROM fr.tmp_address_street_title_abbr
-        WHERE count_words(title) = 1
-        GROUP BY title
-        HAVING COUNT(DISTINCT title_abbreviated) = 1
-    )
-    UPDATE fr.laposte_address_street_keyword kt SET
-        name_abbreviated = ta.abbr
-        FROM title_abbr ta
-        WHERE
-            kt.group = 'TITLE'
-            AND
-            kt.name = ta.title
-        ;
-
-    -- update first word
-    UPDATE fr.laposte_address_street_keyword kt SET
-        first_word = (REGEXP_MATCH(kt.name, '^\S+'))[1]
-        WHERE
-            kt.group = 'TITLE'
-            AND
-            count_words(kt.name) > 1
-        ;
-
-    -- update missing abbreviation (n-words)
-    WITH
-    correction_abbr AS (
-        SELECT *
-        FROM (
-            VALUES
-            ('ANCIENNE ROUTE', 'ANCI ROUTE', 'ANCIENNE', 1)
-            , ('NOTRE DAME', 'ND', 'NOTRE', 1)
-            , ('LIEUTENANT DE VAISSEAU', 'LTDV', 'LIEUTENANT', 1)
-        ) AS t(name, name_abbreviated, first_word, occurs)
-    )
-    UPDATE fr.laposte_address_street_keyword kt SET
-        name_abbreviated = ca.name_abbreviated
-        FROM correction_abbr ca
-        WHERE
-            kt.group = 'TITLE'
-            AND
-            kt.name = ca.name
-        ;
-
     -- update occurs
     WITH
     title_occurs AS (
@@ -449,6 +402,110 @@ BEGIN
             kt.group = 'TITLE'
             AND
             kt.name = sto.name
+        ;
+
+    -- delete no titles
+    WITH
+    title_with_uniq_occur AS (
+        SELECT
+            name
+            , REGEXP_SPLIT_TO_ARRAY(name, '\s+') as_words
+            , count_words(name) n_words
+        FROM fr.laposte_address_street_keyword
+        WHERE "group" = 'TITLE'
+        --AND name ~ '^VILLE'
+        AND occurs = 1
+        -- #338
+        AND count_words(name) > 1
+        --LIMIT 1
+    )
+    --SELECT * FROM title_with_uniq_occur
+    , split_as_word AS (
+        SELECT
+            o1.name
+            , u.word
+            , u.i
+            , o1.as_words
+            , o1.n_words
+        FROM
+            title_with_uniq_occur o1
+                INNER JOIN LATERAL UNNEST(as_words) WITH ORDINALITY AS u(word, i) ON TRUE
+    )
+    --SELECT * FROM all_word_as_title ORDER BY 1, 3
+    , is_keyword AS (
+        SELECT
+            name
+            , ARRAY_AGG((
+                SELECT k.group
+                FROM fr.laposte_address_street_keyword k
+                WHERE k.name = sw.word ORDER BY occurs DESC LIMIT 1
+                )
+            ) as_kw
+        FROM
+            split_as_word sw
+        GROUP BY
+            name
+    )
+    , composed_words AS (
+        SELECT
+            o1.*
+            , kw.as_kw
+        FROM
+            title_with_uniq_occur o1
+                JOIN is_keyword kw ON o1.name = kw.name
+        WHERE
+            o1.n_words = ARRAY_LENGTH(kw.as_kw, 1)
+    )
+    --SELECT * FROM composed_words
+    DELETE FROM fr.laposte_address_street_keyword kt
+        USING composed_words cw
+        WHERE kt.group = 'TITLE' AND kt.name = cw.name
+        ;
+
+    -- update abbreviation (one-word title only)
+    WITH
+    title_abbr AS (
+        SELECT title, FIRST(title_abbreviated) abbr
+        FROM fr.tmp_address_street_title_abbr
+        WHERE count_words(title) = 1
+        GROUP BY title
+        HAVING COUNT(DISTINCT title_abbreviated) = 1
+    )
+    UPDATE fr.laposte_address_street_keyword kt SET
+        name_abbreviated = ta.abbr
+        FROM title_abbr ta
+        WHERE
+            kt.group = 'TITLE'
+            AND
+            kt.name = ta.title
+        ;
+    -- update missing abbreviation (n-words)
+    WITH
+    correction_abbr AS (
+        SELECT *
+        FROM (
+            VALUES
+            ('ANCIENNE ROUTE', 'ANCI ROUTE', 'ANCIENNE', 1)
+            , ('NOTRE DAME', 'ND', 'NOTRE', 1)
+            , ('LIEUTENANT DE VAISSEAU', 'LTDV', 'LIEUTENANT', 1)
+        ) AS t(name, name_abbreviated, first_word, occurs)
+    )
+    UPDATE fr.laposte_address_street_keyword kt SET
+        name_abbreviated = ca.name_abbreviated
+        FROM correction_abbr ca
+        WHERE
+            kt.group = 'TITLE'
+            AND
+            kt.name = ca.name
+        ;
+
+    -- update first word
+    UPDATE fr.laposte_address_street_keyword kt SET
+        first_word = (REGEXP_MATCH(kt.name, '^\S+'))[1]
+        WHERE
+            kt.group = 'TITLE'
+            AND
+            count_words(kt.name) > 1
         ;
 END;
 $proc$ LANGUAGE plpgsql;
