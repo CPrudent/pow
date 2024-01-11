@@ -157,15 +157,15 @@ BEGIN
             LENGTH(mots.mot) > 1
             AND
             -- not article!
-            NOT mots.mot = ANY('{A,AU,AUX,D,DE,DES,DU,EN,ET,L,LA,LE,LES,SOUS,SUR,UN,UNE}')
+            NOT fr.is_normalized_article(mots.mot)
     );
 END;
 $proc$ LANGUAGE plpgsql;
 
 -- build LAPOSTE extension (of housenumber), w/ abbreviated value
-SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_extension_of_housenumber');
 SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_extension_of_housenumber');
-CREATE OR REPLACE PROCEDURE fr.set_laposte_address_extension_of_housenumber()
+SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_street_ext');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_ext()
 AS
 $proc$
 BEGIN
@@ -200,7 +200,8 @@ $proc$ LANGUAGE plpgsql;
 -- build LAPOSTE titles
 -- Query returned successfully in 1 min 24 secs.
 SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_titles');
-CREATE OR REPLACE PROCEDURE fr.set_laposte_address_titles()
+SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_street_title');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_title()
 AS
 $proc$
 DECLARE
@@ -215,6 +216,7 @@ BEGIN
         RAISE 'Données LAPOSTE non présentes';
     END IF;
 
+    /*
     -- prepare working tables (no log)
     DROP TABLE IF EXISTS fr.tmp_address_street_uniq;
     CREATE UNLOGGED TABLE IF NOT EXISTS fr.tmp_address_street_uniq AS
@@ -229,6 +231,7 @@ BEGIN
         WHERE
             fl_active
         ;
+     */
     DROP TABLE IF EXISTS fr.tmp_address_street_title;
     CREATE UNLOGGED TABLE fr.tmp_address_street_title (
         title VARCHAR NOT NULL
@@ -246,11 +249,11 @@ BEGIN
         SELECT
             name
             , name_normalized
-            , descriptor
+            , descriptors
         FROM
-            fr.tmp_address_street_uniq us
+            fr.laposte_address_street_uniq us
         WHERE
-            POSITION('T' IN descriptor) > 0
+            POSITION('T' IN descriptors) > 0
         )
         SELECT DISTINCT
             UNNEST(t.titles) title
@@ -258,7 +261,7 @@ BEGIN
             with_title wt
             , fr.get_titles_from_name(
                 name => wt.name
-                , descriptor => wt.descriptor
+                , descriptor => wt.descriptors
             ) t
     )
     LOOP
@@ -271,22 +274,22 @@ BEGIN
             t.title
             , wt.name
             , wt.name_normalized
-            , wt.descriptor
+            , wt.descriptors
         FROM
-            fr.tmp_address_street_uniq wt
+            fr.laposte_address_street_uniq wt
             , fr.tmp_address_street_title t
             , fr.get_titles_from_name(
                 name => wt.name
-                , descriptor => wt.descriptor
+                , descriptor => wt.descriptors
             ) tw
         WHERE
             -- name w/ this title
-            POSITION(REPEAT('T', count_words(t.title)) IN wt.descriptor) > 0
+            POSITION(REPEAT('T', count_words(t.title)) IN wt.descriptors) > 0
             AND
             tw.titles @> ARRAY[t.title]::TEXT[]
             AND
             -- w/ normalization
-            wt.name != wt.name_normalized
+            wt.name_normalized IS NOT NULL
             AND
             -- w/ abbreviation
             POSITION(CONCAT(t.title, ' ') IN wt.name_normalized) = 0
@@ -297,7 +300,7 @@ BEGIN
         FROM
             fr.split_name_of_street_as_descriptor(
                 name => _set.name_normalized
-                , descriptor => _set.descriptor
+                , descriptor => _set.descriptors
                 , split_only => 'T'
                 , is_normalized => TRUE
             )
@@ -307,7 +310,7 @@ BEGIN
         FROM
             fr.split_name_of_street_as_descriptor(
                 name => _set.name
-                , descriptor => _set.descriptor
+                , descriptor => _set.descriptors
                 , split_only => 'T'
             )
         ;

@@ -15,6 +15,7 @@ DECLARE
     _id_1 INT;
     _id_2 INT;
     _id_3 INT;
+    _id_4 INT;
     _id INT;
 BEGIN
     IF reset THEN
@@ -65,6 +66,12 @@ BEGIN
     CALL public.io_add_if_not_exists(name => 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT-GEOMETRY');
     -- RAO
     CALL public.io_add_if_not_exists(name => 'FR-ADDRESS-LAPOSTE-DELIVERY-ORGANIZATION');
+
+    -- FR-CONSTANT
+
+    CALL public.io_add_if_not_exists(name => 'FR-CONSTANT');
+    -- ADDRESS
+    CALL public.io_add_if_not_exists(name => 'FR-CONSTANT-ADDRESS');
 
     -- get all IOs in memory
     _io_list := ARRAY(SELECT io_list FROM public.io_list);
@@ -201,5 +208,22 @@ BEGIN
     _id_3 := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-ADDRESS');
     _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-ADDRESS-LAPOSTE');
     CALL public.io_add_relation_if_not_exists(id1 => _id_3, id2 => _id);
+
+    /*
+       FR-CONSTANT
+            |-> FR-CONSTANT-ADDRESS
+     */
+
+    _id_4 := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-CONSTANT');
+    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-CONSTANT-ADDRESS');
+    CALL public.io_add_relation_if_not_exists(id1 => _id_4, id2 => _id);
+
+    /*
+       FR-CONSTANT-ADDRESS
+            |-> FR-ADDRESS-LAPOSTE
+     */
+    _id_2 := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-CONSTANT-ADDRESS');
+    _id := public.io_get_id_from_array_by_name(from_array => _io_list, name => 'FR-ADDRESS-LAPOSTE');
+    CALL public.io_add_relation_if_not_exists(id1 => _id_2, id2 => _id);
 END
 $proc$ LANGUAGE plpgsql;

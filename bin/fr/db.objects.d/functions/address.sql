@@ -718,6 +718,28 @@ SELECT * FROM fr.get_type_of_street('ZONE D AMENAGEMENT CONCERTE DES GRANDS CHAM
 SELECT * FROM fr.get_type_of_street('ZA DES GRANDS CHAMPS');
  */
 
+-- get descriptor of word taking into account exceptions
+SELECT drop_all_functions_if_exists('fr', 'get_descriptor_as_exception');
+CREATE OR REPLACE FUNCTION fr.get_descriptor_as_exception(
+    words IN TEXT[]
+    , i IN INT
+    , as_descriptor IN VARCHAR
+    , is_exception OUT BOOLEAN
+    , descriptor OUT VARCHAR
+)
+AS
+$func$
+BEGIN
+    SELECT
+    INTO
+    FROM
+        fr.laposte_address_street_kw_exception
+    WHERE
+        keyword = words[i]
+    ;
+END
+$func$ LANGUAGE plpgsql;
+
  -- get descriptor of street (from full name)
 SELECT drop_all_functions_if_exists('fr', 'get_descriptor_of_street');
 CREATE OR REPLACE FUNCTION fr.get_descriptor_of_street(
@@ -731,7 +753,7 @@ DECLARE
     _kw_abbreviated VARCHAR;
     _kw_is_abbreviated BOOLEAN;
     _kw_nwords INT;
-    _kw_tmp VARCHAR;
+    --_kw_tmp VARCHAR;
     _descriptor VARCHAR := '';
     _words TEXT[];
     _words_len INT;
@@ -739,8 +761,7 @@ DECLARE
     _words_d VARCHAR;
     _words_skip INT := 0;
     _i INT;
-    _not_a_if_n TEXT[] := '{AU,AUX,EN,LA,LE,LES,SUR}'::TEXT[];
-    _found BOOLEAN;
+    --_not_a_if_n TEXT[] := '{AU,AUX,EN,LA,LE,LES,SUR}'::TEXT[];
 BEGIN
     RAISE NOTICE 'name= %', name;
 
@@ -798,7 +819,14 @@ BEGIN
                             _words_d := 'N';
                         ELSE
                             IF fr.is_normalized_firstname(_words[_i]) THEN
-                                _words_d := 'P';
+                                /* RULE
+                                firstname followed by a number only is a name
+                                 */
+                                IF fr.is_normalized_number(_words[_i +1]) AND _words_len = (_i +1) THEN
+                                    _words_d := 'N';
+                                ELSE
+                                    _words_d := 'P';
+                                END IF;
                             END IF;
                         END IF;
                     END IF;
