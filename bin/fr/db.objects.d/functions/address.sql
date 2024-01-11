@@ -722,21 +722,56 @@ SELECT * FROM fr.get_type_of_street('ZA DES GRANDS CHAMPS');
 SELECT drop_all_functions_if_exists('fr', 'get_descriptor_as_exception');
 CREATE OR REPLACE FUNCTION fr.get_descriptor_as_exception(
     words IN TEXT[]
-    , i IN INT
+    , nwords IN INT
+    , at_ IN INT
     , as_descriptor IN VARCHAR
     , is_exception OUT BOOLEAN
     , descriptor OUT VARCHAR
 )
 AS
 $func$
+DECLARE
+    _kw_except fr.laposte_address_street_kw_exception[];
+    _i INT;
 BEGIN
-    SELECT
-    INTO
-    FROM
-        fr.laposte_address_street_kw_exception
-    WHERE
-        keyword = words[i]
-    ;
+    /* RULE
+    search for keyword
+    if found
+        if as_descriptor is default, apply exceptions to eventually alter descriptor
+            if one exception is valid (following word(s)) then return as_except
+        else
+            if as_descriptor is one of as_except, verify exception
+                if not return as_default
+    else
+        no exception
+     */
+    _kw_except := ARRAY(
+        SELECT
+            laposte_address_street_kw_exception
+        FROM
+            fr.laposte_address_street_kw_exception
+        WHERE
+            keyword = words[i]
+    );
+    IF ARRAY_UPPER(_kw_except, 1) IS NULL THEN
+        is_exception := FALSE;
+        RETURN;
+    END IF;
+
+    /*
+    IF _kw_except[1].as_default = as_descriptor THEN
+    ELSE
+    END IF;
+
+    FOR _i IN 1 .. ARRAY_UPPER(_kw_except, 1) LOOP
+        IF _kw_except[1].as_default = as_descriptor THEN
+
+        IF from_array[_i].name = name THEN
+            _id := _i;
+            EXIT;
+        END IF;
+    END LOOP;
+     */
 END
 $func$ LANGUAGE plpgsql;
 
