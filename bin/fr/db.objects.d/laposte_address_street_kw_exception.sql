@@ -25,7 +25,7 @@ END
 $proc$ LANGUAGE plpgsql;
 
 -- build keyword exceptions (for firstname)
--- Query returned successfully in 4 min 11 secs.
+-- Query returned successfully in 4 min 1 secs.
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_street_kw_exception');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_kw_exception()
 AS
@@ -46,13 +46,14 @@ BEGIN
     CALL public.log_info(' Préparation');
     DROP TABLE IF EXISTS fr.tmp_address_street_fname_occur;
     CREATE TABLE fr.tmp_address_street_fname_occur AS
-    -- #149832
+    -- 147018
     WITH
     split_as_word AS (
         SELECT
             s.name
             , w.word
             , w.i::INT
+            , s.words
             , s.descriptors
             , s.nwords
         FROM
@@ -76,6 +77,9 @@ BEGIN
             AND
             -- not last word (name!)
             i < nwords
+            AND
+            -- not followed by a number
+            NOT fr.is_normalized_number(words[i +1])
     )
     SELECT * FROM word_with_descriptor WHERE descriptor != 'V'
     ;
@@ -84,7 +88,7 @@ BEGIN
 
     DROP TABLE IF EXISTS fr.tmp_address_street_fname_as_kw;
     CREATE TABLE fr.tmp_address_street_fname_as_kw AS
-    -- #3346
+    -- #3296
         SELECT
             word
             , descriptor
@@ -191,8 +195,11 @@ BEGIN
                     (o.descriptor = ANY('{N,P}'))
                 )
             )
+            -- not last word
+            AND
+            (i+1 < nwords)
     )
-    -- #3397
+    -- #3382
     SELECT * FROM word_as_except
     ;
     GET DIAGNOSTICS _nrows = ROW_COUNT;

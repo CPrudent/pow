@@ -719,8 +719,8 @@ SELECT * FROM fr.get_type_of_street('ZA DES GRANDS CHAMPS');
  */
 
 -- get descriptor of word taking into account exceptions
-SELECT drop_all_functions_if_exists('fr', 'get_descriptor_as_exception');
-CREATE OR REPLACE FUNCTION fr.get_descriptor_as_exception(
+SELECT drop_all_functions_if_exists('fr', 'get_descriptor_from_exception');
+CREATE OR REPLACE FUNCTION fr.get_descriptor_from_exception(
     words IN TEXT[]
     , nwords IN INT
     , at_ IN INT
@@ -733,8 +733,12 @@ $func$
 DECLARE
     _kw_except fr.laposte_address_street_kw_exception[];
     _i INT;
+    _descriptor VARCHAR;
 BEGIN
     /* RULE
+
+    apply taking account position!
+
     search for keyword
     if found
         if as_descriptor is default, apply exceptions to eventually alter descriptor
@@ -745,35 +749,92 @@ BEGIN
     else
         no exception
      */
+
+    is_exception := FALSE;
+
+    SELECT
+        x.as_except
+    INTO
+        _descriptor
+    FROM
+        fr.laposte_address_street_kw_exception x
+    WHERE
+        x.keyword = words[at_]
+        AND
+        nwords >= (at_ + count_words(x.if_followed_by))
+        AND
+        x.if_followed_by = items_of_array_to_string(
+            elements => words
+            , from_ => (at_ +1)
+            , to_ => (at_ + count_words(x.if_followed_by))
+        )
+        ;
+
+    IF FOUND THEN
+        IF _descriptor != as_descriptor THEN
+            is_exception := TRUE;
+            descriptor := _descriptor;
+        END IF;
+    ELSE
+        SELECT
+            as_default
+        INTO
+            _descriptor
+        FROM
+            fr.laposte_address_street_kw_exception x
+        WHERE
+            x.keyword = words[at_]
+        LIMIT
+            1
+        ;
+        IF FOUND AND _descriptor != as_descriptor THEN
+            is_exception := TRUE;
+            descriptor := _descriptor;
+        END IF;
+    END IF;
+
+     /*
     _kw_except := ARRAY(
         SELECT
             laposte_address_street_kw_exception
         FROM
             fr.laposte_address_street_kw_exception
         WHERE
-            keyword = words[i]
+            keyword = words[at_]
     );
     IF ARRAY_UPPER(_kw_except, 1) IS NULL THEN
         is_exception := FALSE;
         RETURN;
     END IF;
 
-    /*
     IF _kw_except[1].as_default = as_descriptor THEN
     ELSE
     END IF;
 
     FOR _i IN 1 .. ARRAY_UPPER(_kw_except, 1) LOOP
         IF _kw_except[1].as_default = as_descriptor THEN
-
-        IF from_array[_i].name = name THEN
-            _id := _i;
-            EXIT;
         END IF;
     END LOOP;
      */
 END
 $func$ LANGUAGE plpgsql;
+
+/* TEST
+-- one word after
+SELECT * FROM fr.get_descriptor_from_exception(
+    words => '{JETEE,ALBERT,EDOUARD}'::TEXT[]
+    , nwords => 3
+    , at_ => 2
+    , as_descriptor => 'P'
+);
+-- many words after
+SELECT * FROM fr.get_descriptor_from_exception(
+    words => '{QUAI,AGENOR,DE,GASPARIN}'::TEXT[]
+    , nwords => 4
+    , at_ => 2
+    , as_descriptor => 'N'
+);
+ */
 
  -- get descriptor of street (from full name)
 SELECT drop_all_functions_if_exists('fr', 'get_descriptor_of_street');
@@ -789,7 +850,7 @@ DECLARE
     _kw_is_abbreviated BOOLEAN;
     _kw_nwords INT;
     --_kw_tmp VARCHAR;
-    _descriptor VARCHAR := '';
+    _descriptors VARCHAR := '';
     _words TEXT[];
     _words_len INT;
     _words_i INT := 0;
@@ -797,6 +858,9 @@ DECLARE
     _words_skip INT := 0;
     _i INT;
     --_not_a_if_n TEXT[] := '{AU,AUX,EN,LA,LE,LES,SUR}'::TEXT[];
+    _with_exception BOOLEAN;
+    _is_exception BOOLEAN;
+    _exception VARCHAR;
 BEGIN
     RAISE NOTICE 'name= %', name;
 
@@ -815,7 +879,15 @@ BEGIN
         name of street (so descriptor) is ended by: number, reserved or name (CEN)
          */
         IF fr.is_normalized_number(_words[_i]) THEN
-            IF _i > 1 AND RIGHT(_descriptor, 1) = ANY('{A,V}') AND _words[_i] = ANY('{D,L}') THEN
+            IF (
+                (_words[_i] = ANY('{D,L}'))
+                AND
+                (
+                    ((_i > 1) AND RIGHT(_descriptors, 1) = ANY('{A,V}'))
+                    OR
+                    (_i = 1)
+                )
+            ) THEN
                 _words_d := 'A';
             ELSE
                 _words_d := 'C';
@@ -823,7 +895,20 @@ BEGIN
         ELSE
             _words_d := 'N';
             IF _i < _words_len THEN
+                _with_exception := FALSE;
                 IF fr.is_normalized_article(_words[_i]) THEN
+                    /* RULE
+                    DE GAULLE
+                    if preceded by title then N         VATNN   PLACE DU GENERAL DE GAULLE
+                    if preceded by firstname then A     VPAN    PLACE CHARLES DE GAULLE
+
+                    counter examples!
+                        IMPASSE DU GENERAL DE GAULLE            VATNN
+                        IMPASSE GENERAL DE GAULLE               VTAN
+
+                        QUAI DU GENERAL CHARLES DE GAULLE       VATPNN
+                        ALLEE GENERAL CHARLES DE GAULLE         VTPAN
+                     */
                     _words_d := 'A';
                 ELSE
                     SELECT kw_group, kw, kw_is_abbreviated, kw_nwords
@@ -847,23 +932,42 @@ BEGIN
                         END IF;
                         */
                         _words_d := REPEAT('T', _kw_nwords);
+                        _with_exception := TRUE;
                     ELSE
+                        /*
                         -- not if previous is (article|number)
-                        RAISE NOTICE ' last= %', RIGHT(_descriptor, 1);
-                        IF _i > 1 AND RIGHT(_descriptor, 1) = ANY('{A,C}') THEN
+                        -- counter examples
+                        -- APN: LA MARIE GABRIELLE
+                        RAISE NOTICE ' last= %', RIGHT(_descriptors, 1);
+                        IF _i > 1 AND RIGHT(_descriptors, 1) = ANY('{A,C}') THEN
                             _words_d := 'N';
                         ELSE
-                            IF fr.is_normalized_firstname(_words[_i]) THEN
-                                /* RULE
-                                firstname followed by a number only is a name
-                                 */
-                                IF fr.is_normalized_number(_words[_i +1]) AND _words_len = (_i +1) THEN
-                                    _words_d := 'N';
-                                ELSE
-                                    _words_d := 'P';
-                                END IF;
+                         */
+                        IF fr.is_normalized_firstname(_words[_i]) THEN
+                            /* RULE
+                            firstname followed by a number only is a name
+                                */
+                            IF fr.is_normalized_number(_words[_i +1]) AND _words_len = (_i +1) THEN
+                                _words_d := 'N';
+                            ELSE
+                                _words_d := 'P';
+                                _with_exception := TRUE;
                             END IF;
                         END IF;
+                        --END IF;
+                    END IF;
+                END IF;
+                IF _with_exception THEN
+                    SELECT is_exception, descriptor
+                    INTO _is_exception, _exception
+                    FROM fr.get_descriptor_from_exception(
+                        words => _words
+                        , nwords => _words_len
+                        , at_ => _i
+                        , as_descriptor => SUBSTR(_words_d, 1, 1)
+                    );
+                    IF _is_exception THEN
+                        _words_d := REPEAT(_exception, LENGTH(_words_d));
                     END IF;
                 END IF;
             ELSIF fr.is_normalized_reserved_word(_words[_i]) THEN
@@ -876,15 +980,15 @@ BEGIN
         IF _i > 1
             AND _words_d = ANY('{A,N}')
             AND LEFT(_words[_i], 1) = ANY('{A,E,I,O,U,Y}')
-            AND RIGHT(_descriptor, 1) = 'C'
+            AND RIGHT(_descriptors, 1) = 'C'
             AND _words[_i -1] = ANY('{D,L}') THEN
-            _descriptor := CONCAT(
-                SUBSTR(_descriptor, 1, LENGTH(_descriptor) - 1)
+            _descriptors := CONCAT(
+                SUBSTR(_descriptors, 1, LENGTH(_descriptors) - 1)
                 , 'A'
             );
         END IF;
 
-        _descriptor := CONCAT(_descriptor, _words_d);
+        _descriptors := CONCAT(_descriptors, _words_d);
         _words_skip := _i;
         IF _kw_nwords > 1 THEN
             _words_skip := _words_skip + _kw_nwords;
@@ -893,16 +997,16 @@ BEGIN
 
     -- fix others
     -- not type only (eventually followed by number)
-    IF _descriptor ~ '^V+C*$' THEN
-        _descriptor := REPLACE(_descriptor, 'V', 'N');
+    IF _descriptors ~ '^V+C*$' THEN
+        _descriptors := REPLACE(_descriptors, 'V', 'N');
     -- not type, but lastname
-    ELSIF _descriptor ~ '^V+N*$' THEN
+    ELSIF _descriptors ~ '^V+N*$' THEN
         IF EXISTS(
             SELECT 1 FROM fr.laposte_address_street_keyword k
             WHERE k.group = 'TYPE'
             AND k.name = get_descriptor_of_street.name
         ) THEN
-            _descriptor := REPEAT('N', LENGTH(_descriptor));
+            _descriptors := REPEAT('N', LENGTH(_descriptors));
         END IF;
     /*
     counter examples
@@ -912,11 +1016,11 @@ BEGIN
 
     -- not article (D, L), but lastname
         RUE ARSENE D ARSONVAL
-     */
-    ELSIF _descriptor ~ 'PAN$' THEN
+    ELSIF _descriptors ~ 'PAN$' THEN
         IF LENGTH(_words[ARRAY_UPPER(_words, 1) - 1]) = 1 THEN
-            _descriptor := REGEXP_REPLACE(_descriptor, 'PAN$', 'PNN');
+            _descriptors := REGEXP_REPLACE(_descriptors, 'PAN$', 'PNN');
         END IF;
+     */
 
     /* NOTE
     ATN
@@ -928,39 +1032,41 @@ BEGIN
         LA PETITE RUE
 
     -- not title, but lastname
-    ELSIF _descriptor ~ '^A*[CT]N$' THEN
-        _descriptor := REGEXP_REPLACE(_descriptor, '[CT]N$', 'NN');
+    ELSIF _descriptors ~ '^A*[CT]N$' THEN
+        _descriptors := REGEXP_REPLACE(_descriptors, '[CT]N$', 'NN');
      */
     -- not number, but lastname
-    ELSIF _descriptor ~ 'CN$' THEN
+    ELSIF _descriptors ~ 'CN$' THEN
         IF _words[ARRAY_UPPER(_words, 1) - 1] = 'MI' THEN
-            _descriptor := REGEXP_REPLACE(_descriptor, 'CN$', 'NN');
+            _descriptors := REGEXP_REPLACE(_descriptors, 'CN$', 'NN');
         END IF;
     /*
     -- not title, but lastname
-    ELSIF _descriptor ~ '^A*TN$' THEN
-        _descriptor := REGEXP_REPLACE(_descriptor, '[CT]N$', 'NN');
+    ELSIF _descriptors ~ '^A*TN$' THEN
+        _descriptors := REGEXP_REPLACE(_descriptors, '[CT]N$', 'NN');
      */
 
     /*
     -- not article, but name
-    ELSIF _descriptor ~ '^AN$' THEN
+    ELSIF _descriptors ~ '^AN$' THEN
         IF _words[1] = ANY(_not_a_if_n) THEN
-            _descriptor := REPLACE(_descriptor, 'AN', 'NN');
+            _descriptors := REPLACE(_descriptors, 'AN', 'NN');
         END IF;
      */
 
     --
-    ELSIF _descriptor ~ '^V[PT]C$' THEN
-        _descriptor := REGEXP_REPLACE(_descriptor, '^V[PT]C$', 'VNC');
+    ELSIF _descriptors ~ '^V[PT]C$' THEN
+        _descriptors := REGEXP_REPLACE(_descriptors, '^V[PT]C$', 'VNC');
     END IF;
 
-    RAISE NOTICE 'descriptor= %', _descriptor;
-    RETURN _descriptor;
+    RAISE NOTICE 'descriptor= %', _descriptors;
+    RETURN _descriptors;
 END
 $func$ LANGUAGE plpgsql;
 
 /* TEST
+
+-- difference from RAN !
 SELECT
     descriptor_pow
     , descriptor_laposte
