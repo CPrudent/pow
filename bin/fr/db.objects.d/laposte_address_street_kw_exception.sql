@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS fr.laposte_address_street_kw_exception (
     keyword VARCHAR NOT NULL
     , as_default VARCHAR
     , as_except VARCHAR
-    , if_followed_by VARCHAR
+    , followed_by VARCHAR
 )
 ;
 
@@ -25,7 +25,7 @@ END
 $proc$ LANGUAGE plpgsql;
 
 -- build keyword exceptions (for firstname)
--- Query returned successfully in 4 min 1 secs.
+-- Query returned successfully in 4 min 5 secs.
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_street_kw_exception');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_kw_exception()
 AS
@@ -37,7 +37,7 @@ BEGIN
         RAISE 'Données LAPOSTE non suffisantes';
     END IF;
 
-    CALL public.log_info('Définition des exceptions de mots clé des voies');
+    CALL public.log_info('Gestion des exceptions de mots clé des voies');
 
     CALL public.log_info(' Purge');
     TRUNCATE TABLE fr.laposte_address_street_kw_exception;
@@ -102,13 +102,8 @@ BEGIN
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Groupements par (mot, descripteur): ', _nrows));
 
-    CALL public.log_info(' Initialisation');
-    INSERT INTO fr.laposte_address_street_kw_exception(
-        keyword
-        , as_default
-        , as_except
-        , if_followed_by
-    )
+    DROP TABLE IF EXISTS fr.tmp_address_street_fname_count;
+    CREATE TABLE fr.tmp_address_street_fname_count AS
     WITH
     -- not only one occurence, so exception
     word_with_except AS (
@@ -134,7 +129,24 @@ BEGIN
         GROUP BY
             o.word
     )
-    --SELECT * FROM word_count_by_descriptor ORDER BY 1
+    SELECT * FROM word_count_by_descriptor
+    ;
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(CONCAT(' Comptages descripteur par (mot): ', _nrows));
+
+    DROP TABLE IF EXISTS fr.tmp_address_street_fname_default;
+    CREATE TABLE fr.tmp_address_street_fname_default AS
+    WITH
+    -- not only one occurence, so exception
+    word_with_except AS (
+        SELECT
+            word
+        FROM
+            fr.tmp_address_street_fname_as_kw
+        GROUP BY
+            word
+        HAVING COUNT(*) > 1
+    )
     , word_as_default AS (
         SELECT
             word
@@ -144,11 +156,24 @@ BEGIN
                 WHEN as_title >= (as_name + as_fname) THEN 'T'
                 END as_default
         FROM
-            word_count_by_descriptor
+            fr.tmp_address_street_fname_count
     )
-    -- #2322
-    --SELECT * FROM word_as_default ORDER BY 1
-    , word_as_except AS (
+    -- #981
+    SELECT * FROM word_as_default
+    ;
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(CONCAT(' Descripteur par défaut (mot): ', _nrows));
+
+    CALL public.log_info(' Initialisation');
+    TRUNCATE TABLE fr.laposte_address_street_kw_exception;
+    INSERT INTO fr.laposte_address_street_kw_exception(
+        keyword
+        , as_default
+        , as_except
+        , followed_by
+    )
+    WITH
+    word_as_except AS (
         SELECT DISTINCT
             o.word kw
             , d.as_default
@@ -167,13 +192,13 @@ BEGIN
                         , to_ => (i+2)
                     )
                 ELSE s.words[i+1]
-                END if_followed_by
+                END followed_by
         FROM
             fr.tmp_address_street_fname_occur o
                 JOIN fr.laposte_address_street_uniq s ON o.name = s.name
-                JOIN word_with_except x ON o.word = x.word
-                JOIN word_as_default d ON o.word = d.word
-                JOIN word_count_by_descriptor c ON o.word = c.word
+                --JOIN word_with_except x ON o.word = x.word
+                JOIN fr.tmp_address_street_fname_default d ON o.word = d.word
+                JOIN fr.tmp_address_street_fname_count c ON o.word = c.word
         WHERE
             -- exception
             o.descriptor != d.as_default
@@ -195,15 +220,79 @@ BEGIN
                     (o.descriptor = ANY('{N,P}'))
                 )
             )
-            -- not last word
-            AND
-            (i+1 < nwords)
     )
     -- #3382
     SELECT * FROM word_as_except
     ;
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Exceptions: ', _nrows));
+
+    /* NOTE
+    due to two-possibilities (as descriptor) for a word, as N or P
+    choice is delete these exceptions in the case where occurs are greater for other case
+    example:
+        (ABBE, default as N, followed_by JEAN) has 2 occurs (as exception T), but 30 (as N)
+        so delete exception T
+     */
+    WITH
+    word_with_except AS (
+        -- #981
+        SELECT
+            word
+        FROM
+            fr.tmp_address_street_fname_as_kw
+        GROUP BY
+            word
+        HAVING COUNT(*) > 1
+    )
+    , word_usecase AS (
+        SELECT
+            o.word
+            , x.followed_by
+            , SUBSTR(s.descriptors, o.i, 1) as_usecase
+            , x.as_except
+        FROM
+            fr.tmp_address_street_fname_occur o
+                JOIN fr.laposte_address_street_uniq s ON o.name = s.name
+                JOIN word_with_except wx ON o.word = wx.word
+                JOIN fr.laposte_address_street_kw_exception x ON o.word = x.keyword
+        WHERE
+            s.words[i] = x.keyword
+            AND
+            s.words[i+count_words(x.followed_by)]= REGEXP_REPLACE(x.followed_by, '^.* ', '')
+    )
+    --SELECT * FROM word_usecase ORDER BY 1, 2
+    , count_usecase AS (
+        SELECT
+            word
+            , followed_by
+            , SUM(CASE WHEN as_usecase = as_except THEN 1 ELSE 0 END) ok_except
+            , SUM(CASE WHEN as_usecase != as_except THEN 1 ELSE 0 END) ko_except
+        FROM
+            word_usecase
+        GROUP BY
+            word
+            , followed_by
+    )
+    --SELECT * FROM count_usecase ORDER BY 1, 2
+    , not_exception AS (
+        SELECT
+            x.*
+        FROM
+            fr.laposte_address_street_kw_exception x
+                JOIN count_usecase cu ON (x.keyword, x.followed_by) = (cu.word, cu.followed_by)
+        WHERE
+            ko_except > ok_except
+    )
+    -- #213
+    --SELECT * FROM not_exception ORDER BY 1, 4
+    DELETE FROM fr.laposte_address_street_kw_exception x
+    USING not_exception nx
+    WHERE
+        (x.keyword, x.followed_by) = (nx.keyword, nx.followed_by)
+    ;
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(CONCAT(' Non exceptions: ', _nrows));
 
     CALL fr.set_laposte_address_street_kw_exception_index();
     CALL public.log_info(' Indexation');

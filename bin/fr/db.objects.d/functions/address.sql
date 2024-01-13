@@ -731,7 +731,8 @@ CREATE OR REPLACE FUNCTION fr.get_descriptor_from_exception(
 AS
 $func$
 DECLARE
-    _kw_except fr.laposte_address_street_kw_exception[];
+    -- NOTE be careful w/ this usage! when table not yet exists
+    --_kw_except fr.laposte_address_street_kw_exception[];
     _i INT;
     _descriptor VARCHAR;
 BEGIN
@@ -761,12 +762,12 @@ BEGIN
     WHERE
         x.keyword = words[at_]
         AND
-        nwords >= (at_ + count_words(x.if_followed_by))
+        nwords >= (at_ + count_words(x.followed_by))
         AND
-        x.if_followed_by = items_of_array_to_string(
+        x.followed_by = items_of_array_to_string(
             elements => words
             , from_ => (at_ +1)
-            , to_ => (at_ + count_words(x.if_followed_by))
+            , to_ => (at_ + count_words(x.followed_by))
         )
         ;
 
@@ -857,7 +858,6 @@ DECLARE
     _words_d VARCHAR;
     _words_skip INT := 0;
     _i INT;
-    --_not_a_if_n TEXT[] := '{AU,AUX,EN,LA,LE,LES,SUR}'::TEXT[];
     _with_exception BOOLEAN;
     _is_exception BOOLEAN;
     _exception VARCHAR;
@@ -879,23 +879,20 @@ BEGIN
         name of street (so descriptor) is ended by: number, reserved or name (CEN)
          */
         IF fr.is_normalized_number(_words[_i]) THEN
-            IF (
-                (_words[_i] = ANY('{D,L}'))
-                AND
-                (
-                    ((_i > 1) AND RIGHT(_descriptors, 1) = ANY('{A,V}'))
-                    OR
-                    (_i = 1)
-                )
-            ) THEN
-                _words_d := 'A';
-            ELSE
-                _words_d := 'C';
-            END IF;
+            _words_d := CASE
+                WHEN _words[_i] = ANY('{D,L}') THEN 'A'
+                WHEN _words[_i] = 'M' THEN 'N'
+                ELSE 'C'
+                END
+                ;
         ELSE
             _words_d := 'N';
             IF _i < _words_len THEN
                 _with_exception := FALSE;
+                /* NOTE
+                see WIKIPEDIA, not a name!
+                https://fr.wikipedia.org/wiki/Particule_(onomastique)#:~:text=La%20particule%20est%20une%20pr%C3%A9position,du%20%C2%BB%20ou%20%C2%AB%20des%20%C2%BB.
+                 */
                 IF fr.is_normalized_article(_words[_i]) THEN
                     /* RULE
                     DE GAULLE
@@ -932,7 +929,6 @@ BEGIN
                         END IF;
                         */
                         _words_d := REPEAT('T', _kw_nwords);
-                        _with_exception := TRUE;
                     ELSE
                         /*
                         -- not if previous is (article|number)
@@ -944,19 +940,23 @@ BEGIN
                         ELSE
                          */
                         IF fr.is_normalized_firstname(_words[_i]) THEN
-                            /* RULE
-                            firstname followed by a number only is a name
-                                */
-                            IF fr.is_normalized_number(_words[_i +1]) AND _words_len = (_i +1) THEN
-                                _words_d := 'N';
-                            ELSE
-                                _words_d := 'P';
-                                _with_exception := TRUE;
-                            END IF;
+                            _words_d := 'P';
                         END IF;
                         --END IF;
                     END IF;
                 END IF;
+
+                /* RULE
+                (firstname|title) followed by a number only (at the end) is a name
+                 */
+                IF _words_d ~ 'P|T' THEN
+                    IF fr.is_normalized_number(_words[_i +1]) AND _words_len = (_i +1) THEN
+                        _words_d := REPEAT('N', LENGTH(_words_d));
+                    ELSE
+                        _with_exception := TRUE;
+                    END IF;
+                END IF;
+
                 IF _with_exception THEN
                     SELECT is_exception, descriptor
                     INTO _is_exception, _exception

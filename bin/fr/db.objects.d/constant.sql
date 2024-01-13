@@ -20,61 +20,13 @@ BEGIN
     END IF;
 END $$;
 
--- build LAPOSTE municipality : list of normalized label exceptions
-SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_municipality_normalized_label_exception');
-CREATE OR REPLACE PROCEDURE fr.set_laposte_municipality_normalized_label_exception()
+SELECT drop_all_functions_if_exists('fr', 'set_constant_index');
+CREATE OR REPLACE PROCEDURE fr.set_constant_index()
 AS
 $proc$
 BEGIN
-    IF NOT table_exists('fr', 'laposte_address_area') THEN
-        RAISE 'Données LAPOSTE non présentes';
-    END IF;
-
-    DELETE FROM fr.constant WHERE usecase = 'LAPOSTE_MUNICIPALITY_EXCEPTION';
-    INSERT INTO fr.constant (
-        SELECT
-            'LAPOSTE_MUNICIPALITY_EXCEPTION'
-            , t.*
-        FROM (
-            SELECT
-                co_insee_commune
-                , lb_ach_nn
-            FROM fr.laposte_address_area
-            WHERE
-                fl_active
-                AND
-                -- difference normalized label w/ delivery one : exception!
-                (
-                    (lb_nn != lb_ach_nn)
-                    OR
-                    -- w/o ST|STE : delete article(s)
-                    ((LENGTH(lb_in_ext_loc) > 32) AND (lb_in_ext_loc !~ '\mSAINT[E]?\M'))
-                )
-                AND
-                lb_l5_nn IS NULL
-
-            UNION
-
-            SELECT
-                co_insee_commune
-                , lb_ach_nn
-            FROM
-                fr.laposte_address_area
-                    JOIN fr.insee_municipality
-                        ON co_insee_commune = codgeo
-            WHERE
-                -- some municipality w/ () in its name
-                -- ex: 16052 Bors (Canton de Charente-Sud)
-                POSITION('(' IN libgeo) > 0
-
-            ORDER BY
-                1
-        ) t
-        WHERE
-            -- except municipalities w/ districts (Lyon, Marseille et Paris) and (Polynésie, Nouvelle Calédonie)
-            co_insee_commune !~ '^(98|693|751|132)'
-    );
-END;
+    CREATE INDEX IF NOT EXISTS ix_constant_usecase_key ON fr.constant (usecase, key);
+END
 $proc$ LANGUAGE plpgsql;
 
 -- build LAPOSTE street : list of types
@@ -136,12 +88,19 @@ SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_street_fir
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_firstname()
 AS
 $proc$
+DECLARE
+    _nrows INT;
 BEGIN
     IF NOT table_exists('fr', 'laposte_address_street') THEN
         RAISE 'Données LAPOSTE non présentes';
     END IF;
 
+    CALL public.log_info('Gestion des prénoms dans le nom des voies');
+
+    CALL public.log_info(' Purge');
     DELETE FROM fr.constant WHERE usecase = 'LAPOSTE_STREET_FIRSTNAME';
+
+    CALL public.log_info(' Initialisation');
     INSERT INTO fr.constant (
         SELECT DISTINCT
             'LAPOSTE_STREET_FIRSTNAME'
@@ -159,6 +118,8 @@ BEGIN
             -- not article!
             NOT fr.is_normalized_article(mots.mot)
     );
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(CONCAT(' Prénoms: ', _nrows));
 END;
 $proc$ LANGUAGE plpgsql;
 
@@ -216,22 +177,6 @@ BEGIN
         RAISE 'Données LAPOSTE non présentes';
     END IF;
 
-    /*
-    -- prepare working tables (no log)
-    DROP TABLE IF EXISTS fr.tmp_address_street_uniq;
-    CREATE UNLOGGED TABLE IF NOT EXISTS fr.tmp_address_street_uniq AS
-        SELECT DISTINCT
-            lb_voie name
-            , CASE WHEN lb_voie != lb_voie_normalise THEN lb_voie_normalise
-                ELSE NULL
-                END name_normalized
-            , lb_desc descriptor
-        FROM
-            fr.laposte_address_street
-        WHERE
-            fl_active
-        ;
-     */
     DROP TABLE IF EXISTS fr.tmp_address_street_title;
     CREATE UNLOGGED TABLE fr.tmp_address_street_title (
         title VARCHAR NOT NULL
@@ -513,20 +458,60 @@ BEGIN
 END;
 $proc$ LANGUAGE plpgsql;
 
-SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_correction_list');
-CREATE OR REPLACE PROCEDURE fr.set_laposte_address_correction_list()
+-- build LAPOSTE municipality : list of normalized label exceptions
+SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_municipality_normalized_label_exception');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_municipality_normalized_label_exception()
 AS
 $proc$
 BEGIN
-    IF NOT table_exists('fr', 'laposte_address') THEN
+    IF NOT table_exists('fr', 'laposte_address_area') THEN
         RAISE 'Données LAPOSTE non présentes';
     END IF;
 
-    DELETE FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_CORRECTION';
-    INSERT INTO fr.constant (usecase, key, value) VALUES
-        ('LAPOSTE_ADDRESS_CORRECTION', 'TOO_SPACE', '1')
-        , ('LAPOSTE_ADDRESS_CORRECTION', 'COMPLEMENT_WITH_STREET_ERROR', '2')
-    ;
+    DELETE FROM fr.constant WHERE usecase = 'LAPOSTE_MUNICIPALITY_EXCEPTION';
+    INSERT INTO fr.constant (
+        SELECT
+            'LAPOSTE_MUNICIPALITY_EXCEPTION'
+            , t.*
+        FROM (
+            SELECT
+                co_insee_commune
+                , lb_ach_nn
+            FROM fr.laposte_address_area
+            WHERE
+                fl_active
+                AND
+                -- difference normalized label w/ delivery one : exception!
+                (
+                    (lb_nn != lb_ach_nn)
+                    OR
+                    -- w/o ST|STE : delete article(s)
+                    ((LENGTH(lb_in_ext_loc) > 32) AND (lb_in_ext_loc !~ '\mSAINT[E]?\M'))
+                )
+                AND
+                lb_l5_nn IS NULL
+
+            UNION
+
+            SELECT
+                co_insee_commune
+                , lb_ach_nn
+            FROM
+                fr.laposte_address_area
+                    JOIN fr.insee_municipality
+                        ON co_insee_commune = codgeo
+            WHERE
+                -- some municipality w/ () in its name
+                -- ex: 16052 Bors (Canton de Charente-Sud)
+                POSITION('(' IN libgeo) > 0
+
+            ORDER BY
+                1
+        ) t
+        WHERE
+            -- except municipalities w/ districts (Lyon, Marseille et Paris) and (Polynésie, Nouvelle Calédonie)
+            co_insee_commune !~ '^(98|693|751|132)'
+    );
 END;
 $proc$ LANGUAGE plpgsql;
 
@@ -686,4 +671,19 @@ BEGIN
 END;
 $proc$ LANGUAGE plpgsql;
 
-CREATE INDEX IF NOT EXISTS ix_constant_usecase_key ON fr.constant (usecase, key);
+SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_correction_list');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_address_correction_list()
+AS
+$proc$
+BEGIN
+    IF NOT table_exists('fr', 'laposte_address') THEN
+        RAISE 'Données LAPOSTE non présentes';
+    END IF;
+
+    DELETE FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_CORRECTION';
+    INSERT INTO fr.constant (usecase, key, value) VALUES
+        ('LAPOSTE_ADDRESS_CORRECTION', 'TOO_SPACE', '1')
+        , ('LAPOSTE_ADDRESS_CORRECTION', 'COMPLEMENT_WITH_STREET_ERROR', '2')
+    ;
+END;
+$proc$ LANGUAGE plpgsql;
