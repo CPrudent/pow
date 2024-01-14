@@ -117,6 +117,9 @@ BEGIN
             AND
             -- not article!
             NOT fr.is_normalized_article(mots.mot)
+            AND
+            -- fault!
+            NOT mots.mot = ANY('{GAY}')
     );
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Prénoms: ', _nrows));
@@ -173,8 +176,9 @@ DECLARE
     _descriptors_normalized TEXT[];
     _abbr_i INT;
 BEGIN
-    IF NOT table_exists('fr', 'laposte_address_street') THEN
-        RAISE 'Données LAPOSTE non présentes';
+    IF NOT table_exists('fr', 'laposte_address_street_uniq')
+        AND NOT table_exists('fr', 'laposte_address_street_word') THEN
+        RAISE 'Données LAPOSTE non suffisantes';
     END IF;
 
     DROP TABLE IF EXISTS fr.tmp_address_street_title;
@@ -361,11 +365,9 @@ BEGIN
             , count_words(name) n_words
         FROM fr.laposte_address_street_keyword
         WHERE "group" = 'TITLE'
-        --AND name ~ '^VILLE'
         AND occurs = 1
         -- #338
         AND count_words(name) > 1
-        --LIMIT 1
     )
     --SELECT * FROM title_with_uniq_occur
     , split_as_word AS (
@@ -408,6 +410,31 @@ BEGIN
     DELETE FROM fr.laposte_address_street_keyword kt
         USING composed_words cw
         WHERE kt.group = 'TITLE' AND kt.name = cw.name
+        ;
+
+    WITH
+    no_title AS (
+        SELECT w.word
+        FROM
+            fr.laposte_address_street_keyword k
+                JOIN fr.laposte_address_street_word w ON k.name = w.word
+        WHERE
+            k.group = 'TITLE'
+            AND
+            -- at least 5%, others are ignored
+            (	as_title < (
+                    COALESCE(as_name, 0)
+                    + COALESCE(as_reserved, 0)
+                    + COALESCE(as_article, 0)
+                    + COALESCE(as_number, 0)
+                    + COALESCE(as_fname, 0)
+                ) * 0.05
+            )
+    )
+    --SELECT * FROM no_title ORDER BY 1
+    DELETE FROM fr.laposte_address_street_keyword kt
+        USING no_title nt
+        WHERE kt.group = 'TITLE' AND kt.name = nt.word
         ;
 
     -- update abbreviation (one-word title only)

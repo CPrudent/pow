@@ -882,6 +882,7 @@ BEGIN
             _words_d := CASE
                 WHEN _words[_i] = ANY('{D,L}') THEN 'A'
                 WHEN _words[_i] = 'M' THEN 'N'
+                WHEN _words[_i] ~ '^[DM]I$' THEN 'N'
                 ELSE 'C'
                 END
                 ;
@@ -898,11 +899,18 @@ BEGIN
                     if preceded by title then N         VATNN   PLACE DU GENERAL DE GAULLE
                     if preceded by firstname then A     VPAN    PLACE CHARLES DE GAULLE
 
-                    counter examples!
+                    counter examples
                         IMPASSE DU GENERAL DE GAULLE            VATNN
                         IMPASSE GENERAL DE GAULLE               VTAN
                         QUAI DU GENERAL CHARLES DE GAULLE       VATPNN
                         ALLEE GENERAL CHARLES DE GAULLE         VTPAN
+
+                    counter examples
+                        IMPASSE HONORE DE BALZAC
+                        RUE ANGELIQUE DU COUDRAY
+                        RUE HECTOR DE CORLAY
+                    not article (D, L), but lastname
+                        RUE ARSENE D ARSONVAL
 
                     always article!
                      */
@@ -1008,21 +1016,10 @@ BEGIN
         ) THEN
             _descriptors := REPEAT('N', LENGTH(_descriptors));
         END IF;
+
     /*
-    counter examples
-        IMPASSE HONORE DE BALZAC
-        RUE ANGELIQUE DU COUDRAY
-        RUE HECTOR DE CORLAY
+    -- not title, but lastname
 
-    -- not article (D, L), but lastname
-        RUE ARSENE D ARSONVAL
-    ELSIF _descriptors ~ 'PAN$' THEN
-        IF LENGTH(_words[ARRAY_UPPER(_words, 1) - 1]) = 1 THEN
-            _descriptors := REGEXP_REPLACE(_descriptors, 'PAN$', 'PNN');
-        END IF;
-     */
-
-    /* NOTE
     ATN
         LES PETITES BARRES
         LE GRAND MAULIEU
@@ -1031,27 +1028,8 @@ BEGIN
         LA VILLE MOUSSARD
         LA PETITE RUE
 
-    -- not title, but lastname
     ELSIF _descriptors ~ '^A*[CT]N$' THEN
         _descriptors := REGEXP_REPLACE(_descriptors, '[CT]N$', 'NN');
-     */
-    -- not number, but lastname
-    ELSIF _descriptors ~ 'CN$' THEN
-        IF _words[ARRAY_UPPER(_words, 1) - 1] = 'MI' THEN
-            _descriptors := REGEXP_REPLACE(_descriptors, 'CN$', 'NN');
-        END IF;
-    /*
-    -- not title, but lastname
-    ELSIF _descriptors ~ '^A*TN$' THEN
-        _descriptors := REGEXP_REPLACE(_descriptors, '[CT]N$', 'NN');
-     */
-
-    /*
-    -- not article, but name
-    ELSIF _descriptors ~ '^AN$' THEN
-        IF _words[1] = ANY(_not_a_if_n) THEN
-            _descriptors := REPLACE(_descriptors, 'AN', 'NN');
-        END IF;
      */
 
     --

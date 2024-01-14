@@ -81,11 +81,23 @@ DECLARE
 BEGIN
     SELECT EXISTS(
         SELECT 1
-        FROM fr.constant
+        FROM fr.constant c JOIN fr.laposte_address_street_word w ON c.key = w.word
         WHERE
-            usecase = 'LAPOSTE_STREET_FIRSTNAME'
+            c.usecase = 'LAPOSTE_STREET_FIRSTNAME'
             AND
-            key = word
+            w.word = is_normalized_firstname.word
+            AND
+            -- at least 5%, others are ignored
+            (	as_fname >= (
+                    COALESCE(as_name, 0)
+                    + COALESCE(as_reserved, 0)
+                    + COALESCE(as_article, 0)
+                    + COALESCE(as_number, 0)
+                    + COALESCE(as_title, 0)
+                    + COALESCE(as_type, 0)
+                ) * 0.05
+            )
+
     )
     INTO _is_firstname
     ;

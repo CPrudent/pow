@@ -43,10 +43,19 @@ BEGIN
     TRUNCATE TABLE fr.laposte_address_street_kw_exception;
     PERFORM public.drop_table_indexes('fr', 'laposte_address_street_kw_exception');
 
-    CALL public.log_info(' Préparation');
     DROP TABLE IF EXISTS fr.tmp_address_street_fname_occur;
-    CREATE TABLE fr.tmp_address_street_fname_occur AS
-    -- 147018
+    DROP TABLE IF EXISTS fr.tmp_address_street_fname_as_kw;
+    DROP TABLE IF EXISTS fr.tmp_address_street_fname_count;
+    DROP TABLE IF EXISTS fr.tmp_address_street_fname_default;
+
+    CALL public.log_info(' Initialisation');
+    TRUNCATE TABLE fr.laposte_address_street_kw_exception;
+    INSERT INTO fr.laposte_address_street_kw_exception(
+        keyword
+        , as_default
+        , as_except
+        , followed_by
+    )
     WITH
     split_as_word AS (
         SELECT
@@ -60,7 +69,7 @@ BEGIN
             fr.laposte_address_street_uniq s
                 INNER JOIN LATERAL UNNEST(s.words) WITH ORDINALITY AS w(word, i) ON TRUE
     )
-    , word_with_descriptor AS (
+    , word_firstname AS (
         SELECT
             name
             , word
@@ -70,9 +79,26 @@ BEGIN
             split_as_word sw
         WHERE
             EXISTS(
-                SELECT 1 FROM fr.constant
-                WHERE usecase = 'LAPOSTE_STREET_FIRSTNAME'
-                AND key = sw.word
+                SELECT 1
+                FROM fr.constant c JOIN fr.laposte_address_street_word w ON c.key = w.word
+                WHERE c.usecase = 'LAPOSTE_STREET_FIRSTNAME'
+                    AND
+                    w.word = sw.word
+                    AND
+                    (
+                        (w.as_default = 'P')
+                        OR
+                        -- at least 5%, others are ignored
+                        (	as_fname >= (
+                                COALESCE(as_name, 0)
+                                + COALESCE(as_reserved, 0)
+                                + COALESCE(as_article, 0)
+                                + COALESCE(as_number, 0)
+                                + COALESCE(as_title, 0)
+                                + COALESCE(as_type, 0)
+                            ) * 0.05
+                        )
+                    )
             )
             AND
             -- not last word (name!)
@@ -81,102 +107,12 @@ BEGIN
             -- not followed by a number
             NOT fr.is_normalized_number(words[i +1])
     )
-    SELECT * FROM word_with_descriptor WHERE descriptor != 'V'
-    ;
-    GET DIAGNOSTICS _nrows = ROW_COUNT;
-    CALL public.log_info(CONCAT(' Occurences: ', _nrows));
-
-    DROP TABLE IF EXISTS fr.tmp_address_street_fname_as_kw;
-    CREATE TABLE fr.tmp_address_street_fname_as_kw AS
-    -- #3296
-        SELECT
-            word
-            , descriptor
-            , COUNT(*) occurs
-        FROM
-            fr.tmp_address_street_fname_occur
-        GROUP BY
-            word
-            , descriptor
-        ;
-    GET DIAGNOSTICS _nrows = ROW_COUNT;
-    CALL public.log_info(CONCAT(' Groupements par (mot, descripteur): ', _nrows));
-
-    DROP TABLE IF EXISTS fr.tmp_address_street_fname_count;
-    CREATE TABLE fr.tmp_address_street_fname_count AS
-    WITH
-    -- not only one occurence, so exception
-    word_with_except AS (
-        SELECT
-            word
-        FROM
-            fr.tmp_address_street_fname_as_kw
-        GROUP BY
-            word
-        HAVING COUNT(*) > 1
-    )
-    -- #1020
-    --SELECT * FROM word_with_except ORDER BY 1
-    , word_count_by_descriptor AS (
-        SELECT
-            o.word
-            , SUM(CASE WHEN descriptor = 'N' THEN 1 ELSE 0 END) as_name
-            , SUM(CASE WHEN descriptor = 'P' THEN 1 ELSE 0 END) as_fname
-            , SUM(CASE WHEN descriptor = 'T' THEN 1 ELSE 0 END) as_title
-        FROM
-            fr.tmp_address_street_fname_occur o
-                JOIN word_with_except x ON o.word = x.word
-        GROUP BY
-            o.word
-    )
-    SELECT * FROM word_count_by_descriptor
-    ;
-    GET DIAGNOSTICS _nrows = ROW_COUNT;
-    CALL public.log_info(CONCAT(' Comptages descripteur par (mot): ', _nrows));
-
-    DROP TABLE IF EXISTS fr.tmp_address_street_fname_default;
-    CREATE TABLE fr.tmp_address_street_fname_default AS
-    WITH
-    -- not only one occurence, so exception
-    word_with_except AS (
-        SELECT
-            word
-        FROM
-            fr.tmp_address_street_fname_as_kw
-        GROUP BY
-            word
-        HAVING COUNT(*) > 1
-    )
-    , word_as_default AS (
-        SELECT
-            word
-            , CASE
-                WHEN as_name >= (as_fname + as_title) THEN 'N'
-                WHEN as_fname >= (as_name + as_title) THEN 'P'
-                WHEN as_title >= (as_name + as_fname) THEN 'T'
-                END as_default
-        FROM
-            fr.tmp_address_street_fname_count
-    )
-    -- #981
-    SELECT * FROM word_as_default
-    ;
-    GET DIAGNOSTICS _nrows = ROW_COUNT;
-    CALL public.log_info(CONCAT(' Descripteur par défaut (mot): ', _nrows));
-
-    CALL public.log_info(' Initialisation');
-    TRUNCATE TABLE fr.laposte_address_street_kw_exception;
-    INSERT INTO fr.laposte_address_street_kw_exception(
-        keyword
-        , as_default
-        , as_except
-        , followed_by
-    )
-    WITH
-    word_as_except AS (
+    -- #121887
+    --SELECT * FROM word_firstname ORDER BY 2
+    , word_exception AS (
         SELECT DISTINCT
-            o.word kw
-            , d.as_default
+            o.word
+            , w.as_default
             , o.descriptor as_except
             , CASE
                 WHEN s.nwords >= (i+3) AND fr.is_normalized_article(s.words[i+1]) AND fr.is_normalized_article(s.words[i+2]) THEN
@@ -194,23 +130,12 @@ BEGIN
                 ELSE s.words[i+1]
                 END followed_by
         FROM
-            fr.tmp_address_street_fname_occur o
+            word_firstname o
                 JOIN fr.laposte_address_street_uniq s ON o.name = s.name
-                --JOIN word_with_except x ON o.word = x.word
-                JOIN fr.tmp_address_street_fname_default d ON o.word = d.word
-                JOIN fr.tmp_address_street_fname_count c ON o.word = c.word
+                JOIN fr.laposte_address_street_word w ON o.word = w.word
         WHERE
             -- exception
-            o.descriptor != d.as_default
-            -- which exists?
-            AND
-            (
-                CASE
-                WHEN o.descriptor = 'N' THEN c.as_name
-                WHEN o.descriptor = 'P' THEN c.as_fname
-                WHEN o.descriptor = 'T' THEN c.as_title
-                END > 0
-            )
+            o.descriptor != w.as_default
             -- exclusion
             AND NOT
             (
@@ -221,8 +146,8 @@ BEGIN
                 )
             )
     )
-    -- #3382
-    SELECT * FROM word_as_except
+    -- #9233
+    SELECT * FROM word_exception
     ;
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Exceptions: ', _nrows));
@@ -235,15 +160,56 @@ BEGIN
         so delete exception T
      */
     WITH
-    word_with_except AS (
-        -- #981
+    split_as_word AS (
         SELECT
-            word
+            s.name
+            , w.word
+            , w.i::INT
+            , s.words
+            , s.descriptors
+            , s.nwords
         FROM
-            fr.tmp_address_street_fname_as_kw
-        GROUP BY
-            word
-        HAVING COUNT(*) > 1
+            fr.laposte_address_street_uniq s
+                INNER JOIN LATERAL UNNEST(s.words) WITH ORDINALITY AS w(word, i) ON TRUE
+    )
+    , word_firstname AS (
+        SELECT
+            name
+            , word
+            , i
+            , SUBSTR(descriptors, i, 1) descriptor
+        FROM
+            split_as_word sw
+        WHERE
+            --sw.word = 'JEAN' AND
+            EXISTS(
+                SELECT 1
+                FROM fr.constant c JOIN fr.laposte_address_street_word w ON c.key = w.word
+                WHERE c.usecase = 'LAPOSTE_STREET_FIRSTNAME'
+                    AND
+                    w.word = sw.word
+                    AND
+                    (
+                        (w.as_default = 'P')
+                        OR
+                        -- at least 5%, others are ignored
+                        (	as_fname >= (
+                                COALESCE(as_name, 0)
+                                + COALESCE(as_reserved, 0)
+                                + COALESCE(as_article, 0)
+                                + COALESCE(as_number, 0)
+                                + COALESCE(as_title, 0)
+                                + COALESCE(as_type, 0)
+                            ) * 0.05
+                        )
+                    )
+            )
+            AND
+            -- not last word (name!)
+            i < nwords
+            AND
+            -- not followed by a number
+            NOT fr.is_normalized_number(words[i +1])
     )
     , word_usecase AS (
         SELECT
@@ -252,9 +218,8 @@ BEGIN
             , SUBSTR(s.descriptors, o.i, 1) as_usecase
             , x.as_except
         FROM
-            fr.tmp_address_street_fname_occur o
+            word_firstname o
                 JOIN fr.laposte_address_street_uniq s ON o.name = s.name
-                JOIN word_with_except wx ON o.word = wx.word
                 JOIN fr.laposte_address_street_kw_exception x ON o.word = x.keyword
         WHERE
             s.words[i] = x.keyword
@@ -284,7 +249,7 @@ BEGIN
         WHERE
             ko_except > ok_except
     )
-    -- #213
+    -- #193
     --SELECT * FROM not_exception ORDER BY 1, 4
     DELETE FROM fr.laposte_address_street_kw_exception x
     USING not_exception nx
