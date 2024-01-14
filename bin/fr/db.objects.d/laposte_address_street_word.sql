@@ -82,8 +82,11 @@ BEGIN
             , SUM(CASE WHEN descriptor = 'V' THEN 1 ELSE 0 END) as_type
         FROM
             split_as_word
-        /*
+
         WHERE
+            -- to exlude row created w/ empty word
+            LENGTH(word) > 0
+        /*
             -- not last word (name!)
             i < nwords
          */
@@ -97,13 +100,13 @@ BEGIN
 
     UPDATE fr.laposte_address_street_word SET
         as_default = CASE
-            WHEN as_name > GREATEST(as_reserved, as_article, as_number, as_fname, as_title, as_type) THEN 'N'
             WHEN as_reserved >= GREATEST(as_name, as_article, as_number, as_fname, as_title, as_type) THEN 'E'
             WHEN as_article >= GREATEST(as_name, as_reserved, as_number, as_fname, as_title, as_type) THEN 'A'
             WHEN as_number >= GREATEST(as_name, as_reserved, as_article, as_fname, as_title, as_type) THEN 'C'
             WHEN as_fname >= GREATEST(as_name, as_reserved, as_article, as_number, as_title, as_type) THEN 'P'
             WHEN as_title >= GREATEST(as_name, as_reserved, as_article, as_number, as_fname, as_type) THEN 'T'
             WHEN as_type > GREATEST(as_name, as_reserved, as_article, as_number, as_fname, as_title) THEN 'V'
+            ELSE 'N'
             END
         ;
     GET DIAGNOSTICS _nrows = ROW_COUNT;
