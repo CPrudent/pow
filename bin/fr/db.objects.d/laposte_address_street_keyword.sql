@@ -18,6 +18,7 @@ CREATE OR REPLACE FUNCTION fr.get_keyword_of_street(
     , group_ IN VARCHAR DEFAULT NULL
     , at_ IN INT DEFAULT 1
     , words IN TEXT[] DEFAULT NULL
+    , with_abbreviation IN BOOLEAN DEFAULT TRUE
     , kw_group OUT VARCHAR
     , kw OUT VARCHAR
     , kw_abbreviated OUT VARCHAR
@@ -46,30 +47,31 @@ BEGIN
 
     --RAISE NOTICE 'name=% word1=%', name, _word;
 
-    SELECT *
-    INTO _kw
-    FROM fr.laposte_address_street_keyword k
-    WHERE k.name_abbreviated = _word
-    AND k.group = group_
-    ORDER BY k.occurs DESC
-    LIMIT 1;
-    IF FOUND THEN
-        --RAISE NOTICE 'kw=%', _kw;
-        IF _kw.name != _kw.name_abbreviated THEN
-            kw := _kw.name;
-            kw_abbreviated := _kw.name_abbreviated;
-            kw_is_abbreviated := TRUE;
-            kw_nwords := count_words(_kw.name);
-            RETURN;
+    IF with_abbreviation THEN
+        SELECT *
+        INTO _kw
+        FROM fr.laposte_address_street_keyword k
+        WHERE k.name_abbreviated = _word
+        AND k.group = group_
+        ORDER BY k.occurs DESC
+        LIMIT 1;
+        IF FOUND THEN
+            --RAISE NOTICE 'kw=%', _kw;
+            IF _kw.name != _kw.name_abbreviated THEN
+                kw := _kw.name;
+                kw_abbreviated := _kw.name_abbreviated;
+                kw_is_abbreviated := TRUE;
+                kw_nwords := count_words(_kw.name);
+                RETURN;
+            END IF;
         END IF;
-    ELSE
-        SELECT EXISTS(
-            SELECT 1 FROM fr.laposte_address_street_keyword k
-            WHERE COALESCE(k.first_word, k.name) = _word
-            AND k.group = group_
-        ) INTO _exists;
     END IF;
 
+    SELECT EXISTS(
+        SELECT 1 FROM fr.laposte_address_street_keyword k
+        WHERE COALESCE(k.first_word, k.name) = _word
+        AND k.group = group_
+    ) INTO _exists;
     _begin :=
         CASE WHEN group_ = 'TYPE' AND at_ = 1 THEN NULL
         ELSE items_of_array_to_string(
@@ -132,6 +134,7 @@ CREATE OR REPLACE FUNCTION fr.get_keyword_of_street(
     , groups IN VARCHAR[]
     , at_ IN INT DEFAULT 1
     , words IN TEXT[] DEFAULT NULL
+    , with_abbreviation IN BOOLEAN DEFAULT TRUE
     , kw_group OUT VARCHAR
     , kw OUT VARCHAR
     , kw_abbreviated OUT VARCHAR
@@ -163,9 +166,10 @@ BEGIN
             , get_keyword_of_street.kw_nwords
         FROM fr.get_keyword_of_street(
             name => name
+            , group_ => groups[_i]
             , at_ => at_
             , words => words
-            , group_ => groups[_i]
+            , with_abbreviation => with_abbreviation
         ) ks
         ;
 

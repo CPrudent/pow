@@ -686,6 +686,7 @@ $func$ LANGUAGE plpgsql;
 SELECT drop_all_functions_if_exists('fr', 'get_type_of_street');
 CREATE OR REPLACE FUNCTION fr.get_type_of_street(
     name IN VARCHAR                   -- name of street
+    , with_abbreviation IN BOOLEAN DEFAULT FALSE
     , kw_group OUT VARCHAR
     , kw OUT VARCHAR
     , kw_abbreviated OUT VARCHAR
@@ -705,6 +706,7 @@ BEGIN
     FROM fr.get_keyword_of_street(
         name => name
         , group_ => 'TYPE'
+        , with_abbreviation => with_abbreviation
     ) ks
     ;
 END
@@ -925,6 +927,7 @@ BEGIN
                         , groups => CASE WHEN _i = 1 THEN ARRAY['TYPE','TITLE','EXT']::VARCHAR[]
                                     ELSE ARRAY['TITLE','EXT','TYPE']::VARCHAR[]
                                     END
+                        , with_abbreviation => FALSE
                     );
 
                     IF _i = 1 AND _kw_group = 'TYPE' AND _kw IS NOT NULL THEN
