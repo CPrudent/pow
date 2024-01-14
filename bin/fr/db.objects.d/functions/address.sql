@@ -889,12 +889,11 @@ BEGIN
             _words_d := 'N';
             IF _i < _words_len THEN
                 _with_exception := FALSE;
-                /* NOTE
-                see WIKIPEDIA, not a name!
-                https://fr.wikipedia.org/wiki/Particule_(onomastique)#:~:text=La%20particule%20est%20une%20pr%C3%A9position,du%20%C2%BB%20ou%20%C2%AB%20des%20%C2%BB.
-                 */
                 IF fr.is_normalized_article(_words[_i]) THEN
-                    /* RULE
+                    /* NOTE
+                    see WIKIPEDIA, not a name!
+                    https://fr.wikipedia.org/wiki/Particule_(onomastique)#:~:text=La%20particule%20est%20une%20pr%C3%A9position,du%20%C2%BB%20ou%20%C2%AB%20des%20%C2%BB.
+
                     DE GAULLE
                     if preceded by title then N         VATNN   PLACE DU GENERAL DE GAULLE
                     if preceded by firstname then A     VPAN    PLACE CHARLES DE GAULLE
@@ -902,9 +901,10 @@ BEGIN
                     counter examples!
                         IMPASSE DU GENERAL DE GAULLE            VATNN
                         IMPASSE GENERAL DE GAULLE               VTAN
-
                         QUAI DU GENERAL CHARLES DE GAULLE       VATPNN
                         ALLEE GENERAL CHARLES DE GAULLE         VTPAN
+
+                    always article!
                      */
                     _words_d := 'A';
                 ELSE
