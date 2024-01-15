@@ -5,7 +5,6 @@
 -- POW
 \include_relative ./functions/geometry.sql
 \include_relative ./functions/address.sql
-\include_relative ./functions/address_normalize.sql
 
 -- IO
 \include_relative io.sql
@@ -48,5 +47,6 @@
 \include_relative territory_geometry.sql
 \include_relative territory.sql
 \include_relative address.sql
+\include_relative ./functions/address_normalize.sql
 \include_relative address_match_request.sql
 \include_relative address_match_normalize.sql

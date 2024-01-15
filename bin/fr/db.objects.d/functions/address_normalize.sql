@@ -17,7 +17,7 @@ LAPOSTE descriptor items
 SELECT public.drop_all_functions_if_exists('fr', 'is_normalized_number');
 CREATE OR REPLACE FUNCTION fr.is_normalized_number(
     word VARCHAR
-    , only_digit VARCHAR DEFAULT 'ALL'   -- ARABIC | DATE | ROMAN
+    , only_digit VARCHAR DEFAULT 'ALL'   -- ARABIC|DATE|HOUSENUMBER|ROAD_NETWORK|ROMAN
 )
 RETURNS BOOLEAN AS
 $func$
@@ -25,9 +25,10 @@ DECLARE
     _is_number BOOLEAN;
     _only VARCHAR[];
     _i INT;
+    _re VARCHAR;
 BEGIN
     IF only_digit = 'ALL' THEN
-        _only := '{ARABIC,DATE,ROMAN}'::VARCHAR[];
+        _only := '{ARABIC,DATE,HOUSENUMBER,ROAD_NETWORK,ROMAN}'::VARCHAR[];
     ELSE
         _only := STRING_TO_ARRAY(only_digit, ',');
     END IF;
@@ -37,10 +38,37 @@ BEGIN
 
     FOR _i IN 1 .. ARRAY_LENGTH(_only, 1)
     LOOP
+        IF UPPER(_only[_i]) = 'HOUSENUMBER' THEN
+            SELECT
+                ARRAY_TO_STRING(
+                    ARRAY_AGG(name ORDER BY CASE
+                        -- A .. Z
+                        WHEN LENGTH(name) = 1   THEN ASCII(name) - ASCII('A') + 1
+                        -- EXT before LETTER (BIS before B)
+                        WHEN name = 'BIS'       THEN 2 - .1
+                        WHEN name = 'TER'       THEN 3 - .1
+                        WHEN name = 'QUATER'    THEN 4 - .1
+                        WHEN name = 'QUINQUIES' THEN 5 - .1
+                        WHEN name = 'SEXTO'     THEN 6 - .1
+                        END
+                    )
+                    , '|'
+                )
+            INTO
+                _re
+            FROM
+                fr.laposte_address_street_keyword
+            WHERE
+                "group" = 'EXT'
+                ;
+        END IF;
+
         _is_number := CASE
             WHEN UPPER(_only[_i]) = 'ARABIC' THEN (word ~ '^[0-9]+$')
             WHEN UPPER(_only[_i]) = 'DATE' THEN (word ~ '^1(ER)?|[2-9][0-9]*I?(E|EME)?$')
+            WHEN UPPER(_only[_i]) = 'HOUSENUMBER' THEN (word ~ CONCAT('^[0-9]+(', _re, ')$'))
             WHEN UPPER(_only[_i]) = 'ROMAN' THEN (word ~ '^M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$')
+            WHEN UPPER(_only[_i]) = 'ROAD_NETWORK' THEN (word ~ '^(A|B|CD|CR|D|N|V|GR|R|RD|RN|VC)[0-9]+$')
         END IF;
         IF _is_number THEN
             RETURN TRUE;

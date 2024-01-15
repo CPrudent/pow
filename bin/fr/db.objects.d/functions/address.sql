@@ -883,7 +883,8 @@ BEGIN
             _words_d := CASE
                 WHEN _words[_i] = ANY('{D,L}') THEN 'A'
                 WHEN _words[_i] = ANY('{C,M}') THEN 'N'
-                WHEN _words[_i] ~ '^[DLM]I$' THEN 'N'
+                -- exceptions: DI, LI, MI, CD, CL, ...
+                WHEN _words[_i] ~ '^[DLM]I|C[DL]|LIV|CIX$' THEN 'N'
                 ELSE 'C'
                 END
                 ;
@@ -916,11 +917,40 @@ BEGIN
                     always article!
                      */
 
-                    -- exception for A# (as highway)
-                    IF _words[_i] = 'A' AND fr.is_normalized_number(
+                    /* NOTE
+                    article as 1st word
+
+                    A: 660 A, 1 N
+                    AU: 545 A, 2 N
+                    AUX: 239 A, 2 N
+                    D: 12 A, 5 N
+                    DE: 35 A
+                    DES: 8 A
+                    DU: 15 A
+                    EN: 947 A
+                    ET: NULL
+                    L: 4059 A, 1 P
+                    LA: 40814 A, 2 P, 2 N
+                    LE: 34358 A, 2 N
+                    LES: 20044 A, 8 P, 1 N
+                    SOUS: 242 A, 1 N
+                    SUR: 115 A, 64 N
+                    UN: NULL
+                    UNE: 1 A
+
+                    always article!
+                     */
+
+                    /* NOTE
+                    exception for road as (A|D|N)# : highway, departmental, national
+                    at end of name only, else counter examples
+                        LA ROCHE A 7 HEURES
+                        LA PLANCHE A 4 PIEDS
+                     */
+                    IF _words[_i] ~ '^A|D|N$' AND fr.is_normalized_number(
                         word => _words[_i +1]
                         , only_digit => 'ARABIC'
-                    ) THEN
+                    ) AND _words_len = (_i +1) THEN
                         _words_d := 'N';
                     ELSE
                         _words_d := 'A';
@@ -961,6 +991,7 @@ BEGIN
                     END IF;
                 END IF;
 
+                -- apply exception(s) if exist
                 IF _with_exception THEN
                     SELECT is_exception, descriptor
                     INTO _is_exception, _exception
@@ -986,9 +1017,11 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- fix others
+    -- fix bad uses
+    IF _descriptors !~ '[CEN]$' THEN
+        _descriptors := REGEXP_REPLACE(_descriptors, '.$', 'N');
     -- not type only (eventually followed by number), but name
-    IF _descriptors ~ '^V+C*$' THEN
+    ELSIF _descriptors ~ '^V+C*$' THEN
         _descriptors := REPLACE(_descriptors, 'V', 'N');
     -- not type, but name
     ELSIF _descriptors ~ '^V+N*$' THEN

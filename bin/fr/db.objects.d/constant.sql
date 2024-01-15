@@ -119,7 +119,7 @@ BEGIN
             NOT fr.is_normalized_article(mots.mot)
             AND
             -- fault!
-            NOT mots.mot = ANY('{GAY}')
+            NOT mots.mot = ANY('{GAY,FLEUR}')
     );
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Prénoms: ', _nrows));
