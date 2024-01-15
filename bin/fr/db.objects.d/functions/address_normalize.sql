@@ -17,20 +17,37 @@ LAPOSTE descriptor items
 SELECT public.drop_all_functions_if_exists('fr', 'is_normalized_number');
 CREATE OR REPLACE FUNCTION fr.is_normalized_number(
     word VARCHAR
+    , only_digit VARCHAR DEFAULT 'ALL'   -- ARABIC | DATE | ROMAN
 )
 RETURNS BOOLEAN AS
 $func$
 DECLARE
-    _is_number BOOLEAN := FALSE;
+    _is_number BOOLEAN;
+    _only VARCHAR[];
+    _i INT;
 BEGIN
+    IF only_digit = 'ALL' THEN
+        _only := '{ARABIC,DATE,ROMAN}'::VARCHAR[];
+    ELSE
+        _only := STRING_TO_ARRAY(only_digit, ',');
+    END IF;
+
     -- roman number
     -- https://www.geeksforgeeks.org/validating-roman-numerals-using-regular-expression/
-    IF word ~ '^1(ER)?|[2-9][0-9]*(E|EME)?$'
-        OR
-        word ~ '^M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$' THEN
-        _is_number := TRUE;
-    END IF;
-    RETURN _is_number;
+
+    FOR _i IN 1 .. ARRAY_LENGTH(_only, 1)
+    LOOP
+        _is_number := CASE
+            WHEN UPPER(_only[_i]) = 'ARABIC' THEN (word ~ '^[0-9]+$')
+            WHEN UPPER(_only[_i]) = 'DATE' THEN (word ~ '^1(ER)?|[2-9][0-9]*I?(E|EME)?$')
+            WHEN UPPER(_only[_i]) = 'ROMAN' THEN (word ~ '^M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$')
+        END IF;
+        IF _is_number THEN
+            RETURN TRUE;
+        END IF;
+    END LOOP;
+
+    RETURN FALSE;
 END
 $func$ LANGUAGE plpgsql;
 

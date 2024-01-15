@@ -852,7 +852,6 @@ DECLARE
     _kw_abbreviated VARCHAR;
     _kw_is_abbreviated BOOLEAN;
     _kw_nwords INT;
-    --_kw_tmp VARCHAR;
     _descriptors VARCHAR := '';
     _words TEXT[];
     _words_len INT;
@@ -883,8 +882,8 @@ BEGIN
         IF fr.is_normalized_number(_words[_i]) THEN
             _words_d := CASE
                 WHEN _words[_i] = ANY('{D,L}') THEN 'A'
-                WHEN _words[_i] = 'M' THEN 'N'
-                WHEN _words[_i] ~ '^[DM]I$' THEN 'N'
+                WHEN _words[_i] = ANY('{C,M}') THEN 'N'
+                WHEN _words[_i] ~ '^[DLM]I$' THEN 'N'
                 ELSE 'C'
                 END
                 ;
@@ -916,7 +915,16 @@ BEGIN
 
                     always article!
                      */
-                    _words_d := 'A';
+
+                    -- exception for A# (as highway)
+                    IF _words[_i] = 'A' AND fr.is_normalized_number(
+                        word => _words[_i +1]
+                        , only_digit => 'ARABIC'
+                    ) THEN
+                        _words_d := 'N';
+                    ELSE
+                        _words_d := 'A';
+                    END IF;
                 ELSE
                     SELECT kw_group, kw, kw_is_abbreviated, kw_nwords
                     INTO _kw_group, _kw, _kw_is_abbreviated, _kw_nwords
@@ -933,23 +941,8 @@ BEGIN
                     IF _i = 1 AND _kw_group = 'TYPE' AND _kw IS NOT NULL THEN
                         _words_d := REPEAT('V', _kw_nwords);
                     ELSIF _kw IS NOT NULL THEN
-                        /*
-                        _kw_tmp := 'T';
-                        IF (_i + _kw_nwords) = (_words_len -1) THEN
-                            _kw_tmp := 'N';
-                        END IF;
-                        */
                         _words_d := REPEAT('T', _kw_nwords);
                     ELSE
-                        /*
-                        -- not if previous is (article|number)
-                        -- counter examples
-                        -- APN: LA MARIE GABRIELLE
-                        RAISE NOTICE ' last= %', RIGHT(_descriptors, 1);
-                        IF _i > 1 AND RIGHT(_descriptors, 1) = ANY('{A,C}') THEN
-                            _words_d := 'N';
-                        ELSE
-                         */
                         IF fr.is_normalized_firstname(_words[_i]) THEN
                             _words_d := 'P';
                         END IF;
@@ -986,19 +979,6 @@ BEGIN
             END IF;
         END IF;
 
-        -- fix bad uses
-        -- 'LA METAIRIE D EN HAUT' not roman number D, but article
-        IF _i > 1
-            AND _words_d = ANY('{A,N}')
-            AND LEFT(_words[_i], 1) = ANY('{A,E,I,O,U,Y}')
-            AND RIGHT(_descriptors, 1) = 'C'
-            AND _words[_i -1] = ANY('{D,L}') THEN
-            _descriptors := CONCAT(
-                SUBSTR(_descriptors, 1, LENGTH(_descriptors) - 1)
-                , 'A'
-            );
-        END IF;
-
         _descriptors := CONCAT(_descriptors, _words_d);
         _words_skip := _i;
         IF _kw_nwords > 1 THEN
@@ -1007,10 +987,10 @@ BEGIN
     END LOOP;
 
     -- fix others
-    -- not type only (eventually followed by number)
+    -- not type only (eventually followed by number), but name
     IF _descriptors ~ '^V+C*$' THEN
         _descriptors := REPLACE(_descriptors, 'V', 'N');
-    -- not type, but lastname
+    -- not type, but name
     ELSIF _descriptors ~ '^V+N*$' THEN
         IF EXISTS(
             SELECT 1 FROM fr.laposte_address_street_keyword k
@@ -1019,22 +999,6 @@ BEGIN
         ) THEN
             _descriptors := REPEAT('N', LENGTH(_descriptors));
         END IF;
-
-    /*
-    -- not title, but lastname
-
-    ATN
-        LES PETITES BARRES
-        LE GRAND MAULIEU
-        LE VAL HAMON
-    ANN
-        LA VILLE MOUSSARD
-        LA PETITE RUE
-
-    ELSIF _descriptors ~ '^A*[CT]N$' THEN
-        _descriptors := REGEXP_REPLACE(_descriptors, '[CT]N$', 'NN');
-     */
-
     --
     ELSIF _descriptors ~ '^V[PT]C$' THEN
         _descriptors := REGEXP_REPLACE(_descriptors, '^V[PT]C$', 'VNC');
