@@ -968,10 +968,18 @@ BEGIN
                         , with_abbreviation => FALSE
                     );
 
-                    IF _i = 1 AND _kw_group = 'TYPE' AND _kw IS NOT NULL THEN
-                        _words_d := REPEAT('V', _kw_nwords);
-                    ELSIF _kw IS NOT NULL THEN
-                        _words_d := REPEAT('T', _kw_nwords);
+                    IF _kw IS NOT NULL THEN
+                        _words_d := REPEAT(
+                            CASE
+                            -- up to last word, as name
+                            WHEN (_i + _kw_nwords -1) = _words_len THEN 'N'
+                            -- type
+                            WHEN _i = 1 AND _kw_group = 'TYPE' THEN 'V'
+                            -- title
+                            ELSE 'T'
+                            END
+                            , _kw_nwords
+                        );
                     ELSE
                         IF fr.is_normalized_firstname(_words[_i]) THEN
                             _words_d := 'P';

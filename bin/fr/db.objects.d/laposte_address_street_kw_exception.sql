@@ -154,7 +154,7 @@ BEGIN
 
     /* NOTE
     due to two-possibilities (as descriptor) for a word, as N or P
-    choice is delete these exceptions in the case where occurs are greater for other case
+    choice is to delete these exceptions in the case where occurs are greater than normal
     example:
         (ABBE, default as N, followed_by JEAN) has 2 occurs (as exception T), but 30 (as N)
         so delete exception T
@@ -247,7 +247,7 @@ BEGIN
             fr.laposte_address_street_kw_exception x
                 JOIN count_usecase cu ON (x.keyword, x.followed_by) = (cu.word, cu.followed_by)
         WHERE
-            ko_except > ok_except
+            COALESCE(ko_except, 0) > COALESCE(ok_except, 0)
     )
     -- #193
     --SELECT * FROM not_exception ORDER BY 1, 4

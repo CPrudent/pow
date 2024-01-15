@@ -91,7 +91,7 @@ BEGIN
             AND k.group = group_
             -- exclude one-char EXT keywords (A..Z)
             AND (
-                ((group_ = 'EXT') AND (LENGTH(_word) > 1))
+                ((group_ = 'EXT') AND (LENGTH(k.name) > 1))
                 OR
                 (group_ != 'EXT')
             )
@@ -99,11 +99,13 @@ BEGIN
             ORDER BY count_words(k.name) DESC
         )
         LOOP
-            IF (
+            IF (name ~ CONCAT('^', _begin, _kw.name)
+                /*
                 (name = _kw.name)
                 OR
                 -- not last word!
                 (name ~ CONCAT('^', _begin, _kw.name, ' +'))
+                 */
             ) THEN
                 _found := TRUE;
                 EXIT;
