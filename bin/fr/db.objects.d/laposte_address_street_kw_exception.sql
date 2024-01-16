@@ -102,7 +102,7 @@ BEGIN
             )
             AND
             -- not last word (name!)
-            i < nwords
+            i < (nwords -1)
             AND
             -- not followed by a number
             NOT fr.is_normalized_number(words[i +1])
