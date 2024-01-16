@@ -264,6 +264,7 @@ ORDER BY
 SELECT public.drop_all_functions_if_exists('fr', 'normalize_street_name');
 CREATE OR REPLACE FUNCTION fr.normalize_street_name(
     name VARCHAR
+    , raise_notice IN BOOLEAN DEFAULT FALSE
 )
 RETURNS CHARACTER VARYING AS
 $func$
@@ -330,7 +331,7 @@ BEGIN
         RETURN _name;
     END IF;
 
-    RAISE NOTICE 'name=% len=%', _name, _len;
+    IF raise_notice THEN RAISE NOTICE 'name=% len=%', _name, _len; END IF;
     _words := REGEXP_SPLIT_TO_ARRAY(_name, '\s+');
     _words_len := ARRAY_LENGTH(_words, 1);
     -- dynamic steps!
@@ -358,7 +359,7 @@ BEGIN
         _words_rebuild := FALSE;
 
         IF NOT _steps_done[_step_i] THEN
-            RAISE NOTICE 'step: %', _steps[_step_i];
+            IF raise_notice THEN RAISE NOTICE 'step: %', _steps[_step_i]; END IF;
 
             -- abbreviate title(s), if not type (of street!)
             IF _steps[_step_i] = _ABBR_TITLE THEN
@@ -368,9 +369,9 @@ BEGIN
                     -- TODO include types of street (into name, not at beginning)
                     IF _words[_i] = ANY(_titles) THEN
                         _titles_i := ARRAY_POSITION(_titles, _words[_i]);
-                        RAISE NOTICE ' title=% i=% titles_i=% (_titles_abbr=%)', _words[_i], _i, _titles_i, _titles_abbr[_titles_i];
+                        IF raise_notice THEN RAISE NOTICE ' title=% i=% titles_i=% (_titles_abbr=%)', _words[_i], _i, _titles_i, _titles_abbr[_titles_i]; END IF;
                         _titles_diff := LENGTH(_words[_i]) - LENGTH(_titles_abbr[_titles_i]);
-                        RAISE NOTICE ' titles_diff=% (type_diff=%)', _titles_diff, _type_diff;
+                        IF raise_notice THEN RAISE NOTICE ' titles_diff=% (type_diff=%)', _titles_diff, _type_diff; END IF;
 
                         /*
                         IF (NOT _steps_done[_ABBR_TYPE] AND (_titles_diff >= COALESCE(_type_diff, 0))) OR _steps_done[_ABBR_TYPE] THEN
@@ -382,12 +383,12 @@ BEGIN
                                     , to_ => _i
                                 )
                             );
-                            RAISE NOTICE ' types_i=%', _types_i;
+                            IF raise_notice THEN RAISE NOTICE ' types_i=%', _types_i; END IF;
                             -- replace title if not type too
                             IF COALESCE(_types_i, 0) = 0  AND _titles_i > 0 THEN
                                 _found := TRUE;
                                 _words_i := _i;
-                                RAISE NOTICE ' title (at %) replaced', _words_i;
+                                IF raise_notice THEN RAISE NOTICE ' title (at %) replaced', _words_i; END IF;
                                 EXIT;
                             END IF;
                         /*
@@ -398,7 +399,7 @@ BEGIN
                 IF _found THEN
                     _len := _len - _titles_diff;
                     _words[_words_i] := _titles_abbr[_titles_i];
-                    RAISE NOTICE ' words=% len=%', _words, _len;
+                    IF raise_notice THEN RAISE NOTICE ' words=% len=%', _words, _len; END IF;
                     _name_rebuild := TRUE;
                     _step_change := FALSE;
                 END IF;
@@ -408,7 +409,7 @@ BEGIN
                 IF NOT _type_is_abbreviated AND _type_abbreviated IS NOT NULL THEN
                     _name := CONCAT(_type_abbreviated, SUBSTR(_name, LENGTH(_type) +1));
                     _len := LENGTH(_name);
-                    RAISE NOTICE ' name=% len=%', _name, _len;
+                    IF raise_notice THEN RAISE NOTICE ' name=% len=%', _name, _len; END IF;
                     _words_rebuild := TRUE;
                 END IF;
 
@@ -416,7 +417,7 @@ BEGIN
             ELSIF _steps[_step_i] = _ABBR_HOLY THEN
                 _name := fr.normalize_abbreviate_holy(_name);
                 _len := LENGTH(_name);
-                RAISE NOTICE ' name=% len=%', _name, _len;
+                IF raise_notice THEN RAISE NOTICE ' name=% len=%', _name, _len; END IF;
                 _words_rebuild := TRUE;
 
             -- abbreviate firstname
@@ -426,24 +427,24 @@ BEGIN
                 -- firstname can't be last word!
                 FOR _i IN _words_i .. _words_len -1
                 LOOP
-                    RAISE NOTICE ' search firstname : %', _words[_i];
+                    IF raise_notice THEN RAISE NOTICE ' search firstname : %', _words[_i]; END IF;
                     _found := fr.is_normalized_firstname(_words[_i]);
                     IF _found THEN
                         _words_i := _i;
-                        RAISE NOTICE ' firstname (at %)', _words_i;
+                        IF raise_notice THEN RAISE NOTICE ' firstname (at %)', _words_i; END IF;
                         EXIT;
                     END IF;
                 END LOOP;
                 IF _found THEN
                     _len := _len - LENGTH(_words[_words_i]) +1;                    _words[_words_i] := SUBSTR(_words[_words_i], 1, 1);
-                    RAISE NOTICE ' words=% len=%', _words, _len;
+                    IF raise_notice THEN RAISE NOTICE ' words=% len=%', _words, _len; END IF;
                     _name_rebuild := TRUE;
                     _step_change := FALSE;
                 END IF;
 
             -- delete _article(s)
             ELSIF _steps[_step_i] = _DELETE_ARTICLE THEN
-                RAISE NOTICE ' words=% len=%', _words, _len;
+                IF raise_notice THEN RAISE NOTICE ' words=% len=%', _words, _len; END IF;
                 IF _words_i = 0 THEN
                     _words_i := 1;
                     _name_tmp := _name;
@@ -455,13 +456,13 @@ BEGIN
                         _name := CONCAT(_name, ' ', _words[_i]);
                     END LOOP;
                 END IF;
-                RAISE NOTICE ' search article from : %', _words_i;
+                IF raise_notice THEN RAISE NOTICE ' search article from : %', _words_i; END IF;
 
                 FOR _i IN _words_i .. _words_len
                 LOOP
                     _found := fr.is_normalized_article(_words[_i]);
                     IF _found THEN
-                        RAISE NOTICE ' article=% i=%', _words[_i], _i;
+                        IF raise_notice THEN RAISE NOTICE ' article=% i=%', _words[_i], _i; END IF;
                         _words_i := _i;
                         EXIT;
                     ELSE
@@ -478,16 +479,16 @@ BEGIN
                     -- https://dba.stackexchange.com/questions/94639/delete-array-element-by-index
                     _words := _words[:_words_i-1] || _words[_words_i+1:];
                     _words_len := _words_len -1;
-                    RAISE NOTICE ' name=%', _name;
+                    IF raise_notice THEN RAISE NOTICE ' name=%', _name; END IF;
                     FOR _j IN _words_i .. _words_len
                     LOOP
                         _name := CONCAT(_name, ' ', _words[_j]);
-                        RAISE NOTICE ' name=%', _name;
+                        IF raise_notice THEN RAISE NOTICE ' name=%', _name; END IF;
                     END LOOP;
                 END IF;
 
                 _len := LENGTH(_name);
-                RAISE NOTICE ' words=% len=%', _words, _len;
+                IF raise_notice THEN RAISE NOTICE ' words=% len=%', _words, _len; END IF;
             END IF;
         END IF;
 

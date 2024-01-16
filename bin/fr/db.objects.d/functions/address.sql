@@ -238,6 +238,7 @@ CREATE OR REPLACE FUNCTION fr.split_name_of_street_as_descriptor(
     , descriptor IN VARCHAR
     , is_normalized IN BOOLEAN DEFAULT FALSE
     , split_only IN VARCHAR DEFAULT NULL        -- specific descriptor: A,C,E,N,P,T,V
+    , raise_notice IN BOOLEAN DEFAULT FALSE
     , words OUT TEXT[]
     , descriptors OUT TEXT[]
 )
@@ -322,7 +323,7 @@ BEGIN
      */
 
     _n := ARRAY_LENGTH(_words, 1);
-    RAISE NOTICE '#d=%, #w=%', _descriptor_len, _n;
+    IF raise_notice THEN RAISE NOTICE '#d=%, #w=%', _descriptor_len, _n; END IF;
     FOR _i IN 1 .. _n
     LOOP
         _k := (_i + _offset -1);
@@ -330,11 +331,11 @@ BEGIN
             EXIT;
         END IF;
         IF (_i = _n) AND (_k < _descriptor_len) THEN
-            RAISE NOTICE ' ajustement k=% len=%', _k, _descriptor_len;
+            IF raise_notice THEN RAISE NOTICE ' ajustement k=% len=%', _k, _descriptor_len; END IF;
             _k := _descriptor_len;
         END IF;
         _descriptor := SUBSTR(descriptor, _k, 1);
-        RAISE NOTICE '(i=% ofs=% k=%): d=% (pd=%), w=%', _i, _offset, _k, _descriptor, _descriptor_prev, _words[_i];
+        IF raise_notice THEN RAISE NOTICE '(i=% ofs=% k=%): d=% (pd=%), w=%', _i, _offset, _k, _descriptor, _descriptor_prev, _words[_i]; END IF;
 
         -- article
         IF (is_normalized
@@ -386,7 +387,7 @@ BEGIN
                     WHEN (NOT fr.is_normalized_article(_words[_i])) THEN 2
                     ELSE 0
                     END;
-                RAISE NOTICE ' usecase article=%', _usecase_article;
+                IF raise_notice THEN RAISE NOTICE ' usecase article=%', _usecase_article; END IF;
 
                 -- as such number of words
                 IF _usecase_article = ANY('{1}') THEN
@@ -409,11 +410,13 @@ BEGIN
                         _offset := _offset + 1;
                     END IF;
 
-                    RAISE NOTICE ' remainder=%', _descriptor_remainder;
-                    RAISE NOTICE ' only_a=%', _descriptor_only_a;
-                    RAISE NOTICE ' wo_a=%', _descriptor_wo_a;
-                    RAISE NOTICE ' start_a=%', _descriptor_start_a;
-                    RAISE NOTICE ' offset=%', _offset;
+                    IF raise_notice THEN
+                        RAISE NOTICE ' remainder=%', _descriptor_remainder;
+                        RAISE NOTICE ' only_a=%', _descriptor_only_a;
+                        RAISE NOTICE ' wo_a=%', _descriptor_wo_a;
+                        RAISE NOTICE ' start_a=%', _descriptor_start_a;
+                        RAISE NOTICE ' offset=%', _offset;
+                    END IF;
                 -- deleted article
                 ELSIF _usecase_article = ANY('{2}') THEN
                     FOR _j IN (_k + 1) .. _descriptor_len
@@ -433,8 +436,10 @@ BEGIN
                             _descriptor_same := _descriptor;
                             _descriptor_prev := _descriptor;
 
-                            RAISE NOTICE ' descriptor=%', _descriptor;
-                            RAISE NOTICE ' offset=%', _offset;
+                            IF raise_notice THEN
+                                RAISE NOTICE ' descriptor=%', _descriptor;
+                                RAISE NOTICE ' offset=%', _offset;
+                            END IF;
                             EXIT;
                         END IF;
                     END LOOP;
@@ -487,7 +492,7 @@ BEGIN
                     IF FOUND THEN
                         _kw := _kw_more;
                     ELSE
-                        RAISE NOTICE 'indécision libellé normalisé (lib=%, abr=%)', name, _kw_is_abbreviated;
+                        IF raise_notice THEN RAISE NOTICE 'indécision libellé normalisé (lib=%, abr=%)', name, _kw_is_abbreviated; END IF;
                     END IF;
                 END IF;
                 _offset := count_words(_kw);
@@ -554,7 +559,7 @@ BEGIN
                     */
                 ELSE 0
                 END;
-            RAISE NOTICE ' usecase title=%', _usecase_title;
+            IF raise_notice THEN RAISE NOTICE ' usecase title=%', _usecase_title; END IF;
 
             -- as such number of words
             IF _usecase_title = ANY('{1,2,3,5,6}') THEN
@@ -620,11 +625,13 @@ BEGIN
                 _descriptor_same := _descriptor_tmp;
                 _descriptor_prev := _descriptor_same;
 
-                RAISE NOTICE ' remainder=%', _descriptor_remainder;
-                RAISE NOTICE ' others=%', _descriptor_others;
-                RAISE NOTICE ' only_a=%', _descriptor_only_a;
-                RAISE NOTICE ' wo_a=%', _descriptor_wo_a;
-                RAISE NOTICE ' offset=%', _offset;
+                IF raise_notice THEN
+                    RAISE NOTICE ' remainder=%', _descriptor_remainder;
+                    RAISE NOTICE ' others=%', _descriptor_others;
+                    RAISE NOTICE ' only_a=%', _descriptor_only_a;
+                    RAISE NOTICE ' wo_a=%', _descriptor_wo_a;
+                    RAISE NOTICE ' offset=%', _offset;
+                END IF;
                 CONTINUE;
             END IF;
         END IF;
