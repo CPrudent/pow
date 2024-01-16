@@ -34,13 +34,13 @@ execute_query() {
     _log="$get_arg_name"
     [ -f "$get_arg_query" ] && {
         _opt='--file'
-        _info='du fichier'
+        _info='fichier'
         if [ -z "$_log" ]; then
             _log=$(basename -- "$get_arg_query")
         fi
     } || {
         _opt='--command'
-        _info='de la commande SQL'
+        _info='requête'
     }
     _log_tmp_path="$POW_DIR_TMP/$_log.log"
     _log_notice_tmp_path="$POW_DIR_TMP/$_log.notice.log"
@@ -73,7 +73,7 @@ execute_query() {
     }
 
     # with log: start message
-    is_yes --var get_arg_with_log && log_info "Lancement de l'exécution $_info $_log"
+    is_yes --var get_arg_with_log && log_info "Lancement de l'exécution de $_log ($_info)"
 
     [ "$POW_DEBUG" = yes ] && {
         echo "PGOPTIONS=-c client_min_messages=$_psql_level"

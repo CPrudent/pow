@@ -981,10 +981,14 @@ BEGIN
                             , _kw_nwords
                         );
                     ELSE
-                        IF fr.is_normalized_firstname(_words[_i]) THEN
-                            _words_d := 'P';
+                        -- always a name after (SAINT|SAINTE)
+                        IF _i > 1 AND _words[_i -1] ~ '^(SAINT|SAINTE|ST|STE)$' THEN
+                            _words_d := 'N';
+                        ELSE
+                            IF fr.is_normalized_firstname(_words[_i]) THEN
+                                _words_d := 'P';
+                            END IF;
                         END IF;
-                        --END IF;
                     END IF;
                 END IF;
 
