@@ -99,7 +99,9 @@ BEGIN
             ORDER BY count_words(k.name) DESC
         )
         LOOP
-            IF (name ~ CONCAT('^', _begin, _kw.name)
+            IF ((name ~ CONCAT('^', _begin, _kw.name, ' +'))
+                OR
+                (name ~ CONCAT('^', _begin, _kw.name, '$'))
                 /*
                 (name = _kw.name)
                 OR

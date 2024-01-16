@@ -154,15 +154,15 @@ BEGIN
         SELECT
             x.word
             , x.followed_by
-            , SUBSTR(s.descriptors, x.i, 1) as_usecase
+            , SUBSTR(s.descriptors, ARRAY_POSITION(s.words, x.word), 1) as_usecase
             , x.as_except
         FROM
             word_exception x
-                JOIN fr.laposte_address_street_uniq s ON x.name = s.name
+                JOIN fr.laposte_address_street_uniq s ON s.words @> ARRAY[x.word]::TEXT[]
         WHERE
-            s.words[i] = x.word
+            (ARRAY_POSITION(s.words, x.word) + count_words(x.followed_by)) <= s.nwords
             AND
-            s.words[i+count_words(x.followed_by)]= REGEXP_REPLACE(x.followed_by, '^.* ', '')
+            s.words[(ARRAY_POSITION(s.words, x.word) + count_words(x.followed_by))]= REGEXP_REPLACE(x.followed_by, '^.* ', '')
     )
     --SELECT * FROM word_usecase ORDER BY 1, 2
     , count_usecase AS (
@@ -208,15 +208,10 @@ BEGIN
         , followed_by
     )
     VALUES
-    ('SOUS', 'A', 'N', 'ARRONDISSEMENT')
-    , ('SOUS', 'A', 'N', 'BOIS')
-    , ('SOUS', 'A', 'N', 'CHEF')
-    , ('SOUS', 'A', 'N', 'ENSEMBLE')
-    , ('SOUS', 'A', 'N', 'ESPECE')
+    ('SOUS', 'A', 'T', 'LIEUTENANT')
     , ('SOUS', 'A', 'N', 'MARIN')
     , ('SOUS', 'A', 'N', 'PREFECTURE')
-    , ('SOUS', 'A', 'N', 'PREFET')
-    , ('SOUS', 'A', 'N', 'SEING')
+    , ('SOUS', 'A', 'T', 'PREFET')
     ;
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Exceptions (article): ', _nrows));

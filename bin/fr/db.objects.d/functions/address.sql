@@ -843,6 +843,7 @@ SELECT * FROM fr.get_descriptor_from_exception(
 SELECT drop_all_functions_if_exists('fr', 'get_descriptor_of_street');
 CREATE OR REPLACE FUNCTION fr.get_descriptor_of_street(
     name IN VARCHAR                   -- name of street
+    , raise_notice IN BOOLEAN DEFAULT FALSE
 )
 RETURNS VARCHAR AS
 $func$
@@ -863,7 +864,7 @@ DECLARE
     _is_exception BOOLEAN;
     _exception VARCHAR;
 BEGIN
-    RAISE NOTICE 'name= %', name;
+    IF raise_notice THEN RAISE NOTICE 'name= %', name; END IF;
 
     _words := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
     _words_len := ARRAY_LENGTH(_words, 1);
@@ -874,14 +875,15 @@ BEGIN
             CONTINUE;
         END IF;
 
-        RAISE NOTICE ' word= %, i=%', _words[_i], _i;
+        IF raise_notice THEN RAISE NOTICE ' word= %, i=%', _words[_i], _i; END IF;
 
         /* NOTE
         name of street (so descriptor) is ended by: number, reserved or name (CEN)
          */
-        IF fr.is_normalized_number(_words[_i]) THEN
+        IF fr.is_normalized_number(_words[_i])
+            AND NOT fr.is_normalized_article(_words[_i]) THEN
             _words_d := CASE
-                WHEN _words[_i] = ANY('{D,L}') THEN 'A'
+                --WHEN _words[_i] = ANY('{D,L}') THEN 'A'
                 WHEN _words[_i] = ANY('{C,M}') THEN 'N'
                 -- exceptions: DI, LI, MI, CD, CL, ...
                 WHEN _words[_i] ~ '^[DLM]I|C[DL]|LIV|CIX$' THEN 'N'
@@ -892,101 +894,104 @@ BEGIN
             _words_d := 'N';
             IF _i < _words_len THEN
                 _with_exception := FALSE;
-                IF fr.is_normalized_article(_words[_i]) THEN
-                    /* NOTE
-                    see WIKIPEDIA, not a name!
-                    https://fr.wikipedia.org/wiki/Particule_(onomastique)#:~:text=La%20particule%20est%20une%20pr%C3%A9position,du%20%C2%BB%20ou%20%C2%AB%20des%20%C2%BB.
 
-                    DE GAULLE
-                    if preceded by title then N         VATNN   PLACE DU GENERAL DE GAULLE
-                    if preceded by firstname then A     VPAN    PLACE CHARLES DE GAULLE
+                SELECT kw_group, kw, kw_is_abbreviated, kw_nwords
+                INTO _kw_group, _kw, _kw_is_abbreviated, _kw_nwords
+                FROM fr.get_keyword_of_street(
+                    name => name
+                    , at_ => _i
+                    , words => _words
+                    , groups => CASE
+                        WHEN _i = 1 THEN ARRAY['TYPE','TITLE','EXT']::VARCHAR[]
+                        ELSE ARRAY['TITLE','EXT','TYPE']::VARCHAR[]
+                        END
+                    , with_abbreviation => FALSE
+                );
 
-                    counter examples
-                        IMPASSE DU GENERAL DE GAULLE            VATNN
-                        IMPASSE GENERAL DE GAULLE               VTAN
-                        QUAI DU GENERAL CHARLES DE GAULLE       VATPNN
-                        ALLEE GENERAL CHARLES DE GAULLE         VTPAN
-
-                    counter examples
-                        IMPASSE HONORE DE BALZAC
-                        RUE ANGELIQUE DU COUDRAY
-                        RUE HECTOR DE CORLAY
-                    not article (D, L), but lastname
-                        RUE ARSENE D ARSONVAL
-
-                    always article!
-                     */
-
-                    /* NOTE
-                    article as 1st word
-
-                    A: 660 A, 1 N
-                    AU: 545 A, 2 N
-                    AUX: 239 A, 2 N
-                    D: 12 A, 5 N
-                    DE: 35 A
-                    DES: 8 A
-                    DU: 15 A
-                    EN: 947 A
-                    ET: NULL
-                    L: 4059 A, 1 P
-                    LA: 40814 A, 2 P, 2 N
-                    LE: 34358 A, 2 N
-                    LES: 20044 A, 8 P, 1 N
-                    SOUS: 242 A, 1 N
-                    SUR: 115 A, 64 N
-                    UN: NULL
-                    UNE: 1 A
-
-                    always article!
-                     */
-
-                    /* NOTE
-                    exception for road as (A|D|N)# : highway, departmental, national
-                    at end of name only, else counter examples
-                        LA ROCHE A 7 HEURES
-                        LA PLANCHE A 4 PIEDS
-                     */
-                    IF _words[_i] ~ '^A|D|N$' AND fr.is_normalized_number(
-                        word => _words[_i +1]
-                        , only_digit => 'ARABIC'
-                    ) AND _words_len = (_i +1) THEN
+                IF _kw IS NOT NULL THEN
+                    _words_d := REPEAT(
+                        CASE
+                        -- up to last word, as name
+                        WHEN (_i + _kw_nwords -1) = _words_len THEN 'N'
+                        -- type
+                        WHEN _i = 1 AND _kw_group = 'TYPE' THEN 'V'
+                        -- title
+                        ELSE 'T'
+                        END
+                        , _kw_nwords
+                    );
+                ELSE
+                    -- always a name after (SAINT|SAINTE)
+                    IF _i > 1 AND _words[_i -1] ~ '^(SAINT|SAINTE|ST|STE)$' THEN
                         _words_d := 'N';
                     ELSE
-                        _words_d := 'A';
-                    END IF;
-                ELSE
-                    SELECT kw_group, kw, kw_is_abbreviated, kw_nwords
-                    INTO _kw_group, _kw, _kw_is_abbreviated, _kw_nwords
-                    FROM fr.get_keyword_of_street(
-                        name => name
-                        , at_ => _i
-                        , words => _words
-                        , groups => CASE WHEN _i = 1 THEN ARRAY['TYPE','TITLE','EXT']::VARCHAR[]
-                                    ELSE ARRAY['TITLE','EXT','TYPE']::VARCHAR[]
-                                    END
-                        , with_abbreviation => FALSE
-                    );
+                        IF fr.is_normalized_firstname(_words[_i]) THEN
+                            _words_d := 'P';
+                        ELSIF fr.is_normalized_article(_words[_i]) THEN
+                            /* NOTE
+                            see WIKIPEDIA, not a name!
+                            https://fr.wikipedia.org/wiki/Particule_(onomastique)#:~:text=La%20particule%20est%20une%20pr%C3%A9position,du%20%C2%BB%20ou%20%C2%AB%20des%20%C2%BB.
 
-                    IF _kw IS NOT NULL THEN
-                        _words_d := REPEAT(
-                            CASE
-                            -- up to last word, as name
-                            WHEN (_i + _kw_nwords -1) = _words_len THEN 'N'
-                            -- type
-                            WHEN _i = 1 AND _kw_group = 'TYPE' THEN 'V'
-                            -- title
-                            ELSE 'T'
-                            END
-                            , _kw_nwords
-                        );
-                    ELSE
-                        -- always a name after (SAINT|SAINTE)
-                        IF _i > 1 AND _words[_i -1] ~ '^(SAINT|SAINTE|ST|STE)$' THEN
-                            _words_d := 'N';
-                        ELSE
-                            IF fr.is_normalized_firstname(_words[_i]) THEN
-                                _words_d := 'P';
+                            DE GAULLE:
+                            if preceded by title then N         VATNN   PLACE DU GENERAL DE GAULLE
+                            if preceded by firstname then A     VPAN    PLACE CHARLES DE GAULLE
+
+                            counter examples
+                                IMPASSE DU GENERAL DE GAULLE            VATNN
+                                IMPASSE GENERAL DE GAULLE               VTAN
+                                QUAI DU GENERAL CHARLES DE GAULLE       VATPNN
+                                ALLEE GENERAL CHARLES DE GAULLE         VTPAN
+
+                            and other cases:
+                            counter examples
+                                IMPASSE HONORE DE BALZAC
+                                RUE ANGELIQUE DU COUDRAY
+                                RUE HECTOR DE CORLAY
+
+                            not article (D, L), but lastname
+                                RUE ARSENE D ARSONVAL
+
+                            always article!
+                            */
+
+                            /* NOTE
+                            article as 1st word
+
+                            A: 660 A, 1 N
+                            AU: 545 A, 2 N
+                            AUX: 239 A, 2 N
+                            D: 12 A, 5 N
+                            DE: 35 A
+                            DES: 8 A
+                            DU: 15 A
+                            EN: 947 A
+                            ET: NULL
+                            L: 4059 A, 1 P
+                            LA: 40814 A, 2 P, 2 N
+                            LE: 34358 A, 2 N
+                            LES: 20044 A, 8 P, 1 N
+                            SOUS: 242 A, 1 N
+                            SUR: 115 A, 64 N
+                            UN: NULL
+                            UNE: 1 A
+
+                            always article!
+                            */
+
+                            /* NOTE
+                            exception for road as (A|D|N)# : highway, departmental, national
+                            at end of name only, else counter examples
+                                LA ROCHE A 7 HEURES
+                                LA PLANCHE A 4 PIEDS
+                            */
+                            IF _words[_i] ~ '^A|D|N$' AND fr.is_normalized_number(
+                                word => _words[_i +1]
+                                , only_digit => 'ARABIC'
+                            ) AND _words_len = (_i +1) THEN
+                                _words_d := 'N';
+                            ELSE
+                                _words_d := 'A';
+                                _with_exception := TRUE;
                             END IF;
                         END IF;
                     END IF;
@@ -994,7 +999,7 @@ BEGIN
 
                 /* RULE
                 (firstname|title) followed by a number only (at the end) is a name
-                 */
+                */
                 IF _words_d ~ 'P|T' THEN
                     IF fr.is_normalized_number(_words[_i +1]) AND _words_len = (_i +1) THEN
                         _words_d := REPEAT('N', LENGTH(_words_d));
@@ -1018,7 +1023,13 @@ BEGIN
                     END IF;
                 END IF;
             ELSIF fr.is_normalized_reserved_word(_words[_i]) THEN
-                _words_d := 'E';
+                -- counter examples
+                --  MAS SUPERIEUR, VILLAGE INFERIEUR
+                IF _words_len = 2 AND _descriptors = 'V' THEN
+                    _words_d := 'N';
+                ELSE
+                    _words_d := 'E';
+                END IF;
             END IF;
         END IF;
 
@@ -1032,6 +1043,9 @@ BEGIN
     -- fix bad uses
     IF _descriptors !~ '[CEN]$' THEN
         _descriptors := REGEXP_REPLACE(_descriptors, '.$', 'N');
+    -- nothing else than CN before last E (specially not title)
+    ELSIF _descriptors ~ '[^CN]E$' THEN
+        _descriptors := REGEXP_REPLACE(_descriptors, '.E$', 'NE');
     -- not type only (eventually followed by number), but name
     ELSIF _descriptors ~ '^V+C*$' THEN
         _descriptors := REPLACE(_descriptors, 'V', 'N');
@@ -1044,12 +1058,12 @@ BEGIN
         ) THEN
             _descriptors := REPEAT('N', LENGTH(_descriptors));
         END IF;
-    --
+    -- neither firstname nor title
     ELSIF _descriptors ~ '^V[PT]C$' THEN
         _descriptors := REGEXP_REPLACE(_descriptors, '^V[PT]C$', 'VNC');
     END IF;
 
-    RAISE NOTICE 'descriptor= %', _descriptors;
+    IF raise_notice THEN RAISE NOTICE 'descriptor= %', _descriptors; END IF;
     RETURN _descriptors;
 END
 $func$ LANGUAGE plpgsql;
