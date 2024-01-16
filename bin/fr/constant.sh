@@ -151,6 +151,10 @@ vacuum \
 vacuum \
     --schema_name fr \
     --table_name laposte_address_street_keyword \
+    --mode ANALYZE &&
+vacuum \
+    --schema_name fr \
+    --table_name laposte_address_street_kw_exception \
     --mode ANALYZE || {
     on_integration_error --id $io_main_id
     exit $ERROR_CODE
