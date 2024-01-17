@@ -884,9 +884,7 @@ BEGIN
 
         IF raise_notice THEN RAISE NOTICE ' word= %, i=%', _words[_i], _i; END IF;
 
-        /* NOTE
-        name of street (so descriptor) is ended by: number, reserved or name (CEN)
-         */
+        -- number
         IF fr.is_normalized_number(_words[_i])
             AND NOT fr.is_normalized_article(_words[_i]) THEN
             _words_d := CASE
@@ -915,6 +913,7 @@ BEGIN
                     , with_abbreviation => FALSE
                 );
 
+                -- keyword (title or type)
                 IF _kw IS NOT NULL THEN
                     _words_d := REPEAT(
                         CASE
@@ -928,78 +927,84 @@ BEGIN
                         , _kw_nwords
                     );
                 ELSE
-                    -- always a name after (SAINT|SAINTE)
-                    IF _i > 1 AND _words[_i -1] ~ '^(SAINT|SAINTE|ST|STE)$' THEN
-                        _words_d := 'N';
-                    ELSE
-                        IF fr.is_normalized_firstname(_words[_i]) THEN
-                            _words_d := 'P';
-                        ELSIF fr.is_normalized_article(_words[_i]) THEN
-                            /* NOTE
-                            see WIKIPEDIA, not a name!
-                            https://fr.wikipedia.org/wiki/Particule_(onomastique)#:~:text=La%20particule%20est%20une%20pr%C3%A9position,du%20%C2%BB%20ou%20%C2%AB%20des%20%C2%BB.
+                    -- firstname
+                    IF fr.is_normalized_firstname(_words[_i]) THEN
+                        _words_d := 'P';
+                        IF _i > 1
+                            AND fr.is_normalized_article(_words[_i -1])
+                            AND NOT (
+                                (_words[_i -1] = ANY('{DE,ET}'))
+                                OR
+                                (_words[_i -1] = 'D' AND _words[_i] ~ '^[AEIOUY]')
+                            ) THEN
+                            _words_d := 'N';
+                        END IF;
+                    -- article
+                    ELSIF fr.is_normalized_article(_words[_i]) THEN
+                        /* NOTE
+                        see WIKIPEDIA, not a name!
+                        https://fr.wikipedia.org/wiki/Particule_(onomastique)#:~:text=La%20particule%20est%20une%20pr%C3%A9position,du%20%C2%BB%20ou%20%C2%AB%20des%20%C2%BB.
 
-                            DE GAULLE:
-                            if preceded by title then N         VATNN   PLACE DU GENERAL DE GAULLE
-                            if preceded by firstname then A     VPAN    PLACE CHARLES DE GAULLE
+                        DE GAULLE:
+                        if preceded by title then N         VATNN   PLACE DU GENERAL DE GAULLE
+                        if preceded by firstname then A     VPAN    PLACE CHARLES DE GAULLE
 
-                            counter examples
-                                IMPASSE DU GENERAL DE GAULLE            VATNN
-                                IMPASSE GENERAL DE GAULLE               VTAN
-                                QUAI DU GENERAL CHARLES DE GAULLE       VATPNN
-                                ALLEE GENERAL CHARLES DE GAULLE         VTPAN
+                        counter examples
+                            IMPASSE DU GENERAL DE GAULLE            VATNN
+                            IMPASSE GENERAL DE GAULLE               VTAN
+                            QUAI DU GENERAL CHARLES DE GAULLE       VATPNN
+                            ALLEE GENERAL CHARLES DE GAULLE         VTPAN
 
-                            and other cases:
-                            counter examples
-                                IMPASSE HONORE DE BALZAC
-                                RUE ANGELIQUE DU COUDRAY
-                                RUE HECTOR DE CORLAY
+                        and other cases:
+                        counter examples
+                            IMPASSE HONORE DE BALZAC
+                            RUE ANGELIQUE DU COUDRAY
+                            RUE HECTOR DE CORLAY
 
-                            not article (D, L), but lastname
-                                RUE ARSENE D ARSONVAL
+                        not article (D, L), but lastname
+                            RUE ARSENE D ARSONVAL
 
-                            always article!
-                            */
+                        always article!
+                        */
 
-                            /* NOTE
-                            article as 1st word
+                        /* NOTE
+                        article as 1st word
 
-                            A: 660 A, 1 N
-                            AU: 545 A, 2 N
-                            AUX: 239 A, 2 N
-                            D: 12 A, 5 N
-                            DE: 35 A
-                            DES: 8 A
-                            DU: 15 A
-                            EN: 947 A
-                            ET: NULL
-                            L: 4059 A, 1 P
-                            LA: 40814 A, 2 P, 2 N
-                            LE: 34358 A, 2 N
-                            LES: 20044 A, 8 P, 1 N
-                            SOUS: 242 A, 1 N
-                            SUR: 115 A, 64 N
-                            UN: NULL
-                            UNE: 1 A
+                        A: 660 A, 1 N
+                        AU: 545 A, 2 N
+                        AUX: 239 A, 2 N
+                        D: 12 A, 5 N
+                        DE: 35 A
+                        DES: 8 A
+                        DU: 15 A
+                        EN: 947 A
+                        ET: NULL
+                        L: 4059 A, 1 P
+                        LA: 40814 A, 2 P, 2 N
+                        LE: 34358 A, 2 N
+                        LES: 20044 A, 8 P, 1 N
+                        SOUS: 242 A, 1 N
+                        SUR: 115 A, 64 N
+                        UN: NULL
+                        UNE: 1 A
 
-                            always article!
-                            */
+                        always article!
+                        */
 
-                            /* NOTE
-                            exception for road as (A|D|N)# : highway, departmental, national
-                            at end of name only, else counter examples
-                                LA ROCHE A 7 HEURES
-                                LA PLANCHE A 4 PIEDS
-                            */
-                            IF _words[_i] ~ '^A|D|N$' AND fr.is_normalized_number(
-                                word => _words[_i +1]
-                                , only_digit => 'ARABIC'
-                            ) AND _words_len = (_i +1) THEN
-                                _words_d := 'N';
-                            ELSE
-                                _words_d := 'A';
-                                _with_exception := TRUE;
-                            END IF;
+                        /* NOTE
+                        exception for road as (A|D|N)# : highway, departmental, national
+                        at end of name only, else counter examples
+                            LA ROCHE A 7 HEURES
+                            LA PLANCHE A 4 PIEDS
+                        */
+                        IF _words[_i] ~ '^A|D|N$' AND fr.is_normalized_number(
+                            word => _words[_i +1]
+                            , only_digit => 'ARABIC'
+                        ) AND _words_len = (_i +1) THEN
+                            _words_d := 'N';
+                        ELSE
+                            _words_d := 'A';
+                            _with_exception := TRUE;
                         END IF;
                     END IF;
                 END IF;
@@ -1048,14 +1053,7 @@ BEGIN
     END LOOP;
 
     -- fix bad uses
-    IF _descriptors !~ '[CEN]$' THEN
-        _descriptors := REGEXP_REPLACE(_descriptors, '.$', 'N');
-    -- nothing else than CN before last E (specially not title)
-    ELSIF _descriptors ~ '[^CN]E$' THEN
-        _descriptors := REGEXP_REPLACE(_descriptors, '.E$', 'NE');
-    -- not type only (eventually followed by number), but name
-    ELSIF _descriptors ~ '^V+C*$' THEN
-        _descriptors := REPLACE(_descriptors, 'V', 'N');
+    /* already done!
     -- not type, but name
     ELSIF _descriptors ~ '^V+N*$' THEN
         IF EXISTS(
@@ -1065,9 +1063,24 @@ BEGIN
         ) THEN
             _descriptors := REPEAT('N', LENGTH(_descriptors));
         END IF;
-    -- neither firstname nor title
-    ELSIF _descriptors ~ '^V[PT]C$' THEN
-        _descriptors := REGEXP_REPLACE(_descriptors, '^V[PT]C$', 'VNC');
+     */
+
+    -- name of street (so descriptor) is ended by: number, reserved or name (CEN)
+    IF _descriptors !~ '[CEN]$' THEN
+        _descriptors := REGEXP_REPLACE(_descriptors, '.$', 'N');
+    -- nothing else than CN before last E (specially not title)
+    ELSIF _descriptors ~ '[^CN]E$' THEN
+        _descriptors := REGEXP_REPLACE(_descriptors, '.E$', 'NE');
+    -- not type only (eventually followed by number), but name
+    ELSIF _descriptors ~ '^V+C*$' THEN
+        _descriptors := REPLACE(_descriptors, 'V', 'N');
+    /* neither firstname nor title
+    VNC, AVENUE ALBERT 1ER
+    VNCE, RUE ALBERT 1ER PROLONGEE
+    VPCAN, AVENUE ALBERT 1ER DE BELGIQUE
+     */
+    ELSIF _descriptors ~ '^V[PT]CE?$' THEN
+        _descriptors := REGEXP_REPLACE(_descriptors, '(^V[PT]C)(E?)$', 'VNC\2');
     END IF;
 
     IF raise_notice THEN RAISE NOTICE 'descriptor= %', _descriptors; END IF;

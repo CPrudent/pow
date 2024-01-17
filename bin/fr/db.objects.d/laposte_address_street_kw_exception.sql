@@ -78,6 +78,8 @@ BEGIN
         FROM
             split_as_word sw
         WHERE
+            fr.is_normalized_firstname(sw.word)
+            /*
             EXISTS(
                 SELECT 1
                 FROM fr.constant c JOIN fr.laposte_address_street_word w ON c.key = w.word
@@ -100,6 +102,7 @@ BEGIN
                         )
                     )
             )
+             */
             AND
             -- not last word (name!)
             i < (nwords -1)
