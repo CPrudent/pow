@@ -152,6 +152,39 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+-- is title
+SELECT public.drop_all_functions_if_exists('fr', 'is_normalized_title');
+CREATE OR REPLACE FUNCTION fr.is_normalized_title(
+    word VARCHAR
+    , groups VARCHAR DEFAULT 'ALL'   -- TITLE|TYPE|EXT
+)
+RETURNS BOOLEAN AS
+$func$
+DECLARE
+    _is_title BOOLEAN;
+    _groups VARCHAR[];
+BEGIN
+    IF groups = 'ALL' THEN
+        _groups := '{TITLE,TYPE,EXT}'::VARCHAR[];
+    ELSE
+        _groups := STRING_TO_ARRAY(groups, ',');
+    END IF;
+
+    SELECT EXISTS(
+        SELECT 1
+        FROM fr.laposte_address_street_keyword k
+        WHERE
+            ARRAY_POSITION(_groups, k.group) > 0
+            AND
+            k.name = is_normalized_title.word
+    )
+    INTO _is_title
+    ;
+
+    RETURN _is_title;
+END
+$func$ LANGUAGE plpgsql;
+
 -- abbreviate holy word(s)
 SELECT drop_all_functions_if_exists('fr', 'normalize_abbreviate_holy');
 CREATE OR REPLACE FUNCTION fr.normalize_abbreviate_holy(
