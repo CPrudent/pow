@@ -712,7 +712,7 @@ BEGIN
         , get_type_of_street.kw_nwords
     FROM fr.get_keyword_of_street(
         name => name
-        , group_ => 'TYPE'
+        , groups => 'TYPE'
         , with_abbreviation => with_abbreviation
     ) ks
     ;
@@ -907,8 +907,8 @@ BEGIN
                     , at_ => _i
                     , words => _words
                     , groups => CASE
-                        WHEN _i = 1 THEN ARRAY['TYPE','TITLE','EXT']::VARCHAR[]
-                        ELSE ARRAY['TITLE','EXT','TYPE']::VARCHAR[]
+                        WHEN _i = 1 THEN 'TYPE'
+                        ELSE 'ALL'
                         END
                     , with_abbreviation => FALSE
                 );
