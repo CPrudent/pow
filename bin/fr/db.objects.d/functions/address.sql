@@ -474,6 +474,7 @@ BEGIN
             INTO _kw, _kw_is_abbreviated, _kw_nwords
             FROM fr.get_type_of_street(
                 name => name
+                , with_abbreviation => is_normalized
             )
             ;
             -- abbreviated ?
@@ -850,6 +851,7 @@ SELECT * FROM fr.get_descriptor_from_exception(
 SELECT drop_all_functions_if_exists('fr', 'get_descriptor_of_street');
 CREATE OR REPLACE FUNCTION fr.get_descriptor_of_street(
     name IN VARCHAR                   -- name of street
+    , with_abbreviation IN BOOLEAN DEFAULT FALSE
     , raise_notice IN BOOLEAN DEFAULT FALSE
 )
 RETURNS VARCHAR AS
@@ -910,7 +912,7 @@ BEGIN
                         WHEN _i = 1 THEN 'TYPE'
                         ELSE 'ALL'
                         END
-                    , with_abbreviation => FALSE
+                    , with_abbreviation => with_abbreviation
                 );
 
                 -- keyword (title or type)
