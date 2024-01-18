@@ -34,12 +34,19 @@ SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_street_typ
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_type()
 AS
 $proc$
+DECLARE
+    _nrows INT;
 BEGIN
     IF NOT table_exists('fr', 'laposte_address_street') THEN
         RAISE 'Données LAPOSTE non présentes';
     END IF;
 
+    CALL public.log_info('Gestion des types dans le nom des voies');
+
+    CALL public.log_info(' Purge');
     DELETE FROM fr.laposte_address_street_keyword WHERE "group" = 'TYPE';
+
+    CALL public.log_info(' Initialisation');
     INSERT INTO fr.laposte_address_street_keyword("group", name, name_abbreviated)
         SELECT DISTINCT
             'TYPE'
@@ -48,14 +55,42 @@ BEGIN
         FROM fr.laposte_address_street
         WHERE lb_type IS NOT NULL
         ;
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(CONCAT(' Types: ', _nrows));
+
+    WITH
+    correction_abbr AS (
+        SELECT *
+        FROM (
+            VALUES ('ANCIEN CHEMIN', 'ANCI CHEMIN')
+                , ('ANCIENNE ROUTE', 'ANCI ROUTE')
+                , ('CHEMIN VICINAL', 'CHEM VICINAL')
+                , ('MAISON FORESTIERE', 'MAIS FORESTIERE')
+                , ('PASSAGE A NIVEAU', 'PASS A NIVEAU')
+                , ('PETIT CHEMIN', 'PETI CHEMIN')
+                , ('PETITE ROUTE', 'PETI ROUTE')
+        ) AS x(name, name_abbreviated)
+    )
+    UPDATE fr.laposte_address_street_keyword st SET
+        name_abbreviated = ca.name_abbreviated
+        FROM
+            correction_abbr ca
+        WHERE
+            "group" = 'TYPE'
+            AND
+            st.name = ca.name
+        ;
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(CONCAT(' Mises à jour (abréviation): ', _nrows));
+
     WITH
     first_word_of_type AS (
         SELECT
             name
             , CASE
-            WHEN POSITION(' ' IN name) = 0 THEN NULL
-            ELSE SUBSTR(name, 1, POSITION(' ' IN name) -1)
-            END first_word
+                WHEN POSITION(' ' IN name) = 0 THEN NULL
+                ELSE SUBSTR(name, 1, POSITION(' ' IN name) -1)
+                END first_word
         FROM fr.laposte_address_street_keyword
         WHERE "group" = 'TYPE'
     )
@@ -80,6 +115,8 @@ BEGIN
             AND
             st.name = ot.name
         ;
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(CONCAT(' Mises à jour (premier mot, occurence): ', _nrows));
 END;
 $proc$ LANGUAGE plpgsql;
 
@@ -132,17 +169,26 @@ SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_street_ext
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_ext()
 AS
 $proc$
+DECLARE
+    _nrows INT;
 BEGIN
     IF NOT table_exists('fr', 'laposte_address_housenumber') THEN
         RAISE 'Données LAPOSTE non présentes';
     END IF;
 
+    CALL public.log_info('Gestion des extensions dans le nom des numéros');
+
+    CALL public.log_info(' Purge');
     DELETE FROM fr.laposte_address_street_keyword WHERE "group" = 'EXT';
+
+    CALL public.log_info(' Initialisation');
     INSERT INTO fr.laposte_address_street_keyword("group", name, name_abbreviated, first_word)
         SELECT DISTINCT 'EXT', lb_ext, lb_abr_nn, NULL
         FROM fr.laposte_address_housenumber
         WHERE fl_active AND lb_ext IS NOT NULL
         ;
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(CONCAT(' Extensions: ', _nrows));
 
     WITH
     ext_occurs AS (
@@ -157,13 +203,14 @@ BEGIN
             k.group = 'EXT'
             AND
             k.name = o.lb_ext
-            ;
+        ;
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(CONCAT(' Mises à jour (occurence): ', _nrows));
 END;
 $proc$ LANGUAGE plpgsql;
 
 -- build LAPOSTE titles
 -- Query returned successfully in 1 min 24 secs.
-SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_titles');
 SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_street_title');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_title()
 AS
@@ -175,176 +222,285 @@ DECLARE
     _words_normalized TEXT[];
     _descriptors_normalized TEXT[];
     _abbr_i INT;
+    _nrows INT;
 BEGIN
-    IF NOT table_exists('fr', 'laposte_address_street_uniq')
-        AND NOT table_exists('fr', 'laposte_address_street_word') THEN
-        RAISE 'Données LAPOSTE non suffisantes';
+    IF NOT table_exists('fr', 'laposte_address_street') THEN
+        RAISE 'Données LAPOSTE non présentes';
     END IF;
 
-    DROP TABLE IF EXISTS fr.tmp_address_street_title;
-    CREATE UNLOGGED TABLE fr.tmp_address_street_title (
-        title VARCHAR NOT NULL
-    );
-    DROP TABLE IF EXISTS fr.tmp_address_street_title_abbr;
-    CREATE UNLOGGED TABLE fr.tmp_address_street_title_abbr (
-        title VARCHAR NOT NULL
-        , title_abbreviated VARCHAR
-    );
+    CALL public.log_info('Gestion des titres dans le nom des voies');
 
-    TRUNCATE TABLE fr.tmp_address_street_title;
-    FOR _set IN (
-        WITH
-        with_title AS (
-        SELECT
-            name
-            , name_normalized
-            , descriptors
-        FROM
-            fr.laposte_address_street_uniq us
-        WHERE
-            POSITION('T' IN descriptors) > 0
-        )
-        SELECT DISTINCT
-            UNNEST(t.titles) title
-        FROM
-            with_title wt
-            , fr.get_titles_from_name(
-                name => wt.name
-                , descriptor => wt.descriptors
-            ) t
-    )
-    LOOP
-        INSERT INTO fr.tmp_address_street_title(title) VALUES(_set.title);
-    END LOOP;
-
-    TRUNCATE TABLE fr.tmp_address_street_title_abbr;
-    FOR _set IN (
-        SELECT
-            t.title
-            , wt.name
-            , wt.name_normalized
-            , wt.descriptors
-        FROM
-            fr.laposte_address_street_uniq wt
-            , fr.tmp_address_street_title t
-            , fr.get_titles_from_name(
-                name => wt.name
-                , descriptor => wt.descriptors
-            ) tw
-        WHERE
-            -- name w/ this title
-            POSITION(REPEAT('T', count_words(t.title)) IN wt.descriptors) > 0
-            AND
-            tw.titles @> ARRAY[t.title]::TEXT[]
-            AND
-            -- w/ normalization
-            wt.name_normalized IS NOT NULL
-            AND
-            -- w/ abbreviation
-            POSITION(CONCAT(t.title, ' ') IN wt.name_normalized) = 0
-    )
-    LOOP
-        SELECT words, descriptors
-        INTO _words_normalized, _descriptors_normalized
-        FROM
-            fr.split_name_of_street_as_descriptor(
-                name => _set.name_normalized
-                , descriptor => _set.descriptors
-                , split_only => 'T'
-                , is_normalized => TRUE
-            )
-        ;
-        SELECT words, descriptors
-        INTO _words, _descriptors
-        FROM
-            fr.split_name_of_street_as_descriptor(
-                name => _set.name
-                , descriptor => _set.descriptors
-                , split_only => 'T'
-            )
-        ;
-
-        _abbr_i := ARRAY_POSITION(_words, _set.title);
-        RAISE NOTICE 'title=% abbr=% (at %)', _set.title, _words_normalized[_abbr_i], _abbr_i;
-        INSERT INTO fr.tmp_address_street_title_abbr
-            VALUES (_set.title, _words_normalized[_abbr_i])
-        ;
-    END LOOP;
-
-    -- populate titles
+    CALL public.log_info(' Purge');
     DELETE FROM fr.laposte_address_street_keyword WHERE "group" = 'TITLE';
-    INSERT INTO fr.laposte_address_street_keyword("group", name)
-        SELECT 'TITLE', title FROM fr.tmp_address_street_title
-        ;
 
-    -- delete kw, if exists other w/ same abbr (or w/o, never abbreviated)
-    WITH
-    title_abbr AS (
-        SELECT title, FIRST(title_abbreviated) abbr
-        FROM fr.tmp_address_street_title_abbr
-        WHERE count_words(title) = 1
-        GROUP BY title
-        HAVING COUNT(DISTINCT title_abbreviated) <= 1
-        UNION
-        SELECT title, NULL abbr
-        FROM fr.tmp_address_street_title t
-        WHERE count_words(title) = 1
-        AND NOT EXISTS(
-            SELECT 1 FROM fr.tmp_address_street_title_abbr ta WHERE ta.title = t.title
-        )
-    )
-    , other_abbr AS (
-        SELECT
-            ok.name
-            --, ok.name_abbreviated
-            --, ta.abbr
-        FROM
-            fr.laposte_address_street_keyword ok
-                JOIN title_abbr ta ON ok.name = ta.title
-        WHERE
-            "group" != 'TITLE'
-            AND
-            (
-                name_abbreviated = ta.abbr
-                OR
-                ta.abbr IS NULL
-            )
-    )
-    --SELECT * FROM other_abbr ORDER BY 1
-    DELETE FROM fr.laposte_address_street_keyword kt
-        USING other_abbr ko
-        WHERE kt.group = 'TITLE' AND kt.name = ko.name
+    CALL public.log_info(' Initialisation');
+    INSERT INTO fr.laposte_address_street_keyword("group", name, name_abbreviated)
+        SELECT *
+        FROM (
+            VALUES ('TITLE', 'ABBAYE', NULL)
+                , ('TITLE', 'ABBE', NULL)
+                , ('TITLE', 'ADJUDANT', 'ADJ')
+                , ('TITLE', 'AERODROME', 'AER')
+                , ('TITLE', 'AEROGARE', NULL)
+                , ('TITLE', 'AERONAUTIQUE', NULL)
+                , ('TITLE', 'AEROPORT', NULL)
+                , ('TITLE', 'AGENCE', NULL)
+                , ('TITLE', 'AGRICOLE', 'AGRIC')
+                , ('TITLE', 'AMIRAL', NULL)
+                , ('TITLE', 'ANCIEN', 'ANC')
+                , ('TITLE', 'ARMEMENT', NULL)
+                , ('TITLE', 'ARRONDISSEMENT', 'ARR')
+                , ('TITLE', 'ASPIRANT', 'ASP')
+                , ('TITLE', 'ASSOCIATION', NULL)
+                , ('TITLE', 'ATELIER', NULL)
+                , ('TITLE', 'AUTOROUTE', 'AUTO')
+                , ('TITLE', 'BAS', NULL)
+                , ('TITLE', 'BASSE', 'BAS')
+                , ('TITLE', 'BASSES', 'BAS')
+                , ('TITLE', 'BASTIDE', 'BAST')
+                , ('TITLE', 'BATAILLON', 'BTN')
+                , ('TITLE', 'BATAILLONS', NULL)
+                , ('TITLE', 'BATIMENT', NULL)
+                , ('TITLE', 'BATIMENTS', NULL)
+                , ('TITLE', 'BOURG', 'BOUR')
+                , ('TITLE', 'BUTTE', 'BUTT')
+                , ('TITLE', 'CABINET', NULL)
+                , ('TITLE', 'CAMPAGNE', 'CAMP')
+                , ('TITLE', 'CANAL', NULL)
+                , ('TITLE', 'CANTON', 'CANT')
+                , ('TITLE', 'CAPITAINE', NULL)
+                , ('TITLE', 'CARDINAL', 'CDL')
+                , ('TITLE', 'CARREAU', 'CARR')
+                , ('TITLE', 'CARREFOUR', 'CARR')
+                , ('TITLE', 'CARRIERE', 'CARR')
+                , ('TITLE', 'CARRIERES', 'CARR')
+                , ('TITLE', 'CASERNE', 'CASR')
+                , ('TITLE', 'CAVEE', 'CAVE')
+                , ('TITLE', 'CHAMBRE', NULL)
+                , ('TITLE', 'CHANOINE', NULL)
+                , ('TITLE', 'CHAPELLE', 'CHAP')
+                , ('TITLE', 'CHATEAU', 'CHAT')
+                , ('TITLE', 'CHEMIN', NULL)
+                , ('TITLE', 'CHEMINS', 'CHEM')
+                , ('TITLE', 'CITADELLE', NULL)
+                , ('TITLE', 'COLLEGE', NULL)
+                , ('TITLE', 'COLLINE', 'COLL')
+                , ('TITLE', 'COLLINES', 'COLL')
+                , ('TITLE', 'COLONEL', 'CNL')
+                , ('TITLE', 'COLONIE', NULL)
+                , ('TITLE', 'COMITE', NULL)
+                , ('TITLE', 'COMMANDANT', 'CDT')
+                , ('TITLE', 'COMMERCIAL', 'CIAL')
+                , ('TITLE', 'COMMUNAL', 'COM')
+                , ('TITLE', 'COMMUNAUX', 'COM')
+                , ('TITLE', 'COMMUNE', 'COM')
+                , ('TITLE', 'COMPAGNIE', 'CIE')
+                , ('TITLE', 'COMPAGNON', NULL)
+                , ('TITLE', 'COMPAGNONS', 'COMP')
+                , ('TITLE', 'COOPERATIVE', 'COOP')
+                , ('TITLE', 'COULOIR', NULL)
+                , ('TITLE', 'COURS', 'COUR')
+                , ('TITLE', 'CROIX', 'CRX')
+                , ('TITLE', 'DEPARTEMENTAL', 'DEP')
+                , ('TITLE', 'DIGUE', 'DIGU')
+                , ('TITLE', 'DIRECTEUR', NULL)
+                , ('TITLE', 'DIRECTION', 'DIR')
+                , ('TITLE', 'DIVISION', 'DIV')
+                , ('TITLE', 'DOCTEUR', NULL)
+                , ('TITLE', 'DOMAINE', 'DOMA')
+                , ('TITLE', 'ECLUSE', 'ECLU')
+                , ('TITLE', 'ECOLE', NULL)
+                , ('TITLE', 'ECONOMIQUE', 'ECO')
+                , ('TITLE', 'ECRIVAINS', 'ECRIV')
+                , ('TITLE', 'EGLISE', 'EGLI')
+                , ('TITLE', 'ENSEIGNEMENT', NULL)
+                , ('TITLE', 'ENSEMBLE', NULL)
+                , ('TITLE', 'ENTREE', 'ENT')
+                , ('TITLE', 'ENTREES', NULL)
+                , ('TITLE', 'ENTREPRISE', NULL)
+                , ('TITLE', 'EPOUX', NULL)
+                , ('TITLE', 'ESPLANADE', 'ESPL')
+                , ('TITLE', 'ESPLANADES', 'ESPL')
+                , ('TITLE', 'ETABLISSEMENT', NULL)
+                , ('TITLE', 'ETABLISSEMENTS', NULL)
+                , ('TITLE', 'ETANG', 'ETAN')
+                , ('TITLE', 'EVEQUE', NULL)
+                , ('TITLE', 'FACULTE', NULL)
+                , ('TITLE', 'FAUBOURG', 'FAUB')
+                , ('TITLE', 'FERME', 'FERM')
+                , ('TITLE', 'FONTAINE', 'FONT')
+                , ('TITLE', 'FORESTIER', NULL)
+                , ('TITLE', 'FORET', 'FOR')
+                , ('TITLE', 'FOSSE', 'FOSS')
+                , ('TITLE', 'FOSSES', 'FOSS')
+                , ('TITLE', 'FRANCAIS', 'FR')
+                , ('TITLE', 'FRANCAISE', NULL)
+                , ('TITLE', 'FUSILIERS', NULL)
+                , ('TITLE', 'GARENNE', 'GARE')
+                , ('TITLE', 'GENDARMERIE', NULL)
+                , ('TITLE', 'GENERAL', NULL)
+                , ('TITLE', 'GOUVERNEUR', 'GOUV')
+                , ('TITLE', 'GRAND', 'GD')
+                , ('TITLE', 'GRANDE', 'GDE')
+                , ('TITLE', 'GRANDES', NULL)
+                , ('TITLE', 'GRANDS', 'GDS')
+                , ('TITLE', 'GROUPE', 'GROU')
+                , ('TITLE', 'HALAGE', NULL)
+                , ('TITLE', 'HALLE', 'HALL')
+                , ('TITLE', 'HAMEAU', 'HAME')
+                , ('TITLE', 'HAMEAUX', 'HAME')
+                , ('TITLE', 'HAUT', 'HT')
+                , ('TITLE', 'HAUTE', 'HTE')
+                , ('TITLE', 'HAUTES', 'HTES')
+                , ('TITLE', 'HAUTS', 'HTS')
+                , ('TITLE', 'HIPPODROME', 'HIPP')
+                , ('TITLE', 'HOPITAL', NULL)
+                , ('TITLE', 'HOSPICE', NULL)
+                , ('TITLE', 'HOSPITALIER', NULL)
+                , ('TITLE', 'HOTEL', 'HOT')
+                , ('TITLE', 'ILOT', NULL)
+                , ('TITLE', 'INFANTERIE', 'INFANT')
+                , ('TITLE', 'INFERIEUR', NULL)
+                , ('TITLE', 'INFERIEURE', NULL)
+                , ('TITLE', 'INGENIEUR', 'ING')
+                , ('TITLE', 'INSPECTEUR', NULL)
+                , ('TITLE', 'INSTITUT', NULL)
+                , ('TITLE', 'INTERNATIONAL', NULL)
+                , ('TITLE', 'INTERNATIONALE', 'INTERN')
+                , ('TITLE', 'LIEUTENANT', 'LT')
+                , ('TITLE', 'LIEUTENANT DE VAISSEAU', 'LTDV')
+                , ('TITLE', 'MADAME', 'MME')
+                , ('TITLE', 'MADEMOISELLE', 'MLLE')
+                , ('TITLE', 'MAGASIN', NULL)
+                , ('TITLE', 'MAIRIE', NULL)
+                , ('TITLE', 'MAISON', 'MAIS')
+                , ('TITLE', 'MAITRE', 'ME')
+                , ('TITLE', 'MARAIS', NULL)
+                , ('TITLE', 'MARCHE', 'MARC')
+                , ('TITLE', 'MARECHAL', NULL)
+                , ('TITLE', 'MARITIME', NULL)
+                , ('TITLE', 'MARTYR', NULL)
+                , ('TITLE', 'MARTYRS', 'MYR')
+                , ('TITLE', 'MEDECIN', NULL)
+                , ('TITLE', 'MEDICAL', NULL)
+                , ('TITLE', 'MESDEMOISELLES', NULL)
+                , ('TITLE', 'MESSIEURS', NULL)
+                , ('TITLE', 'MILITAIRE', 'MIL')
+                , ('TITLE', 'MONSEIGNEUR', 'MGR')
+                , ('TITLE', 'MONSIEUR', 'M')
+                , ('TITLE', 'MONTEE', 'MONT')
+                , ('TITLE', 'MOULIN', NULL)
+                , ('TITLE', 'MOULINS', 'MOUL')
+                , ('TITLE', 'MUNICIPAL', 'MUN')
+                , ('TITLE', 'MUSEE', 'MUSE')
+                , ('TITLE', 'NATIONAL', 'NAL')
+                , ('TITLE', 'NOTRE DAME', 'ND')
+                , ('TITLE', 'NOUVEAU', NULL)
+                , ('TITLE', 'NOUVELLE', 'NOUV')
+                , ('TITLE', 'OBSERVATOIRE', NULL)
+                , ('TITLE', 'PALAIS', 'PALA')
+                , ('TITLE', 'PARKING', 'PARK')
+                , ('TITLE', 'PARVIS', 'PARV')
+                , ('TITLE', 'PASSERELLE', 'PASS')
+                , ('TITLE', 'PASSERELLES', NULL)
+                , ('TITLE', 'PASSES', NULL)
+                , ('TITLE', 'PASTEUR', 'PAST')
+                , ('TITLE', 'PAVILLONS', 'PAVI')
+                , ('TITLE', 'PETIT', 'PT')
+                , ('TITLE', 'PETITE', NULL)
+                , ('TITLE', 'PETITES', 'PTE')
+                , ('TITLE', 'PETITS', 'PT')
+                , ('TITLE', 'PLAINE', 'PLAI')
+                , ('TITLE', 'PLATEAU', 'PLAT')
+                , ('TITLE', 'PLATEAUX', 'PLAT')
+                , ('TITLE', 'POINTE', 'POIN')
+                , ('TITLE', 'POLICE', NULL)
+                , ('TITLE', 'PORTE', 'PORT')
+                , ('TITLE', 'PREFET', NULL)
+                , ('TITLE', 'PRESIDENT', 'PDT')
+                , ('TITLE', 'PROFESSEUR', 'PR')
+                , ('TITLE', 'PROLONGE', NULL)
+                , ('TITLE', 'PROLONGEE', NULL)
+                , ('TITLE', 'PROPRIETE', NULL)
+                , ('TITLE', 'QUARTIER', 'QUAR')
+                , ('TITLE', 'RACCOURCI', 'RACC')
+                , ('TITLE', 'RECTEUR', 'RECT')
+                , ('TITLE', 'REGIMENT', NULL)
+                , ('TITLE', 'REGIONAL', NULL)
+                , ('TITLE', 'REPUBLIQUE', 'REP')
+                , ('TITLE', 'RESIDENCES', 'RESI')
+                , ('TITLE', 'RESTAURANT', NULL)
+                , ('TITLE', 'RUELLE', 'RUEL')
+                , ('TITLE', 'SAINT', 'ST')
+                , ('TITLE', 'SAINTE', NULL)
+                , ('TITLE', 'SAINTES', NULL)
+                , ('TITLE', 'SAINTS', NULL)
+                , ('TITLE', 'SENTE', 'SENT')
+                , ('TITLE', 'SENTIER', 'SENT')
+                , ('TITLE', 'SERGENT', 'SGT')
+                , ('TITLE', 'SERVICE', 'SCE')
+                , ('TITLE', 'SOCIETE', NULL)
+                , ('TITLE', 'SOUS PREFET', NULL)
+                , ('TITLE', 'STATION', 'STAT')
+                , ('TITLE', 'SUPERIEUR', NULL)
+                , ('TITLE', 'SUPERIEURE', NULL)
+                , ('TITLE', 'SYNDICAT', NULL)
+                , ('TITLE', 'TECHNIQUE', NULL)
+                , ('TITLE', 'TERRAIN', 'TERR')
+                , ('TITLE', 'TERRASSES', 'TERR')
+                , ('TITLE', 'TRAVERSE', 'TRAV')
+                , ('TITLE', 'TUNNEL', 'DU')
+                , ('TITLE', 'UNIVERSITAIRE', 'UNVT')
+                , ('TITLE', 'UNIVERSITE', 'UNIV')
+                , ('TITLE', 'VALLEE', 'VALL')
+                , ('TITLE', 'VALLON', 'VALL')
+                , ('TITLE', 'VELODROME', NULL)
+                , ('TITLE', 'VEUVE', NULL)
+                , ('TITLE', 'VIEILLE', 'VIEL')
+                , ('TITLE', 'VIEILLES', 'VIEL')
+                , ('TITLE', 'VIEUX', 'VX')
+                , ('TITLE', 'VILLAS', 'VILL')
+        ) AS x("group", name, name_abbreviated)
         ;
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(CONCAT(' Titres: ', _nrows));
 
-    -- delete no titles
-    DELETE FROM fr.laposte_address_street_keyword kt
-        WHERE kt.group = 'TITLE' AND
-            name ~ '^BIS '
-        ;
-
-    -- update occurs
-    WITH
-    title_occurs AS (
-        SELECT
-            kt.name
-            , COUNT(*) occurs
-        FROM
-            fr.laposte_address_street_keyword kt
-            , fr.laposte_address_street las
-            , fr.get_titles_from_name(
-                name => las.lb_voie
-                , descriptor => las.lb_desc
-            ) t
+    -- update first word
+    UPDATE fr.laposte_address_street_keyword kt SET
+        first_word = (REGEXP_MATCH(kt.name, '^\S+'))[1]
         WHERE
             kt.group = 'TITLE'
             AND
-            las.fl_active
+            count_words(kt.name) > 1
+        ;
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(CONCAT(' Mises à jour (premier mot): ', _nrows));
+
+    -- update occurs
+    /* NOTE
+    this count occurs every where in the name (possibly also for other group, as type)
+     */
+    WITH
+    title_occurs AS (
+        SELECT
+            k.name
+            , COUNT(*) occurs
+        FROM
+            fr.laposte_address_street s
+            , fr.laposte_address_street_keyword k
+        WHERE
+            s.fl_active
             AND
-            POSITION('T' IN las.lb_desc) > 0
-            AND
-            t.titles @> ARRAY[kt.name]::TEXT[]
+            k.group = 'TITLE'
+            AND (
+                s.lb_voie ~ CONCAT('^', k.name, ' ')
+                OR
+                s.lb_voie ~ CONCAT(' ', k.name, ' ')
+                OR
+                s.lb_voie ~ CONCAT(' ', k.name, '$')
+            )
         GROUP BY
-            kt.name
+            k.name
     )
     --SELECT * FROM title_occurs ORDER BY 1
     UPDATE fr.laposte_address_street_keyword kt SET
@@ -355,133 +511,8 @@ BEGIN
             AND
             kt.name = sto.name
         ;
-
-    -- delete no titles
-    WITH
-    title_with_uniq_occur AS (
-        SELECT
-            name
-            , REGEXP_SPLIT_TO_ARRAY(name, '\s+') as_words
-            , count_words(name) n_words
-        FROM fr.laposte_address_street_keyword
-        WHERE "group" = 'TITLE'
-        AND occurs = 1
-        -- #338
-        AND count_words(name) > 1
-    )
-    --SELECT * FROM title_with_uniq_occur
-    , split_as_word AS (
-        SELECT
-            o1.name
-            , u.word
-            , u.i
-            , o1.as_words
-            , o1.n_words
-        FROM
-            title_with_uniq_occur o1
-                INNER JOIN LATERAL UNNEST(as_words) WITH ORDINALITY AS u(word, i) ON TRUE
-    )
-    --SELECT * FROM all_word_as_title ORDER BY 1, 3
-    , is_keyword AS (
-        SELECT
-            name
-            , ARRAY_AGG((
-                SELECT k.group
-                FROM fr.laposte_address_street_keyword k
-                WHERE k.name = sw.word ORDER BY occurs DESC LIMIT 1
-                )
-            ) as_kw
-        FROM
-            split_as_word sw
-        GROUP BY
-            name
-    )
-    , composed_words AS (
-        SELECT
-            o1.*
-            , kw.as_kw
-        FROM
-            title_with_uniq_occur o1
-                JOIN is_keyword kw ON o1.name = kw.name
-        WHERE
-            o1.n_words = ARRAY_LENGTH(kw.as_kw, 1)
-    )
-    --SELECT * FROM composed_words
-    DELETE FROM fr.laposte_address_street_keyword kt
-        USING composed_words cw
-        WHERE kt.group = 'TITLE' AND kt.name = cw.name
-        ;
-
-    WITH
-    no_title AS (
-        SELECT w.word
-        FROM
-            fr.laposte_address_street_keyword k
-                JOIN fr.laposte_address_street_word w ON k.name = w.word
-        WHERE
-            k.group = 'TITLE'
-            AND
-            -- at least 5%, others are ignored
-            (	as_title < (
-                    COALESCE(as_name, 0)
-                    + COALESCE(as_reserved, 0)
-                    + COALESCE(as_article, 0)
-                    + COALESCE(as_number, 0)
-                    + COALESCE(as_fname, 0)
-                ) * 0.05
-            )
-    )
-    --SELECT * FROM no_title ORDER BY 1
-    DELETE FROM fr.laposte_address_street_keyword kt
-        USING no_title nt
-        WHERE kt.group = 'TITLE' AND kt.name = nt.word
-        ;
-
-    -- update abbreviation (one-word title only)
-    WITH
-    title_abbr AS (
-        SELECT title, FIRST(title_abbreviated) abbr
-        FROM fr.tmp_address_street_title_abbr
-        WHERE count_words(title) = 1
-        GROUP BY title
-        HAVING COUNT(DISTINCT title_abbreviated) = 1
-    )
-    UPDATE fr.laposte_address_street_keyword kt SET
-        name_abbreviated = ta.abbr
-        FROM title_abbr ta
-        WHERE
-            kt.group = 'TITLE'
-            AND
-            kt.name = ta.title
-        ;
-    -- update missing abbreviation (n-words)
-    WITH
-    correction_abbr AS (
-        SELECT *
-        FROM (
-            VALUES
-            ('ANCIENNE ROUTE', 'ANCI ROUTE', 'ANCIENNE', 1)
-            , ('NOTRE DAME', 'ND', 'NOTRE', 1)
-            , ('LIEUTENANT DE VAISSEAU', 'LTDV', 'LIEUTENANT', 1)
-        ) AS t(name, name_abbreviated, first_word, occurs)
-    )
-    UPDATE fr.laposte_address_street_keyword kt SET
-        name_abbreviated = ca.name_abbreviated
-        FROM correction_abbr ca
-        WHERE
-            kt.group = 'TITLE'
-            AND
-            kt.name = ca.name
-        ;
-
-    -- update first word
-    UPDATE fr.laposte_address_street_keyword kt SET
-        first_word = (REGEXP_MATCH(kt.name, '^\S+'))[1]
-        WHERE
-            kt.group = 'TITLE'
-            AND
-            count_words(kt.name) > 1
-        ;
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(CONCAT(' Mises à jour (occurence): ', _nrows));
 END;
 $proc$ LANGUAGE plpgsql;
 
