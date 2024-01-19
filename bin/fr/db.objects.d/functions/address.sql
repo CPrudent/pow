@@ -696,6 +696,7 @@ CREATE OR REPLACE FUNCTION fr.get_type_of_street(
     name IN VARCHAR                   -- name of street
     , words IN TEXT[] DEFAULT NULL
     , with_abbreviation IN BOOLEAN DEFAULT FALSE
+    , raise_notice IN BOOLEAN DEFAULT FALSE
     , kw_group OUT VARCHAR
     , kw OUT VARCHAR
     , kw_abbreviated OUT VARCHAR
@@ -717,6 +718,7 @@ BEGIN
         , words => words
         , groups => 'TYPE'
         , with_abbreviation => with_abbreviation
+        , raise_notice => raise_notice
     ) ks
     ;
 END

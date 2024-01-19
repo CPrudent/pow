@@ -19,6 +19,7 @@ CREATE OR REPLACE FUNCTION fr.get_keyword_of_street(
     , at_ IN INT DEFAULT 1
     , groups VARCHAR DEFAULT 'ALL'      -- TITLE|TYPE|EXT
     , with_abbreviation IN BOOLEAN DEFAULT TRUE
+    , raise_notice IN BOOLEAN DEFAULT FALSE
     , kw_group OUT VARCHAR
     , kw OUT VARCHAR
     , kw_abbreviated OUT VARCHAR
@@ -30,9 +31,11 @@ $func$
 DECLARE
     _groups VARCHAR[];
     _kw RECORD;
+    _is_abbreviated BOOLEAN := FALSE;
     _exists BOOLEAN := TRUE;
     _found BOOLEAN := FALSE;
     _begin VARCHAR;
+    _name VARCHAR;
 BEGIN
     -- mandatory words
     IF words IS NULL THEN
@@ -44,33 +47,49 @@ BEGIN
     ELSE
         _groups := STRING_TO_ARRAY(groups, ',');
     END IF;
+    IF raise_notice THEN
+        RAISE NOTICE ' name=% (w=%, g=%)', name, words, _groups;
+    END IF;
 
     IF with_abbreviation THEN
-        SELECT *
-        INTO _kw
-        FROM fr.laposte_address_street_keyword k
-        WHERE k.name_abbreviated = words[at_]
-        AND ARRAY_POSITION(_groups, k.group) > 0
-        ORDER BY k.occurs DESC
-        LIMIT 1;
-        IF FOUND THEN
-            --RAISE NOTICE 'kw=%', _kw;
-            IF _kw.name != _kw.name_abbreviated THEN
-                kw_group := _kw.group;
-                kw := _kw.name;
-                kw_abbreviated := _kw.name_abbreviated;
-                kw_is_abbreviated := TRUE;
-                kw_nwords := count_words(_kw.name);
-                RETURN;
+        IF (SELECT COUNT(*)
+            FROM fr.laposte_address_street_keyword k
+            WHERE k.name_abbreviated = words[at_]
+        ) > 1 THEN
+            _is_abbreviated := TRUE;
+        ELSE
+            SELECT *
+            INTO _kw
+            FROM fr.laposte_address_street_keyword k
+            WHERE k.name_abbreviated = words[at_]
+            AND ARRAY_POSITION(_groups, k.group) > 0
+            ORDER BY k.occurs DESC
+            LIMIT 1;
+            IF FOUND THEN
+                IF raise_notice THEN RAISE NOTICE ' kw=%', _kw; END IF;
+                IF _kw.name != _kw.name_abbreviated THEN
+                    kw_group := _kw.group;
+                    kw := _kw.name;
+                    kw_abbreviated := _kw.name_abbreviated;
+                    kw_is_abbreviated := TRUE;
+                    kw_nwords := count_words(_kw.name);
+                    RETURN;
+                END IF;
             END IF;
         END IF;
     END IF;
 
-    SELECT EXISTS(
-        SELECT 1 FROM fr.laposte_address_street_keyword k
-        WHERE COALESCE(k.first_word, k.name) = words[at_]
-        AND ARRAY_POSITION(_groups, k.group) > 0
-    ) INTO _exists;
+    IF NOT _is_abbreviated THEN
+        SELECT EXISTS(
+            SELECT 1 FROM fr.laposte_address_street_keyword k
+            WHERE COALESCE(k.first_word, k.name) = words[at_]
+            AND ARRAY_POSITION(_groups, k.group) > 0
+        ) INTO _exists;
+    END IF;
+    IF raise_notice THEN
+        RAISE NOTICE ' exists=%, is_abbreviated=%', _exists, _is_abbreviated;
+    END IF;
+
     _begin :=
         CASE WHEN at_ = 1 THEN NULL
         ELSE items_of_array_to_string(
@@ -82,25 +101,52 @@ BEGIN
     IF _begin IS NOT NULL THEN
         _begin := CONCAT(_begin, ' ');
     END IF;
+    IF raise_notice THEN RAISE NOTICE ' begin=%', _begin; END IF;
 
     IF _exists THEN
+        IF raise_notice THEN RAISE NOTICE ' recherche "%"', words[at_]; END IF;
         FOR _kw IN (
             SELECT * FROM fr.laposte_address_street_keyword k
-            WHERE COALESCE(k.first_word, k.name) = words[at_]
-            AND ARRAY_POSITION(_groups, k.group) > 0
-            -- exclude one-char EXT keywords (A..Z)
-            AND (
-                ((k.group = 'EXT') AND (LENGTH(k.name) > 1))
-                OR
-                (k.group != 'EXT')
-            )
+            WHERE
+                -- matching word
+                (
+                    (
+                        _is_abbreviated
+                        AND
+                        (k.name_abbreviated ~ CONCAT('^', words[at_]))
+                    )
+                    OR
+                    (
+                        NOT _is_abbreviated
+                        AND
+                        (COALESCE(k.first_word, k.name) = words[at_])
+                    )
+                )
+                -- among group(s)
+                AND (
+                    ARRAY_POSITION(_groups, k.group) > 0
+                )
+                -- exclude one-char EXT keywords (A..Z)
+                AND (
+                    ((k.group = 'EXT') AND (LENGTH(k.name) > 1))
+                    OR
+                    (k.group != 'EXT')
+                )
             -- keyword composed by many words (decreasing order)
             ORDER BY count_words(k.name) DESC
         )
         LOOP
-            IF ((name ~ CONCAT('^', _begin, _kw.name, ' +'))
+            IF raise_notice THEN RAISE NOTICE ' kw=%', _kw; END IF;
+            _name := CASE
+                WHEN _is_abbreviated THEN _kw.name_abbreviated
+                ELSE _kw.name
+                END
+                ;
+            IF raise_notice THEN RAISE NOTICE ' word=%', _name; END IF;
+
+            IF ((name ~ CONCAT('^', _begin, _name, ' +'))
                 OR
-                (name ~ CONCAT('^', _begin, _kw.name, '$'))
+                (name ~ CONCAT('^', _begin, _name, '$'))
             ) THEN
                 _found := TRUE;
                 EXIT;
@@ -118,11 +164,16 @@ BEGIN
         kw_group := _kw.group;
         kw := _kw.name;
         kw_abbreviated := _kw.name_abbreviated;
-        kw_is_abbreviated := (
-            (words[at_] IS NOT DISTINCT FROM _kw.name_abbreviated)
-            AND
-            (_kw.name != _kw.name_abbreviated)
-        );
+        kw_is_abbreviated := CASE
+            WHEN _is_abbreviated THEN TRUE
+            ELSE
+                (
+                    (words[at_] IS NOT DISTINCT FROM _kw.name_abbreviated)
+                    AND
+                    (_kw.name != _kw.name_abbreviated)
+                )
+            END
+            ;
         kw_nwords := count_words(_kw.name);
     END IF;
 END
