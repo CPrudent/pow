@@ -68,7 +68,7 @@ BEGIN
         _is_number := CASE
             WHEN UPPER(_only[_i]) = 'ARABIC' THEN (word ~ '^[0-9]+$')
             -- FR and UK dates
-            WHEN UPPER(_only[_i]) = 'DATE' THEN (word ~ '^(1(ER|ST)?|([2-9][0-9]*|1[0-9]+)*I?(E|EME)?|2ND|3RD|([4-9]+|[1-9]+[0-9]+)TH)$')
+            WHEN UPPER(_only[_i]) = 'DATE' THEN (word ~ '^(1(ERE?|ST)?|([2-9][0-9]*|1[0-9]+)*I?(E|EME)?|2ND|3RD|([4-9]+|[1-9]+[0-9]+)TH)$')
             WHEN UPPER(_only[_i]) = 'HOUSENUMBER' THEN (word ~ CONCAT('^[0-9]+(', _re, ')$'))
             WHEN UPPER(_only[_i]) = 'ROMAN' THEN (word ~ '^M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$')
             WHEN UPPER(_only[_i]) = 'ROAD_NETWORK' THEN (word ~ '^(A|B|CD|CR|D|N|V|GR|R|RD|RN|VC)[0-9]+$')
