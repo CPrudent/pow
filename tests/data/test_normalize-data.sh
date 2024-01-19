@@ -1,4 +1,16 @@
-declare -a TEST_STREET_NAME=(
+    #--------------------------------------------------------------------------
+    # synopsis
+    #--
+    # DATA for tests normalize
+    #   A4 address line 4
+    #    A4N housenumber
+    #    A4E extension
+    #    A4S street
+    #   A6 address line 6
+    #    A6P postcode
+    #    A6M municipality
+
+declare -a TEST_A4S_NAME=(
     'RUE DU 19 FEVRIER 1416 CHEMIN DE LA DIGUE'                             #  1
     'RUE DU LIEUTENANT DE VAISSEAU D ESTIENNE D ORVES'                      #  2
     'RUE DU DOCTEUR PIERRE LAFLOTTE ET DE L ANCIEN HOPITAL'                 #  3
@@ -23,32 +35,7 @@ declare -a TEST_STREET_NAME=(
     'RUE DE L ADJUDANT BESNAULT ET DU GENDARME LEFORT'                      # 22
 )
 
-declare -a TEST_STREET_NAME_NORMALIZED=(
-    'RUE 19 FEVRIER 1416 CHEM DIGUE'                                        #  1
-    'RUE DU LTDV D ESTIENNE D ORVES'                                        #  2
-    'RUE DR P LAFLOTTE L ANC HOPITAL'                                       #  3
-    'ZONE ARTISANALE C HT TAPPES'                                           #  4
-    'CHEMIN ND CHAMPS ET DES VIGNES'                                        #  5
-    'PL ND DE LA LEGION D HONNEUR'                                          #  6
-    'PARC A NURIEUX CRX CHALON'                                             #  7
-    'AV A COMBATTANTS FR INDOCHINE'                                         #  8
-    'CHEM R 21 GRAVIERS CRX MARAIS'                                         #  9
-    'ZONE ARTISANALE CCIAL BEAUGE'                                          # 10
-    'CHEMIN LA DEBOISSET CLOS ST ANNE'                                      # 11
-    'ANCIENNE ROUTE CHAT ST LEONARD'                                        # 12
-    'AV LA 9E DIV INFANT DE CAVALERIE'                                      # 13
-    'LD LE GD BOIS DE LA DURANDIERE'                                        # 14
-    'CHEMIN EXPLOITATION MAS ST PAUL'                                       # 15
-    'LD MAIS FORESTIERE DE LA N BADON'                                      # 16
-    'LD LA MAIS FORESTIERE DU VIRLET'                                       # 17
-    'CHEM RURAL 55 ANCIEN MONTPELLIER'                                      # 18
-    'CHEM R D ANCIENNE SEYSSEL ANNECY'                                      # 19
-    'CHEM R DIT ANCIEN BRISON THUET'                                        # 20
-    'RUE DU TERT DE ND DE LA SALETTE'                                       # 21
-    'RUE ADJ BESNAULT GENDARME LEFORT'                                      # 22
-)
-
-declare -a TEST_STREET_DESCRIPTOR=(
+declare -a TEST_A4S_DESCRIPTOR=(
     VACNCTAAN                                                               #  1
     VATTTANAN                                                               #  2
     VATPNAAATN                                                              #  3
@@ -73,7 +60,57 @@ declare -a TEST_STREET_DESCRIPTOR=(
     VAATNAANN                                                               # 22
 )
 
-declare -a SPLIT_NORMALIZED_NAME=(
+declare -a TEST_A4S_NAME_NORMALIZED=(
+    'RUE 19 FEVRIER 1416 CHEM DIGUE'                                        #  1
+    'RUE DU LTDV D ESTIENNE D ORVES'                                        #  2
+    'RUE DR P LAFLOTTE L ANC HOPITAL'                                       #  3
+    'ZONE ARTISANALE C HT TAPPES'                                           #  4
+    'CHEMIN ND CHAMPS ET DES VIGNES'                                        #  5
+    'PL ND DE LA LEGION D HONNEUR'                                          #  6
+    'PARC A NURIEUX CRX CHALON'                                             #  7
+    'AV A COMBATTANTS FR INDOCHINE'                                         #  8
+    'CHEM R 21 GRAVIERS CRX MARAIS'                                         #  9
+    'ZONE ARTISANALE CCIAL BEAUGE'                                          # 10
+    'CHEMIN LA DEBOISSET CLOS ST ANNE'                                      # 11
+    'ANCIENNE ROUTE CHAT ST LEONARD'                                        # 12
+    'AV LA 9E DIV INFANT DE CAVALERIE'                                      # 13
+    'LD LE GD BOIS DE LA DURANDIERE'                                        # 14
+    'CHEMIN EXPLOITATION MAS ST PAUL'                                       # 15
+    'LD MAIS FORESTIERE LA NOE BADON'                                       # 16
+    'LD LA MAIS FORESTIERE DU VIRLET'                                       # 17
+    'CHEM RURAL 55 ANCIEN MONTPELLIER'                                      # 18
+    'CHEM R D ANCIENNE SEYSSEL ANNECY'                                      # 19
+    'CHEM R DIT ANCIEN BRISON THUET'                                        # 20
+    'RUE DU TERT DE ND DE LA SALETTE'                                       # 21
+    'RUE ADJ BESNAULT GENDARME LEFORT'                                      # 22
+)
+
+declare -a TEST_A4S_DESCRIPTOR_NORMALIZED=(
+    VACNCTAAN                                                               #  1
+    VATTTANAN                                                               #  2
+    VATPNAAATN                                                              #  3
+    VVANATAN                                                                #  4
+    VATTANAAN                                                               #  5
+    VTTAANAN                                                                #  6
+    VANNTN                                                                  #  7
+    VANNTAN                                                                 #  8
+    VNCANAATAN                                                              #  9
+    VVTTN                                                                   # 10
+    VAANTTN                                                                 # 11
+    VVATTN                                                                  # 12
+    VAACTTAN                                                                # 13
+    VATTAAN                                                                 # 14
+    VANATTN                                                                 # 15
+    VTTANN                                                                  # 16
+    VATTAN                                                                  # 17
+    VNCTTAN                                                                 # 18
+    VNNTTANAN                                                               # 19
+    VNNTTANAN                                                               # 20
+    VATATTAAN                                                               # 21
+    VAATNAANN                                                               # 22
+)
+
+declare -a TEST_A4S_SPLIT_NAME_NORMALIZED=(
     '{RUE,19,FEVRIER,1416,CHEM,DIGUE}'                                      #  1
     '{RUE,DU,LTDV,D,ESTIENNE,D,ORVES}'                                      #  2
     '{RUE,DR,P,LAFLOTTE,L,ANC,HOPITAL}'                                     #  3
@@ -89,7 +126,7 @@ declare -a SPLIT_NORMALIZED_NAME=(
     '{AV,LA,9E,"DIV INFANT",DE,CAVALERIE}'                                  # 13
     '{LD,LE,"GD BOIS","DE LA",DURANDIERE}'                                  # 14
     '{CHEMIN,EXPLOITATION,"MAS ST",PAUL}'                                   # 15
-    '{LD,"MAIS FORESTIERE","DE LA","NOE BADON"}'                            # 16
+    '{LD,"MAIS FORESTIERE",LA,"NOE BADON"}'                                 # 16
     '{LD,LA,"MAIS FORESTIERE",DU,VIRLET}'                                   # 17
     '{CHEM,RURAL,55,ANCIEN,MONTPELLIER}'                                    # 18
     '{CHEM,"R D",ANCIENNE,"SEYSSEL ANNECY"}'                                # 19
@@ -98,7 +135,7 @@ declare -a SPLIT_NORMALIZED_NAME=(
     '{RUE,ADJ,"BESNAULT GENDARME LEFORT"}'                                  # 22
 )
 
-declare -a SPLIT_NORMALIZED_DESCRIPTOR=(
+declare -a TEST_A4S_SPLIT_DESCRIPTOR_NORMALIZED=(
     '{V,C,N,C,T,N}'                                                         #  1
     '{V,A,T,A,N,A,N}'                                                       #  2
     '{V,T,P,N,A,T,N}'                                                       #  3
@@ -114,7 +151,7 @@ declare -a SPLIT_NORMALIZED_DESCRIPTOR=(
     '{V,A,C,TT,A,N}'                                                        # 13
     '{V,A,TT,AA,N}'                                                         # 14
     '{V,N,TT,N}'                                                            # 15
-    '{V,TT,AA,NN}'                                                          # 16
+    '{V,TT,A,NN}'                                                           # 16
     '{V,A,TT,A,N}'                                                          # 17
     '{V,N,C,T,N}'                                                           # 18
     '{V,NN,T,NN}'                                                           # 19
@@ -122,3 +159,5 @@ declare -a SPLIT_NORMALIZED_DESCRIPTOR=(
     '{V,A,T,A,T,AA,N}'                                                      # 21
     '{V,T,NNN}'                                                             # 22
 )
+
+declare -i TEST_A4S_SZ=${#TEST_A4S_NAME[*]}
