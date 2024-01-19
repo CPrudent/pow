@@ -24,7 +24,7 @@ BEGIN
 END
 $proc$ LANGUAGE plpgsql;
 
--- build keyword exceptions (for firstname)
+-- build keyword exceptions (for firstname, article)
 -- Query returned successfully in 3 min 57 secs
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_street_kw_exception');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_kw_exception()
@@ -79,38 +79,14 @@ BEGIN
             split_as_word sw
         WHERE
             fr.is_normalized_firstname(sw.word)
-            /*
-            EXISTS(
-                SELECT 1
-                FROM fr.constant c JOIN fr.laposte_address_street_word w ON c.key = w.word
-                WHERE c.usecase = 'LAPOSTE_STREET_FIRSTNAME'
-                    AND
-                    w.word = sw.word
-                    AND
-                    (
-                        (w.as_default = 'P')
-                        OR
-                        -- at least 5%, others are ignored
-                        (	as_fname >= (
-                                COALESCE(as_name, 0)
-                                + COALESCE(as_reserved, 0)
-                                + COALESCE(as_article, 0)
-                                + COALESCE(as_number, 0)
-                                + COALESCE(as_title, 0)
-                                + COALESCE(as_type, 0)
-                            ) * 0.05
-                        )
-                    )
-            )
-             */
             AND
             -- not last word (name!)
-            i < (nwords -1)
+            i < nwords
             AND
             -- not followed by a number
             NOT fr.is_normalized_number(words[i +1])
     )
-    -- #121887
+    -- #123016
     --SELECT * FROM word_firstname ORDER BY 2
     , word_exception AS (
         SELECT
@@ -161,10 +137,14 @@ BEGIN
             , x.as_except
         FROM
             word_exception x
-                JOIN fr.laposte_address_street_uniq s ON s.words @> ARRAY[x.word]::TEXT[]
+            , fr.laposte_address_street_uniq s
         WHERE
+            -- all containing this word
+            ARRAY_POSITION(s.words, x.word) > 0
+            AND
             (ARRAY_POSITION(s.words, x.word) + count_words(x.followed_by)) <= s.nwords
             AND
+            -- and followed too
             s.words[(ARRAY_POSITION(s.words, x.word) + count_words(x.followed_by))]= REGEXP_REPLACE(x.followed_by, '^.* ', '')
     )
     --SELECT * FROM word_usecase ORDER BY 1, 2

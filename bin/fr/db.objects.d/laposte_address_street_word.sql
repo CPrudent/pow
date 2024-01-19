@@ -46,7 +46,7 @@ BEGIN
     TRUNCATE TABLE fr.laposte_address_street_word;
     PERFORM public.drop_table_indexes('fr', 'laposte_address_street_word');
 
-    CALL public.log_info(' Préparation');
+    CALL public.log_info(' Initialisation');
     INSERT INTO fr.laposte_address_street_word(
         word
         , as_article

@@ -6,9 +6,26 @@
 initialization will be done w/ constant
  */
 
+DO $$
+BEGIN
+    IF table_exists(
+            schema_name => 'fr'
+            , table_name => 'laposte_address_street_uniq'
+        )
+        AND
+        NOT column_exists(
+            schema_name => 'fr'
+            , table_name => 'laposte_address_street_uniq'
+            , column_name => 'id'
+        ) THEN
+        DROP TABLE fr.laposte_address_street_uniq;
+    END IF;
+END $$;
+
 -- to store uniq name
 CREATE TABLE IF NOT EXISTS fr.laposte_address_street_uniq (
-    name VARCHAR NOT NULL
+    id INT NOT NULL
+    , name VARCHAR NOT NULL
     , name_normalized VARCHAR
     , descriptors VARCHAR
     , occurs INT
@@ -22,6 +39,8 @@ CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_uniq_index()
 AS
 $proc$
 BEGIN
+    CREATE UNIQUE INDEX IF NOT EXISTS ix_laposte_address_street_uniq_id ON fr.laposte_address_street_uniq (id);
+
     CREATE INDEX IF NOT EXISTS ix_laposte_address_street_uniq_name ON fr.laposte_address_street_uniq USING GIN(name GIN_TRGM_OPS);
 END
 $proc$ LANGUAGE plpgsql;
@@ -46,27 +65,37 @@ BEGIN
 
     CALL public.log_info(' Initialisation');
     INSERT INTO fr.laposte_address_street_uniq(
-        name
+        id
+        , name
         , name_normalized
         , descriptors
         , occurs
     )
+    WITH
+    uniq_street AS (
+        SELECT
+            lb_voie name
+            , CASE WHEN lb_voie != lb_voie_normalise THEN lb_voie_normalise
+                ELSE NULL
+                END name_normalized
+            , MIN(lb_desc) descriptors
+            , COUNT(*)
+        FROM
+            fr.laposte_address_street
+        WHERE
+            fl_active
+        GROUP BY
+            lb_voie
+            , CASE WHEN lb_voie != lb_voie_normalise THEN lb_voie_normalise
+                ELSE NULL
+                END
+    )
+    -- #1120726
     SELECT
-        lb_voie name
-        , CASE WHEN lb_voie != lb_voie_normalise THEN lb_voie_normalise
-            ELSE NULL
-            END name_normalized
-        , MIN(lb_desc) descriptors
-        , COUNT(*)
+        ROW_NUMBER() OVER (ORDER BY name) id
+        , *
     FROM
-        fr.laposte_address_street
-    WHERE
-        fl_active
-    GROUP BY
-        lb_voie
-        , CASE WHEN lb_voie != lb_voie_normalise THEN lb_voie_normalise
-            ELSE NULL
-            END
+        uniq_street
     ;
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Création: ', _nrows));

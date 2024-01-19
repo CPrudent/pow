@@ -25,6 +25,7 @@
 \include_relative laposte_address_area.sql
 \include_relative laposte_address_street.sql
 \include_relative laposte_address_street_uniq.sql
+\include_relative laposte_address_street_membership.sql
 \include_relative laposte_address_street_word.sql
 \include_relative laposte_address_street_keyword.sql
 \include_relative laposte_address_street_kw_exception.sql

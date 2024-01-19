@@ -100,22 +100,31 @@ _ko=0
         --name DESCRIPTOR_DIFF \
         --query "
             COPY (
-                SELECT
-                    descriptor_laposte
-                    , descriptor_pow
-                    , name
-                FROM (
+                WITH
+                descriptors AS (
                     SELECT
                         fr.get_descriptor_of_street(name) AS descriptor_pow
                         , descriptors AS descriptor_laposte
                         , name
                     FROM
                         fr.laposte_address_street_uniq
-                    ) t
+                )
+                SELECT
+                    UNNEST(
+                        fr.get_differences_between_descriptors(
+                            reference => descriptor_laposte
+                            , other => descriptor_pow
+                        )
+                    ) descriptor_diff
+                    , descriptor_laposte
+                    , descriptor_pow
+                    , name
+                FROM
+                    descriptors
                 WHERE
                     descriptor_pow IS DISTINCT FROM descriptor_laposte
                 ORDER BY
-                    2
+                    1
             ) TO STDOUT WITH (DELIMITER E',', FORMAT CSV, HEADER TRUE, ENCODING UTF8)
             " \
         --output $POW_DIR_TMP/descriptors_diff.txt || exit $ERROR_CODE

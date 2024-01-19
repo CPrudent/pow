@@ -100,6 +100,7 @@ io_history_begin \
                         --query "
                             SELECT public.drop_table_indexes('fr', 'constant');
                             CALL fr.set_laposte_address_street_uniq();
+                            CALL fr.set_laposte_address_street_membership();
                             CALL fr.set_laposte_address_street_word();
                             CALL fr.set_laposte_address_street_type();
                             CALL fr.set_laposte_address_street_ext();
@@ -147,6 +148,14 @@ io_history_begin \
 vacuum \
     --schema_name fr \
     --table_name constant \
+    --mode ANALYZE &&
+vacuum \
+    --schema_name fr \
+    --table_name laposte_address_street_uniq \
+    --mode ANALYZE &&
+vacuum \
+    --schema_name fr \
+    --table_name laposte_address_street_word \
     --mode ANALYZE &&
 vacuum \
     --schema_name fr \

@@ -694,6 +694,7 @@ $func$ LANGUAGE plpgsql;
 SELECT drop_all_functions_if_exists('fr', 'get_type_of_street');
 CREATE OR REPLACE FUNCTION fr.get_type_of_street(
     name IN VARCHAR                   -- name of street
+    , words IN TEXT[] DEFAULT NULL
     , with_abbreviation IN BOOLEAN DEFAULT FALSE
     , kw_group OUT VARCHAR
     , kw OUT VARCHAR
@@ -713,6 +714,7 @@ BEGIN
         , get_type_of_street.kw_nwords
     FROM fr.get_keyword_of_street(
         name => name
+        , words => words
         , groups => 'TYPE'
         , with_abbreviation => with_abbreviation
     ) ks
@@ -1115,3 +1117,59 @@ WHERE
     descriptor_pow IS DISTINCT FROM descriptor_laposte
     ;
  */
+
+SELECT drop_all_functions_if_exists('fr', 'get_difference_between_descriptors');
+SELECT drop_all_functions_if_exists('fr', 'get_differences_between_descriptors');
+CREATE OR REPLACE FUNCTION fr.get_differences_between_descriptors(
+    reference VARCHAR
+    , other VARCHAR
+    , raise_notice IN BOOLEAN DEFAULT FALSE
+    , differences OUT VARCHAR[]
+)
+AS
+$func$
+DECLARE
+    _ref_len INT := LENGTH(reference);
+    _other_len INT := LENGTH(other);
+    _ref_i CHAR(1);
+    _other_i CHAR(1);
+    _i INT;
+    _usecase VARCHAR;
+    _descriptor VARCHAR;
+BEGIN
+    IF _ref_len != _other_len THEN
+        differences := ARRAY_APPEND(differences, CONCAT_WS('-'
+            , 'LEN'
+            , CASE
+                WHEN _ref_len > _other_len THEN 'GT'
+                ELSE 'LT'
+                END
+            )
+        );
+    END IF;
+
+    FOR _i IN 1 .. LEAST(_ref_len, _other_len)
+    LOOP
+        _ref_i := SUBSTR(reference, _i, 1);
+        _other_i := SUBSTR(other, _i, 1);
+        IF (_ref_i = _other_i) THEN CONTINUE; END IF;
+
+        _usecase := CASE
+            WHEN (_ref_i != _other_i) AND (_ref_i != 'N') THEN 'MISS'
+            WHEN (_ref_i != _other_i) AND (_ref_i = 'N') THEN 'WRONG'
+            END
+            ;
+        _descriptor := CASE
+            WHEN (_ref_i != _other_i) AND (_ref_i != 'N') THEN _ref_i
+            WHEN (_ref_i != _other_i) AND (_ref_i = 'N') THEN _other_i
+            END
+            ;
+        differences := ARRAY_APPEND(differences, CONCAT_WS('-'
+            , _usecase
+            , _descriptor
+            , _i
+            )
+        );
+    END LOOP;
+END
+$func$ LANGUAGE plpgsql;
