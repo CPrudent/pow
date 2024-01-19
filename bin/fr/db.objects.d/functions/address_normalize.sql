@@ -27,6 +27,8 @@ DECLARE
     _i INT;
     _re VARCHAR;
 BEGIN
+    IF LENGTH(word) = 0 THEN RETURN FALSE; END IF;
+
     IF only_digit = 'ALL' THEN
         _only := '{ARABIC,DATE,HOUSENUMBER,ROAD_NETWORK,ROMAN}'::VARCHAR[];
     ELSE

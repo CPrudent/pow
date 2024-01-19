@@ -877,10 +877,30 @@ DECLARE
     _is_exception BOOLEAN;
     _exception VARCHAR;
 BEGIN
-    IF raise_notice THEN RAISE NOTICE 'name= %', name; END IF;
+    IF raise_notice THEN RAISE NOTICE 'name= "%"', name; END IF;
+
+    IF name ~ '^ +' OR name ~ ' +$' THEN
+        RAISE NOTICE 'libellé Voie erronée (%) avec espace(s) superflus!', name;
+        name := TRIM(name);
+    END IF;
 
     _words := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
     _words_len := ARRAY_LENGTH(_words, 1);
+
+    /*
+    IF LENGTH(_words[1]) = 0 OR LENGTH(_words[_words_len]) = 0 THEN
+        RAISE NOTICE 'libellé Voie erronée (%) avec espace(s) superflus!', name;
+        RAISE NOTICE 'avant correction: w=% sz=%', _words, _words_len;
+        -- https://stackoverflow.com/questions/2072776/remove-array-values-in-pgsql
+        _words := CASE
+            WHEN LENGTH(_words[1]) = 0 THEN ( SELECT _words[2:ARRAY_UPPER(_words, 1)] )
+            ELSE ( SELECT _words[1:ARRAY_UPPER(_words, 1) - 1] )
+            END;
+        _words_len := _words_len -1;
+        RAISE NOTICE 'après correction: w=% sz=%', _words, _words_len;
+    END IF;
+     */
+
     FOR _i IN 1 .. _words_len
     LOOP
         _kw_nwords := 1;
@@ -1089,7 +1109,7 @@ BEGIN
         _descriptors := REGEXP_REPLACE(_descriptors, '(^V[PT]C)(E?)$', 'VNC\2');
     END IF;
 
-    IF raise_notice THEN RAISE NOTICE 'descriptor= %', _descriptors; END IF;
+    IF raise_notice THEN RAISE NOTICE ' descriptor= %', _descriptors; END IF;
     RETURN _descriptors;
 END
 $func$ LANGUAGE plpgsql;
