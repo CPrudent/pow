@@ -25,7 +25,7 @@ END
 $proc$ LANGUAGE plpgsql;
 
 -- build keyword exceptions (for firstname, article)
--- Query returned successfully in 3 min 57 secs
+-- Query returned successfully in 54 secs 25 msec.
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_street_kw_exception');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_kw_exception()
 AS
@@ -137,16 +137,15 @@ BEGIN
             , x.as_except
         FROM
             word_exception x
-            , fr.laposte_address_street_uniq s
+                JOIN fr.laposte_address_street_membership m ON x.word = m.word
+                JOIN fr.laposte_address_street_uniq s ON m.name_id = s.id
         WHERE
-            -- all containing this word
-            ARRAY_POSITION(s.words, x.word) > 0
-            AND
             (ARRAY_POSITION(s.words, x.word) + count_words(x.followed_by)) <= s.nwords
             AND
             -- and followed too
             s.words[(ARRAY_POSITION(s.words, x.word) + count_words(x.followed_by))]= REGEXP_REPLACE(x.followed_by, '^.* ', '')
     )
+    -- #37448
     --SELECT * FROM word_usecase ORDER BY 1, 2
     , count_usecase AS (
         SELECT
@@ -178,7 +177,7 @@ BEGIN
         WHERE
             COALESCE(cu.ok_except, 0) > COALESCE(cu.ko_except, 0)
     )
-    -- #9206
+    -- #8845
     SELECT * FROM with_exception
     ;
     GET DIAGNOSTICS _nrows = ROW_COUNT;
