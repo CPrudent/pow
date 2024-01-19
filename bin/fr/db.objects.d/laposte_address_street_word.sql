@@ -153,3 +153,22 @@ BEGIN
     CALL public.log_info(' Indexation');
 END
 $proc$ LANGUAGE plpgsql;
+
+-- get default of word
+SELECT drop_all_functions_if_exists('fr', 'get_default_of_word');
+CREATE OR REPLACE FUNCTION fr.get_default_of_word(
+    word IN VARCHAR
+    , as_default OUT VARCHAR
+)
+AS
+$func$
+BEGIN
+    SELECT w.as_default
+    INTO
+        get_default_of_word.as_default
+    FROM fr.laposte_address_street_word w
+    WHERE
+        w.word = get_default_of_word.word
+    ;
+END
+$func$ LANGUAGE plpgsql;

@@ -895,7 +895,7 @@ BEGIN
                 --WHEN _words[_i] = ANY('{D,L}') THEN 'A'
                 WHEN _words[_i] = ANY('{C,M}') THEN 'N'
                 -- exceptions: DI, LI, MI, CD, CL, ...
-                WHEN _words[_i] ~ '^[DLM]I|C[DL]|LIV|CIX$' THEN 'N'
+                WHEN fr.get_default_of_word(_words[_i]) = 'N' THEN 'N'
                 ELSE 'C'
                 END
                 ;
