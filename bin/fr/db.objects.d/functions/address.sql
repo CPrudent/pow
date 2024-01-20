@@ -932,10 +932,6 @@ BEGIN
                     name => name
                     , at_ => _i
                     , words => _words
-                    , groups => CASE
-                        WHEN _i = 1 THEN 'TYPE'
-                        ELSE 'ALL'
-                        END
                     , with_abbreviation => with_abbreviation
                 );
 
