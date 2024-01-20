@@ -1045,7 +1045,7 @@ BEGIN
                 END IF;
 
                 -- apply exception(s) if exist
-                IF _with_exception THEN
+                IF _with_exception AND LENGTH(_words_d) = 1 THEN
                     SELECT is_exception, descriptor
                     INTO _is_exception, _exception
                     FROM fr.get_descriptor_from_exception(
