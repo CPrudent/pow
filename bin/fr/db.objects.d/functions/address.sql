@@ -1035,7 +1035,9 @@ BEGIN
                 (firstname|title) followed by a number only (at the end) is a name
                 */
                 IF _words_d ~ 'P|T' THEN
-                    IF fr.is_normalized_number(_words[_i +1]) AND _words_len = (_i +1) THEN
+                    IF _words_d ~ 'P'
+                        AND _words_len = (_i +1)
+                        AND fr.is_normalized_number(_words[_i +1]) THEN
                         _words_d := REPEAT('N', LENGTH(_words_d));
                     ELSE
                         _with_exception := TRUE;
