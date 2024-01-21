@@ -171,22 +171,27 @@ END
 $proc$ LANGUAGE plpgsql;
 
 /* TEST
+
+-- always name 'N' as default
 SELECT
     *
 FROM
     fr.laposte_address_street_word
 WHERE
-    as_reserved  = GREATEST(as_name, as_article, as_number, as_fname, as_title, as_type)
-    OR
-    as_article > GREATEST(as_name, as_reserved, as_number, as_fname, as_title, as_type)
-    OR
-    as_number > GREATEST(as_name, as_reserved, as_article, as_fname, as_title, as_type)
-    OR
-    as_fname > GREATEST(as_name, as_reserved, as_article, as_number, as_title, as_type)
-    OR
-    as_title > GREATEST(as_name, as_reserved, as_article, as_number, as_fname, as_type)
-    OR
-    as_type > GREATEST(as_name, as_reserved, as_article, as_number, as_fname, as_title)
+    GREATEST(as_reserved, as_name, as_article, as_number, as_fname, as_title, as_type) > 0
+    AND (
+        as_reserved  = GREATEST(as_name, as_article, as_number, as_fname, as_title, as_type)
+        OR
+        as_article = GREATEST(as_name, as_reserved, as_number, as_fname, as_title, as_type)
+        OR
+        as_number = GREATEST(as_name, as_reserved, as_article, as_fname, as_title, as_type)
+        OR
+        as_fname = GREATEST(as_name, as_reserved, as_article, as_number, as_title, as_type)
+        OR
+        as_title = GREATEST(as_name, as_reserved, as_article, as_number, as_fname, as_type)
+        OR
+        as_type = GREATEST(as_name, as_reserved, as_article, as_number, as_fname, as_title)
+    )
 ORDER BY
     1
  */
