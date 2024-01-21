@@ -868,15 +868,21 @@ DECLARE
     _kw_nwords INT;
     _descriptors VARCHAR := '';
     _descriptors_tmp VARCHAR;
+    _descriptors_c VARCHAR;
+    _descriptors_t VARCHAR;
+    _descriptors_v VARCHAR;
     _words TEXT[];
+    _words_by_descriptor TEXT[];
     _words_len INT;
-    _words_i INT := 0;
     _words_d VARCHAR;
     _words_skip INT := 0;
     _i INT;
+    _len_c INT;
+    _last_t INT;
     _with_exception BOOLEAN;
     _is_exception BOOLEAN;
     _exception VARCHAR;
+    _init_by_descriptor BOOLEAN;
 BEGIN
     IF raise_notice THEN RAISE NOTICE 'name= "%"', name; END IF;
 
@@ -888,23 +894,10 @@ BEGIN
     _words := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
     _words_len := ARRAY_LENGTH(_words, 1);
 
-    /*
-    IF LENGTH(_words[1]) = 0 OR LENGTH(_words[_words_len]) = 0 THEN
-        RAISE NOTICE 'libellé Voie erronée (%) avec espace(s) superflus!', name;
-        RAISE NOTICE 'avant correction: w=% sz=%', _words, _words_len;
-        -- https://stackoverflow.com/questions/2072776/remove-array-values-in-pgsql
-        _words := CASE
-            WHEN LENGTH(_words[1]) = 0 THEN ( SELECT _words[2:ARRAY_UPPER(_words, 1)] )
-            ELSE ( SELECT _words[1:ARRAY_UPPER(_words, 1) - 1] )
-            END;
-        _words_len := _words_len -1;
-        RAISE NOTICE 'après correction: w=% sz=%', _words, _words_len;
-    END IF;
-     */
-
     FOR _i IN 1 .. _words_len
     LOOP
         _kw_nwords := 1;
+        _init_by_descriptor := FALSE;
         IF _i < _words_skip THEN
             CONTINUE;
         END IF;
@@ -918,7 +911,11 @@ BEGIN
                 --WHEN _words[_i] = ANY('{D,L}') THEN 'A'
                 WHEN _words[_i] = ANY('{C,M}') THEN 'N'
                 -- exceptions: DI, LI, MI, CD, CL, ...
-                WHEN fr.get_default_of_word(_words[_i]) = 'N' THEN 'N'
+                WHEN fr.get_default_of_word(_words[_i]) != 'C' THEN
+                    CASE
+                    WHEN _i < _words_len THEN fr.get_default_of_word(_words[_i])
+                    ELSE 'N'
+                    END
                 ELSE 'C'
                 END
                 ;
@@ -949,6 +946,8 @@ BEGIN
                         END
                         , _kw_nwords
                     );
+                    _words_by_descriptor := ARRAY_APPEND(_words_by_descriptor, _kw);
+                    _init_by_descriptor := TRUE;
                 ELSE
                     -- firstname
                     IF fr.is_normalized_firstname(_words[_i]) THEN
@@ -1060,16 +1059,16 @@ BEGIN
                     END IF;
                 END IF;
             ELSIF fr.is_normalized_reserved_word(_words[_i]) THEN
-                -- counter examples
-                --  MAS SUPERIEUR, VILLAGE INFERIEUR
-                IF _words_len = 2 AND _descriptors = 'V' THEN
-                    _words_d := 'N';
-                ELSE
-                    _words_d := 'E';
-                END IF;
+                -- too bad! 11N / 10E when nwords=2, always E
+                -- VN: CORNICHE INFERIEURE
+                -- NE: CORNICHE SUPERIEURE
+                _words_d := 'E';
             END IF;
         END IF;
 
+        IF NOT _init_by_descriptor THEN
+            _words_by_descriptor := ARRAY_APPEND(_words_by_descriptor, _words[_i]);
+        END IF;
         _descriptors := CONCAT(_descriptors, _words_d);
         _words_skip := _i;
         IF _kw_nwords > 1 THEN
@@ -1078,43 +1077,52 @@ BEGIN
     END LOOP;
 
     -- fix bad uses
-    /* already done!
-    -- not type, but name
-    ELSIF _descriptors ~ '^V+N*$' THEN
-        IF EXISTS(
-            SELECT 1 FROM fr.laposte_address_street_keyword k
-            WHERE k.group = 'TYPE'
-            AND k.name = get_descriptor_of_street.name
-        ) THEN
-            _descriptors := REPEAT('N', LENGTH(_descriptors));
-        END IF;
-     */
-
     -- name of street (so descriptor) is ended by: number, reserved or name (CEN)
     IF _descriptors !~ '[CEN]$' THEN
         _descriptors := REGEXP_REPLACE(_descriptors, '.$', 'N');
     -- nothing else than CN before last E (specially not title)
     ELSIF _descriptors ~ '[^CN]E$' THEN
         _descriptors := REGEXP_REPLACE(_descriptors, '.E$', 'NE');
-    -- not title|type only (eventually followed by number), but name
-    -- IMPASSE DU PASSAGE A NIVEAU 7
-    ELSIF _descriptors ~ '(T|V)+C*$' THEN
-        -- separately to avoid error if TV are successive
-        -- VVVTTTC, PASSAGE A NIVEAU PASSAGE A NIVEAU 67
-        _descriptors_tmp := (REGEXP_MATCHES(_descriptors,
-            CASE
-            WHEN _descriptors ~ 'T+C*$' THEN '(T+)C*$'
-            ELSE '(V+)C*$'
-            END
-            )
-        )[1];
-        _descriptors := REGEXP_REPLACE(_descriptors,
-            CASE
-            WHEN _descriptors ~ 'T+C*$' THEN 'T+(C*)$'
-            ELSE 'V+(C*)$'
-            END
+
+    -- not title only (eventually followed by number), but name
+    -- IMPASSE DU PASSAGE A NIVEAU 7, VANNNC
+    -- and also successive V+ and T+
+    -- PASSAGE A NIVEAU PASSAGE A NIVEAU 67, VVVNNNC
+    ELSIF _descriptors ~ 'T+C*$' THEN
+        _descriptors_t := (REGEXP_MATCHES(_descriptors, '(T+)(C*)$'))[1];
+        _descriptors_c := (REGEXP_MATCHES(_descriptors, '(T+)(C*)$'))[2];
+        -- last title is one|many word(s)
+        _len_c := LENGTH(COALESCE(_descriptors_c, ''));
+        _last_t := ARRAY_LENGTH(_words_by_descriptor, 1) - _len_c;
+        -- replace all T
+        IF count_words(_words_by_descriptor[_last_t]) = LENGTH(_descriptors_t) THEN
+            _descriptors := REGEXP_REPLACE(_descriptors
+                , 'T+(C*)$'
+                , CONCAT(
+                    REPEAT('N', LENGTH(_descriptors_t))
+                    , '\1'
+                )
+            );
+        -- replace only last T
+        ELSE
+            IF _last_t > 1 THEN
+                _descriptors := SUBSTR(_descriptors, 1, _last_t -1);
+            ELSE
+                _descriptors := NULL;
+            END IF;
+            _descriptors := CONCAT(_descriptors, 'N');
+            IF _len_c > 0 THEN
+                _descriptors := CONCAT(_descriptors, _descriptors_c);
+            END IF;
+        END IF;
+    -- not type only (eventually followed by number), but name
+    -- PASSAGE A NIVEAU 7, NNNC
+    ELSIF _descriptors ~ 'V+C*$' THEN
+        _descriptors_v := (REGEXP_MATCHES(_descriptors, '(V+)(C*)$'))[1];
+        _descriptors := REGEXP_REPLACE(_descriptors
+            , 'V+(C*)$'
             , CONCAT(
-                REPEAT('N', LENGTH(_descriptors_tmp))
+                REPEAT('N', LENGTH(_descriptors_v))
                 , '\1'
             )
         );

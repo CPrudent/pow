@@ -177,7 +177,7 @@ BEGIN
         WHERE
             COALESCE(cu.ok_except, 0) > COALESCE(cu.ko_except, 0)
     )
-    -- #8845
+    -- #2591
     SELECT * FROM with_exception
     ;
     GET DIAGNOSTICS _nrows = ROW_COUNT;

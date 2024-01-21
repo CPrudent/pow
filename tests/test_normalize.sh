@@ -6,7 +6,8 @@
     # tests normalize
     #   SPLIT: fr.split_name_of_street_as_descriptor()
     #   DESCRIPTOR_DIFF: fr.get_descriptor_of_street(), for ALL
-    #   DESCRIPTOR: fr.get_descriptor_of_street()
+    #   DESCRIPTOR_LIST: fr.get_descriptor_of_street(), for LIST
+    #   DESCRIPTOR_CASE: fr.get_descriptor_of_street(), for USECASE
 
 source $POW_DIR_ROOT/tests/data/test_normalize-data.sh || exit $ERROR_CODE
 
@@ -24,7 +25,7 @@ bash_args \
         test
     ' \
     --args_v '
-        test:SPLIT|DESCRIPTOR_DIFF|DESCRIPTOR;
+        test:SPLIT|DESCRIPTOR_DIFF|DESCRIPTOR_LIST|DESCRIPTOR_CASE;
         number_line:no|yes
     ' \
     --args_d '
@@ -132,11 +133,11 @@ _ko=0
     exit $SUCCESS_CODE
 }
 
-[ "$get_arg_test" = DESCRIPTOR ] && {
+[ "$get_arg_test" = DESCRIPTOR_LIST ] && {
     set_log_echo no
     for ((_i=0; _i < ${#TEST_A4S_NAME[*]}; _i++)); do
         execute_query \
-        --name NORMALIZE_STREET_DESCRIPTOR \
+        --name DESCRIPTOR_LIST \
         --query "
             SELECT fr.get_descriptor_of_street(
                 name => '${TEST_A4S_NAME[$_i]}'
@@ -144,7 +145,7 @@ _ko=0
         " \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _normalize || {
-            cat $POW_DIR_ARCHIVE/NORMALIZE_STREET_DESCRIPTOR.error.log
+            cat $POW_DIR_ARCHIVE/DESCRIPTOR_LIST.error.log
             exit $ERROR_CODE
         }
 
@@ -157,6 +158,89 @@ _ko=0
             echo 'KO'
             _ko=$((_ko +1))
             echo " descripteur $_normalize : ${TEST_A4S_DESCRIPTOR[$_i]}"
+        }
+    done
+
+    echo
+    echo "Avec succès: $_ok"
+    echo "Avec erreur: $_ko"
+
+    [ $_ko -gt 0 ] && _rc=$ERROR_CODE || _rc=$SUCCESS_CODE
+    exit $_rc
+}
+
+[ "$get_arg_test" = DESCRIPTOR_CASE ] && {
+    declare -a _TEST_A4S_NAME=(
+        # successive titles (two of one word, one of two words)
+        'LE PETIT HAUT CHEMIN'                                                  #  1
+        'PLACE DE LA 32E DIVISION INFANTERIE'                                   #  2
+        'PLACE DE L EGLISE NOTRE DAME'                                          #  3
+        'LA MAISON FORESTIERE DE LA BORNE'                                      #  4
+        # wrong number
+        'IMMEUBLE MC DO'                                                        #  5
+        'RUE DU CM'                                                             #  6
+        # ok number (road_network)
+        'ROUTE DEPARTEMENTALE 151E1'                                            #  7
+        'CHEMIN DEPARTEMENTAL CD15E'                                            #  8
+        'CHEMIN DEPARTEMENTAL 34E7'                                             #  9
+        'PISTE FORESTIERE T28 BARBEIRANNE'                                      # 10
+        'DEPARTEMENTALE 106 E2'                                                 # 11
+        'IMPASSE DE LA BRUYERE C3'                                              # 12
+        'ROND POINT DE SIAILLES G6'                                             # 13
+        # exception only if len(descriptor) = 1
+        'RUE DU SOUS PREFET BARRE'                                              # 14
+        # ending REGEX '(T|V)+C*$'
+        'PASSAGE A NIVEAU PASSAGE A NIVEAU 67'                                  # 15
+        'IMPASSE DU PASSAGE A NIVEAU 7'                                         # 16
+        'GRAND ANSE 2'                                                          # 17
+        # wrong number
+        'RUE SAINT EVE'                                                         # 18
+    )
+    declare -a _TEST_A4S_DESCRIPTOR=(
+        ATNN                                                                    #  1
+        VAACTN                                                                  #  2
+        VAATNN                                                                  #  3
+        ATTAAN                                                                  #  4
+        VNN                                                                     #  5
+        VAN                                                                     #  6
+        VNC                                                                     #  7
+        TNC                                                                     #  8
+        TNC                                                                     #  9
+        NNCN                                                                    # 10
+        NCC                                                                     # 11
+        VAANC                                                                   # 12
+        VVANC                                                                   # 13
+        VATTN                                                                   # 14
+        VVVNNNC                                                                 # 15
+        VANNNC                                                                  # 16
+        TNC                                                                     # 17
+        VTN                                                                     # 18
+    )
+
+    set_log_echo no
+    for ((_i=0; _i < ${#_TEST_A4S_NAME[*]}; _i++)); do
+        execute_query \
+        --name DESCRIPTOR_CASE \
+        --query "
+            SELECT fr.get_descriptor_of_street(
+                name => '${_TEST_A4S_NAME[$_i]}'
+            )
+        " \
+        --psql_arguments 'tuples-only:pset=format=unaligned' \
+        --return _normalize || {
+            cat $POW_DIR_ARCHIVE/DESCRIPTOR_CASE.error.log
+            exit $ERROR_CODE
+        }
+
+        [ "$get_arg_number_line" = yes ] && { echo_number_line $((_i +1)); }
+        echo -n "nom='${_TEST_A4S_NAME[$_i]}' descripteur='${_TEST_A4S_DESCRIPTOR[$_i]}' : "
+        [ "$_normalize" = "${_TEST_A4S_DESCRIPTOR[$_i]}" ] && {
+            echo 'OK'
+            _ok=$((_ok +1))
+        } || {
+            echo 'KO'
+            _ko=$((_ko +1))
+            echo " descripteur $_normalize : ${_TEST_A4S_DESCRIPTOR[$_i]}"
         }
     done
 

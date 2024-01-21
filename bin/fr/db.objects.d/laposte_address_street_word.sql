@@ -115,11 +115,11 @@ BEGIN
 
     UPDATE fr.laposte_address_street_word SET
         as_default = CASE
-            WHEN as_reserved >= GREATEST(as_name, as_article, as_number, as_fname, as_title, as_type) THEN 'E'
-            WHEN as_article >= GREATEST(as_name, as_reserved, as_number, as_fname, as_title, as_type) THEN 'A'
-            WHEN as_number >= GREATEST(as_name, as_reserved, as_article, as_fname, as_title, as_type) THEN 'C'
-            WHEN as_fname >= GREATEST(as_name, as_reserved, as_article, as_number, as_title, as_type) THEN 'P'
-            WHEN as_title >= GREATEST(as_name, as_reserved, as_article, as_number, as_fname, as_type) THEN 'T'
+            WHEN as_reserved > GREATEST(as_name, as_article, as_number, as_fname, as_title, as_type) THEN 'E'
+            WHEN as_article > GREATEST(as_name, as_reserved, as_number, as_fname, as_title, as_type) THEN 'A'
+            WHEN as_number > GREATEST(as_name, as_reserved, as_article, as_fname, as_title, as_type) THEN 'C'
+            WHEN as_fname > GREATEST(as_name, as_reserved, as_article, as_number, as_title, as_type) THEN 'P'
+            WHEN as_title > GREATEST(as_name, as_reserved, as_article, as_number, as_fname, as_type) THEN 'T'
             WHEN as_type > GREATEST(as_name, as_reserved, as_article, as_number, as_fname, as_title) THEN 'V'
             ELSE 'N'
             END
@@ -169,6 +169,27 @@ BEGIN
     CALL public.log_info(' Indexation');
 END
 $proc$ LANGUAGE plpgsql;
+
+/* TEST
+SELECT
+    *
+FROM
+    fr.laposte_address_street_word
+WHERE
+    as_reserved  = GREATEST(as_name, as_article, as_number, as_fname, as_title, as_type)
+    OR
+    as_article > GREATEST(as_name, as_reserved, as_number, as_fname, as_title, as_type)
+    OR
+    as_number > GREATEST(as_name, as_reserved, as_article, as_fname, as_title, as_type)
+    OR
+    as_fname > GREATEST(as_name, as_reserved, as_article, as_number, as_title, as_type)
+    OR
+    as_title > GREATEST(as_name, as_reserved, as_article, as_number, as_fname, as_type)
+    OR
+    as_type > GREATEST(as_name, as_reserved, as_article, as_number, as_fname, as_title)
+ORDER BY
+    1
+ */
 
 -- get default of word
 SELECT drop_all_functions_if_exists('fr', 'get_default_of_word');
