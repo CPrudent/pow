@@ -867,6 +867,7 @@ DECLARE
     _kw_is_abbreviated BOOLEAN;
     _kw_nwords INT;
     _descriptors VARCHAR := '';
+    _descriptors_tmp VARCHAR;
     _words TEXT[];
     _words_len INT;
     _words_i INT := 0;
@@ -1095,9 +1096,28 @@ BEGIN
     -- nothing else than CN before last E (specially not title)
     ELSIF _descriptors ~ '[^CN]E$' THEN
         _descriptors := REGEXP_REPLACE(_descriptors, '.E$', 'NE');
-    -- not type only (eventually followed by number), but name
-    ELSIF _descriptors ~ '^V+C*$' THEN
-        _descriptors := REPLACE(_descriptors, 'V', 'N');
+    -- not title|type only (eventually followed by number), but name
+    -- IMPASSE DU PASSAGE A NIVEAU 7
+    ELSIF _descriptors ~ '(T|V)+C*$' THEN
+        -- separately to avoid error if TV are successive
+        -- VVVTTTC, PASSAGE A NIVEAU PASSAGE A NIVEAU 67
+        _descriptors_tmp := (REGEXP_MATCHES(_descriptors,
+            CASE
+            WHEN _descriptors ~ 'T+C*$' THEN '(T+)C*$'
+            ELSE '(V+)C*$'
+            END
+            )
+        )[1];
+        _descriptors := REGEXP_REPLACE(_descriptors,
+            CASE
+            WHEN _descriptors ~ 'T+C*$' THEN 'T+(C*)$'
+            ELSE 'V+(C*)$'
+            END
+            , CONCAT(
+                REPEAT('N', LENGTH(_descriptors_tmp))
+                , '\1'
+            )
+        );
     /* neither firstname nor title
     VNC, AVENUE ALBERT 1ER
     VNCE, RUE ALBERT 1ER PROLONGEE

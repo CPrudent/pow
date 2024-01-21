@@ -2,7 +2,24 @@
  * FR: add LAPOSTE/RAN street words
  */
 
+DO $$
+BEGIN
+    IF table_exists(
+            schema_name => 'fr'
+            , table_name => 'laposte_address_street_word'
+        )
+        AND
+        NOT column_exists(
+            schema_name => 'fr'
+            , table_name => 'laposte_address_street_word'
+            , column_name => 'as_last'
+        ) THEN
+        DROP TABLE fr.laposte_address_street_word;
+    END IF;
+END $$;
+
 -- to store words, counters by descriptor, default descriptor, ranks
+-- Query returned successfully in 11 secs 584 msec.
 CREATE TABLE IF NOT EXISTS fr.laposte_address_street_word (
     word VARCHAR NOT NULL
     , as_default CHAR(1)
@@ -10,6 +27,7 @@ CREATE TABLE IF NOT EXISTS fr.laposte_address_street_word (
     , as_number INT             -- C
     , as_reserved INT           -- E
     , as_name INT               -- N
+    , as_last INT               -- N (at end of name)
     , as_fname INT              -- P
     , as_title INT              -- T
     , as_type INT               -- V
@@ -53,6 +71,7 @@ BEGIN
         , as_number
         , as_reserved
         , as_name
+        , as_last
         , as_fname
         , as_title
         , as_type
@@ -62,7 +81,9 @@ BEGIN
     split_as_word AS (
         SELECT
             w.word
-            , SUBSTR(s.descriptors, i::INT, 1) descriptor
+            , SUBSTR(s.descriptors, w.i::INT, 1) descriptor
+            , w.i::INT
+            , s.nwords
         FROM
             fr.laposte_address_street_uniq s
                 INNER JOIN LATERAL UNNEST(s.words) WITH ORDINALITY AS w(word, i) ON TRUE
@@ -70,13 +91,11 @@ BEGIN
     , word_with_descriptor AS (
         SELECT
             word
-            /* NOTE
-             in case of a tie, order as above (asc)
-             */
             , SUM(CASE WHEN descriptor = 'A' THEN 1 ELSE 0 END) as_article
             , SUM(CASE WHEN descriptor = 'C' THEN 1 ELSE 0 END) as_number
             , SUM(CASE WHEN descriptor = 'E' THEN 1 ELSE 0 END) as_reserved
-            , SUM(CASE WHEN descriptor = 'N' THEN 1 ELSE 0 END) as_name
+            , SUM(CASE WHEN descriptor = 'N' AND i < nwords THEN 1 ELSE 0 END) as_name
+            , SUM(CASE WHEN descriptor = 'N' AND i = nwords THEN 1 ELSE 0 END) as_last
             , SUM(CASE WHEN descriptor = 'P' THEN 1 ELSE 0 END) as_fname
             , SUM(CASE WHEN descriptor = 'T' THEN 1 ELSE 0 END) as_title
             , SUM(CASE WHEN descriptor = 'V' THEN 1 ELSE 0 END) as_type
@@ -84,12 +103,8 @@ BEGIN
             split_as_word
 
         WHERE
-            -- to exlude row created w/ empty word
+            -- to exclude row created w/ empty word
             LENGTH(word) > 0
-        /*
-            -- not last word (name!)
-            i < nwords
-         */
         GROUP BY
             word
     )
@@ -117,20 +132,21 @@ BEGIN
         SELECT
             word
             , row_number() OVER (ORDER BY (
-                COALESCE(as_name, 0)
-                + COALESCE(as_reserved, 0)
-                + COALESCE(as_article, 0)
-                + COALESCE(as_number, 0)
-                + COALESCE(as_fname, 0)
-                + COALESCE(as_title, 0)
-                + COALESCE(as_type, 0)
+                as_name
+                + as_last
+                + as_reserved
+                + as_article
+                + as_number
+                + as_fname
+                + as_title
+                + as_type
             ) DESC) rank_0
             , row_number() OVER (PARTITION BY as_default ORDER BY (
                 CASE
                 WHEN as_default = 'A' THEN as_article
                 WHEN as_default = 'C' THEN as_number
                 WHEN as_default = 'E' THEN as_reserved
-                WHEN as_default = 'N' THEN as_name
+                WHEN as_default = 'N' THEN as_name + as_last
                 WHEN as_default = 'P' THEN as_fname
                 WHEN as_default = 'T' THEN as_title
                 WHEN as_default = 'V' THEN as_type
