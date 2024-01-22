@@ -884,7 +884,7 @@ DECLARE
     _exception VARCHAR;
     _init_by_descriptor BOOLEAN;
 BEGIN
-    IF raise_notice THEN RAISE NOTICE 'name= "%"', name; END IF;
+    IF raise_notice THEN RAISE NOTICE 'name="%"', name; END IF;
 
     IF name ~ '^ +' OR name ~ ' +$' THEN
         RAISE NOTICE 'libellé Voie erronée (%) avec espace(s) superflus!', name;
@@ -902,7 +902,7 @@ BEGIN
             CONTINUE;
         END IF;
 
-        IF raise_notice THEN RAISE NOTICE ' word= %, i=%', _words[_i], _i; END IF;
+        IF raise_notice THEN RAISE NOTICE ' word=%, i=%', _words[_i], _i; END IF;
 
         -- number
         IF fr.is_normalized_number(_words[_i])
@@ -1013,7 +1013,7 @@ BEGIN
                         always article!
                         */
 
-                        /* NOTE
+                        /* RULE
                         exception for road as (A|D|N)# : highway, departmental, national
                         at end of name only, else counter examples
                             LA ROCHE A 7 HEURES
@@ -1094,8 +1094,14 @@ BEGIN
         -- last title is one|many word(s)
         _len_c := LENGTH(COALESCE(_descriptors_c, ''));
         _last_t := ARRAY_LENGTH(_words_by_descriptor, 1) - _len_c;
+        IF raise_notice THEN
+            RAISE NOTICE ' dt=%, dc=% #c=%', _descriptors_t, _descriptors_c, _len_c;
+            RAISE NOTICE ' wbd=%, lt=%', _words_by_descriptor, _last_t;
+            RAISE NOTICE ' descriptors=%', _descriptors;
+        END IF;
         -- replace all T
         IF count_words(_words_by_descriptor[_last_t]) = LENGTH(_descriptors_t) THEN
+            IF raise_notice THEN RAISE NOTICE ' replace all'; END IF;
             _descriptors := REGEXP_REPLACE(_descriptors
                 , 'T+(C*)$'
                 , CONCAT(
@@ -1105,6 +1111,8 @@ BEGIN
             );
         -- replace only last T
         ELSE
+            _last_t := LENGTH(_descriptors) - _len_c;
+            IF raise_notice THEN RAISE NOTICE ' replace last only, lt=%', _last_t; END IF;
             IF _last_t > 1 THEN
                 _descriptors := SUBSTR(_descriptors, 1, _last_t -1);
             ELSE
@@ -1135,7 +1143,7 @@ BEGIN
         _descriptors := REGEXP_REPLACE(_descriptors, '(^V[PT]C)(E?)$', 'VNC\2');
     END IF;
 
-    IF raise_notice THEN RAISE NOTICE ' descriptor= %', _descriptors; END IF;
+    IF raise_notice THEN RAISE NOTICE ' descriptors=%', _descriptors; END IF;
     RETURN _descriptors;
 END
 $func$ LANGUAGE plpgsql;

@@ -13,7 +13,7 @@ source $POW_DIR_ROOT/tests/data/test_normalize-data.sh || exit $ERROR_CODE
 
 
 echo_number_line() {
-    printf "%*d: " ${#TEST_A4S_SZ} $1
+    printf "%*d: " ${#1} $2
 }
 
 bash_args \
@@ -74,7 +74,7 @@ _ko=0
         _array[0]=${_array[0]//:/ }
         _array[1]=${_array[1]//:/ }
         #declare -p _array
-        [ "$get_arg_number_line" = yes ] && { echo_number_line $((_i +1)); }
+        [ "$get_arg_number_line" = yes ] && { echo_number_line $TEST_A4S_SZ $((_i +1)); }
         echo -n "nom='$_name' descripteur='$_descriptor' : "
         [ "${_array[0]}" = "$_split_name" ] &&
         [ "${_array[1]}" = "$_split_descriptor" ] && {
@@ -149,7 +149,7 @@ _ko=0
             exit $ERROR_CODE
         }
 
-        [ "$get_arg_number_line" = yes ] && { echo_number_line $((_i +1)); }
+        [ "$get_arg_number_line" = yes ] && { echo_number_line $TEST_A4S_SZ $((_i +1)); }
         echo -n "nom='${TEST_A4S_NAME[$_i]}' descripteur='${TEST_A4S_DESCRIPTOR[$_i]}' : "
         [ "$_normalize" = "${TEST_A4S_DESCRIPTOR[$_i]}" ] && {
             echo 'OK'
@@ -193,8 +193,13 @@ _ko=0
         'PASSAGE A NIVEAU PASSAGE A NIVEAU 67'                                  # 15
         'IMPASSE DU PASSAGE A NIVEAU 7'                                         # 16
         'GRAND ANSE 2'                                                          # 17
+        'ALLEE DES GRANDS BOIS 1'                                               # 18
+        'LIEU DIT LA TOUR BAS I'                                                # 19
         # wrong number
-        'RUE SAINT EVE'                                                         # 18
+        'RUE SAINT EVE'                                                         # 20
+        # article exception
+        'RUE DU SOUS LIEUTENANT DE POURTALES'                                   # 21
+        'RUE DU SOUS PREFET BARRE'                                              # 22
     )
     declare -a _TEST_A4S_DESCRIPTOR=(
         ATNN                                                                    #  1
@@ -214,7 +219,11 @@ _ko=0
         VVVNNNC                                                                 # 15
         VANNNC                                                                  # 16
         TNC                                                                     # 17
-        VTN                                                                     # 18
+        VATNC                                                                   # 18
+        VVATNC                                                                  # 19
+        VTN                                                                     # 20
+        VATTAN                                                                  # 21
+        VATTN                                                                   # 22
     )
 
     set_log_echo no
@@ -232,15 +241,14 @@ _ko=0
             exit $ERROR_CODE
         }
 
-        [ "$get_arg_number_line" = yes ] && { echo_number_line $((_i +1)); }
+        [ "$get_arg_number_line" = yes ] && { echo_number_line ${#_TEST_A4S_NAME[*]} $((_i +1)); }
         echo -n "nom='${_TEST_A4S_NAME[$_i]}' descripteur='${_TEST_A4S_DESCRIPTOR[$_i]}' : "
         [ "$_normalize" = "${_TEST_A4S_DESCRIPTOR[$_i]}" ] && {
             echo 'OK'
             _ok=$((_ok +1))
         } || {
-            echo 'KO'
             _ko=$((_ko +1))
-            echo " descripteur $_normalize : ${_TEST_A4S_DESCRIPTOR[$_i]}"
+            echo "<<<$_normalize>>>, KO"
         }
     done
 
