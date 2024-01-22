@@ -200,6 +200,8 @@ _ko=0
         # article exception
         'RUE DU SOUS LIEUTENANT DE POURTALES'                                   # 21
         'RUE DU SOUS PREFET BARRE'                                              # 22
+        # focus on type (compared w/ title)
+        'QUARTIER LA TOUR ET LES COMBES'                                        # 23
     )
     declare -a _TEST_A4S_DESCRIPTOR=(
         ATNN                                                                    #  1
@@ -224,6 +226,7 @@ _ko=0
         VTN                                                                     # 20
         VATTAN                                                                  # 21
         VATTN                                                                   # 22
+        VATAAN                                                                  # 23
     )
 
     set_log_echo no

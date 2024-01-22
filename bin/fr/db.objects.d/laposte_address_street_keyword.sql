@@ -133,7 +133,18 @@ BEGIN
                     (k.group != 'EXT')
                 )
             -- keyword composed by many words (decreasing order)
-            ORDER BY count_words(k.name) DESC
+            ORDER BY
+                count_words(k.name) DESC
+                , CASE
+                    WHEN at_ = 1 THEN
+                        CASE WHEN k.group = 'TYPE' THEN 2
+                        ELSE 1
+                        END
+                    ELSE
+                        CASE WHEN k.group = 'TITLE' THEN 1
+                        ELSE 0
+                        END
+                    END DESC
         )
         LOOP
             IF raise_notice THEN RAISE NOTICE ' kw=%', _kw; END IF;
