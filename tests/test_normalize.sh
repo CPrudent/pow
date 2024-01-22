@@ -205,6 +205,7 @@ _ko=0
         # ending REGEX V+[CE]*$
         'GRANDE RUE PROLONGEE'                                                  # 24
         'CORNICHE SUPERIEURE'                                                   # 25
+        'RUE 1954 1962'                                                         # 26
     )
     declare -a _TEST_A4S_DESCRIPTOR=(
         ATNN                                                                    #  1
@@ -232,6 +233,7 @@ _ko=0
         VATAAN                                                                  # 23
         NNE                                                                     # 24
         NE                                                                      # 25
+        NCC                                                                     # 26
     )
 
     set_log_echo no

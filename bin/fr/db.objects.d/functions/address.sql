@@ -1130,7 +1130,7 @@ BEGIN
     -- PASSAGE A NIVEAU 7, NNNC
     -- GRANDE RUE PROLONGEE
     ELSIF _descriptors ~ 'V+[CE]*$' THEN
-        _descriptors_v := (REGEXP_MATCHES(_descriptors, '(V+)[CE*]$'))[1];
+        _descriptors_v := (REGEXP_MATCHES(_descriptors, '(V+)[CE]*$'))[1];
         _descriptors := REGEXP_REPLACE(_descriptors
             , 'V+([CE]*)$'
             , CONCAT(
