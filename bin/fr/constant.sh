@@ -99,6 +99,7 @@ io_history_begin \
                         --name FR_CONSTANT_ADDRESS \
                         --query "
                             SELECT public.drop_table_indexes('fr', 'constant');
+                            CALL fr.set_laposte_address_fault_list();
                             CALL fr.set_laposte_address_street_uniq();
                             CALL fr.set_laposte_address_street_membership();
                             CALL fr.set_laposte_address_street_word();
@@ -109,8 +110,8 @@ io_history_begin \
                             CALL fr.set_laposte_address_street_kw_exception();
                             CALL fr.set_laposte_municipality_normalized_label_exception();
                             CALL fr.set_territory_overseas();
-                            CALL fr.set_laposte_address_correction_list();
                             CALL fr.set_constant_index();
+                            CALL fr.set_laposte_address_street_fault();
                         "
                     ;;
                 esac

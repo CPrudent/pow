@@ -729,8 +729,8 @@ BEGIN
 END;
 $proc$ LANGUAGE plpgsql;
 
-SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_correction_list');
-CREATE OR REPLACE PROCEDURE fr.set_laposte_address_correction_list()
+SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_fault_list');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_address_fault_list()
 AS
 $proc$
 BEGIN
@@ -738,10 +738,15 @@ BEGIN
         RAISE 'Données LAPOSTE non présentes';
     END IF;
 
-    DELETE FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_CORRECTION';
+    DELETE FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_FAULT';
     INSERT INTO fr.constant (usecase, key, value) VALUES
-        ('LAPOSTE_ADDRESS_CORRECTION', 'TOO_SPACE', '1')
-        , ('LAPOSTE_ADDRESS_CORRECTION', 'COMPLEMENT_WITH_STREET_ERROR', '2')
+        ('LAPOSTE_STREET_FAULT', 'BAD_SPACE', '1')
+        , ('LAPOSTE_STREET_FAULT', 'DUPLICATE_WORD', '2')
+        , ('LAPOSTE_STREET_FAULT', 'WITH_ABBREVIATION', '3')
+        , ('LAPOSTE_STREET_FAULT', 'TYPO_ERROR', '4')
+
+        , ('LAPOSTE_COMPLEMENT_FAULT', 'BAD_SPACE', '1')
+        , ('LAPOSTE_COMPLEMENT_FAULT', 'WITH_STREET_ERROR', '2')
     ;
 END;
 $proc$ LANGUAGE plpgsql;
