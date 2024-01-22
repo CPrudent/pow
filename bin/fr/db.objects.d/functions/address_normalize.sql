@@ -295,6 +295,46 @@ ORDER BY
     ;
  */
 
+-- delete "bad" space(s) in name
+SELECT public.drop_all_functions_if_exists('fr', 'normalize_space_in_name');
+CREATE OR REPLACE FUNCTION fr.normalize_space_in_name(
+    name INOUT VARCHAR
+    , test_only IN BOOLEAN DEFAULT FALSE
+    , to_fix OUT BOOLEAN
+)
+AS
+$func$
+BEGIN
+    -- heading or trailing space(s)
+    IF (name ~ '^ +' OR name ~ ' +$') THEN
+        IF NOT test_only THEN
+            name := TRIM(name);
+        ELSE
+            to_fix := TRUE;
+            RETURN;
+        END IF;
+    END IF;
+    -- multiple spaces
+    IF (name ~ '[ ]{2,}') THEN
+        IF NOT test_only THEN
+            name := REGEXP_REPLACE(name, '[ ]{2,}', ' ', 'g');
+        ELSE
+            to_fix := TRUE;
+            RETURN;
+        END IF;
+    END IF;
+    IF NOT test_only THEN
+        to_fix := FALSE;
+    END IF;
+END
+$func$ LANGUAGE plpgsql;
+
+/* TEST
+SELECT CONCAT('"', fr.normalize_space_in_name(' WITH SPACE AT BEGIN'), '"');
+SELECT CONCAT('"', fr.normalize_space_in_name('WITH SPACE AT END '), '"');
+SELECT CONCAT('"', fr.normalize_space_in_name(' WITH   MULTIPLE    SPACES  '), '"');
+ */
+
 -- normalize name of street
 SELECT public.drop_all_functions_if_exists('fr', 'normalize_street_name');
 CREATE OR REPLACE FUNCTION fr.normalize_street_name(

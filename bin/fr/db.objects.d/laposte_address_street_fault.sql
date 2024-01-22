@@ -25,6 +25,7 @@ $proc$ LANGUAGE plpgsql;
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_street_fault');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_fault(
     fault IN VARCHAR DEFAULT 'ALL'
+    , simulation IN BOOLEAN DEFAULT FALSE
 )
 AS
 $proc$
@@ -56,32 +57,65 @@ BEGIN
 
     CALL public.log_info(' Initialisation');
     FOR _set IN (
-        SELECT * FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_FAULT'
+        SELECT key, value FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_FAULT'
     )
     LOOP
         -- requested fault?
-        IF ((fault ~ '^[0-9]+$' AND _set.value = fault)
+        IF ((fault = 'ALL')
+            OR
+            (fault ~ '^[0-9]+$' AND _set.value = fault)
             OR
             (fault !~ '^[0-9]+$' AND _set.key = fault)
         ) THEN
+            IF simulation THEN
+                RAISE NOTICE ' Anomalie (%)', _set.key;
+                CONTINUE;
+            END IF;
+
             IF _set.key = 'BAD_SPACE' THEN
                 INSERT INTO fr.laposte_address_street_fault
                     SELECT
                         id
                         , _set.value::INT
                     FROM
-                        fr.laposte_address_street_uniq
+                        fr.laposte_address_street_uniq u
+                        , fr.normalize_space_in_name(
+                            name => u.name
+                            , test_only => TRUE
+                        ) fn
+                        , fr.normalize_space_in_name(
+                            name => u.name_normalized
+                            , test_only => TRUE
+                        ) fnn
                     WHERE
-                        (name ~ '[ ]{2,}' OR name_normalized ~ '[ ]{2,}')
+                        fn.to_fix
                         OR
-                        (name ~ '^ +' OR name_normalized ~ '^ +')
-                        OR
-                        (name ~ ' +$' OR name_normalized ~ ' +$')
+                        fnn.to_fix
                     ;
-            ELSIF
+            ELSIF _set.key = 'DUPLICATE_WORD' THEN
+                INSERT INTO fr.laposte_address_street_fault
+                    WITH
+                    dup_words AS (
+                        SELECT
+                            id
+                            , REGEXP_MATCHES(name, '\m([ A-Z]+)\s+\1\M') dup
+                        FROM fr.laposte_address_street_uniq
+                    )
+                    SELECT
+                        id
+                        , _set.value::INT
+                    FROM
+                        fr.laposte_address_street_uniq u
+                            JOIN dup_words d ON u.id = d.id
+                    WHERE
+                        d.dup IS NOT NULL
+                    ;
+            ELSIF _set.key = 'WITH_ABBREVIATION' THEN
+                INSERT INTO fr.laposte_address_street_fault
+
             END IF;
             GET DIAGNOSTICS _nrows = ROW_COUNT;
-            CALL public.log_info(CONCAT(' Création (', _set.key, '): ', _nrows));
+            CALL public.log_info(CONCAT(' Anomalies (', _set.key, '): ', _nrows));
         END IF;
     END LOOP;
 
