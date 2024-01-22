@@ -1080,9 +1080,12 @@ BEGIN
     -- name of street (so descriptor) is ended by: number, reserved or name (CEN)
     IF _descriptors !~ '[CEN]$' THEN
         _descriptors := REGEXP_REPLACE(_descriptors, '.$', 'N');
+
+    /*
     -- nothing else than CN before last E (specially not title)
     ELSIF _descriptors ~ '[^CN]E$' THEN
         _descriptors := REGEXP_REPLACE(_descriptors, '.E$', 'NE');
+     */
 
     -- not title only (eventually followed by number), but name
     -- IMPASSE DU PASSAGE A NIVEAU 7, VANNNC
@@ -1123,12 +1126,13 @@ BEGIN
                 _descriptors := CONCAT(_descriptors, _descriptors_c);
             END IF;
         END IF;
-    -- not type only (eventually followed by number), but name
+    -- not type only (eventually followed by number, reserved), but name
     -- PASSAGE A NIVEAU 7, NNNC
-    ELSIF _descriptors ~ 'V+C*$' THEN
-        _descriptors_v := (REGEXP_MATCHES(_descriptors, '(V+)(C*)$'))[1];
+    -- GRANDE RUE PROLONGEE
+    ELSIF _descriptors ~ 'V+[CE]*$' THEN
+        _descriptors_v := (REGEXP_MATCHES(_descriptors, '(V+)[CE*]$'))[1];
         _descriptors := REGEXP_REPLACE(_descriptors
-            , 'V+(C*)$'
+            , 'V+([CE]*)$'
             , CONCAT(
                 REPEAT('N', LENGTH(_descriptors_v))
                 , '\1'

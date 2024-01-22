@@ -202,6 +202,9 @@ _ko=0
         'RUE DU SOUS PREFET BARRE'                                              # 22
         # focus on type (compared w/ title)
         'QUARTIER LA TOUR ET LES COMBES'                                        # 23
+        # ending REGEX V+[CE]*$
+        'GRANDE RUE PROLONGEE'                                                  # 24
+        'CORNICHE SUPERIEURE'                                                   # 25
     )
     declare -a _TEST_A4S_DESCRIPTOR=(
         ATNN                                                                    #  1
@@ -227,6 +230,8 @@ _ko=0
         VATTAN                                                                  # 21
         VATTN                                                                   # 22
         VATAAN                                                                  # 23
+        NNE                                                                     # 24
+        NE                                                                      # 25
     )
 
     set_log_echo no
