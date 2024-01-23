@@ -230,3 +230,21 @@ BEGIN
     RETURN _string;
 END
 $func$ LANGUAGE plpgsql;
+
+/* TEST
+SELECT items_of_array_to_string(
+    elements => '{1,2,3}'::VARCHAR[]
+    , from_ => 1
+    , to_ => 2
+) => '1 2'
+SELECT items_of_array_to_string(
+    elements => '{1,2,3}'::VARCHAR[]
+    , from_ => 1
+    --, to_ => 2
+) => '1 2 3'
+SELECT items_of_array_to_string(
+    elements => '{1,2,3}'::VARCHAR[]
+    , from_ => 1
+    , to_ => 0
+) => NULL
+ */

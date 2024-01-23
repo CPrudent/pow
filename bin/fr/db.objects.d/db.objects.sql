@@ -33,6 +33,7 @@
 \include_relative laposte_address_complement.sql
 \include_relative laposte_address_xy.sql
 \include_relative laposte_address.sql
+\include_relative laposte_address_fault_street.sql
 \include_relative laposte_delivery_point.sql
 \include_relative laposte_delivery_address.sql
 \include_relative laposte_organization.sql

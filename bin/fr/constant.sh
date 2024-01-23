@@ -111,7 +111,7 @@ io_history_begin \
                             CALL fr.set_laposte_municipality_normalized_label_exception();
                             CALL fr.set_territory_overseas();
                             CALL fr.set_constant_index();
-                            CALL fr.set_laposte_address_street_fault();
+                            CALL fr.set_laposte_address_fault_street();
                         "
                     ;;
                 esac
