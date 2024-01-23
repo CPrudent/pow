@@ -111,7 +111,9 @@ io_history_begin \
                             CALL fr.set_laposte_municipality_normalized_label_exception();
                             CALL fr.set_territory_overseas();
                             CALL fr.set_constant_index();
-                            CALL fr.set_laposte_address_fault_street();
+                            CALL fr.set_laposte_address_fault_street(
+                                fault => 'BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION,TYPO_ERROR'
+                            );
                         "
                     ;;
                 esac
