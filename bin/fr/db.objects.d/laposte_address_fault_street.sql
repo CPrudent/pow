@@ -39,6 +39,7 @@ BEGIN
 END
 $proc$ LANGUAGE plpgsql;
 
+-- identify street faults
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_fault_street');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_fault_street(
     fault IN VARCHAR DEFAULT 'ALL'
@@ -108,20 +109,29 @@ BEGIN
 
             IF _keys[_fault_i] = 'BAD_SPACE' THEN
                 INSERT INTO fr.laposte_address_fault_street
+                    WITH
+                    bad_space AS (
+                        SELECT
+                            u.id
+                        FROM
+                            fr.laposte_address_street_uniq u
+                            , bad_space_in_name(
+                                name => u.name
+                                , test_only => TRUE
+                            ) bs
+                        WHERE
+                            bs.to_fix
+                    )
                     SELECT
-                        id
+                        u.id
                         , _values[_fault_i]::INT
-                        , bad_space_in_name(
-                            name => u.name
-                        )
+                        , fix.name
                     FROM
                         fr.laposte_address_street_uniq u
+                            JOIN bad_space bs ON u.id = bs.id
                         , bad_space_in_name(
                             name => u.name
-                            , test_only => TRUE
-                        ) fn
-                    WHERE
-                        fn.to_fix
+                        ) fix
                     ;
             ELSIF _keys[_fault_i] = 'DUPLICATE_WORD' THEN
                 INSERT INTO fr.laposte_address_fault_street
@@ -236,3 +246,26 @@ BEGIN
     END IF;
 END
 $proc$ LANGUAGE plpgsql;
+
+/* TEST
+DO $$
+BEGIN
+    CALL fr.set_laposte_address_fault_street(
+        fault => 'BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION,TYPO_ERROR'
+    );
+END $$;
+
+12:47:40.599 Identification des anomalies dans les libellés de voie
+12:47:40.601  Initialisation
+12:47:40.601  Purge anomalies (BAD_SPACE): 0
+12:47:44.128  Ajout anomalies (BAD_SPACE): 6
+12:47:44.128  Purge anomalies (DUPLICATE_WORD): 0
+12:47:56.989  Ajout anomalies (DUPLICATE_WORD): 182
+12:47:56.990  Purge anomalies (WITH_ABBREVIATION): 0
+12:47:57.638  Ajout anomalies (WITH_ABBREVIATION): 46
+12:47:57.638  Purge anomalies (TYPO_ERROR): 0
+12:47:58.403  Ajout anomalies (TYPO_ERROR): 11
+12:47:58.459  Indexation
+
+Query returned successfully in 18 secs 209 msec.
+ */
