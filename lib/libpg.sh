@@ -191,19 +191,24 @@ vacuum() {
         --args_p '
             schema_name:schéma PG;
             table_name:nom de la table;
-            mode:Mode VACUUM à appliquer
+            mode:Mode VACUUM à appliquer;
+            dry_run:traitement sans exécution SQL
         ' \
         --args_v '
-            mode:ANALYZE|FULL
+            mode:ANALYZE|FULL;
+            dry_run:no|yes
         ' \
         --args_d '
-            mode:ANALYZE
+            mode:ANALYZE;
+            dry_run:no
         ' \
         "$@" || return $ERROR_CODE
 
     local _vacuum_schema=$get_arg_schema_name
     local _vacuum_table=$get_arg_table_name
     local _vacuum_mode=$get_arg_mode
+    local _dry_run=$get_arg_dry_run
+
     if [ -z "$_vacuum_mode" ]; then
         log_error "Veuillez préciser avec le paramètre -m le mode de VACUUM (ANALYZE, FULL). Exemple : -m ANALYZE"
         return $ERROR_CODE
@@ -227,17 +232,25 @@ vacuum() {
 
     # with table?
     if [ -n "$_vacuum_table" ]; then
-        # with schema?
-        if [ -n "$_vacuum_schema" ]; then
-            _vacuum_table=$_vacuum_schema"."$_vacuum_table
-        fi
+        local _list_tables=(${_vacuum_table//,/ }) _table
+        for ((_i=0; _i<${#_list_tables[*]}; _i++)); do
+            _table="${_list_tables[$_i]}"
+            #echo "$_table"
+            [[ ! ${_table} =~ ^[^\.]*\..*$ ]] && {
+                # with schema?
+                [ -n "$_vacuum_schema" ] && _table=${_vacuum_schema}.${_table}
+            }
 
-        execute_query \
-            --name "VACUUM_${_vacuum_mode}_${_vacuum_table}" \
-            --query "VACUUM ${_vacuum_options} ${_vacuum_table}" || {
-            log_error "Erreur VACUUM ${_vacuum_mode} sur la table ${_vacuum_table}"
-            return $ERROR_CODE
-        }
+            log_info "VACUUM ${_vacuum_mode} sur la table ${_table}"
+            [ "$_dry_run" = no ] && {
+                execute_query \
+                    --name "VACUUM_${_vacuum_mode}_${_vacuum_table}" \
+                    --query "VACUUM ${_vacuum_options} ${_table}" || {
+                    log_error "Erreur VACUUM ${_vacuum_mode} sur la table ${_table}"
+                    return $ERROR_CODE
+                }
+            }
+        done
     elif [ -n "$_vacuum_schema" ]; then
         log_info "Début VACUUM "$_vacuum_mode" sur les tables du schéma $_vacuum_schema"
 

@@ -150,27 +150,7 @@ io_history_begin \
 } &&
 vacuum \
     --schema_name fr \
-    --table_name constant \
-    --mode ANALYZE &&
-vacuum \
-    --schema_name fr \
-    --table_name laposte_address_street_uniq \
-    --mode ANALYZE &&
-vacuum \
-    --schema_name fr \
-    --table_name laposte_address_street_word \
-    --mode ANALYZE &&
-vacuum \
-    --schema_name fr \
-    --table_name laposte_address_street_keyword \
-    --mode ANALYZE &&
-vacuum \
-    --schema_name fr \
-    --table_name laposte_address_street_kw_exception \
-    --mode ANALYZE &&
-vacuum \
-    --schema_name fr \
-    --table_name laposte_address_fault_street \
+    --table_name constant,laposte_address_street_uniq,laposte_address_street_word,laposte_address_street_keyword,laposte_address_street_kw_exception,laposte_address_fault_street \
     --mode ANALYZE || {
     on_integration_error --id $io_main_id
     exit $ERROR_CODE

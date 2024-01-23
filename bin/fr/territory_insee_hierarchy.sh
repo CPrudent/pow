@@ -280,12 +280,8 @@ io_history_end_ok \
     --id $year_history_id &&
 vacuum \
     --schema_name fr \
-    --table_name insee_municipality \
-    --mode FULL &&
-vacuum \
-    --schema_name fr \
-    --table_name insee_supra \
-    --mode FULL &&
+    --table_name insee_municipality,insee_supra \
+    --mode ANALYZE &&
 rm --force "$year_ressource" || on_import_error
 
 log_info "Import du millésime $year de $io_name avec succès"

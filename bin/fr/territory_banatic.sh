@@ -164,15 +164,7 @@ io_history_end_ok \
     --id $year_history_id &&
 vacuum \
     --schema_name fr \
-    --table_name banatic_listof_epci \
-    --mode ANALYZE &&
-vacuum \
-    --schema_name fr \
-    --table_name banatic_setof_epci \
-    --mode ANALYZE &&
-vacuum \
-    --schema_name fr \
-    --table_name banatic_siren_insee \
+    --table_name banatic_listof_epci,banatic_setof_epci,banatic_siren_insee \
     --mode ANALYZE || on_import_error
 
 log_info "Import du millésime $year de $io_name avec succès"
