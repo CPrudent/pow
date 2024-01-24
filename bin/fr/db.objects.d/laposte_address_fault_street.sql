@@ -534,6 +534,8 @@ END
 $proc$ LANGUAGE plpgsql;
 
 /* TEST
+
+-- BAD_SPACE
 DO $$
 BEGIN
     CALL fr.fix_laposte_address_fault_street(
@@ -562,6 +564,7 @@ Anomalie TYPO_ERROR non corrigée en automatique
 
 Query returned successfully in 1 secs 668 msec.
 
+-- DUPLICATE_WORD
 DO $$
 BEGIN
     CALL fr.fix_laposte_address_fault_street(
@@ -577,6 +580,7 @@ END $$;
 
 Query returned successfully in 38 secs 523 msec.
 
+-- WITH_ABBREVIATION
 DO $$
 BEGIN
     CALL fr.fix_laposte_address_fault_street(
@@ -591,4 +595,27 @@ END $$;
 19:24:22.980  Mise à jour Référentiel (WITH_ABBREVIATION): 50
 
 Query returned successfully in 4 secs 475 msec.
+
+-- DESCRIPTORS
+execute_query --name FAULT_DESCRIPTORS --query 'CALL fr.set_laposte_address_fault_street(
+fault => '"'"'DESCRIPTORS'"'"')'
+
+2024-01-24T19:18:17Z|info|6562|christophe|/usr/bin/bash|Lancement de l'exécution de FAULT_DESCRIPTORS (requête)
+2024-01-24T19:29:36Z|info|6562|christophe|/usr/bin/bash|Exécution avec succès de FAULT_DESCRIPTORS en 0h:11m:19s
+
+-- TYPE
+execute_query --name FAULT_TYPE --query 'CALL fr.set_laposte_address_fault_street(
+fault => '"'"'TYPE'"'"')'
+2024-01-24T19:34:19Z|info|6562|christophe|/usr/bin/bash|Lancement de l'exécution de FAULT_TYPE (requête)
+2024-01-24T19:36:58Z|info|6562|christophe|/usr/bin/bash|Exécution avec succès de FAULT_TYPE en 0h:2m:39s
+
+-- COUNTS
+FAULT   COUNT
+    1       6
+    2     134
+    3      46
+    4      11
+    5    8747
+    6      38
+
  */
