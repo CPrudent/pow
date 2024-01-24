@@ -432,7 +432,7 @@ BEGIN
                 , ('TITLE', 'RESTAURANT', NULL)
                 , ('TITLE', 'RUELLE', 'RUEL')
                 , ('TITLE', 'SAINT', 'ST')
-                , ('TITLE', 'SAINTE', NULL)
+                , ('TITLE', 'SAINTE', 'STE')
                 , ('TITLE', 'SAINTES', NULL)
                 , ('TITLE', 'SAINTS', NULL)
                 , ('TITLE', 'SENTE', 'SENT')

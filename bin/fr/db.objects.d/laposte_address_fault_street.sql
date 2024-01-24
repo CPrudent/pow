@@ -377,9 +377,11 @@ BEGIN
                     name = fs.help_to_fix
                     FROM fr.laposte_address_fault_street fs
                     WHERE
+                        fs.fault_id = _values[_fault_i]::INT
+                        AND
                         u.id = fs.name_id
                         AND
-                        fs.fault_id = _values[_fault_i]::INT
+                        u.name = fs.name_before
                 ;
             ELSIF _keys[_fault_i] = 'DUPLICATE_WORD' THEN
                 _fix := TRUE;
@@ -401,9 +403,11 @@ BEGIN
                         ) fix
                     WHERE
                         fs.fault_id = _values[_fault_i]::INT
+                        AND
+                        u.name = fs.name_before
                 )
                 UPDATE fr.laposte_address_street_uniq u
-                    SET name = fix.name
+                    SET name = fbs.name
                     FROM fix_bad_space fbs
                     WHERE u.id = fbs.id
                 ;
@@ -431,9 +435,11 @@ BEGIN
                     GROUP BY
                         k.name_abbreviated
                     HAVING COUNT(*) = 1
+                    /*
                     UNION
                     VALUES
                         ('STE', 'SAINTE')
+                     */
                 )
                 UPDATE fr.laposte_address_street_uniq u SET
                     name = REGEXP_REPLACE(
@@ -446,9 +452,11 @@ BEGIN
                         fr.laposte_address_fault_street fs
                         , not_abbreviated na
                     WHERE
+                        fs.fault_id = _values[_fault_i]::INT
+                        AND
                         u.id = fs.name_id
                         AND
-                        fs.fault_id = _values[_fault_i]::INT
+                        u.name = fs.name_before
                         AND
                         fs.help_to_fix = na.word
                     ;
@@ -481,6 +489,16 @@ BEGIN
                         fs.fault_id = _values[_fault_i]::INT
                         AND
                         s.lb_voie IS DISTINCT FROM u.name
+                        AND
+                        NOT EXISTS(
+                            SELECT 1 FROM fr.laposte_address_history h
+                            WHERE
+                                h.code_address = s.co_cea
+                                AND
+                                h.change = _keys[_fault_i]
+                                AND
+                                h.values->>'lb_voie' = fs.name_before
+                        )
                 ;
                 GET DIAGNOSTICS _nrows_history = ROW_COUNT;
                 CALL public.log_info(CONCAT(' Insertion Historique (', _keys[_fault_i], '): ', _nrows_history));
@@ -524,6 +542,7 @@ BEGIN
     );
 END $$;
 
+-- first call
 17:39:56.592 Correction des anomalies dans les libellés de voie
 17:39:56.592  Correction
 17:39:56.593  Mise à jour anomalies (BAD_SPACE): 6
@@ -532,4 +551,44 @@ END $$;
 Anomalie TYPO_ERROR non corrigée en automatique
 
 Query returned successfully in 510 msec.
+
+-- other call (already done, so 0)
+19:16:38.734 Correction des anomalies dans les libellés de voie
+19:16:38.734  Correction
+19:16:38.735  Mise à jour anomalies (BAD_SPACE): 0
+19:16:40.250  Insertion Historique (BAD_SPACE): 0
+19:16:40.383  Mise à jour Référentiel (BAD_SPACE): 0
+Anomalie TYPO_ERROR non corrigée en automatique
+
+Query returned successfully in 1 secs 668 msec.
+
+DO $$
+BEGIN
+    CALL fr.fix_laposte_address_fault_street(
+        fault => 'DUPLICATE_WORD'
+    );
+END $$;
+
+19:22:04.803 Correction des anomalies dans les libellés de voie
+19:22:04.804  Correction
+19:22:05.739  Mise à jour anomalies (DUPLICATE_WORD): 134
+19:22:38.921  Insertion Historique (DUPLICATE_WORD): 155
+19:22:42.466  Mise à jour Référentiel (DUPLICATE_WORD): 155
+
+Query returned successfully in 38 secs 523 msec.
+
+DO $$
+BEGIN
+    CALL fr.fix_laposte_address_fault_street(
+        fault => 'WITH_ABBREVIATION'
+    );
+END $$;
+
+19:24:18.525 Correction des anomalies dans les libellés de voie
+19:24:18.525  Correction
+19:24:18.837  Mise à jour anomalies (WITH_ABBREVIATION): 46
+19:24:21.216  Insertion Historique (WITH_ABBREVIATION): 50
+19:24:22.980  Mise à jour Référentiel (WITH_ABBREVIATION): 50
+
+Query returned successfully in 4 secs 475 msec.
  */
