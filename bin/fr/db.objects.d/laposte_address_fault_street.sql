@@ -229,6 +229,10 @@ BEGIN
                             JOIN fr.laposte_address_street_uniq u ON m.name_id = u.id
                     WHERE
                         m.word ~ '[0-9]+'
+                        -- even if not necessary (membership exclude is_number)
+                        AND
+                        NOT fr.is_normalized_number(m.word)
+
                     ;
             ELSIF _keys[_fault_i] = 'DESCRIPTORS' THEN
                 INSERT INTO fr.laposte_address_fault_street
@@ -256,15 +260,21 @@ BEGIN
                     WITH
                     type_of_street AS (
                         SELECT
-                            id
+                            u.id
                             , ts.kw type_pow
-                            , items_of_array_to_string(
-                                elements => u.words
-                                , from_ => 1
-                                , to_ => LENGTH((REGEXP_MATCHES(u.descriptors, '^(V+)'))[1])
-                            ) type_laposte
-                        FROM
+                            , CASE
+                                WHEN d.v IS NOT NULL THEN
+                                    items_of_array_to_string(
+                                        elements => u.words
+                                        , from_ => 1
+                                        , to_ => LENGTH(d.v[1])
+                                    )
+                                ELSE
+                                    NULL
+                                END type_laposte
+                            FROM
                             fr.laposte_address_street_uniq u
+                                LEFT OUTER JOIN LATERAL REGEXP_MATCHES(u.descriptors, '^(V+)') d(v) ON TRUE
                                 CROSS JOIN fr.get_type_of_street(
                                     name => u.name
                                     , words => u.words
@@ -606,8 +616,8 @@ fault => '"'"'DESCRIPTORS'"'"')'
 -- TYPE
 execute_query --name FAULT_TYPE --query 'CALL fr.set_laposte_address_fault_street(
 fault => '"'"'TYPE'"'"')'
-2024-01-24T19:34:19Z|info|6562|christophe|/usr/bin/bash|Lancement de l'exécution de FAULT_TYPE (requête)
-2024-01-24T19:36:58Z|info|6562|christophe|/usr/bin/bash|Exécution avec succès de FAULT_TYPE en 0h:2m:39s
+2024-01-25T14:31:45Z|info|2718|christophe|/usr/bin/bash|Lancement de l'exécution de FAULT_TYPE (requête)
+2024-01-25T14:34:17Z|info|2718|christophe|/usr/bin/bash|Exécution avec succès de FAULT_TYPE en 0h:2m:32s
 
 -- COUNTS
 FAULT   COUNT
@@ -616,6 +626,6 @@ FAULT   COUNT
     3      46
     4      11
     5    8747
-    6      38
+    6    1495
 
  */
