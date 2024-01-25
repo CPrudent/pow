@@ -260,25 +260,43 @@ BEGIN
                     WITH
                     type_of_street AS (
                         SELECT
-                            u.id
-                            , ts.kw type_pow
+                            id
                             , CASE
-                                WHEN d.v IS NOT NULL THEN
+                                WHEN lp.v IS NOT NULL THEN
                                     items_of_array_to_string(
                                         elements => u.words
                                         , from_ => 1
-                                        , to_ => LENGTH(d.v[1])
+                                        , to_ => LENGTH(lp.v[1])
                                     )
                                 ELSE
                                     NULL
                                 END type_laposte
-                            FROM
+                            , CASE
+                                WHEN p.v IS NOT NULL THEN
+                                    items_of_array_to_string(
+                                        elements => u.words
+                                        , from_ => 1
+                                        , to_ => LENGTH(p.v[1])
+                                    )
+                                ELSE
+                                    NULL
+                                END type_pow
+                        FROM
                             fr.laposte_address_street_uniq u
-                                LEFT OUTER JOIN LATERAL REGEXP_MATCHES(u.descriptors, '^(V+)') d(v) ON TRUE
-                                CROSS JOIN fr.get_type_of_street(
-                                    name => u.name
-                                    , words => u.words
-                                ) ts
+                                JOIN fr.laposte_address_fault_street fs ON u.id = fs.name_id
+                                LEFT OUTER JOIN LATERAL REGEXP_MATCHES(u.descriptors, '^(V+)') lp(v) ON TRUE
+                                LEFT OUTER JOIN LATERAL REGEXP_MATCHES(fs.help_to_fix, '^(V+)') p(v) ON TRUE
+                        WHERE
+                            fs.fault_id = (
+                                SELECT
+                                    value::INT
+                                FROM
+                                    fr.constant
+                                WHERE
+                                    usecase = 'LAPOSTE_ADDRESS_FAULT_STREET'
+                                    AND
+                                    key = 'DESCRIPTORS'
+                            )
                     )
                     SELECT
                         id
@@ -416,8 +434,8 @@ BEGIN
                         AND
                         u.name = fs.name_before
                 )
-                UPDATE fr.laposte_address_street_uniq u
-                    SET name = fbs.name
+                UPDATE fr.laposte_address_street_uniq u SET
+                    name = fbs.name
                     FROM fix_bad_space fbs
                     WHERE u.id = fbs.id
                 ;
@@ -469,7 +487,7 @@ BEGIN
                         u.name = fs.name_before
                         AND
                         fs.help_to_fix = na.word
-                    ;
+                ;
             --ELSIF _keys[_fault_i] = 'TYPO_ERROR' THEN
             END IF;
 

@@ -122,3 +122,32 @@ BEGIN
     CALL public.log_info(' Indexation');
 END
 $proc$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION fr.check_laposte_address_street_uniq(
+)
+RETURNS TRIGGER AS
+$proc$
+DECLARE
+    _words TEXT[];
+BEGIN
+    IF (((TG_OP = 'UPDATE') AND (OLD.name != NEW.name))
+        OR
+        ((TG_OP = 'INSERT') AND (NEW.words IS NULL))) THEN
+        RAISE NOTICE 'begin % : OLD=%, NEW=%', TG_OP, OLD, NEW;
+        _words := REGEXP_SPLIT_TO_ARRAY(NEW.name, '\s+');
+        RAISE NOTICE 'words=%', _words;
+        NEW.words := _words;
+        NEW.nwords := ARRAY_LENGTH(_words, 1);
+        RAISE NOTICE 'end % : OLD=%, NEW=%', TG_OP, OLD, NEW;
+    END IF;
+
+    RETURN NEW;
+END
+$proc$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trigger_laposte_address_street_uniq ON fr.laposte_address_street_uniq;
+CREATE TRIGGER trigger_laposte_address_street_uniq
+    BEFORE INSERT OR UPDATE OF name
+        ON fr.laposte_address_street_uniq
+    FOR EACH ROW
+    EXECUTE PROCEDURE fr.check_laposte_address_street_uniq();
