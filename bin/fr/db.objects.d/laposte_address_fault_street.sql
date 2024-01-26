@@ -260,17 +260,8 @@ BEGIN
                     WITH
                     type_of_street AS (
                         SELECT
-                            id
-                            , CASE
-                                WHEN lp.v IS NOT NULL THEN
-                                    items_of_array_to_string(
-                                        elements => u.words
-                                        , from_ => 1
-                                        , to_ => LENGTH(lp.v[1])
-                                    )
-                                ELSE
-                                    NULL
-                                END type_laposte
+                            u.id
+                            , u.type_of_street type_laposte
                             , CASE
                                 WHEN p.v IS NOT NULL THEN
                                     items_of_array_to_string(
@@ -284,7 +275,6 @@ BEGIN
                         FROM
                             fr.laposte_address_street_uniq u
                                 JOIN fr.laposte_address_fault_street fs ON u.id = fs.name_id
-                                LEFT OUTER JOIN LATERAL REGEXP_MATCHES(u.descriptors, '^(V+)') lp(v) ON TRUE
                                 LEFT OUTER JOIN LATERAL REGEXP_MATCHES(fs.help_to_fix, '^(V+)') p(v) ON TRUE
                         WHERE
                             fs.fault_id = (
@@ -364,6 +354,9 @@ DECLARE
     _nrows INT;
     _nrows_history INT;
     _nrows_referential INT;
+    _address_join_column VARCHAR;
+    _address_update_column VARCHAR;
+    _uniq_value_column VARCHAR;
 BEGIN
     IF NOT table_exists('fr', 'laposte_address_street_uniq') THEN
         RAISE 'Données LAPOSTE non suffisantes';
@@ -397,10 +390,11 @@ BEGIN
                 CONTINUE;
             END IF;
 
-            _fix := FALSE;
+            _fix := TRUE;
+            _address_join_column := 'lb_voie';
+            _address_update_column := _address_join_column;
+            _uniq_value_column := 'name';
             IF _keys[_fault_i] = 'BAD_SPACE' THEN
-                _fix := TRUE;
-
                 UPDATE fr.laposte_address_street_uniq u SET
                     name = fs.help_to_fix
                     FROM fr.laposte_address_fault_street fs
@@ -412,8 +406,6 @@ BEGIN
                         u.name = fs.name_before
                 ;
             ELSIF _keys[_fault_i] = 'DUPLICATE_WORD' THEN
-                _fix := TRUE;
-
                 WITH
                 fix_bad_space AS (
                     SELECT
@@ -440,8 +432,6 @@ BEGIN
                     WHERE u.id = fbs.id
                 ;
             ELSIF _keys[_fault_i] = 'WITH_ABBREVIATION' THEN
-                _fix := TRUE;
-
                 WITH
                 word_abbreviation(word) AS (
                     SELECT DISTINCT
@@ -489,13 +479,36 @@ BEGIN
                         fs.help_to_fix = na.word
                 ;
             --ELSIF _keys[_fault_i] = 'TYPO_ERROR' THEN
+            ELSIF _keys[_fault_i] = 'DESCRIPTORS' THEN
+                _address_update_column := 'lb_desc';
+                _uniq_value_column := 'descriptors';
+            ELSIF _keys[_fault_i] = 'TYPE' THEN
+                _address_update_column := 'lb_type';
+                _uniq_value_column := 'type_of_street';
+            ELSE
+                _fix := FALSE;
             END IF;
 
             IF _fix THEN
                 GET DIAGNOSTICS _nrows = ROW_COUNT;
                 CALL public.log_info(CONCAT(' Mise à jour anomalies (', _keys[_fault_i], '): ', _nrows));
 
-                -- history
+                -- history before fix
+                SELECT nrows
+                INTO _nrows_history
+                FROM fr.add_history_address_fault(
+                    address_table => 'fr.laposte_address_street'
+                    , address_change => _keys[_fault_i]
+                    , address_element => 'STREET'
+                    , address_join_column => _address_join_column
+                    , address_update_column => _address_update_column
+                    , fault_table => 'fr.laposte_address_fault_street'
+                    , fault_id => _values[_fault_i]::INT
+                    , uniq_value_column => _uniq_value_column
+
+                );
+
+                /*
                 INSERT INTO fr.laposte_address_history (
                         code_address
                         , date_change
@@ -529,6 +542,7 @@ BEGIN
                         )
                 ;
                 GET DIAGNOSTICS _nrows_history = ROW_COUNT;
+                 */
                 CALL public.log_info(CONCAT(' Insertion Historique (', _keys[_fault_i], '): ', _nrows_history));
 
                 -- referential
@@ -647,3 +661,145 @@ FAULT   COUNT
     6    1495
 
  */
+
+-- undo fix street faults
+SELECT drop_all_functions_if_exists('fr', 'undo_laposte_address_fault_street');
+CREATE OR REPLACE PROCEDURE fr.undo_laposte_address_fault_street(
+    fault IN VARCHAR DEFAULT 'ALL'
+    , simulation IN BOOLEAN DEFAULT FALSE
+    , raise_notice IN BOOLEAN DEFAULT FALSE
+)
+AS
+$proc$
+DECLARE
+    _faults VARCHAR[];
+    _keys VARCHAR[];
+    _values VARCHAR[];
+    _i INT;
+    _fault_i INT;
+    _nrows INT;
+    _nrows_history INT;
+    _nrows_referential INT;
+    _set RECORD;
+    _total_uniq INT;
+    _total_referential INT;
+BEGIN
+    IF NOT table_exists('fr', 'laposte_address_street_uniq') THEN
+        RAISE 'Données LAPOSTE non suffisantes';
+    END IF;
+
+    CALL public.log_info('Annulation des corrections des anomalies dans les libellés de voie');
+
+     _keys := ARRAY(
+        SELECT key FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_FAULT_STREET' ORDER BY value
+    );
+     _values := ARRAY(
+        SELECT value FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_FAULT_STREET' ORDER BY value
+    );
+    _faults := CASE
+        WHEN fault = 'ALL' THEN _keys
+        ELSE STRING_TO_ARRAY(fault, ',')
+        END;
+
+    CALL public.log_info(' Annulation');
+    FOR _i IN 1 .. ARRAY_LENGTH(_faults, 1)
+    LOOP
+        _fault_i := CASE
+            WHEN _faults[_i] ~ '^[0-9]+$' THEN ARRAY_POSITION(_values, _faults[_i])
+            ELSE ARRAY_POSITION(_keys, _faults[_i])
+            END
+            ;
+
+        IF (_fault_i > 0) THEN
+            IF simulation THEN
+                RAISE NOTICE ' Anomalie (%)', _keys[_fault_i];
+                CONTINUE;
+            END IF;
+
+            _total_uniq := 0;
+            _total_referential := 0;
+            FOR _set IN (
+                SELECT
+                    name_before name
+                FROM
+                    fr.laposte_address_fault_street
+                WHERE
+                    fault_id = _values[_fault_i]::INT
+            )
+            LOOP
+                IF raise_notice THEN RAISE NOTICE ' nom (%)', _set.name; END IF;
+
+                -- referential
+                UPDATE fr.laposte_address_street s SET
+                    lb_voie = fs.name_before
+                    FROM
+                        fr.laposte_address_fault_street fs
+                            JOIN fr.laposte_address_street_uniq u ON u.id = fs.name_id
+                            JOIN fr.laposte_address_history h ON h.values->>'lb_voie' = _set.name
+                    WHERE
+                        s.lb_voie = u.name
+                        AND
+                        fs.fault_id = _values[_fault_i]::INT
+                        AND
+                        fs.name_before = _set.name
+                        AND
+                        h.change = _keys[_fault_i]
+                        AND
+                        h.kind = 'STREET'
+                        AND
+                        h.code_address = s.co_cea
+                ;
+                GET DIAGNOSTICS _nrows_referential = ROW_COUNT;
+                IF raise_notice THEN
+                    RAISE NOTICE ' mise à jour Référentiel (%): %', _keys[_fault_i], _nrows_referential;
+                END IF;
+
+                -- uniq
+                UPDATE fr.laposte_address_street_uniq u SET
+                    name = fs.name_before
+                    FROM
+                        fr.laposte_address_fault_street fs
+                    WHERE
+                        u.id = fs.name_id
+                        AND
+                        fs.fault_id = _values[_fault_i]::INT
+                        AND
+                        fs.name_before = _set.name
+                ;
+                GET DIAGNOSTICS _nrows = ROW_COUNT;
+                IF raise_notice THEN
+                    RAISE NOTICE ' mise à jour Uniq (%): %', _keys[_fault_i], _nrows;
+                END IF;
+
+                -- history
+                DELETE FROM fr.laposte_address_history
+                WHERE
+                    change = _keys[_fault_i]
+                    AND
+                    kind = 'STREET'
+                    AND
+                    values->>'lb_voie' = _set.name
+                ;
+                GET DIAGNOSTICS _nrows_history = ROW_COUNT;
+                IF raise_notice THEN
+                    RAISE NOTICE ' effacement Historique (%): %', _keys[_fault_i],
+                    _nrows_history;
+                END IF;
+
+                IF _nrows_history IS DISTINCT FROM _nrows_referential THEN
+                    RAISE ' Ecart (%): hist=%, ref=%', _keys[_fault_i], _nrows_history, _nrows_referential;
+                END IF;
+
+                _total_uniq := _total_uniq + _nrows;
+                _total_referential := _total_referential + _nrows_referential;
+            END LOOP;
+
+            IF raise_notice THEN
+                RAISE NOTICE ' Annulation (%): uniq=%, ref=%', _keys[_fault_i], _total_uniq, _total_referential;
+            END IF;
+        ELSE
+            RAISE NOTICE ' Anomalie % non valide!', _faults[_i];
+        END IF;
+    END LOOP;
+END
+$proc$ LANGUAGE plpgsql;
