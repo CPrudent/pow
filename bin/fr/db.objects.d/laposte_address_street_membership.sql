@@ -19,7 +19,6 @@ END
 $proc$ LANGUAGE plpgsql;
 
 -- build membership of all words
--- Query returned successfully in 4 min 16 secs.
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_street_membership');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_membership()
 AS
@@ -47,10 +46,10 @@ BEGIN
     split_as_word AS (
         SELECT
             w.word
-            , s.id
+            , u.id
         FROM
-            fr.laposte_address_street_uniq s
-                INNER JOIN LATERAL UNNEST(s.words) WITH ORDINALITY AS w(word, i) ON TRUE
+            fr.laposte_address_street_uniq u
+                INNER JOIN LATERAL UNNEST(u.words) WITH ORDINALITY AS w(word, i) ON TRUE
         WHERE
             -- except: number, article
             NOT fr.is_normalized_number(w.word)
@@ -66,3 +65,16 @@ BEGIN
     CALL public.log_info(' Indexation');
 END
 $proc$ LANGUAGE plpgsql;
+
+/* TEST
+CALL fr.set_laposte_address_street_membership();
+
+17:05:34.849 Gestion de l'appartenance des mots dans les noms de voies
+17:05:34.849  Purge
+DROP INDEX IF EXISTS fr.ix_laposte_address_street_membership_word
+17:05:34.896  Initialisation
+17:10:21.333  Appartenance (mots): 2726040
+17:10:26.813  Indexation
+
+Query returned successfully in 4 min 56 secs.
+ */

@@ -24,14 +24,14 @@ END $$;
 
 -- to store uniq name
 CREATE TABLE IF NOT EXISTS fr.laposte_address_street_uniq (
-    id INT NOT NULL
+    id SERIAL NOT NULL
     , name VARCHAR NOT NULL
     , name_normalized VARCHAR
     , descriptors VARCHAR
+    , type_of_street VARCHAR
     , occurs INT
     , words TEXT[]
     , nwords INT
-    , type_of_street VARCHAR
 )
 ;
 
@@ -74,66 +74,101 @@ BEGIN
     CALL public.log_info(' Initialisation');
     -- reminder: words, nwords are initiated by trigger
     INSERT INTO fr.laposte_address_street_uniq(
-        id
-        , name
+        name
         , name_normalized
         , descriptors
-        , occurs
         , type_of_street
+        , occurs
     )
     WITH
-    -- columns would be uniq, but not! group by is OK because they are 1..1
-    columns_with_double AS (
+    /* NOTE
+    columns would be uniq, but not! #367 same names own 2 different descriptors (so type)
+    group by is OK because they are 1..1 (descriptors involve type)
+     */
+    name_with_counters AS (
         SELECT
             lb_voie name
-            , lb_desc descriptors
-            , lb_type type_of_street
-            , COUNT(*) n
+            , COUNT(DISTINCT lb_desc) n_descriptors
+            , COUNT(DISTINCT lb_type) n_types
+            , COUNT(*) occurs
+            , MIN(lb_desc) descriptors
+            , MIN(lb_type) type_of_street
+            , MIN(lb_voie_normalise) name_normalized
         FROM
-            fr.laposte_address_street
+            fr.laposte_address_street s
         WHERE
             fl_active
         GROUP BY
             lb_voie
-            , lb_desc
-            , lb_type
     )
-    , larger_values AS (
+    , name_with_many_descriptors AS (
+        SELECT
+            s.lb_voie name
+            , s.lb_desc descriptors
+            , COUNT(*) n
+        FROM
+            fr.laposte_address_street s
+                JOIN name_with_counters wc ON s.lb_voie = wc.name
+        WHERE
+            s.fl_active
+            AND
+            wc.n_descriptors > 1
+        GROUP BY
+            s.lb_voie
+            , s.lb_desc
+    )
+    , name_with_larger_value AS (
         SELECT
             name
             , FIRST(descriptors ORDER BY n DESC) AS descriptors
-            , FIRST(type_of_street ORDER BY n DESC) AS type_of_street
         FROM
-            columns_with_double
+            name_with_many_descriptors
         GROUP BY
             name
     )
-    , uniq_street AS (
+    , name_other_attributs_for_larger_value AS (
         SELECT
-            lb_voie name
-            , CASE WHEN lb_voie != lb_voie_normalise THEN lb_voie_normalise
-                ELSE NULL
-                END name_normalized
-            , MIN(lv.descriptors) descriptors
-            , COUNT(*) occurs
-            , MIN(lv.type_of_street) type_of_street
+            lv.name
+            , lv.descriptors
+            , MIN(s.lb_type) type_of_street
+            , MIN(s.lb_voie_normalise) name_normalized
         FROM
             fr.laposte_address_street s
-                JOIN larger_values lv ON s.lb_voie = lv.name
+                JOIN name_with_larger_value lv ON (s.lb_voie, s.lb_desc) = (lv.name, lv.descriptors)
         WHERE
-            fl_active
+            s.fl_active
         GROUP BY
-            lb_voie
-            , CASE WHEN lb_voie != lb_voie_normalise THEN lb_voie_normalise
+            lv.name
+            , lv.descriptors
+    )
+    , uniq_street AS (
+        SELECT
+            oalv.name
+            , CASE WHEN oalv.name != oalv.name_normalized THEN oalv.name_normalized
                 ELSE NULL
-                END
+                END name_normalized
+            , oalv.descriptors
+            , oalv.type_of_street
+            , wc.occurs
+        FROM
+            name_other_attributs_for_larger_value oalv
+                JOIN name_with_counters wc ON oalv.name = wc.name
+        UNION
+        SELECT
+            wc.name
+            , CASE WHEN wc.name != wc.name_normalized THEN wc.name_normalized
+                ELSE NULL
+                END name_normalized
+            , wc.descriptors
+            , wc.type_of_street
+            , wc.occurs
+        FROM
+            name_with_counters wc
+        WHERE
+            wc.n_descriptors = 1
     )
     -- #1120726
-    SELECT
-        ROW_NUMBER() OVER (ORDER BY name) id
-        , *
-    FROM
-        uniq_street
+    SELECT * FROM uniq_street
     ;
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Création: ', _nrows));
@@ -142,6 +177,18 @@ BEGIN
     CALL public.log_info(' Indexation');
 END
 $proc$ LANGUAGE plpgsql;
+
+/* TEST
+CALL fr.set_laposte_address_street_uniq();
+
+17:00:22.122 Dictionnaire des voies
+17:00:22.122  Purge
+17:00:22.146  Initialisation
+17:01:01.256  Création: 1120726
+17:01:06.927  Indexation
+
+Query returned successfully in 45 secs 662 msec.
+ */
 
 SELECT drop_all_functions_if_exists('fr', 'laposte_address_street_uniq_fill_columns');
 CREATE OR REPLACE FUNCTION fr.laposte_address_street_uniq_fill_columns(
