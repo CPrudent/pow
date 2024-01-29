@@ -242,6 +242,7 @@ BEGIN
                             id
                             , fr.get_descriptor_of_street(name) descriptors_pow
                             , descriptors descriptors_laposte
+                            , name
                         FROM
                             fr.laposte_address_street_uniq
                     )
@@ -249,13 +250,16 @@ BEGIN
                         id
                         , _values[_fault_i]::INT
                         , descriptors_pow
-                        , NULL::VARCHAR
+                        , name
                     FROM
                         descriptors
                     WHERE
                         descriptors_pow IS DISTINCT FROM descriptors_laposte
                     ;
             ELSIF _keys[_fault_i] = 'TYPE' THEN
+                /* NOTE
+                need DESCRIPTORS-fault before!
+                 */
                 INSERT INTO fr.laposte_address_fault_street
                     WITH
                     type_of_street AS (
@@ -272,6 +276,7 @@ BEGIN
                                 ELSE
                                     NULL
                                 END type_pow
+                            , u.name
                         FROM
                             fr.laposte_address_street_uniq u
                                 JOIN fr.laposte_address_fault_street fs ON u.id = fs.name_id
@@ -292,7 +297,7 @@ BEGIN
                         id
                         , _values[_fault_i]::INT
                         , type_pow
-                        , NULL::VARCHAR
+                        , name
                     FROM
                         type_of_street
                     WHERE
@@ -334,7 +339,107 @@ END $$;
 16:54:00.057  Indexation
 
 Query returned successfully in 17 secs 919 msec.
+
+-- DESCRIPTORS
+execute_query --name FAULT_DESCRIPTORS --query 'CALL fr.set_laposte_address_fault_street(
+fault => '"'"'DESCRIPTORS'"'"')'
+
+2024-01-29T09:01:41Z|info|5438|christophe|/usr/bin/bash|Lancement de l'exécution de FAULT_DESCRIPTORS (requête)
+2024-01-29T09:13:46Z|info|5438|christophe|/usr/bin/bash|Exécution avec succès de FAULT_DESCRIPTORS en 0h:12m:5s
+
+-- TYPE
+execute_query --name FAULT_TYPE --query 'CALL fr.set_laposte_address_fault_street(
+fault => '"'"'TYPE'"'"')'
+2024-01-29T09:19:18Z|info|5438|christophe|/usr/bin/bash|Lancement de l'exécution de FAULT_TYPE (requête)
+2024-01-29T09:19:19Z|info|5438|christophe|/usr/bin/bash|Exécution avec succès de FAULT_TYPE en 0h:0m:1s
+
+-- COUNTS
+FAULT   COUNT
+    1       6
+    2     134
+    3      46
+    4      11
+    5    8507
+    6     604
+
  */
+
+-- fix fault of address (referential)
+SELECT drop_all_functions_if_exists('fr', 'fix_laposte_address_fault');
+CREATE OR REPLACE FUNCTION fr.fix_laposte_address_fault(
+    address_element IN VARCHAR                -- AREA|STREET|HOUSENUMBER|COMPLEMENT
+    , address_join_column IN VARCHAR
+    , address_update_column IN VARCHAR
+    , fault_id IN INT
+    , nrows OUT INT
+    , column_with_new_value IN VARCHAR DEFAULT 'name'
+    , column_with_old_value IN VARCHAR DEFAULT 'name_before'
+    , address_alias IN VARCHAR DEFAULT 'a'
+    , fault_alias IN VARCHAR DEFAULT 'f'
+    , uniq_alias IN VARCHAR DEFAULT 'u'
+    , simulation IN BOOLEAN DEFAULT FALSE
+)
+AS
+$func$
+DECLARE
+    _query TEXT;
+    _address_table VARCHAR;
+    _fault_table VARCHAR;
+    _uniq_table VARCHAR;
+    _fault_key VARCHAR := CONCAT(fault_alias, '.name_id');
+    _uniq_key VARCHAR := CONCAT(uniq_alias, '.id');
+    _join_uniq_fault VARCHAR := CONCAT(_fault_key, ' = ', _uniq_key);
+    _address_join_column VARCHAR := CONCAT(address_alias, '.', address_join_column);
+    _address_update_column VARCHAR := CONCAT(address_alias, '.', address_update_column);
+    _column_with_old_value VARCHAR := CONCAT(fault_alias, '.', column_with_old_value);
+    _column_with_new_value VARCHAR := CONCAT(uniq_alias, '.', column_with_new_value);
+BEGIN
+    IF NOT address_element = ANY('{AREA,STREET,HOUSENUMBER,COMPLEMENT}') THEN
+        RAISE 'élément adresse (%) non valide!', address_element;
+    END IF;
+
+    _address_table := CONCAT('fr.laposte_address_', LOWER(address_element));
+    _fault_table := CONCAT('fr.laposte_address_fault_', LOWER(address_element));
+    _uniq_table := CONCAT('fr.laposte_address_', LOWER(address_element), '_uniq');
+
+    /*
+    UPDATE fr.laposte_address_street s SET
+        lb_voie = u.name
+        FROM
+            fr.laposte_address_fault_street fs
+                JOIN fr.laposte_address_street_uniq u ON u.id = fs.name_id
+        WHERE
+            fs.fault_id = _values[_fault_i]::INT
+            AND
+            s.lb_voie = fs.name_before
+            AND
+            s.lb_voie IS DISTINCT FROM u.name
+    ;
+     */
+
+    _query := CONCAT('UPDATE ', _address_table, ' ', address_alias, ' SET
+        ', address_update_column, ' = ', _column_with_new_value, '
+        , dt_reference = TIMEOFDAY()::DATE
+        FROM
+        ', _fault_table, ' ', fault_alias, '
+            JOIN ', _uniq_table, ' ', uniq_alias, ' ON ', _join_uniq_fault, '
+        WHERE
+            ', fault_alias, '.fault_id = ', fault_id, '
+            AND
+            ', _address_join_column, ' = ', _column_with_old_value, '
+            AND
+            ', _address_update_column, ' IS DISTINCT FROM ', _column_with_new_value
+    );
+
+    IF NOT simulation THEN
+        EXECUTE _query;
+        GET DIAGNOSTICS nrows = ROW_COUNT;
+    ELSE
+        RAISE NOTICE 'requête=%', _query;
+        nrows := 0;
+    END IF;
+END
+$func$ LANGUAGE plpgsql;
 
 -- fix street faults
 SELECT drop_all_functions_if_exists('fr', 'fix_laposte_address_fault_street');
@@ -354,9 +459,11 @@ DECLARE
     _nrows INT;
     _nrows_history INT;
     _nrows_referential INT;
+    _address_element VARCHAR := 'STREET';
     _address_join_column VARCHAR;
     _address_update_column VARCHAR;
-    _uniq_value_column VARCHAR;
+    _column_with_old_value VARCHAR;
+    _column_with_new_value VARCHAR;
 BEGIN
     IF NOT table_exists('fr', 'laposte_address_street_uniq') THEN
         RAISE 'Données LAPOSTE non suffisantes';
@@ -374,8 +481,8 @@ BEGIN
         WHEN fault = 'ALL' THEN _keys
         ELSE STRING_TO_ARRAY(fault, ',')
         END;
+    CALL public.log_info(' Chargement des anomalies de niveau Voie');
 
-    CALL public.log_info(' Correction');
     FOR _i IN 1 .. ARRAY_LENGTH(_faults, 1)
     LOOP
         _fault_i := CASE
@@ -393,7 +500,7 @@ BEGIN
             _fix := TRUE;
             _address_join_column := 'lb_voie';
             _address_update_column := _address_join_column;
-            _uniq_value_column := 'name';
+            _column_with_new_value := 'name';
             IF _keys[_fault_i] = 'BAD_SPACE' THEN
                 UPDATE fr.laposte_address_street_uniq u SET
                     name = fs.help_to_fix
@@ -481,10 +588,28 @@ BEGIN
             --ELSIF _keys[_fault_i] = 'TYPO_ERROR' THEN
             ELSIF _keys[_fault_i] = 'DESCRIPTORS' THEN
                 _address_update_column := 'lb_desc';
-                _uniq_value_column := 'descriptors';
+                _column_with_new_value := 'descriptors';
+                UPDATE fr.laposte_address_street_uniq u SET
+                    descriptors = fs.help_to_fix
+                    FROM
+                        fr.laposte_address_fault_street fs
+                    WHERE
+                        fs.fault_id = _values[_fault_i]::INT
+                        AND
+                        u.id = fs.name_id
+                ;
             ELSIF _keys[_fault_i] = 'TYPE' THEN
                 _address_update_column := 'lb_type';
-                _uniq_value_column := 'type_of_street';
+                _column_with_new_value := 'type_of_street';
+                UPDATE fr.laposte_address_street_uniq u SET
+                    type_of_street = fs.help_to_fix
+                    FROM
+                        fr.laposte_address_fault_street fs
+                    WHERE
+                        fs.fault_id = _values[_fault_i]::INT
+                        AND
+                        u.id = fs.name_id
+                ;
             ELSE
                 _fix := FALSE;
             END IF;
@@ -493,72 +618,29 @@ BEGIN
                 GET DIAGNOSTICS _nrows = ROW_COUNT;
                 CALL public.log_info(CONCAT(' Mise à jour anomalies (', _keys[_fault_i], '): ', _nrows));
 
-                -- history before fix
+                -- history (before fix)
                 SELECT nrows
                 INTO _nrows_history
                 FROM fr.add_history_address_fault(
-                    address_table => 'fr.laposte_address_street'
-                    , address_change => _keys[_fault_i]
-                    , address_element => 'STREET'
+                    address_change => _keys[_fault_i]
+                    , address_element => _address_element
                     , address_join_column => _address_join_column
                     , address_update_column => _address_update_column
-                    , fault_table => 'fr.laposte_address_fault_street'
                     , fault_id => _values[_fault_i]::INT
-                    , uniq_value_column => _uniq_value_column
-
+                    , column_with_new_value => _column_with_new_value
                 );
-
-                /*
-                INSERT INTO fr.laposte_address_history (
-                        code_address
-                        , date_change
-                        , change
-                        , kind
-                        , values
-                    )
-                    SELECT
-                        s.co_cea
-                        , TIMEOFDAY()::DATE
-                        , _keys[_fault_i]
-                        , 'STREET'
-                        , ROW_TO_JSON(s.*)::JSONB
-                    FROM
-                        fr.laposte_address_street s
-                            JOIN fr.laposte_address_fault_street fs ON s.lb_voie = fs.name_before
-                            JOIN fr.laposte_address_street_uniq u ON fs.name_id = u.id
-                    WHERE
-                        fs.fault_id = _values[_fault_i]::INT
-                        AND
-                        s.lb_voie IS DISTINCT FROM u.name
-                        AND
-                        NOT EXISTS(
-                            SELECT 1 FROM fr.laposte_address_history h
-                            WHERE
-                                h.code_address = s.co_cea
-                                AND
-                                h.change = _keys[_fault_i]
-                                AND
-                                h.values->>'lb_voie' = fs.name_before
-                        )
-                ;
-                GET DIAGNOSTICS _nrows_history = ROW_COUNT;
-                 */
                 CALL public.log_info(CONCAT(' Insertion Historique (', _keys[_fault_i], '): ', _nrows_history));
 
                 -- referential
-                UPDATE fr.laposte_address_street s SET
-                    lb_voie = u.name
-                    FROM
-                        fr.laposte_address_fault_street fs
-                            JOIN fr.laposte_address_street_uniq u ON u.id = fs.name_id
-                    WHERE
-                        fs.fault_id = _values[_fault_i]::INT
-                        AND
-                        s.lb_voie = fs.name_before
-                        AND
-                        s.lb_voie IS DISTINCT FROM u.name
-                ;
-                GET DIAGNOSTICS _nrows_referential = ROW_COUNT;
+                SELECT nrows
+                INTO _nrows_referential
+                FROM fr.fix_laposte_address_fault(
+                    address_element => _address_element
+                    , address_join_column => _address_join_column
+                    , address_update_column => _address_update_column
+                    , fault_id => _values[_fault_i]::INT
+                    , column_with_new_value => _column_with_new_value
+                );
                 CALL public.log_info(CONCAT(' Mise à jour Référentiel (', _keys[_fault_i], '): ', _nrows_referential));
 
                 IF _nrows_history IS DISTINCT FROM _nrows_referential THEN
@@ -598,7 +680,7 @@ Query returned successfully in 510 msec.
 
 -- other call (already done, so 0)
 19:16:38.734 Correction des anomalies dans les libellés de voie
-19:16:38.734  Correction
+19:16:38.734  Chargement des anomalies de niveau Voie
 19:16:38.735  Mise à jour anomalies (BAD_SPACE): 0
 19:16:40.250  Insertion Historique (BAD_SPACE): 0
 19:16:40.383  Mise à jour Référentiel (BAD_SPACE): 0
@@ -615,7 +697,7 @@ BEGIN
 END $$;
 
 19:22:04.803 Correction des anomalies dans les libellés de voie
-19:22:04.804  Correction
+19:22:04.804  Chargement des anomalies de niveau Voie
 19:22:05.739  Mise à jour anomalies (DUPLICATE_WORD): 134
 19:22:38.921  Insertion Historique (DUPLICATE_WORD): 155
 19:22:42.466  Mise à jour Référentiel (DUPLICATE_WORD): 155
@@ -631,7 +713,7 @@ BEGIN
 END $$;
 
 19:24:18.525 Correction des anomalies dans les libellés de voie
-19:24:18.525  Correction
+19:24:18.525  Chargement des anomalies de niveau Voie
 19:24:18.837  Mise à jour anomalies (WITH_ABBREVIATION): 46
 19:24:21.216  Insertion Historique (WITH_ABBREVIATION): 50
 19:24:22.980  Mise à jour Référentiel (WITH_ABBREVIATION): 50
@@ -639,27 +721,22 @@ END $$;
 Query returned successfully in 4 secs 475 msec.
 
 -- DESCRIPTORS
-execute_query --name FAULT_DESCRIPTORS --query 'CALL fr.set_laposte_address_fault_street(
-fault => '"'"'DESCRIPTORS'"'"')'
+16:08:12.071 Correction des anomalies dans les libellés de voie
+16:08:12.150  Chargement des anomalies de niveau Voie
+16:08:14.182  Mise à jour anomalies (DESCRIPTORS): 8507
+16:08:23.802  Insertion Historique (DESCRIPTORS): 20814
+16:09:53.166  Mise à jour Référentiel (DESCRIPTORS): 20814
 
-2024-01-24T19:18:17Z|info|6562|christophe|/usr/bin/bash|Lancement de l'exécution de FAULT_DESCRIPTORS (requête)
-2024-01-24T19:29:36Z|info|6562|christophe|/usr/bin/bash|Exécution avec succès de FAULT_DESCRIPTORS en 0h:11m:19s
+Query returned successfully in 1 min 41 secs.
 
 -- TYPE
-execute_query --name FAULT_TYPE --query 'CALL fr.set_laposte_address_fault_street(
-fault => '"'"'TYPE'"'"')'
-2024-01-25T14:31:45Z|info|2718|christophe|/usr/bin/bash|Lancement de l'exécution de FAULT_TYPE (requête)
-2024-01-25T14:34:17Z|info|2718|christophe|/usr/bin/bash|Exécution avec succès de FAULT_TYPE en 0h:2m:32s
+16:15:37.907 Correction des anomalies dans les libellés de voie
+16:15:37.907  Chargement des anomalies de niveau Voie
+16:15:37.925  Mise à jour anomalies (TYPE): 604
+16:16:00.591  Insertion Historique (TYPE): 660
+16:16:15.056  Mise à jour Référentiel (TYPE): 660
 
--- COUNTS
-FAULT   COUNT
-    1       6
-    2     134
-    3      46
-    4      11
-    5    8747
-    6    1495
-
+Query returned successfully in 37 secs 436 msec.
  */
 
 -- undo fix street faults
