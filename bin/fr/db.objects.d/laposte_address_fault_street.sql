@@ -240,7 +240,7 @@ BEGIN
                     descriptors AS (
                         SELECT
                             id
-                            , fr.get_descriptor_of_street(name) descriptors_pow
+                            , fr.get_descriptors_of_street(name) descriptors_pow
                             , descriptors descriptors_laposte
                             , name
                         FROM

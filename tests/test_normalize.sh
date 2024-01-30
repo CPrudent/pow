@@ -5,9 +5,9 @@
     #--
     # tests normalize
     #   SPLIT: fr.split_name_of_street_as_descriptor()
-    #   DESCRIPTOR_DIFF: fr.get_descriptor_of_street(), for ALL
-    #   DESCRIPTOR_LIST: fr.get_descriptor_of_street(), for LIST
-    #   DESCRIPTOR_CASE: fr.get_descriptor_of_street(), for USECASE
+    #   DESCRIPTORS_DIFF: fr.get_descriptors_of_street(), for ALL
+    #   DESCRIPTORS_LIST: fr.get_descriptors_of_street(), for LIST
+    #   DESCRIPTORS_CASE: fr.get_descriptors_of_street(), for USECASE
 
 source $POW_DIR_ROOT/tests/data/test_normalize-data.sh || exit $ERROR_CODE
 
@@ -25,7 +25,7 @@ bash_args \
         test
     ' \
     --args_v '
-        test:SPLIT|DESCRIPTOR_DIFF|DESCRIPTOR_LIST|DESCRIPTOR_CASE;
+        test:SPLIT|DESCRIPTORS_DIFF|DESCRIPTORS_LIST|DESCRIPTORS_CASE;
         number_line:no|yes
     ' \
     --args_d '
@@ -42,9 +42,9 @@ _ko=0
     for ((_i=0; _i < ${#TEST_A4S_NAME[*]}; _i++)); do
         [ ${#TEST_A4S_NAME_NORMALIZED[$_i]} -gt 0 ] && {
             _name=${TEST_A4S_NAME_NORMALIZED[$_i]}
-            _descriptor=${TEST_A4S_DESCRIPTOR_NORMALIZED[$_i]}
+            _descriptor=${TEST_A4S_DESCRIPTORS_NORMALIZED[$_i]}
             _split_name=${TEST_A4S_SPLIT_NAME_NORMALIZED[$_i]}
-            _split_descriptor=${TEST_A4S_SPLIT_DESCRIPTOR_NORMALIZED[$_i]}
+            _split_descriptor=${TEST_A4S_SPLIT_DESCRIPTORS_NORMALIZED[$_i]}
             _is_normalized=1
         } || {
             _name=${TEST_A4S_NAME[$_i]}
@@ -58,7 +58,7 @@ _ko=0
         --query "
             SELECT words, descriptors FROM fr.split_name_of_street_as_descriptor(
                 name => '$_name'
-                , descriptor => '$_descriptor'
+                , descriptors_in => '$_descriptor'
                 $([ $_is_normalized -eq 1 ] && echo ', is_normalized => TRUE')
             )
         " \
@@ -96,15 +96,15 @@ _ko=0
     exit $_rc
 }
 
-[ "$get_arg_test" = DESCRIPTOR_DIFF ] && {
+[ "$get_arg_test" = DESCRIPTORS_DIFF ] && {
     execute_query \
-        --name DESCRIPTOR_DIFF \
+        --name DESCRIPTORS_DIFF \
         --query "
             COPY (
                 WITH
                 descriptors AS (
                     SELECT
-                        fr.get_descriptor_of_street(name) AS descriptor_pow
+                        fr.get_descriptors_of_street(name) AS descriptor_pow
                         , descriptors AS descriptor_laposte
                         , name
                     FROM
@@ -133,19 +133,19 @@ _ko=0
     exit $SUCCESS_CODE
 }
 
-[ "$get_arg_test" = DESCRIPTOR_LIST ] && {
+[ "$get_arg_test" = DESCRIPTORS_LIST ] && {
     set_log_echo no
     for ((_i=0; _i < ${#TEST_A4S_NAME[*]}; _i++)); do
         execute_query \
-        --name DESCRIPTOR_LIST \
+        --name DESCRIPTORS_LIST \
         --query "
-            SELECT fr.get_descriptor_of_street(
+            SELECT fr.get_descriptors_of_street(
                 name => '${TEST_A4S_NAME[$_i]}'
             )
         " \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _normalize || {
-            cat $POW_DIR_ARCHIVE/DESCRIPTOR_LIST.error.log
+            cat $POW_DIR_ARCHIVE/DESCRIPTORS_LIST.error.log
             exit $ERROR_CODE
         }
 
@@ -169,7 +169,7 @@ _ko=0
     exit $_rc
 }
 
-[ "$get_arg_test" = DESCRIPTOR_CASE ] && {
+[ "$get_arg_test" = DESCRIPTORS_CASE ] && {
     declare -a _TEST_A4S_NAME=(
         # successive titles (two of one word, one of two words)
         'LE PETIT HAUT CHEMIN'                                                  #  1
@@ -215,8 +215,8 @@ _ko=0
         VNN                                                                     #  5
         VAN                                                                     #  6
         VNC                                                                     #  7
-        TNC                                                                     #  8
-        TNC                                                                     #  9
+        VNC                                                                     #  8
+        VNC                                                                     #  9
         NNCN                                                                    # 10
         NCC                                                                     # 11
         VAANC                                                                   # 12
@@ -239,15 +239,15 @@ _ko=0
     set_log_echo no
     for ((_i=0; _i < ${#_TEST_A4S_NAME[*]}; _i++)); do
         execute_query \
-        --name DESCRIPTOR_CASE \
+        --name DESCRIPTORS_CASE \
         --query "
-            SELECT fr.get_descriptor_of_street(
+            SELECT fr.get_descriptors_of_street(
                 name => '${_TEST_A4S_NAME[$_i]}'
             )
         " \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _normalize || {
-            cat $POW_DIR_ARCHIVE/DESCRIPTOR_CASE.error.log
+            cat $POW_DIR_ARCHIVE/DESCRIPTORS_CASE.error.log
             exit $ERROR_CODE
         }
 

@@ -85,7 +85,7 @@ declare -a TEST_A4S_NAME_NORMALIZED=(
     'RUE ADJ BESNAULT GENDARME LEFORT'                                      # 22
 )
 
-declare -a TEST_A4S_DESCRIPTOR_NORMALIZED=(
+declare -a TEST_A4S_DESCRIPTORS_NORMALIZED=(
     VACNCTAAN                                                               #  1
     VATTTANAN                                                               #  2
     VATPNAAATN                                                              #  3
@@ -135,7 +135,7 @@ declare -a TEST_A4S_SPLIT_NAME_NORMALIZED=(
     '{RUE,ADJ,"BESNAULT GENDARME LEFORT"}'                                  # 22
 )
 
-declare -a TEST_A4S_SPLIT_DESCRIPTOR_NORMALIZED=(
+declare -a TEST_A4S_SPLIT_DESCRIPTORS_NORMALIZED=(
     '{V,C,N,C,T,N}'                                                         #  1
     '{V,A,T,A,N,A,N}'                                                       #  2
     '{V,T,P,N,A,T,N}'                                                       #  3

@@ -122,7 +122,7 @@ $func$ LANGUAGE plpgsql;
 SELECT drop_all_functions_if_exists('fr', 'get_titles_from_name');
 CREATE OR REPLACE FUNCTION fr.get_titles_from_name(
     name IN VARCHAR
-    , descriptor IN VARCHAR
+    , descriptors IN VARCHAR
     , titles OUT TEXT[]
 )
 AS
@@ -130,14 +130,14 @@ $func$
 DECLARE
     _words TEXT[] := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
     _title TEXT;
+    _descriptors_len INT := LENGTH(descriptors);
     _descriptor VARCHAR;
-    _descriptor_len INT := LENGTH(descriptor);
     _descriptor_prev VARCHAR := 'Z';
     _i INT;
 BEGIN
-    FOR _i IN 1 .. _descriptor_len
+    FOR _i IN 1 .. _descriptors_len
     LOOP
-        _descriptor := SUBSTR(descriptor, _i, 1);
+        _descriptor := SUBSTR(descriptors, _i, 1);
         IF _descriptor = 'T' THEN
             _title :=
                 CASE WHEN _descriptor_prev = 'T' THEN CONCAT(_title, ' ', _words[_i])
@@ -169,8 +169,8 @@ $func$
 DECLARE
     _words TEXT[];
     _kw TEXT;
+    _descriptors_len INT := LENGTH(descriptors);
     _descriptor VARCHAR;
-    _descriptor_len INT := LENGTH(descriptors);
     _descriptor_prev VARCHAR := 'Z';
     _i INT;
 BEGIN
@@ -181,11 +181,11 @@ BEGIN
     ELSIF name IS NULL AND words IS NOT NULL THEN
         _words := ARRAY_CAT(_words, words);
     END IF;
-    IF _descriptor_len != ARRAY_UPPER(_words, 1) THEN
+    IF _descriptors_len != ARRAY_UPPER(_words, 1) THEN
         RAISE 'traiter le nom de la voie avec un descripteur de même taille';
     END IF;
 
-    FOR _i IN 1 .. _descriptor_len
+    FOR _i IN 1 .. _descriptors_len
     LOOP
         _descriptor := SUBSTR(descriptors, _i, 1);
         IF _descriptor = descriptor THEN
@@ -205,24 +205,24 @@ END
 $func$ LANGUAGE plpgsql;
  */
 
--- count potential number of words (w/ _descriptor)
+-- count potential number of words (w/ descriptors)
 SELECT drop_all_functions_if_exists('fr', 'count_potential_nof_words');
 CREATE OR REPLACE FUNCTION fr.count_potential_nof_words(
-    descriptor IN VARCHAR
+    descriptors IN VARCHAR
     , nof OUT INT
 )
 AS
 $func$
 DECLARE
+    _descriptors_len INT := LENGTH(descriptors);
     _descriptor VARCHAR;
-    _descriptor_len INT := LENGTH(descriptor);
     _descriptor_prev VARCHAR := 'Z';
     _i INT;
 BEGIN
     nof := 0;
-    FOR _i IN 1 .. _descriptor_len
+    FOR _i IN 1 .. _descriptors_len
     LOOP
-        _descriptor := SUBSTR(descriptor, _i, 1);
+        _descriptor := SUBSTR(descriptors, _i, 1);
         IF (_descriptor != _descriptor_prev) THEN
             nof := nof +1;
         END IF;
@@ -235,13 +235,12 @@ $func$ LANGUAGE plpgsql;
 SELECT drop_all_functions_if_exists('fr', 'split_name_of_street_as_descriptor');
 CREATE OR REPLACE FUNCTION fr.split_name_of_street_as_descriptor(
     name IN VARCHAR
-    , descriptor IN VARCHAR
+    , descriptors_in IN VARCHAR
     , is_normalized IN BOOLEAN DEFAULT FALSE
     , split_only IN VARCHAR DEFAULT NULL        -- specific descriptor: A,C,E,N,P,T,V
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , words OUT TEXT[]
-    , descriptors OUT TEXT[]
-)
+    , descriptors OUT TEXT[])
 AS
 $func$
 DECLARE
@@ -253,8 +252,8 @@ DECLARE
     _usecase_article INT;
     _usecase_title INT;
     _words TEXT[] := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
+    _descriptors_len INT := LENGTH(descriptors_in);
     _descriptor VARCHAR;
-    _descriptor_len INT := LENGTH(descriptor);
     _descriptor_prev VARCHAR := 'Z';
     _descriptor_word VARCHAR := NULL;
     _descriptor_same VARCHAR := NULL;
@@ -265,16 +264,16 @@ DECLARE
     _descriptor_type VARCHAR;
     _descriptor_title VARCHAR;
     _descriptor_others VARCHAR;
-    --_descriptor_next VARCHAR;
     _descriptor_wo_a VARCHAR;
     _descriptor_only_a VARCHAR;
-    --_descriptor_only_t VARCHAR;
     _descriptor_start_a VARCHAR;
+    _descriptor_tmp VARCHAR;
+    --_descriptor_next VARCHAR;
+    --_descriptor_only_t VARCHAR;
     _kw VARCHAR;
     _kw_more VARCHAR;
     _kw_is_abbreviated BOOLEAN;
     _kw_nwords INT;
-    _descriptor_tmp VARCHAR;
 BEGIN
     /* NOTE
     when is_normalized, normalized name (eventually w/ deleted article, or abbreviated _words)
@@ -283,69 +282,69 @@ BEGIN
     -- deleted article (one)
     AVENUE DE LA 9E DIVISION INFANTERIE DE CAVALERIE
         name => 'AV LA 9E DIV INFANT DE CAVALERIE'
-        , descriptor => 'VAACTTAN'
+        , descriptors_in => 'VAACTTAN'
     -- deleted article (all)
     CHEMIN D EXPLOITATION DU MAS SAINT PAUL
         name => 'CHEMIN EXPLOITATION MAS ST PAUL'
-        , descriptor => 'VANATTN'
+        , descriptors_in => 'VANATTN'
     CHEMIN DE NOTRE DAME DES CHAMPS ET DES VIGNES
         name => 'CHEMIN ND CHAMPS ET DES VIGNES'
-        , descriptor => 'VATTANAAN'
+        , descriptors_in => 'VATTANAAN'
     -- not an article!
     PARC D ACTIVITES NURIEUX CROIX CHALON'
         name => 'PARC A NURIEUX CRX CHALON'
-        , descriptor => 'VANNTN'
+        , descriptors_in => 'VANNTN'
     AVENUE DES ANCIENS COMBATTANTS FRANCAIS D INDOCHINE
         name => 'AV A COMBATTANTS FR INDOCHINE'
-        , descriptor => 'VANNTAN'
+        , descriptors_in => 'VANNTAN'
 
     -- deleted (word of) title
     CHEMIN RURAL DIT ANCIEN CHEMIN DE BRISON A THUET
         name => 'CHEM R DIT ANCIEN BRISON THUET'
-        , descriptor => 'VNNTTANAN'
+        , descriptors_in => 'VNNTTANAN'
 
     -- abbreviated title
     ZONE ARTISANALE CENTRE COMMERCIAL BEAUGE
         name => 'ZONE ARTISANALE CCIAL BEAUGE'
-        , descriptor => 'VVTTN'
+        , descriptors_in => 'VVTTN'
     PLACE NOTRE DAME DE LA LEGION D HONNEUR
         name => 'PL ND DE LA LEGION D HONNEUR'
-        , descriptor => 'VTTAANAN'
+        , descriptors_in => 'VTTAANAN'
     -- w/ deleted article (prev='T')
     CHEMIN DE NOTRE DAME DES CHAMPS ET DES VIGNES
         name => 'CHEMIN ND CHAMPS ET DES VIGNES'
-        , descriptor => 'VATTANAAN'
+        , descriptors_in => 'VATTANAAN'
 
     -- abbreviated type
     LIEU DIT LE GRAND BOIS DE LA DURANDIERE
         name => 'LD LE GD BOIS DE LA DURANDIERE'
-        , descriptor => 'VVATTAAN'
+        , descriptors_in => 'VVATTAAN'
      */
 
     _n := ARRAY_LENGTH(_words, 1);
-    IF raise_notice THEN RAISE NOTICE '#d=%, #w=%', _descriptor_len, _n; END IF;
+    IF raise_notice THEN RAISE NOTICE '#d=%, #w=%', _descriptors_len, _n; END IF;
     FOR _i IN 1 .. _n
     LOOP
         _k := (_i + _offset -1);
-        IF _k > _descriptor_len THEN
+        IF _k > _descriptors_len THEN
             EXIT;
         END IF;
-        IF (_i = _n) AND (_k < _descriptor_len) THEN
-            IF raise_notice THEN RAISE NOTICE ' ajustement k=% len=%', _k, _descriptor_len; END IF;
-            _k := _descriptor_len;
+        IF (_i = _n) AND (_k < _descriptors_len) THEN
+            IF raise_notice THEN RAISE NOTICE ' ajustement k=% len=%', _k, _descriptors_len; END IF;
+            _k := _descriptors_len;
         END IF;
-        _descriptor := SUBSTR(descriptor, _k, 1);
+        _descriptor := SUBSTR(descriptors_in, _k, 1);
         IF raise_notice THEN RAISE NOTICE '(i=% ofs=% k=%): d=% (pd=%), w=%', _i, _offset, _k, _descriptor, _descriptor_prev, _words[_i]; END IF;
 
         -- article
         IF (is_normalized
-            AND _n < _descriptor_len
+            AND _n < _descriptors_len
             AND _descriptor = 'A'
         ) THEN
-            IF (_descriptor_len - _k) != (_n - _i) THEN
+            IF (_descriptors_len - _k) != (_n - _i) THEN
                 --_descriptor_from := CASE WHEN _descriptor_prev = 'A' THEN _k ELSE _k +1 END;
                 _descriptor_from := _k +1;
-                _descriptor_remainder := SUBSTR(descriptor, _descriptor_from);
+                _descriptor_remainder := SUBSTR(descriptors_in, _descriptor_from);
                 _descriptor_only_a := REGEXP_REPLACE(_descriptor_remainder, '[^A]', '', 'gi');
                 _descriptor_tmp := SUBSTR(_descriptor_remainder, 1, 1);
 
@@ -419,9 +418,9 @@ BEGIN
                     END IF;
                 -- deleted article
                 ELSIF _usecase_article = ANY('{2}') THEN
-                    FOR _j IN (_k + 1) .. _descriptor_len
+                    FOR _j IN (_k + 1) .. _descriptors_len
                     LOOP
-                        _descriptor := SUBSTR(descriptor, _j, 1);
+                        _descriptor := SUBSTR(descriptors_in, _j, 1);
                         _offset := _offset +1;
                         IF _descriptor != 'A' THEN
                             IF _descriptor_word IS NOT NULL AND (
@@ -437,7 +436,7 @@ BEGIN
                             _descriptor_prev := _descriptor;
 
                             IF raise_notice THEN
-                                RAISE NOTICE ' descriptor=%', _descriptor;
+                                RAISE NOTICE ' descriptors_in=%', _descriptor;
                                 RAISE NOTICE ' offset=%', _offset;
                             END IF;
                             EXIT;
@@ -466,7 +465,7 @@ BEGIN
             END IF;
         -- type
         ELSIF (is_normalized
-            AND _n < _descriptor_len
+            AND _n < _descriptors_len
             AND _descriptor = 'V'
             AND _i = 1
         ) THEN
@@ -479,7 +478,7 @@ BEGIN
             ;
             -- abbreviated ?
             IF _kw_is_abbreviated THEN
-                _descriptor_type := (REGEXP_MATCHES(descriptor, '^(V+)([^V])'))[1];
+                _descriptor_type := (REGEXP_MATCHES(descriptors_in, '^(V+)([^V])'))[1];
                 -- be careful w/ multiple abbreviated type (as ZA, PCH) !
                 IF count_words(_kw) != LENGTH(_descriptor_type) THEN
                     SELECT k.name
@@ -503,13 +502,13 @@ BEGIN
             END IF;
         -- title
         ELSIF (is_normalized
-            AND _n < _descriptor_len
+            AND _n < _descriptors_len
             AND _descriptor = 'T'
         ) THEN
             _descriptor_from := _k;
 
-            -- previous deleted article (one descriptor T already consumed)
-            _descriptor_before := SUBSTR(descriptor, 1, _descriptor_from);
+            -- previous deleted article (one descriptors_in T already consumed)
+            _descriptor_before := SUBSTR(descriptors_in, 1, _descriptor_from);
             _descriptor_with_a := (REGEXP_MATCHES(_descriptor_before, '(A+)(T+)$'))[1];
             IF (_descriptor_with_a IS NOT NULL
                 AND
@@ -518,13 +517,13 @@ BEGIN
                 _descriptor_from := _descriptor_from -1;
             END IF;
 
-            _descriptor_remainder := SUBSTR(descriptor, _descriptor_from);
+            _descriptor_remainder := SUBSTR(descriptors_in, _descriptor_from);
             _descriptor_title := (REGEXP_MATCHES(_descriptor_remainder, '(T+)([^T])'))[1];
             _descriptor_others := (REGEXP_MATCHES(_descriptor_remainder, '(T+)(.*)$'))[2];
             _descriptor_wo_a := REGEXP_REPLACE(_descriptor_others, '[A]', '', 'gi');
             _descriptor_only_a := REGEXP_REPLACE(_descriptor_others, '[^A]', '', 'gi');
             --_descriptor_only_t := REGEXP_REPLACE(_descriptor_others, '[^T]', '', 'gi');
-            --_descriptor_next := SUBSTR(descriptor, (_descriptor_from + LENGTH(_descriptor_title)), 1);
+            --_descriptor_next := SUBSTR(descriptors_in, (_descriptor_from + LENGTH(_descriptor_title)), 1);
 
             /*
             -- remains others than article less or equal to articles
@@ -605,10 +604,10 @@ BEGIN
                 END IF;
 
                 _descriptor_word := _words[_i];
-                -- search for next descriptor by adjusting offset
-                FOR _j IN (_descriptor_from + LENGTH(_descriptor_title)) .. _descriptor_len
+                -- search for next descriptors_in by adjusting offset
+                FOR _j IN (_descriptor_from + LENGTH(_descriptor_title)) .. _descriptors_len
                 LOOP
-                    _descriptor_tmp := SUBSTR(descriptor, _j, 1);
+                    _descriptor_tmp := SUBSTR(descriptors_in, _j, 1);
                     IF (_descriptor_tmp != 'A')
                         OR
                         (
@@ -643,7 +642,7 @@ BEGIN
                 OR
                 (_descriptor_same ~ split_only)
             ) THEN
-                -- last item already w/ same descriptor
+                -- last item already w/ same descriptors_in
                 IF (descriptors[ARRAY_UPPER(descriptors, 1)] ~ SUBSTR(_descriptor_same, 1, 1)) THEN
                     words[ARRAY_UPPER(words, 1)] := CONCAT(
                         words[ARRAY_UPPER(words, 1)]
@@ -671,7 +670,7 @@ BEGIN
         OR
         (_descriptor_same ~ split_only)
     ) THEN
-        -- last item already w/ same descriptor
+        -- last item already w/ same descriptors_in
         IF (descriptors[ARRAY_UPPER(descriptors, 1)] ~ SUBSTR(_descriptor_same, 1, 1)) THEN
             words[ARRAY_UPPER(words, 1)] := CONCAT(
                 words[ARRAY_UPPER(words, 1)]
@@ -853,7 +852,8 @@ SELECT * FROM fr.get_descriptor_from_exception(
 
  -- get descriptor of street (from full name)
 SELECT drop_all_functions_if_exists('fr', 'get_descriptor_of_street');
-CREATE OR REPLACE FUNCTION fr.get_descriptor_of_street(
+SELECT drop_all_functions_if_exists('fr', 'get_descriptors_of_street');
+CREATE OR REPLACE FUNCTION fr.get_descriptors_of_street(
     name IN VARCHAR                   -- name of street
     , with_abbreviation IN BOOLEAN DEFAULT FALSE
     , raise_notice IN BOOLEAN DEFAULT FALSE
@@ -1162,7 +1162,7 @@ SELECT
     , name
 FROM (
     SELECT
-        fr.get_descriptor_of_street(lb_voie) AS descriptor_pow
+        fr.get_descriptors_of_street(lb_voie) AS descriptor_pow
         , lb_desc AS descriptor_laposte
         , co_cea code
         , lb_voie name
