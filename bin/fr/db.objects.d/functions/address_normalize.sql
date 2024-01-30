@@ -249,7 +249,8 @@ $func$ LANGUAGE plpgsql;
 
 -- abbreviate title
 SELECT drop_all_functions_if_exists('fr', 'normalize_abbreviate_title');
-CREATE OR REPLACE FUNCTION fr.normalize_abbreviate_title(
+SELECT drop_all_functions_if_exists('fr', 'normalize_abbreviate_keyword');
+CREATE OR REPLACE FUNCTION fr.normalize_abbreviate_keyword(
     name IN VARCHAR
     , iter IN INTEGER DEFAULT 1
     , words IN TEXT[] DEFAULT NULL
@@ -261,17 +262,21 @@ DECLARE
     _words TEXT[];
     _i INT;
 BEGIN
-    IF count_words(name) = 1 THEN
-        SELECT
-            k.name_abbreviated
-        INTO
-            _name_abbreviated
-        FROM
-            fr.laposte_address_street_keyword k
-        WHERE
-            k.name = normalize_abbreviate_title.name
-        ;
-    ELSE
+    SELECT
+        k.name_abbreviated
+    INTO
+        _name_abbreviated
+    FROM
+        fr.laposte_address_street_keyword k
+    WHERE
+        k.name = normalize_abbreviate_keyword.name
+        AND
+        k.name_abbreviated IS NOT NULL
+    ;
+    IF NOT FOUND THEN
+        IF words IS NULL THEN
+            RAISE 'renseigner les mots du mot-clé (%) via option words', name;
+        END IF;
         IF iter <= count_words(name) THEN
             FOR _i IN 1 .. count_words(name)
             LOOP
@@ -285,7 +290,7 @@ BEGIN
                     WHERE
                         k.name = words[_i]
                     ;
-                    _words := ARRAY_APPEND(_words, _name_abbreviated);
+                    _words := ARRAY_APPEND(_words, COALESCE(_name_abbreviated, words[_i]));
                 ELSE
                     _words := ARRAY_APPEND(_words, words[_i]);
                 END IF;
