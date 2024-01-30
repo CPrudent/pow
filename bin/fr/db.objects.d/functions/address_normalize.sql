@@ -247,6 +247,58 @@ DECLARE
 END
 $func$ LANGUAGE plpgsql;
 
+-- abbreviate title
+SELECT drop_all_functions_if_exists('fr', 'normalize_abbreviate_title');
+CREATE OR REPLACE FUNCTION fr.normalize_abbreviate_title(
+    name IN VARCHAR
+    , iter IN INTEGER DEFAULT 1
+    , words IN TEXT[] DEFAULT NULL
+)
+RETURNS VARCHAR AS
+$func$
+DECLARE
+    _name_abbreviated VARCHAR;
+    _words TEXT[];
+    _i INT;
+BEGIN
+    IF count_words(name) = 1 THEN
+        SELECT
+            k.name_abbreviated
+        INTO
+            _name_abbreviated
+        FROM
+            fr.laposte_address_street_keyword k
+        WHERE
+            k.name = normalize_abbreviate_title.name
+        ;
+    ELSE
+        IF iter <= count_words(name) THEN
+            FOR _i IN 1 .. count_words(name)
+            LOOP
+                IF _i <= iter THEN
+                    SELECT
+                        k.name_abbreviated
+                    INTO
+                        _name_abbreviated
+                    FROM
+                        fr.laposte_address_street_keyword k
+                    WHERE
+                        k.name = words[_i]
+                    ;
+                    _words := ARRAY_APPEND(_words, _name_abbreviated);
+                ELSE
+                    _words := ARRAY_APPEND(_words, words[_i]);
+                END IF;
+            END LOOP;
+            _name_abbreviated := ARRAY_TO_STRING(_words, ' ');
+        --ELSE
+        END IF;
+    END IF;
+
+    RETURN _name_abbreviated;
+END
+$func$ LANGUAGE plpgsql;
+
 -- normalize name of municipality
 SELECT public.drop_all_functions_if_exists('fr', 'normalize_municipality_name');
 CREATE OR REPLACE FUNCTION fr.normalize_municipality_name(
@@ -306,18 +358,20 @@ ORDER BY
 -- normalize name of street
 SELECT public.drop_all_functions_if_exists('fr', 'normalize_street_name');
 CREATE OR REPLACE FUNCTION fr.normalize_street_name(
-    name VARCHAR
+    name IN VARCHAR
     , raise_notice IN BOOLEAN DEFAULT FALSE
+    , name_normalized OUT VARCHAR
+    , descriptors OUT VARCHAR
 )
-RETURNS CHARACTER VARYING AS
+AS
 $func$
 DECLARE
     _name VARCHAR;
     _name_tmp VARCHAR;
     _name_rebuild BOOLEAN;
-    _type VARCHAR;
-    _type_abbreviated VARCHAR;
-    _type_is_abbreviated BOOLEAN := TRUE;
+    _kw VARCHAR;
+    _kw_abbreviated VARCHAR;
+    _kw_is_abbreviated BOOLEAN;
     _type_diff INT;
     _len INT;
     _words TEXT[];
@@ -346,24 +400,27 @@ DECLARE
     _titles_diff INT;
     _types VARCHAR[] :=
         ARRAY(SELECT type FROM fr.laposte_address_street_type);
-    _types_abbr VARCHAR[] :=
-        ARRAY(SELECT type_abbreviated FROM fr.laposte_address_street_type);
     _types_1st_word VARCHAR[] :=
         ARRAY(SELECT first_word FROM fr.laposte_address_street_type);
     _types_i INT;
 BEGIN
     -- only upper and not special characters
     _name := clean_address_label(name);
+    _words := REGEXP_SPLIT_TO_ARRAY(_name, '\s+');
+    _words_len := ARRAY_LENGTH(_words, 1);
 
-    -- unabbreviated type of street
-    SELECT type, type_abbreviated, type_is_abbreviated
-    INTO _type, _type_abbreviated, _type_is_abbreviated
-    FROM fr.get_type_of_street(_name)
-    AS (type VARCHAR, type_abbreviated VARCHAR, type_is_abbreviated BOOLEAN);
-    IF _type_is_abbreviated THEN
-        _name_tmp := REGEXP_REPLACE(_name, '^\S+', _type);
+    -- type of street
+    SELECT kw, kw_abbreviated, kw_is_abbreviated
+    INTO _kw, _kw_abbreviated, _kw_is_abbreviated
+    FROM fr.get_type_of_street(
+        name => _name
+        , words => _words
+    );
+    IF _kw_is_abbreviated THEN
+        _name_tmp := REGEXP_REPLACE(_name, '^\S+', _kw);
         IF LENGTH(_name_tmp) <= 32 THEN
-            RETURN _name_tmp;
+            name_normalized := _name_tmp;
+            RETURN;
         END IF;
         _name := _name_tmp;
     END IF;
@@ -371,14 +428,20 @@ BEGIN
     -- already ok ?
     _len := LENGTH(_name);
     IF _len <= 32 THEN
-        RETURN _name;
+        name_normalized := _name;
+        RETURN;
     END IF;
 
+    -- descriptors
+    descriptors := fr.get_descriptors_of_street(
+        name => _name
+        , with_abbreviation => TRUE
+    );
+
     IF raise_notice THEN RAISE NOTICE 'name=% len=%', _name, _len; END IF;
-    _words := REGEXP_SPLIT_TO_ARRAY(_name, '\s+');
-    _words_len := ARRAY_LENGTH(_words, 1);
+
     -- dynamic steps!
-    _type_diff := LENGTH(COALESCE(_type, '')) - LENGTH(COALESCE(_type_abbreviated, ''));
+    _type_diff := LENGTH(COALESCE(_kw, '')) - LENGTH(COALESCE(_kw_abbreviated, ''));
     _steps := CASE
         -- abbreviate type suffisant?
         --WHEN ((_len - _type_diff) <= 32) AND (_type_diff > 2) THEN
@@ -449,8 +512,8 @@ BEGIN
 
             -- abbreviate type of street
             ELSIF _steps[_step_i] = _ABBR_TYPE THEN
-                IF NOT _type_is_abbreviated AND _type_abbreviated IS NOT NULL THEN
-                    _name := CONCAT(_type_abbreviated, SUBSTR(_name, LENGTH(_type) +1));
+                IF NOT _kw_is_abbreviated AND _kw_abbreviated IS NOT NULL THEN
+                    _name := CONCAT(_kw_abbreviated, SUBSTR(_name, LENGTH(_kw) +1));
                     _len := LENGTH(_name);
                     IF raise_notice THEN RAISE NOTICE ' name=% len=%', _name, _len; END IF;
                     _words_rebuild := TRUE;
@@ -550,8 +613,6 @@ BEGIN
             _words_i := 0;
         END IF;
     END LOOP;
-
-    RETURN _name;
 END
 $func$ LANGUAGE plpgsql;
 
