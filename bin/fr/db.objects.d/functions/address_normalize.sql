@@ -247,19 +247,22 @@ DECLARE
 END
 $func$ LANGUAGE plpgsql;
 
--- abbreviate title
-SELECT drop_all_functions_if_exists('fr', 'normalize_abbreviate_title');
+-- abbreviate keyword
 SELECT drop_all_functions_if_exists('fr', 'normalize_abbreviate_keyword');
 CREATE OR REPLACE FUNCTION fr.normalize_abbreviate_keyword(
     name IN VARCHAR
     , iter IN INTEGER DEFAULT 1
     , words IN TEXT[] DEFAULT NULL
+    , name_abbreviated OUT VARCHAR
+    , one_more_time OUT BOOLEAN
 )
-RETURNS VARCHAR AS
+AS
 $func$
 DECLARE
     _name_abbreviated VARCHAR;
+    _one_more_time BOOLEAN := FALSE;
     _words TEXT[];
+    _nwords INT;
     _i INT;
 BEGIN
     SELECT
@@ -277,8 +280,10 @@ BEGIN
         IF words IS NULL THEN
             RAISE 'renseigner les mots du mot-clé (%) via option words', name;
         END IF;
-        IF iter <= count_words(name) THEN
-            FOR _i IN 1 .. count_words(name)
+        _nwords := count_words(name);
+        IF iter <= _nwords THEN
+            _one_more_time := (iter < _nwords);
+            FOR _i IN 1 .. _nwords
             LOOP
                 IF _i <= iter THEN
                     SELECT
@@ -299,8 +304,8 @@ BEGIN
         --ELSE
         END IF;
     END IF;
-
-    RETURN _name_abbreviated;
+    one_more_time := _one_more_time;
+    name_abbreviated := _name_abbreviated;
 END
 $func$ LANGUAGE plpgsql;
 

@@ -850,8 +850,7 @@ SELECT * FROM fr.get_descriptor_from_exception(
 );
  */
 
- -- get descriptor of street (from full name)
-SELECT drop_all_functions_if_exists('fr', 'get_descriptor_of_street');
+ -- get descriptors of street (from full name)
 SELECT drop_all_functions_if_exists('fr', 'get_descriptors_of_street');
 CREATE OR REPLACE FUNCTION fr.get_descriptors_of_street(
     name IN VARCHAR                   -- name of street
