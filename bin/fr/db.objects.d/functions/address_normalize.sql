@@ -378,46 +378,62 @@ $func$
 DECLARE
     _name VARCHAR;
     _name_tmp VARCHAR;
+    /*
     _name_rebuild BOOLEAN;
     _kw VARCHAR;
     _kw_abbreviated VARCHAR;
     _kw_is_abbreviated BOOLEAN;
     _type_diff INT;
+     */
     _len INT;
     _words TEXT[];
+    _words_normalized TEXT[];
+    _words_abbreviated TEXT[];
     _words_i INT := 0;
     _words_len INT;
-    _words_rebuild BOOLEAN;
+    _descriptors TEXT[];
+    --_words_rebuild BOOLEAN;
     _i INT;
     _j INT;
     _found BOOLEAN;
-    _ABBR_HOLY INT               := 1;
-    _ABBR_TYPE INT               := 2;
-    _ABBR_FIRSTNAME INT          := 3;
-    _DELETE_ARTICLE INT          := 4;
-    _ABBR_TITLE INT              := 5;
+    _step INT;
     _steps INT[];
     _step_change BOOLEAN;
     _step_i INT := 1;
     _step_words TEXT[];
     _step_words_len INT;
     _steps_done BOOLEAN[];
+    _type_diff INT;
+
+    _STEP_WO_ABBR_TYPE INT              := 10;
+    _STEP_TEST_ABBR_TYPE INT            := 11;
+    _STEP_1ST_TYPE_OR_TITLE INT         := 12;
+    _STEP_ABBR_HOLY INT                 := 1;
+    _STEP_ABBR_TYPE INT                 := 2;
+    _STEP_ABBR_FIRSTNAME INT            := 3;
+    _STEP_DELETE_ARTICLE INT            := 4;
+    _STEP_ABBR_TITLE INT                := 5;
+    _STEP_END INT                       := 99;
+
+    /*
     _titles VARCHAR[] :=
         ARRAY(SELECT key FROM fr.constant WHERE usecase = 'LAPOSTE_STREET_TITLE');
     _titles_abbr VARCHAR[] :=
         ARRAY(SELECT value FROM fr.constant WHERE usecase = 'LAPOSTE_STREET_TITLE');
     _titles_i INT;
-    _titles_diff INT;
     _types VARCHAR[] :=
         ARRAY(SELECT type FROM fr.laposte_address_street_type);
     _types_1st_word VARCHAR[] :=
         ARRAY(SELECT first_word FROM fr.laposte_address_street_type);
     _types_i INT;
+     */
 BEGIN
     -- only upper and not special characters
     _name := clean_address_label(name);
+    _len := LENGTH(_name);
+
+    /*
     _words := REGEXP_SPLIT_TO_ARRAY(_name, '\s+');
-    _words_len := ARRAY_LENGTH(_words, 1);
 
     -- type of street
     SELECT kw, kw_abbreviated, kw_is_abbreviated
@@ -441,17 +457,96 @@ BEGIN
         name_normalized := _name;
         RETURN;
     END IF;
+     */
 
-    -- descriptors
-    descriptors := fr.get_descriptors_of_street(
-        name => _name
-        , with_abbreviation => TRUE
-    );
+    -- descriptors, words (by descriptor)
+    SELECT
+        ds.descriptors
+        , ds.words_by_descriptor
+        , ds.words_abbreviated_by_descriptor
+    INTO
+        normalize_street_name.descriptors
+        , _words
+        , _words_abbreviated
+    FROM
+        fr.get_descriptors_of_street(
+            name => _name
+            , with_abbreviation => TRUE
+        ) ds;
+    _words_len := ARRAY_LENGTH(_words, 1);
+    SELECT
+        as_array
+    INTO
+        _descriptors
+    FROM
+        fr.split_descriptors_as_array(
+            descriptors => normalize_street_name.descriptors
+            , words => _words
+            , nwords => _words_len
+        ) da;
 
+    _step := _STEP_WO_ABBR_TYPE;
+    WHILE TRUE
+    LOOP
+        -- OK w/o type abbreviation ?
+        IF _step = _STEP_WO_ABBR_TYPE THEN
+            IF descriptors ~ '^V' THEN
+                _name_tmp := REGEXP_REPLACE(
+                    _name
+                    , CONCAT('^', _words_abbreviated[1])
+                    , _words[1]
+                );
+                IF LENGTH(_name_tmp) <= 32 THEN
+                    name_normalized := _name_tmp;
+                    RETURN;
+                END IF;
+                _step := _STEP_TEST_ABBR_TYPE;
+            ELSE
+                _step := _STEP_ABBR_FIRSTNAME;
+            END IF;
+
+        -- abbreviate TYPE is suffisant ?
+        ELSIF _step = _STEP_TEST_ABBR_TYPE THEN
+            _type_diff := LENGTH(_words[1]) - LENGTH(_words_abbreviated[1]);
+            IF (_len - _type_diff) <= 32 THEN
+                _step := _STEP_ABBR_TYPE;
+            ELSE
+                _step := _STEP_ABBR_FIRSTNAME;
+            END IF;
+
+        -- 1st word is simultaneously a title and a type
+        ELSIF _step = _STEP_1ST_TYPE_OR_TITLE THEN
+            IF (
+                ((descriptors ~ '^V') AND fr.is_normalized_title(word => _words[1], groups => 'TITLE'))
+                OR
+                ((descriptors ~ '^T') AND fr.is_normalized_title(word => _words[1], groups => 'TYPE'))
+            ) THEN
+                _step := _STEP_ABBR_FIRSTNAME;
+            END IF;
+
+        -- abbreviate firstname
+        ELSIF _step = _STEP_ABBR_FIRSTNAME THEN
+
+        -- abbreviate holy
+        ELSIF _step = _STEP_ABBR_HOLY THEN
+
+        -- abbreviate title
+        ELSIF _step = _STEP_ABBR_TITLE THEN
+
+        -- abbreviate type
+        ELSIF _step = _STEP_ABBR_TYPE THEN
+
+        -- delete article(s)
+        ELSIF _step = _STEP_DELETE_ARTICLE THEN
+
+        END IF;
+    END LOOP;
+
+    /*
     IF raise_notice THEN RAISE NOTICE 'name=% len=%', _name, _len; END IF;
 
     -- dynamic steps!
-    _type_diff := LENGTH(COALESCE(_kw, '')) - LENGTH(COALESCE(_kw_abbreviated, ''));
+    --_type_diff := LENGTH(COALESCE(_kw, '')) - LENGTH(COALESCE(_kw_abbreviated, ''));
     _steps := CASE
         -- abbreviate type suffisant?
         --WHEN ((_len - _type_diff) <= 32) AND (_type_diff > 2) THEN
@@ -478,7 +573,7 @@ BEGIN
             IF raise_notice THEN RAISE NOTICE 'step: %', _steps[_step_i]; END IF;
 
             -- abbreviate title(s), if not type (of street!)
-            IF _steps[_step_i] = _ABBR_TITLE THEN
+            IF _steps[_step_i] = _STEP_ABBR_TITLE THEN
                 IF _words_i = 0 THEN _words_i := 1; END IF;
                 FOR _i IN _words_i .. _words_len
                 LOOP
@@ -490,7 +585,7 @@ BEGIN
                         IF raise_notice THEN RAISE NOTICE ' titles_diff=% (type_diff=%)', _titles_diff, _type_diff; END IF;
 
                         /*
-                        IF (NOT _steps_done[_ABBR_TYPE] AND (_titles_diff >= COALESCE(_type_diff, 0))) OR _steps_done[_ABBR_TYPE] THEN
+                        IF (NOT _steps_done[_STEP_ABBR_TYPE] AND (_titles_diff >= COALESCE(_type_diff, 0))) OR _steps_done[_STEP_ABBR_TYPE] THEN
                          */
                             _types_i := ARRAY_POSITION(
                                 _types
@@ -521,7 +616,7 @@ BEGIN
                 END IF;
 
             -- abbreviate type of street
-            ELSIF _steps[_step_i] = _ABBR_TYPE THEN
+            ELSIF _steps[_step_i] = _STEP_ABBR_TYPE THEN
                 IF NOT _kw_is_abbreviated AND _kw_abbreviated IS NOT NULL THEN
                     _name := CONCAT(_kw_abbreviated, SUBSTR(_name, LENGTH(_kw) +1));
                     _len := LENGTH(_name);
@@ -530,14 +625,14 @@ BEGIN
                 END IF;
 
             -- abbreviate holy word(s)
-            ELSIF _steps[_step_i] = _ABBR_HOLY THEN
+            ELSIF _steps[_step_i] = _STEP_ABBR_HOLY THEN
                 _name := fr.normalize_abbreviate_holy(_name);
                 _len := LENGTH(_name);
                 IF raise_notice THEN RAISE NOTICE ' name=% len=%', _name, _len; END IF;
                 _words_rebuild := TRUE;
 
             -- abbreviate firstname
-            ELSIF _steps[_step_i] = _ABBR_FIRSTNAME THEN
+            ELSIF _steps[_step_i] = _STEP_ABBR_FIRSTNAME THEN
                 --IF _words_i = 0 THEN _words_i := 1; END IF;
                 _words_i := _words_i +1;
                 -- firstname can't be last word!
@@ -559,7 +654,7 @@ BEGIN
                 END IF;
 
             -- delete _article(s)
-            ELSIF _steps[_step_i] = _DELETE_ARTICLE THEN
+            ELSIF _steps[_step_i] = _STEP_DELETE_ARTICLE THEN
                 IF raise_notice THEN RAISE NOTICE ' words=% len=%', _words, _len; END IF;
                 IF _words_i = 0 THEN
                     _words_i := 1;
@@ -623,6 +718,7 @@ BEGIN
             _words_i := 0;
         END IF;
     END LOOP;
+     */
 END
 $func$ LANGUAGE plpgsql;
 

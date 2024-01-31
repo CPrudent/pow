@@ -231,6 +231,30 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+-- split descriptors as array
+SELECT drop_all_functions_if_exists('fr', 'split_descriptors_as_array');
+CREATE OR REPLACE FUNCTION fr.split_descriptors_as_array(
+    descriptors IN VARCHAR
+    , words IN TEXT[]
+    , nwords IN INT
+    , as_array OUT TEXT[]
+)
+AS
+$func$
+DECLARE
+    _descriptors VARCHAR;
+    _i INT;
+    _j INT := 1;
+BEGIN
+    FOR _i IN 1 .. nwords
+    LOOP
+        _descriptors := SUBSTR(descriptors, _j, count_words(words[_i]));
+        as_array := ARRAY_APPEND(as_array, _descriptors);
+        _j := _j + count_words(words[_i]);
+    END LOOP;
+END
+$func$ LANGUAGE plpgsql;
+
 -- split name of street as words, descriptors (w/ same descriptor)
 SELECT drop_all_functions_if_exists('fr', 'split_name_of_street_as_descriptor');
 CREATE OR REPLACE FUNCTION fr.split_name_of_street_as_descriptor(
@@ -856,8 +880,11 @@ CREATE OR REPLACE FUNCTION fr.get_descriptors_of_street(
     name IN VARCHAR                   -- name of street
     , with_abbreviation IN BOOLEAN DEFAULT FALSE
     , raise_notice IN BOOLEAN DEFAULT FALSE
+    , descriptors OUT VARCHAR
+    , words_by_descriptor OUT TEXT[]
+    , words_abbreviated_by_descriptor OUT TEXT[]
 )
-RETURNS VARCHAR AS
+AS
 $func$
 DECLARE
     _kw_group VARCHAR;
@@ -865,13 +892,11 @@ DECLARE
     _kw_abbreviated VARCHAR;
     _kw_is_abbreviated BOOLEAN;
     _kw_nwords INT;
-    _descriptors VARCHAR := '';
     _descriptors_tmp VARCHAR;
     _descriptors_c VARCHAR;
     _descriptors_t VARCHAR;
     _descriptors_v VARCHAR;
     _words TEXT[];
-    _words_by_descriptor TEXT[];
     _words_len INT;
     _words_d VARCHAR;
     _words_skip INT := 0;
@@ -923,8 +948,8 @@ BEGIN
             IF _i < _words_len THEN
                 _with_exception := FALSE;
 
-                SELECT kw_group, kw, kw_is_abbreviated, kw_nwords
-                INTO _kw_group, _kw, _kw_is_abbreviated, _kw_nwords
+                SELECT kw_group, kw, kw_abbreviated, kw_is_abbreviated, kw_nwords
+                INTO _kw_group, _kw, _kw_abbreviated, _kw_is_abbreviated, _kw_nwords
                 FROM fr.get_keyword_of_street(
                     name => name
                     , at_ => _i
@@ -945,7 +970,8 @@ BEGIN
                         END
                         , _kw_nwords
                     );
-                    _words_by_descriptor := ARRAY_APPEND(_words_by_descriptor, _kw);
+                    words_by_descriptor := ARRAY_APPEND(words_by_descriptor, _kw);
+                    words_abbreviated_by_descriptor := ARRAY_APPEND(words_abbreviated_by_descriptor, _kw_abbreviated);
                     _init_by_descriptor := TRUE;
                 ELSE
                     -- firstname
@@ -1066,9 +1092,9 @@ BEGIN
         END IF;
 
         IF NOT _init_by_descriptor THEN
-            _words_by_descriptor := ARRAY_APPEND(_words_by_descriptor, _words[_i]);
+            words_by_descriptor := ARRAY_APPEND(words_by_descriptor, _words[_i]);
         END IF;
-        _descriptors := CONCAT(_descriptors, _words_d);
+        descriptors := CONCAT(descriptors, _words_d);
         _words_skip := _i;
         IF _kw_nwords > 1 THEN
             _words_skip := _words_skip + _kw_nwords;
@@ -1077,34 +1103,34 @@ BEGIN
 
     -- fix bad uses
     -- name of street (so descriptor) is ended by: number, reserved or name (CEN)
-    IF _descriptors !~ '[CEN]$' THEN
-        _descriptors := REGEXP_REPLACE(_descriptors, '.$', 'N');
+    IF descriptors !~ '[CEN]$' THEN
+        descriptors := REGEXP_REPLACE(descriptors, '.$', 'N');
 
     /*
     -- nothing else than CN before last E (specially not title)
-    ELSIF _descriptors ~ '[^CN]E$' THEN
-        _descriptors := REGEXP_REPLACE(_descriptors, '.E$', 'NE');
+    ELSIF descriptors ~ '[^CN]E$' THEN
+        descriptors := REGEXP_REPLACE(descriptors, '.E$', 'NE');
      */
 
     -- not title only (eventually followed by number), but name
     -- IMPASSE DU PASSAGE A NIVEAU 7, VANNNC
     -- and also successive V+ and T+
     -- PASSAGE A NIVEAU PASSAGE A NIVEAU 67, VVVNNNC
-    ELSIF _descriptors ~ 'T+C*$' THEN
-        _descriptors_t := (REGEXP_MATCHES(_descriptors, '(T+)(C*)$'))[1];
-        _descriptors_c := (REGEXP_MATCHES(_descriptors, '(T+)(C*)$'))[2];
+    ELSIF descriptors ~ 'T+C*$' THEN
+        _descriptors_t := (REGEXP_MATCHES(descriptors, '(T+)(C*)$'))[1];
+        _descriptors_c := (REGEXP_MATCHES(descriptors, '(T+)(C*)$'))[2];
         -- last title is one|many word(s)
         _len_c := LENGTH(COALESCE(_descriptors_c, ''));
-        _last_t := ARRAY_LENGTH(_words_by_descriptor, 1) - _len_c;
+        _last_t := ARRAY_LENGTH(words_by_descriptor, 1) - _len_c;
         IF raise_notice THEN
             RAISE NOTICE ' dt=%, dc=% #c=%', _descriptors_t, _descriptors_c, _len_c;
-            RAISE NOTICE ' wbd=%, lt=%', _words_by_descriptor, _last_t;
-            RAISE NOTICE ' descriptors=%', _descriptors;
+            RAISE NOTICE ' wbd=%, lt=%', words_by_descriptor, _last_t;
+            RAISE NOTICE ' descriptors=%', descriptors;
         END IF;
         -- replace all T
-        IF count_words(_words_by_descriptor[_last_t]) = LENGTH(_descriptors_t) THEN
+        IF count_words(words_by_descriptor[_last_t]) = LENGTH(_descriptors_t) THEN
             IF raise_notice THEN RAISE NOTICE ' replace all'; END IF;
-            _descriptors := REGEXP_REPLACE(_descriptors
+            descriptors := REGEXP_REPLACE(descriptors
                 , 'T+(C*)$'
                 , CONCAT(
                     REPEAT('N', LENGTH(_descriptors_t))
@@ -1113,24 +1139,24 @@ BEGIN
             );
         -- replace only last T
         ELSE
-            _last_t := LENGTH(_descriptors) - _len_c;
+            _last_t := LENGTH(descriptors) - _len_c;
             IF raise_notice THEN RAISE NOTICE ' replace last only, lt=%', _last_t; END IF;
             IF _last_t > 1 THEN
-                _descriptors := SUBSTR(_descriptors, 1, _last_t -1);
+                descriptors := SUBSTR(descriptors, 1, _last_t -1);
             ELSE
-                _descriptors := NULL;
+                descriptors := NULL;
             END IF;
-            _descriptors := CONCAT(_descriptors, 'N');
+            descriptors := CONCAT(descriptors, 'N');
             IF _len_c > 0 THEN
-                _descriptors := CONCAT(_descriptors, _descriptors_c);
+                descriptors := CONCAT(descriptors, _descriptors_c);
             END IF;
         END IF;
     -- not type only (eventually followed by number, reserved), but name
     -- PASSAGE A NIVEAU 7, NNNC
     -- GRANDE RUE PROLONGEE
-    ELSIF _descriptors ~ 'V+[CE]*$' THEN
-        _descriptors_v := (REGEXP_MATCHES(_descriptors, '(V+)[CE]*$'))[1];
-        _descriptors := REGEXP_REPLACE(_descriptors
+    ELSIF descriptors ~ 'V+[CE]*$' THEN
+        _descriptors_v := (REGEXP_MATCHES(descriptors, '(V+)[CE]*$'))[1];
+        descriptors := REGEXP_REPLACE(descriptors
             , 'V+([CE]*)$'
             , CONCAT(
                 REPEAT('N', LENGTH(_descriptors_v))
@@ -1142,12 +1168,11 @@ BEGIN
     VNCE, RUE ALBERT 1ER PROLONGEE
     VPCAN, AVENUE ALBERT 1ER DE BELGIQUE
      */
-    ELSIF _descriptors ~ '^V[PT]CE?$' THEN
-        _descriptors := REGEXP_REPLACE(_descriptors, '(^V[PT]C)(E?)$', 'VNC\2');
+    ELSIF descriptors ~ '^V[PT]CE?$' THEN
+        descriptors := REGEXP_REPLACE(descriptors, '(^V[PT]C)(E?)$', 'VNC\2');
     END IF;
 
-    IF raise_notice THEN RAISE NOTICE ' descriptors=%', _descriptors; END IF;
-    RETURN _descriptors;
+    IF raise_notice THEN RAISE NOTICE ' descriptors=%', descriptors; END IF;
 END
 $func$ LANGUAGE plpgsql;
 
@@ -1161,12 +1186,13 @@ SELECT
     , name
 FROM (
     SELECT
-        fr.get_descriptors_of_street(lb_voie) AS descriptor_pow
-        , lb_desc AS descriptor_laposte
+        ds.descriptors descriptor_pow
+        , lb_desc descriptor_laposte
         , co_cea code
         , lb_voie name
     FROM
         fr.laposte_address_street
+            CROSS JOIN fr.get_descriptors_of_street(lb_voie) ds
     WHERE
         fl_active
     LIMIT

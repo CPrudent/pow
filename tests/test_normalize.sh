@@ -104,11 +104,12 @@ _ko=0
                 WITH
                 descriptors AS (
                     SELECT
-                        fr.get_descriptors_of_street(name) AS descriptor_pow
-                        , descriptors AS descriptor_laposte
-                        , name
+                        ds.descriptors descriptor_pow
+                        , u.descriptors descriptor_laposte
+                        , u.name
                     FROM
-                        fr.laposte_address_street_uniq
+                        fr.laposte_address_street_uniq u
+                            CROSS JOIN fr.get_descriptors_of_street(u.name) ds
                 )
                 SELECT
                     UNNEST(
@@ -139,7 +140,7 @@ _ko=0
         execute_query \
         --name DESCRIPTORS_LIST \
         --query "
-            SELECT fr.get_descriptors_of_street(
+            SELECT descriptors FROM fr.get_descriptors_of_street(
                 name => '${TEST_A4S_NAME[$_i]}'
             )
         " \
@@ -241,7 +242,7 @@ _ko=0
         execute_query \
         --name DESCRIPTORS_CASE \
         --query "
-            SELECT fr.get_descriptors_of_street(
+            SELECT descriptors FROM fr.get_descriptors_of_street(
                 name => '${_TEST_A4S_NAME[$_i]}'
             )
         " \

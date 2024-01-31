@@ -240,11 +240,12 @@ BEGIN
                     descriptors AS (
                         SELECT
                             id
-                            , fr.get_descriptors_of_street(name) descriptors_pow
-                            , descriptors descriptors_laposte
-                            , name
+                            , ds.descriptors descriptor_pow
+                            , u.descriptors descriptor_laposte
+                            , u.name
                         FROM
-                            fr.laposte_address_street_uniq
+                            fr.laposte_address_street_uniq u
+                                CROSS JOIN fr.get_descriptors_of_street(u.name) ds
                     )
                     SELECT
                         id
