@@ -377,21 +377,30 @@ AS
 $func$
 DECLARE
     _name VARCHAR;
-    _name_tmp VARCHAR;
-    /*
-    _name_rebuild BOOLEAN;
-    _kw VARCHAR;
-    _kw_abbreviated VARCHAR;
-    _kw_is_abbreviated BOOLEAN;
-    _type_diff INT;
-     */
     _len INT;
     _words TEXT[];
-    _words_normalized TEXT[];
     _words_abbreviated TEXT[];
-    _words_i INT := 0;
+    _words_normalized TEXT[];
     _words_len INT;
     _descriptors TEXT[];
+
+    _type_diff INT;
+    _positions_a INT[];
+    _positions_p INT[];
+    _positions_t INT[];
+    _positions_v INT[];
+    _earn_sz_a INT[];
+    _earn_sz_p INT[];
+    _earn_sz_t INT[];
+    _earn_sz_v INT[];
+    _words_t TEXT[];
+    _more_t BOOLEAN[];
+    _family_order VARCHAR[];
+    _tmp_t VARCHAR;
+    _tmp_v VARCHAR;
+    _tmp_name VARCHAR;
+
+    _words_i INT := 0;
     --_words_rebuild BOOLEAN;
     _i INT;
     _j INT;
@@ -403,7 +412,6 @@ DECLARE
     _step_words TEXT[];
     _step_words_len INT;
     _steps_done BOOLEAN[];
-    _type_diff INT;
 
     _STEP_WO_ABBR_TYPE INT              := 10;
     _STEP_TEST_ABBR_TYPE INT            := 11;
@@ -416,6 +424,10 @@ DECLARE
     _STEP_END INT                       := 99;
 
     /*
+    _name_rebuild BOOLEAN;
+    _kw VARCHAR;
+    _kw_abbreviated VARCHAR;
+    _kw_is_abbreviated BOOLEAN;
     _titles VARCHAR[] :=
         ARRAY(SELECT key FROM fr.constant WHERE usecase = 'LAPOSTE_STREET_TITLE');
     _titles_abbr VARCHAR[] :=
@@ -443,12 +455,12 @@ BEGIN
         , words => _words
     );
     IF _kw_is_abbreviated THEN
-        _name_tmp := REGEXP_REPLACE(_name, '^\S+', _kw);
-        IF LENGTH(_name_tmp) <= 32 THEN
-            name_normalized := _name_tmp;
+        _tmp_name := REGEXP_REPLACE(_name, '^\S+', _kw);
+        IF LENGTH(_tmp_name) <= 32 THEN
+            name_normalized := _tmp_name;
             RETURN;
         END IF;
-        _name := _name_tmp;
+        _name := _tmp_name;
     END IF;
 
     -- already ok ?
@@ -474,6 +486,7 @@ BEGIN
             , with_abbreviation => TRUE
         ) ds;
     _words_len := ARRAY_LENGTH(_words, 1);
+    -- descriptors as array
     SELECT
         as_array
     INTO
@@ -485,25 +498,104 @@ BEGIN
             , nwords => _words_len
         ) da;
 
+    -- store position(s) for each word of each keyword-family
+    FOR _i IN 1 .. _words_len
+    LOOP
+        IF _descriptors[_i] ~ 'A' THEN
+            _positions_a := ARRAY_APPEND(_positions_a, _i);
+        --ELSIF _descriptors[_i] ~ 'N' THEN
+        ELSIF _descriptors[_i] ~ 'P' THEN
+            _positions_p := ARRAY_APPEND(_positions_p, _i);
+        ELSIF _descriptors[_i] ~ 'T' THEN
+            _positions_t := ARRAY_APPEND(_positions_t, _i);
+        ELSIF _descriptors[_i] ~ 'V' THEN
+            _positions_v := ARRAY_APPEND(_positions_v, _i);
+        END IF;
+    END LOOP;
+
+    -- eval earnings for each word of each keyword-family
+    IF _positions_a IS NOT NULL THEN
+        FOR _i IN 1 .. ARRAY_LENGTH(_positions_a, 1)
+        LOOP
+            -- delete article
+            _earn_sz_a[_i] := LENGTH(_words[_positions_a[_i]]);
+        END LOOP;
+    END IF;
+    IF _positions_p IS NOT NULL THEN
+        FOR _i IN 1 .. ARRAY_LENGTH(_positions_p, 1)
+        LOOP
+            -- remain 1st letter only
+            _earn_sz_p[_i] := LENGTH(_words[_positions_p[_i]]) -1;
+        END LOOP;
+    END IF;
+    IF _positions_t IS NOT NULL THEN
+        FOR _i IN 1 .. ARRAY_LENGTH(_positions_t, 1)
+        LOOP
+            IF _words_abbreviated[_positions_t[_i]] IS NULL THEN
+                _words_t := REGEXP_SPLIT_TO_ARRAY(_words[_positions_t[_i]], '\s+');
+                SELECT name_abbreviated, one_more_time
+                INTO _words_abbreviated[_positions_t[_i]], _more_t[_i]
+                FROM fr.normalize_abbreviate_keyword(
+                    name => _words[_positions_t[_i]]
+                    , words => _words_t
+                );
+            END IF;
+            -- replace w/ abbreviation
+            _earn_sz_t[_i] := LENGTH(_words[_positions_t[_i]]) - LENGTH(_words_abbreviated[_positions_t[_i]]);
+        END LOOP;
+    END IF;
+    IF _positions_v IS NOT NULL THEN
+        FOR _i IN 1 .. ARRAY_LENGTH(_positions_v, 1)
+        LOOP
+            -- replace w/ abbreviation
+            _earn_sz_v[_i] := LENGTH(_words[_positions_v[_i]]) - LENGTH(_words_abbreviated[_positions_v[_i]]);
+        END LOOP;
+    END IF;
+
+    SELECT ARRAY(
+        WITH
+        earn_family(family, earn) AS (
+            VALUES
+                ('A', _earn_sz_a[ARRAY_LOWER(_earn_sz_a, 1)])
+                , ('P', _earn_sz_p[ARRAY_LOWER(_earn_sz_p, 1)])
+                , ('T', _earn_sz_t[ARRAY_LOWER(_earn_sz_t, 1)])
+                , ('V', _earn_sz_v[ARRAY_LOWER(_earn_sz_v, 1)])
+        )
+        SELECT
+            family
+        FROM
+            earn_family
+        WHERE
+            earn IS NOT NULL
+        ORDER BY
+            earn DESC
+    )
+    INTO
+        _family_order
+    ;
+
     _step := _STEP_WO_ABBR_TYPE;
     WHILE TRUE
     LOOP
         -- OK w/o type abbreviation ?
         IF _step = _STEP_WO_ABBR_TYPE THEN
-            IF descriptors ~ '^V' THEN
-                _name_tmp := REGEXP_REPLACE(
-                    _name
-                    , CONCAT('^', _words_abbreviated[1])
-                    , _words[1]
-                );
-                IF LENGTH(_name_tmp) <= 32 THEN
-                    name_normalized := _name_tmp;
-                    RETURN;
+            IF _positions_v IS NOT NULL THEN
+                _tmp_v := CONCAT('^', _words_abbreviated[1]);
+                IF _name ~ _tmp_v THEN
+                    _tmp_name := REGEXP_REPLACE(
+                        _name
+                        , _tmp_v
+                        , _words[_positions_v[1]]
+                    );
+                    IF LENGTH(_tmp_name) <= 32 THEN
+                        name_normalized := _tmp_name;
+                        RETURN;
+                    END IF;
+                    _step := _STEP_TEST_ABBR_TYPE;
+                    CONTINUE;
                 END IF;
-                _step := _STEP_TEST_ABBR_TYPE;
-            ELSE
-                _step := _STEP_ABBR_FIRSTNAME;
             END IF;
+            _step := _STEP_ABBR_FIRSTNAME;
 
         -- abbreviate TYPE is suffisant ?
         ELSIF _step = _STEP_TEST_ABBR_TYPE THEN
@@ -658,7 +750,7 @@ BEGIN
                 IF raise_notice THEN RAISE NOTICE ' words=% len=%', _words, _len; END IF;
                 IF _words_i = 0 THEN
                     _words_i := 1;
-                    _name_tmp := _name;
+                    _tmp_name := _name;
                     _name := '';
                 ELSE
                     _name := _words[1];
