@@ -145,6 +145,7 @@ BEGIN
                         ELSE 0
                         END
                     END DESC
+                , k.occurs DESC
         )
         LOOP
             IF raise_notice THEN RAISE NOTICE ' kw=%', _kw; END IF;

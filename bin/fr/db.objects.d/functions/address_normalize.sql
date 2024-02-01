@@ -378,13 +378,22 @@ $func$
 DECLARE
     _name VARCHAR;
     _len INT;
+    _len_normalized INT;
     _words TEXT[];
     _words_abbreviated TEXT[];
     _words_normalized TEXT[];
     _words_len INT;
+    _words_normalized_len INT;
     _descriptors TEXT[];
+    _descriptor VARCHAR;
 
-    _type_diff INT;
+    _i INT;
+    _j INT;
+    _nchanges INT := 0;
+    _position_a INT := 1;
+    _position_p INT := 1;
+    _position_t INT := 1;
+    _position_v INT := 1;
     _positions_a INT[];
     _positions_p INT[];
     _positions_t INT[];
@@ -395,81 +404,15 @@ DECLARE
     _earn_sz_v INT[];
     _words_t TEXT[];
     _more_t BOOLEAN[];
-    _family_order VARCHAR[];
+
     _tmp_t VARCHAR;
     _tmp_v VARCHAR;
     _tmp_name VARCHAR;
-
-    _words_i INT := 0;
-    --_words_rebuild BOOLEAN;
-    _i INT;
-    _j INT;
-    _found BOOLEAN;
-    _step INT;
-    _steps INT[];
-    _step_change BOOLEAN;
-    _step_i INT := 1;
-    _step_words TEXT[];
-    _step_words_len INT;
-    _steps_done BOOLEAN[];
-
-    _STEP_WO_ABBR_TYPE INT              := 10;
-    _STEP_TEST_ABBR_TYPE INT            := 11;
-    _STEP_1ST_TYPE_OR_TITLE INT         := 12;
-    _STEP_ABBR_HOLY INT                 := 1;
-    _STEP_ABBR_TYPE INT                 := 2;
-    _STEP_ABBR_FIRSTNAME INT            := 3;
-    _STEP_DELETE_ARTICLE INT            := 4;
-    _STEP_ABBR_TITLE INT                := 5;
-    _STEP_END INT                       := 99;
-
-    /*
-    _name_rebuild BOOLEAN;
-    _kw VARCHAR;
-    _kw_abbreviated VARCHAR;
-    _kw_is_abbreviated BOOLEAN;
-    _titles VARCHAR[] :=
-        ARRAY(SELECT key FROM fr.constant WHERE usecase = 'LAPOSTE_STREET_TITLE');
-    _titles_abbr VARCHAR[] :=
-        ARRAY(SELECT value FROM fr.constant WHERE usecase = 'LAPOSTE_STREET_TITLE');
-    _titles_i INT;
-    _types VARCHAR[] :=
-        ARRAY(SELECT type FROM fr.laposte_address_street_type);
-    _types_1st_word VARCHAR[] :=
-        ARRAY(SELECT first_word FROM fr.laposte_address_street_type);
-    _types_i INT;
-     */
 BEGIN
     -- only upper and not special characters
     _name := clean_address_label(name);
     _len := LENGTH(_name);
-
-    /*
-    _words := REGEXP_SPLIT_TO_ARRAY(_name, '\s+');
-
-    -- type of street
-    SELECT kw, kw_abbreviated, kw_is_abbreviated
-    INTO _kw, _kw_abbreviated, _kw_is_abbreviated
-    FROM fr.get_type_of_street(
-        name => _name
-        , words => _words
-    );
-    IF _kw_is_abbreviated THEN
-        _tmp_name := REGEXP_REPLACE(_name, '^\S+', _kw);
-        IF LENGTH(_tmp_name) <= 32 THEN
-            name_normalized := _tmp_name;
-            RETURN;
-        END IF;
-        _name := _tmp_name;
-    END IF;
-
-    -- already ok ?
-    _len := LENGTH(_name);
-    IF _len <= 32 THEN
-        name_normalized := _name;
-        RETURN;
-    END IF;
-     */
+    IF raise_notice THEN RAISE NOTICE 'N=% #=%', _name, _len; END IF;
 
     -- descriptors, words (by descriptor)
     SELECT
@@ -498,7 +441,7 @@ BEGIN
             , nwords => _words_len
         ) da;
 
-    -- store position(s) for each word of each keyword-family
+    -- store position(s) for each word of each descriptor
     FOR _i IN 1 .. _words_len
     LOOP
         IF _descriptors[_i] ~ 'A' THEN
@@ -513,15 +456,17 @@ BEGIN
         END IF;
     END LOOP;
 
-    -- eval earnings for each word of each keyword-family
+    -- eval earnings for each word of each descriptor
     IF _positions_a IS NOT NULL THEN
+        _nchanges := _nchanges + ARRAY_LENGTH(_positions_a, 1);
         FOR _i IN 1 .. ARRAY_LENGTH(_positions_a, 1)
         LOOP
-            -- delete article
-            _earn_sz_a[_i] := LENGTH(_words[_positions_a[_i]]);
+            -- delete article : don't forget to count space (as separator)!
+            _earn_sz_a[_i] := LENGTH(_words[_positions_a[_i]]) +1;
         END LOOP;
     END IF;
     IF _positions_p IS NOT NULL THEN
+        _nchanges := _nchanges + ARRAY_LENGTH(_positions_p, 1);
         FOR _i IN 1 .. ARRAY_LENGTH(_positions_p, 1)
         LOOP
             -- remain 1st letter only
@@ -529,6 +474,7 @@ BEGIN
         END LOOP;
     END IF;
     IF _positions_t IS NOT NULL THEN
+        _nchanges := _nchanges + ARRAY_LENGTH(_positions_t, 1);
         FOR _i IN 1 .. ARRAY_LENGTH(_positions_t, 1)
         LOOP
             IF _words_abbreviated[_positions_t[_i]] IS NULL THEN
@@ -545,6 +491,7 @@ BEGIN
         END LOOP;
     END IF;
     IF _positions_v IS NOT NULL THEN
+        _nchanges := _nchanges + ARRAY_LENGTH(_positions_v, 1);
         FOR _i IN 1 .. ARRAY_LENGTH(_positions_v, 1)
         LOOP
             -- replace w/ abbreviation
@@ -552,29 +499,100 @@ BEGIN
         END LOOP;
     END IF;
 
-    SELECT ARRAY(
+    _words_normalized := _words;
+    _words_normalized_len := _words_len;
+    _len_normalized := _len;
+    FOR _i IN 1 .. _nchanges
+    LOOP
         WITH
-        earn_family(family, earn) AS (
+        earn_descriptor(descriptor, earn) AS (
             VALUES
-                ('A', _earn_sz_a[ARRAY_LOWER(_earn_sz_a, 1)])
-                , ('P', _earn_sz_p[ARRAY_LOWER(_earn_sz_p, 1)])
-                , ('T', _earn_sz_t[ARRAY_LOWER(_earn_sz_t, 1)])
-                , ('V', _earn_sz_v[ARRAY_LOWER(_earn_sz_v, 1)])
+                ('A', _earn_sz_a[_position_a])
+                , ('P', _earn_sz_p[_position_p])
+                , ('T', _earn_sz_t[_position_t])
+                , ('V', _earn_sz_v[_position_v])
         )
         SELECT
-            family
+            descriptor
+        INTO
+            _descriptor
         FROM
-            earn_family
+            earn_descriptor
         WHERE
             earn IS NOT NULL
         ORDER BY
             earn DESC
-    )
-    INTO
-        _family_order
-    ;
+        LIMIT
+            1
+        ;
+        IF _descriptor IS NULL THEN
+            RAISE 'changement %/% non trouvé!', _i, _nchanges;
+        ELSE
+            IF raise_notice THEN RAISE NOTICE 'changement %/% : %', _i, _nchanges, _descriptor; END IF;
+        END IF;
 
-    _step := _STEP_WO_ABBR_TYPE;
+        IF _descriptor = 'A' THEN
+            -- https://dba.stackexchange.com/questions/94639/delete-array-element-by-index
+            _words_normalized := CASE
+                WHEN _positions_a[_position_a] > 1 THEN _words_normalized[:_positions_a[_position_a]-1] || _words_normalized[_positions_a[_position_a]+1:]
+                ELSE _words_normalized[_positions_a[_position_a]+1:]
+                END
+            ;
+            _words_normalized_len := _words_normalized_len -1;
+            _len_normalized := _len_normalized - _earn_sz_a[_position_a];
+            _position_a := _position_a +1;
+            FOR _j IN _position_a .. ARRAY_LENGTH(_positions_a, 1)
+            LOOP
+                -- update position (following delete)!
+                _positions_a[_j] := _positions_a[_j] -1;
+            END LOOP;
+        ELSIF _descriptor = 'P' THEN
+            _words_normalized[_positions_p[_position_p]] := SUBSTR(_words_normalized[_positions_p[_position_p]], 1, 1);
+            _len_normalized := _len_normalized - _earn_sz_p[_position_p];
+            _position_p := _position_p +1;
+        ELSIF _descriptor = 'T' THEN
+            _words_normalized[_positions_t[_position_t]] := _words_abbreviated[_positions_t[_position_t]];
+            _len_normalized := _len_normalized - _earn_sz_t[_position_t];
+            _position_t := _position_t +1;
+        ELSIF _descriptor = 'V' THEN
+            _words_normalized[_positions_v[_position_v]] := _words_abbreviated[_positions_v[_position_v]];
+            _len_normalized := _len_normalized - _earn_sz_v[_position_v];
+            _position_v := _position_v +1;
+        END IF;
+
+        IF raise_notice THEN RAISE NOTICE 'NN=% #=%', _words_normalized, _len_normalized; END IF;
+        IF _len_normalized <= 32 THEN
+            name_normalized := ARRAY_TO_STRING(_words_normalized, ' ');
+            RETURN;
+        END IF;
+    END LOOP;
+
+    name_normalized := NULL;
+    RAISE NOTICE 'pas de normalisation (%) : NN=% #=%', name, _words_normalized, _len_normalized;
+
+    /*
+    _words_i INT := 0;
+    --_words_rebuild BOOLEAN;
+    _j INT;
+    _found BOOLEAN;
+    _step INT;
+    _steps INT[];
+    _step_change BOOLEAN;
+    _step_i INT := 1;
+    _step_words TEXT[];
+    _step_words_len INT;
+    _steps_done BOOLEAN[];
+
+    _STEP_WO_ABBR_TYPE INT              := 10;
+    _STEP_TEST_ABBR_TYPE INT            := 11;
+    _STEP_1ST_TYPE_OR_TITLE INT         := 12;
+    _STEP_ABBR_HOLY INT                 := 1;
+    _STEP_ABBR_TYPE INT                 := 2;
+    _STEP_ABBR_FIRSTNAME INT            := 3;
+    _STEP_DELETE_ARTICLE INT            := 4;
+    _STEP_ABBR_TITLE INT                := 5;
+    _STEP_END INT                       := 99;
+
     WHILE TRUE
     LOOP
         -- OK w/o type abbreviation ?
@@ -633,8 +651,51 @@ BEGIN
 
         END IF;
     END LOOP;
+     */
 
     /*
+    _name_rebuild BOOLEAN;
+    _kw VARCHAR;
+    _kw_abbreviated VARCHAR;
+    _kw_is_abbreviated BOOLEAN;
+    _titles VARCHAR[] :=
+        ARRAY(SELECT key FROM fr.constant WHERE usecase = 'LAPOSTE_STREET_TITLE');
+    _titles_abbr VARCHAR[] :=
+        ARRAY(SELECT value FROM fr.constant WHERE usecase = 'LAPOSTE_STREET_TITLE');
+    _titles_i INT;
+    _types VARCHAR[] :=
+        ARRAY(SELECT type FROM fr.laposte_address_street_type);
+    _types_1st_word VARCHAR[] :=
+        ARRAY(SELECT first_word FROM fr.laposte_address_street_type);
+    _types_i INT;
+     */
+
+    /*
+    _words := REGEXP_SPLIT_TO_ARRAY(_name, '\s+');
+
+    -- type of street
+    SELECT kw, kw_abbreviated, kw_is_abbreviated
+    INTO _kw, _kw_abbreviated, _kw_is_abbreviated
+    FROM fr.get_type_of_street(
+        name => _name
+        , words => _words
+    );
+    IF _kw_is_abbreviated THEN
+        _tmp_name := REGEXP_REPLACE(_name, '^\S+', _kw);
+        IF LENGTH(_tmp_name) <= 32 THEN
+            name_normalized := _tmp_name;
+            RETURN;
+        END IF;
+        _name := _tmp_name;
+    END IF;
+
+    -- already ok ?
+    _len := LENGTH(_name);
+    IF _len <= 32 THEN
+        name_normalized := _name;
+        RETURN;
+    END IF;
+
     IF raise_notice THEN RAISE NOTICE 'name=% len=%', _name, _len; END IF;
 
     -- dynamic steps!
