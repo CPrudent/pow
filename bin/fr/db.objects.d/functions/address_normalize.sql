@@ -391,6 +391,7 @@ DECLARE
     _i INT;
     _j INT;
     _nchanges INT := 0;
+    _position INT;
     _position_a INT := 1;
     _position_p INT := 1;
     _position_t INT := 1;
@@ -403,6 +404,10 @@ DECLARE
     _earn_sz_p INT[];
     _earn_sz_t INT[];
     _earn_sz_v INT[];
+    _done_a BOOLEAN[];
+    _done_p BOOLEAN[];
+    _done_t BOOLEAN[];
+    _done_v BOOLEAN[];
     _words_t TEXT[];
     _more_t BOOLEAN[];
     _again_t BOOLEAN;
@@ -469,6 +474,7 @@ BEGIN
             -- delete article : don't forget to count space (as separator)!
             _earn_sz_a[_i] := LENGTH(_words[_positions_a[_i]]) +1;
         END LOOP;
+        _done_a := ARRAY_FILL(FALSE, ARRAY[ARRAY_LENGTH(_positions_a, 1)]);
     END IF;
     IF _positions_p IS NOT NULL THEN
         _nchanges := _nchanges + ARRAY_LENGTH(_positions_p, 1);
@@ -477,6 +483,7 @@ BEGIN
             -- remain 1st letter only
             _earn_sz_p[_i] := LENGTH(_words[_positions_p[_i]]) -1;
         END LOOP;
+        _done_p := ARRAY_FILL(FALSE, ARRAY[ARRAY_LENGTH(_positions_p, 1)]);
     END IF;
     IF _positions_t IS NOT NULL THEN
         _nchanges := _nchanges + ARRAY_LENGTH(_positions_t, 1);
@@ -502,6 +509,7 @@ BEGIN
             ;
             _earn_sz_t[_i] := _earn_sz_t[_i] * _factor;
         END LOOP;
+        _done_t := ARRAY_FILL(FALSE, ARRAY[ARRAY_LENGTH(_positions_t, 1)]);
     END IF;
     IF _positions_v IS NOT NULL THEN
         _nchanges := _nchanges + ARRAY_LENGTH(_positions_v, 1);
@@ -516,29 +524,69 @@ BEGIN
             ;
             _earn_sz_v[_i] := _earn_sz_v[_i] * _factor;
         END LOOP;
+        _done_v := ARRAY_FILL(FALSE, ARRAY[ARRAY_LENGTH(_positions_v, 1)]);
     END IF;
 
     _words_normalized := _words;
     _words_normalized_len := _words_len;
-    _len_normalized := _len;
+    _len_normalized := (
+        SELECT SUM(LENGTH(w)) FROM UNNEST(_words_normalized) w
+    ) + (_words_len -1);
     FOR _i IN 1 .. _nchanges
     LOOP
         WITH
-        earn_descriptor(descriptor, earn) AS (
+        earn_descriptor(descriptor, earn, i) AS (
+            SELECT
+                'A' descriptor
+                , o.earn
+                , o.i
+                , _done_a[o.i] done
+            FROM
+                UNNEST(_earn_sz_a) WITH ORDINALITY AS o(earn, i)
+            UNION
+            SELECT
+                'P'
+                , o.earn
+                , o.i
+                , _done_p[o.i] done
+            FROM
+                UNNEST(_earn_sz_p) WITH ORDINALITY AS o(earn, i)
+            UNION
+            SELECT
+                'T'
+                , o.earn
+                , o.i
+                , _done_t[o.i] done
+            FROM
+                UNNEST(_earn_sz_t) WITH ORDINALITY AS o(earn, i)
+            UNION
+            SELECT
+                'V'
+                , o.earn
+                , o.i
+                , _done_v[o.i] done
+            FROM
+                UNNEST(_earn_sz_v) WITH ORDINALITY AS o(earn, i)
+            ORDER BY
+                earn DESC
+            /*
             VALUES
                 ('A', _earn_sz_a[_position_a])
                 , ('P', _earn_sz_p[_position_p])
                 , ('T', _earn_sz_t[_position_t])
                 , ('V', _earn_sz_v[_position_v])
+             */
         )
         SELECT
             descriptor
+            , i
         INTO
             _descriptor
+            , _position
         FROM
             earn_descriptor
         WHERE
-            earn IS NOT NULL
+            NOT done
         ORDER BY
             earn DESC
         LIMIT
@@ -553,30 +601,30 @@ BEGIN
         IF _descriptor = 'A' THEN
             -- https://dba.stackexchange.com/questions/94639/delete-array-element-by-index
             _words_normalized := CASE
-                WHEN _positions_a[_position_a] > 1 THEN _words_normalized[:_positions_a[_position_a]-1] || _words_normalized[_positions_a[_position_a]+1:]
-                ELSE _words_normalized[_positions_a[_position_a]+1:]
+                WHEN _positions_a[_position] > 1 THEN _words_normalized[:_positions_a[_position]-1] || _words_normalized[_positions_a[_position]+1:]
+                ELSE _words_normalized[_positions_a[_position]+1:]
                 END
             ;
             _words_normalized_len := _words_normalized_len -1;
-            _len_normalized := _len_normalized - _earn_sz_a[_position_a];
-            _position_a := _position_a +1;
-            FOR _j IN _position_a .. ARRAY_LENGTH(_positions_a, 1)
+            _len_normalized := _len_normalized - _earn_sz_a[_position];
+            _done_a[_position] := TRUE;
+            FOR _j IN _position +1 .. ARRAY_LENGTH(_positions_a, 1)
             LOOP
                 -- update position (following delete)!
                 _positions_a[_j] := _positions_a[_j] -1;
             END LOOP;
         ELSIF _descriptor = 'P' THEN
-            _words_normalized[_positions_p[_position_p]] := SUBSTR(_words_normalized[_positions_p[_position_p]], 1, 1);
-            _len_normalized := _len_normalized - _earn_sz_p[_position_p];
-            _position_p := _position_p +1;
+            _words_normalized[_positions_p[_position]] := SUBSTR(_words_normalized[_positions_p[_position]], 1, 1);
+            _len_normalized := _len_normalized - _earn_sz_p[_position];
+            _done_p[_position] := TRUE;
         ELSIF _descriptor = 'T' THEN
-            _words_normalized[_positions_t[_position_t]] := _words_abbreviated[_positions_t[_position_t]];
-            _len_normalized := _len_normalized - _earn_sz_t[_position_t];
-            _position_t := _position_t +1;
+            _words_normalized[_positions_t[_position]] := _words_abbreviated[_positions_t[_position]];
+            _len_normalized := _len_normalized - _earn_sz_t[_position];
+            _done_t[_position] := TRUE;
         ELSIF _descriptor = 'V' THEN
-            _words_normalized[_positions_v[_position_v]] := _words_abbreviated[_positions_v[_position_v]];
-            _len_normalized := _len_normalized - _earn_sz_v[_position_v];
-            _position_v := _position_v +1;
+            _words_normalized[_positions_v[_position]] := _words_abbreviated[_positions_v[_position]];
+            _len_normalized := _len_normalized - _earn_sz_v[_position];
+            _done_v[_position] := TRUE;
         END IF;
 
         IF raise_notice THEN RAISE NOTICE 'NN=% #=%', _words_normalized, _len_normalized; END IF;
