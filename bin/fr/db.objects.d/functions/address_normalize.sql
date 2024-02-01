@@ -534,6 +534,12 @@ BEGIN
     ) + (_words_len -1);
     FOR _i IN 1 .. _nchanges
     LOOP
+        IF raise_notice THEN RAISE NOTICE 'NN=% #=%', _words_normalized, _len_normalized; END IF;
+        IF _len_normalized <= 32 THEN
+            name_normalized := ARRAY_TO_STRING(_words_normalized, ' ');
+            RETURN;
+        END IF;
+
         IF _each IS NULL THEN
             WITH
             earn_descriptor(descriptor, earn, i) AS (
@@ -675,12 +681,6 @@ BEGIN
                 _len_normalized := _len_normalized - _earn_sz_v[_position];
                 _done_v[_position] := TRUE;
             END IF;
-        END IF;
-
-        IF raise_notice THEN RAISE NOTICE 'NN=% #=%', _words_normalized, _len_normalized; END IF;
-        IF _len_normalized <= 32 THEN
-            name_normalized := ARRAY_TO_STRING(_words_normalized, ' ');
-            RETURN;
         END IF;
     END LOOP;
 
