@@ -612,12 +612,13 @@ BEGIN
                 END IF;
             END LOOP;
             IF raise_notice THEN RAISE NOTICE 'each % p=%', _each, _position; END IF;
-            IF ARRAY_POSITION(CASE
+            IF (ARRAY_POSITION(CASE
                 WHEN _each = 'A' THEN _done_a
                 WHEN _each = 'P' THEN _done_p
                 WHEN _each = 'T' THEN _done_t
                 WHEN _each = 'V' THEN _done_v
-                END, FALSE) = 0 THEN
+                END, FALSE) = 0
+            ) THEN
                 _each := NULL;
             END IF;
         END IF;
@@ -689,26 +690,35 @@ END
 $func$ LANGUAGE plpgsql;
 
 /* TEST
--- street differences
-SELECT *
+-- differences
+SELECT
+    name_normalized_pow
+    , LENGTH(name_normalized_pow)
+    , name_normalized_laposte
+    , LENGTH(name_normalized_laposte)
+    , code
+    , name
+    , LENGTH(name)
+    , descriptors_pow
+    , descriptors_laposte
 FROM (
     SELECT
-        co_cea code
-        , lb_voie name
-        , fr.normalize_street_name(lb_voie) AS name_normalized
+        nn.name_normalized name_normalized_pow
         , lb_voie_normalise AS name_normalized_laposte
+        , co_cea code
+        , lb_voie name
+        , nn.descriptors descriptors_pow
+        , lb_desc descriptors_laposte
     FROM
-        fr.laposte_address_street
+        fr.laposte_address_street s
+            CROSS JOIN fr.normalize_street_name(lb_voie) nn
     WHERE
         lb_voie_normalise IS DISTINCT FROM lb_voie
     LIMIT
         100
     ) t
 WHERE
-    name_normalized != name_normalized_laposte
-ORDER BY
-    1
-    ;
+    name_normalized_pow IS DISTINCT FROM name_normalized_laposte
  */
 
 -- normalize one address
