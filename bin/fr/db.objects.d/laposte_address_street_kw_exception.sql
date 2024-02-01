@@ -24,8 +24,7 @@ BEGIN
 END
 $proc$ LANGUAGE plpgsql;
 
--- build keyword exceptions (for firstname, article)
--- Query returned successfully in 54 secs 25 msec.
+-- build keyword exceptions (for firstname, article, title)
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_street_kw_exception');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_kw_exception()
 AS
@@ -198,7 +197,94 @@ BEGIN
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Exceptions (article): ', _nrows));
 
+    INSERT INTO fr.laposte_address_street_kw_exception(
+        keyword
+        , as_default
+        , as_except
+        , followed_by
+    )
+    WITH
+    name_as_abbr_kw AS (
+        SELECT
+            w.word
+        FROM
+            fr.laposte_address_street_word w
+        WHERE
+            as_default = 'N'
+            AND
+            LENGTH(w.word) > 1
+            AND
+            EXISTS(
+                SELECT 1
+                FROM fr.laposte_address_street_keyword k
+                WHERE k.name_abbreviated = w.word
+            )
+    )
+    , split_as_word AS (
+        SELECT
+            u.name
+            , w.word
+            , w.i::INT
+            , u.nwords
+        FROM
+            fr.laposte_address_street_uniq u
+                INNER JOIN LATERAL UNNEST(u.words) WITH ORDINALITY AS w(word, i) ON TRUE
+    )
+    , word_as_abbr_kw AS (
+        SELECT
+            sw.name
+            , nakw.word
+            , sw.i
+        FROM
+            split_as_word sw
+                JOIN name_as_abbr_kw nakw ON sw.word = nakw.word
+        WHERE
+            -- not last word (name!)
+            sw.i < sw.nwords
+    )
+    , word_exception AS (
+        SELECT
+            o.word
+            , CASE
+                WHEN u.nwords >= (i+3) AND fr.is_normalized_article(u.words[i+1]) AND fr.is_normalized_article(u.words[i+2]) THEN
+                    items_of_array_to_string(
+                        elements => u.words
+                        , from_ => (i+1)
+                        , to_ => (i+3)
+                    )
+                WHEN u.nwords >= (i+2) AND fr.is_normalized_article(u.words[i+1]) THEN
+                    items_of_array_to_string(
+                        elements => u.words
+                        , from_ => (i+1)
+                        , to_ => (i+2)
+                    )
+                ELSE u.words[i+1]
+                END followed_by
+        FROM
+            word_as_abbr_kw o
+                JOIN fr.laposte_address_street_uniq u ON o.name = u.name
+                --JOIN fr.laposte_address_street_word w ON o.word = w.word
+    )
+    -- #4347
+    SELECT DISTINCT word, 'T', 'N', followed_by FROM word_exception
+    ;
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(CONCAT(' Exceptions (titre): ', _nrows));
+
     CALL fr.set_laposte_address_street_kw_exception_index();
     CALL public.log_info(' Indexation');
 END
 $proc$ LANGUAGE plpgsql;
+
+/* TEST
+17:33:36.261 Gestion des exceptions de mots clé des voies
+17:33:36.261  Purge
+DROP INDEX IF EXISTS fr.ix_laposte_address_street_kw_exception_keyword
+17:33:36.319  Initialisation
+17:34:51.332  Exceptions (prénom): 3258
+17:34:51.332  Exceptions (article): 3
+17:38:41.298  Exceptions (titre): 4347
+17:38:41.362  Indexation
+
+Query returned successfully in 5 min 7 secs.
+ */

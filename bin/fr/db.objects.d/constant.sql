@@ -48,12 +48,39 @@ BEGIN
 
     CALL public.log_info(' Initialisation');
     INSERT INTO fr.laposte_address_street_keyword("group", name, name_abbreviated)
-        SELECT DISTINCT
+        WITH
+        type_with_abbr AS (
+            SELECT
+                lb_type
+                , lb_type_abrege
+                , COUNT(*) n
+            FROM fr.laposte_address_street
+            WHERE
+                lb_type IS NOT NULL
+                AND
+                fl_active
+            GROUP BY
+                lb_type
+                , lb_type_abrege
+        )
+        , type_with_larger_value AS (
+            SELECT
+                lb_type
+                , FIRST(lb_type_abrege ORDER BY n DESC) lb_type_abrege
+            FROM
+                type_with_abbr
+            GROUP BY
+                lb_type
+        )
+        SELECT
             'TYPE'
             , lb_type
-            , lb_type_abrege
-        FROM fr.laposte_address_street
-        WHERE lb_type IS NOT NULL
+            , CASE
+                -- no abbreviation !
+                WHEN lb_type = 'ABBAYE' THEN NULL
+                ELSE lb_type_abrege
+                END
+        FROM type_with_larger_value
         ;
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Types: ', _nrows));
@@ -237,9 +264,10 @@ BEGIN
     INSERT INTO fr.laposte_address_street_keyword("group", name, name_abbreviated)
         SELECT *
         FROM (
-            VALUES ('TITLE', 'ABBAYE', NULL)
+            VALUES --('TITLE', 'ABBAYE', NULL)
                 --, ('TITLE', 'ABBE', NULL)
-                , ('TITLE', 'ADJUDANT', 'ADJ')
+                --,
+                ('TITLE', 'ADJUDANT', 'ADJ')
                 , ('TITLE', 'AERODROME', 'AER')
                 , ('TITLE', 'AEROGARE', NULL)
                 , ('TITLE', 'AERONAUTIQUE', NULL)

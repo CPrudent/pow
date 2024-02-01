@@ -383,6 +383,7 @@ DECLARE
     _words_abbreviated TEXT[];
     _words_todo TEXT[];
     _words_normalized TEXT[];
+    _words_normalized_abbreviated TEXT[];
     _words_len INT;
     _words_normalized_len INT;
     _descriptors TEXT[];
@@ -526,6 +527,7 @@ BEGIN
     END IF;
 
     _words_normalized := _words;
+    _words_normalized_abbreviated := _words_abbreviated;
     _words_normalized_len := _words_len;
     _len_normalized := (
         SELECT SUM(LENGTH(w)) FROM UNNEST(_words_normalized) w
@@ -568,13 +570,6 @@ BEGIN
                     UNNEST(_earn_sz_v) WITH ORDINALITY AS o(earn, i)
                 ORDER BY
                     earn DESC
-                /*
-                VALUES
-                    ('A', _earn_sz_a[_position_a])
-                    , ('P', _earn_sz_p[_position_p])
-                    , ('T', _earn_sz_t[_position_t])
-                    , ('V', _earn_sz_v[_position_v])
-                */
             )
             SELECT
                 descriptor
@@ -613,8 +608,18 @@ BEGIN
                     CONTINUE;
                 ELSE
                     _position := _j;
+                    EXIT;
                 END IF;
             END LOOP;
+            IF raise_notice THEN RAISE NOTICE 'each % p=%', _each, _position; END IF;
+            IF ARRAY_POSITION(CASE
+                WHEN _each = 'A' THEN _done_a
+                WHEN _each = 'P' THEN _done_p
+                WHEN _each = 'T' THEN _done_t
+                WHEN _each = 'V' THEN _done_v
+                END, FALSE) = 0 THEN
+                _each := NULL;
+            END IF;
         END IF;
 
         IF _descriptor IS NULL THEN
@@ -630,20 +635,33 @@ BEGIN
                 ELSE _words_normalized[_positions_a[_position]+1:]
                 END
             ;
+            _words_normalized_abbreviated := CASE
+                WHEN _positions_a[_position] > 1 THEN _words_normalized_abbreviated[:_positions_a[_position]-1] || _words_normalized_abbreviated[_positions_a[_position]+1:]
+                ELSE _words_normalized_abbreviated[_positions_a[_position]+1:]
+                END
+            ;
             _words_normalized_len := _words_normalized_len -1;
             _len_normalized := _len_normalized - _earn_sz_a[_position];
             _done_a[_position] := TRUE;
-            FOR _j IN _position +1 .. ARRAY_LENGTH(_positions_a, 1)
+            -- update positions (following delete)!
+            FOR _j IN _position +1 .. _items_a
             LOOP
-                -- update position (following delete)!
                 _positions_a[_j] := _positions_a[_j] -1;
+            END LOOP;
+            FOR _j IN _position +1 .. _items_p
+            LOOP
+                _positions_p[_j] := _positions_p[_j] -1;
+            END LOOP;
+            FOR _j IN _position +1 .. _items_t
+            LOOP
+                _positions_t[_j] := _positions_t[_j] -1;
             END LOOP;
         ELSIF _descriptor = 'P' THEN
             _words_normalized[_positions_p[_position]] := SUBSTR(_words_normalized[_positions_p[_position]], 1, 1);
             _len_normalized := _len_normalized - _earn_sz_p[_position];
             _done_p[_position] := TRUE;
         ELSIF _descriptor = 'T' THEN
-            _words_normalized[_positions_t[_position]] := _words_abbreviated[_positions_t[_position]];
+            _words_normalized[_positions_t[_position]] := _words_normalized_abbreviated[_positions_t[_position]];
             _len_normalized := _len_normalized - _earn_sz_t[_position];
             _done_t[_position] := TRUE;
         ELSIF _descriptor = 'V' THEN
@@ -652,7 +670,7 @@ BEGIN
                 _each = 'A';
                 CONTINUE;
             ELSE
-                _words_normalized[_positions_v[_position]] := _words_abbreviated[_positions_v[_position]];
+                _words_normalized[_positions_v[_position]] := _words_normalized_abbreviated[_positions_v[_position]];
                 _len_normalized := _len_normalized - _earn_sz_v[_position];
                 _done_v[_position] := TRUE;
             END IF;

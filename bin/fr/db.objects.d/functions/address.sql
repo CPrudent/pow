@@ -581,6 +581,16 @@ BEGIN
                         , as_descriptor => SUBSTR(_words_d, 1, 1)
                     );
                     IF _is_exception THEN
+                        IF (
+                            (_words_d ~ 'T')
+                            AND
+                            (words_todo_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] = '+')
+                        ) THEN
+                            -- reset
+                            words_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] := words_abbreviated_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)];
+                            words_abbreviated_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] := NULL;
+                            words_todo_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] := NULL;
+                        END IF;
                         _words_d := REPEAT(_exception, LENGTH(_words_d));
                     END IF;
                 END IF;
