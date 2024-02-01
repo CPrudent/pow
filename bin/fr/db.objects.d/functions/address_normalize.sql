@@ -381,6 +381,7 @@ DECLARE
     _len_normalized INT;
     _words TEXT[];
     _words_abbreviated TEXT[];
+    _words_todo TEXT[];
     _words_normalized TEXT[];
     _words_len INT;
     _words_normalized_len INT;
@@ -404,6 +405,8 @@ DECLARE
     _earn_sz_v INT[];
     _words_t TEXT[];
     _more_t BOOLEAN[];
+    _again_t BOOLEAN;
+    _factor INT;
 
     _tmp_t VARCHAR;
     _tmp_v VARCHAR;
@@ -419,10 +422,12 @@ BEGIN
         ds.descriptors
         , ds.words_by_descriptor
         , ds.words_abbreviated_by_descriptor
+        , ds.words_todo_by_descriptor
     INTO
         normalize_street_name.descriptors
         , _words
         , _words_abbreviated
+        , _words_todo
     FROM
         fr.get_descriptors_of_street(
             name => _name
@@ -480,14 +485,22 @@ BEGIN
             IF _words_abbreviated[_positions_t[_i]] IS NULL THEN
                 _words_t := REGEXP_SPLIT_TO_ARRAY(_words[_positions_t[_i]], '\s+');
                 SELECT name_abbreviated, one_more_time
-                INTO _words_abbreviated[_positions_t[_i]], _more_t[_i]
+                INTO _tmp_t, _again_t
                 FROM fr.normalize_abbreviate_keyword(
                     name => _words[_positions_t[_i]]
                     , words => _words_t
                 );
+                _words_abbreviated[_positions_t[_i]] := _tmp_t;
+                _more_t[_i] := _again_t;
             END IF;
             -- replace w/ abbreviation
             _earn_sz_t[_i] := LENGTH(_words[_positions_t[_i]]) - LENGTH(_words_abbreviated[_positions_t[_i]]);
+            _factor := CASE
+                WHEN _words_todo[_positions_t[_i]] = '-' THEN 1
+                ELSE -1
+                END
+            ;
+            _earn_sz_t[_i] := _earn_sz_t[_i] * _factor;
         END LOOP;
     END IF;
     IF _positions_v IS NOT NULL THEN
@@ -496,6 +509,12 @@ BEGIN
         LOOP
             -- replace w/ abbreviation
             _earn_sz_v[_i] := LENGTH(_words[_positions_v[_i]]) - LENGTH(_words_abbreviated[_positions_v[_i]]);
+            _factor := CASE
+                WHEN _words_todo[_positions_t[_i]] = '-' THEN 1
+                ELSE -1
+                END
+            ;
+            _earn_sz_v[_i] := _earn_sz_v[_i] * _factor;
         END LOOP;
     END IF;
 
@@ -569,309 +588,6 @@ BEGIN
 
     name_normalized := NULL;
     RAISE NOTICE 'pas de normalisation (%) : NN=% #=%', name, _words_normalized, _len_normalized;
-
-    /*
-    _words_i INT := 0;
-    --_words_rebuild BOOLEAN;
-    _j INT;
-    _found BOOLEAN;
-    _step INT;
-    _steps INT[];
-    _step_change BOOLEAN;
-    _step_i INT := 1;
-    _step_words TEXT[];
-    _step_words_len INT;
-    _steps_done BOOLEAN[];
-
-    _STEP_WO_ABBR_TYPE INT              := 10;
-    _STEP_TEST_ABBR_TYPE INT            := 11;
-    _STEP_1ST_TYPE_OR_TITLE INT         := 12;
-    _STEP_ABBR_HOLY INT                 := 1;
-    _STEP_ABBR_TYPE INT                 := 2;
-    _STEP_ABBR_FIRSTNAME INT            := 3;
-    _STEP_DELETE_ARTICLE INT            := 4;
-    _STEP_ABBR_TITLE INT                := 5;
-    _STEP_END INT                       := 99;
-
-    WHILE TRUE
-    LOOP
-        -- OK w/o type abbreviation ?
-        IF _step = _STEP_WO_ABBR_TYPE THEN
-            IF _positions_v IS NOT NULL THEN
-                _tmp_v := CONCAT('^', _words_abbreviated[1]);
-                IF _name ~ _tmp_v THEN
-                    _tmp_name := REGEXP_REPLACE(
-                        _name
-                        , _tmp_v
-                        , _words[_positions_v[1]]
-                    );
-                    IF LENGTH(_tmp_name) <= 32 THEN
-                        name_normalized := _tmp_name;
-                        RETURN;
-                    END IF;
-                    _step := _STEP_TEST_ABBR_TYPE;
-                    CONTINUE;
-                END IF;
-            END IF;
-            _step := _STEP_ABBR_FIRSTNAME;
-
-        -- abbreviate TYPE is suffisant ?
-        ELSIF _step = _STEP_TEST_ABBR_TYPE THEN
-            _type_diff := LENGTH(_words[1]) - LENGTH(_words_abbreviated[1]);
-            IF (_len - _type_diff) <= 32 THEN
-                _step := _STEP_ABBR_TYPE;
-            ELSE
-                _step := _STEP_ABBR_FIRSTNAME;
-            END IF;
-
-        -- 1st word is simultaneously a title and a type
-        ELSIF _step = _STEP_1ST_TYPE_OR_TITLE THEN
-            IF (
-                ((descriptors ~ '^V') AND fr.is_normalized_title(word => _words[1], groups => 'TITLE'))
-                OR
-                ((descriptors ~ '^T') AND fr.is_normalized_title(word => _words[1], groups => 'TYPE'))
-            ) THEN
-                _step := _STEP_ABBR_FIRSTNAME;
-            END IF;
-
-        -- abbreviate firstname
-        ELSIF _step = _STEP_ABBR_FIRSTNAME THEN
-
-        -- abbreviate holy
-        ELSIF _step = _STEP_ABBR_HOLY THEN
-
-        -- abbreviate title
-        ELSIF _step = _STEP_ABBR_TITLE THEN
-
-        -- abbreviate type
-        ELSIF _step = _STEP_ABBR_TYPE THEN
-
-        -- delete article(s)
-        ELSIF _step = _STEP_DELETE_ARTICLE THEN
-
-        END IF;
-    END LOOP;
-     */
-
-    /*
-    _name_rebuild BOOLEAN;
-    _kw VARCHAR;
-    _kw_abbreviated VARCHAR;
-    _kw_is_abbreviated BOOLEAN;
-    _titles VARCHAR[] :=
-        ARRAY(SELECT key FROM fr.constant WHERE usecase = 'LAPOSTE_STREET_TITLE');
-    _titles_abbr VARCHAR[] :=
-        ARRAY(SELECT value FROM fr.constant WHERE usecase = 'LAPOSTE_STREET_TITLE');
-    _titles_i INT;
-    _types VARCHAR[] :=
-        ARRAY(SELECT type FROM fr.laposte_address_street_type);
-    _types_1st_word VARCHAR[] :=
-        ARRAY(SELECT first_word FROM fr.laposte_address_street_type);
-    _types_i INT;
-     */
-
-    /*
-    _words := REGEXP_SPLIT_TO_ARRAY(_name, '\s+');
-
-    -- type of street
-    SELECT kw, kw_abbreviated, kw_is_abbreviated
-    INTO _kw, _kw_abbreviated, _kw_is_abbreviated
-    FROM fr.get_type_of_street(
-        name => _name
-        , words => _words
-    );
-    IF _kw_is_abbreviated THEN
-        _tmp_name := REGEXP_REPLACE(_name, '^\S+', _kw);
-        IF LENGTH(_tmp_name) <= 32 THEN
-            name_normalized := _tmp_name;
-            RETURN;
-        END IF;
-        _name := _tmp_name;
-    END IF;
-
-    -- already ok ?
-    _len := LENGTH(_name);
-    IF _len <= 32 THEN
-        name_normalized := _name;
-        RETURN;
-    END IF;
-
-    IF raise_notice THEN RAISE NOTICE 'name=% len=%', _name, _len; END IF;
-
-    -- dynamic steps!
-    --_type_diff := LENGTH(COALESCE(_kw, '')) - LENGTH(COALESCE(_kw_abbreviated, ''));
-    _steps := CASE
-        -- abbreviate type suffisant?
-        --WHEN ((_len - _type_diff) <= 32) AND (_type_diff > 2) THEN
-        WHEN (_len - _type_diff) <= 32 THEN
-            ARRAY[2,3,5,4,1]::INT[]
-        WHEN
-            (COALESCE(ARRAY_POSITION(_titles, _words[1]), 0) > 0
-            AND
-            COALESCE(ARRAY_POSITION(_types, _words[1]), 0) > 0) THEN
-            ARRAY[3,5,4,2,1]::INT[]
-        --WHEN _type_diff < 3 THEN
-        ELSE
-            ARRAY[3,5,2,4,1]::INT[]
-    END;
-    _steps_done := ARRAY_FILL(FALSE, ARRAY[ARRAY_LENGTH(_steps, 1)]);
-
-    WHILE _len > 32 AND _step_i < ARRAY_LENGTH(_steps, 1) LOOP
-        _step_change := TRUE;
-        _found := FALSE;
-        _name_rebuild := FALSE;
-        _words_rebuild := FALSE;
-
-        IF NOT _steps_done[_step_i] THEN
-            IF raise_notice THEN RAISE NOTICE 'step: %', _steps[_step_i]; END IF;
-
-            -- abbreviate title(s), if not type (of street!)
-            IF _steps[_step_i] = _STEP_ABBR_TITLE THEN
-                IF _words_i = 0 THEN _words_i := 1; END IF;
-                FOR _i IN _words_i .. _words_len
-                LOOP
-                    -- TODO include types of street (into name, not at beginning)
-                    IF _words[_i] = ANY(_titles) THEN
-                        _titles_i := ARRAY_POSITION(_titles, _words[_i]);
-                        IF raise_notice THEN RAISE NOTICE ' title=% i=% titles_i=% (_titles_abbr=%)', _words[_i], _i, _titles_i, _titles_abbr[_titles_i]; END IF;
-                        _titles_diff := LENGTH(_words[_i]) - LENGTH(_titles_abbr[_titles_i]);
-                        IF raise_notice THEN RAISE NOTICE ' titles_diff=% (type_diff=%)', _titles_diff, _type_diff; END IF;
-
-                        /*
-                        IF (NOT _steps_done[_STEP_ABBR_TYPE] AND (_titles_diff >= COALESCE(_type_diff, 0))) OR _steps_done[_STEP_ABBR_TYPE] THEN
-                         */
-                            _types_i := ARRAY_POSITION(
-                                _types
-                                , public.items_of_array_to_string(
-                                    elements => _words
-                                    , to_ => _i
-                                )
-                            );
-                            IF raise_notice THEN RAISE NOTICE ' types_i=%', _types_i; END IF;
-                            -- replace title if not type too
-                            IF COALESCE(_types_i, 0) = 0  AND _titles_i > 0 THEN
-                                _found := TRUE;
-                                _words_i := _i;
-                                IF raise_notice THEN RAISE NOTICE ' title (at %) replaced', _words_i; END IF;
-                                EXIT;
-                            END IF;
-                        /*
-                        END IF;
-                         */
-                    END IF;
-                END LOOP;
-                IF _found THEN
-                    _len := _len - _titles_diff;
-                    _words[_words_i] := _titles_abbr[_titles_i];
-                    IF raise_notice THEN RAISE NOTICE ' words=% len=%', _words, _len; END IF;
-                    _name_rebuild := TRUE;
-                    _step_change := FALSE;
-                END IF;
-
-            -- abbreviate type of street
-            ELSIF _steps[_step_i] = _STEP_ABBR_TYPE THEN
-                IF NOT _kw_is_abbreviated AND _kw_abbreviated IS NOT NULL THEN
-                    _name := CONCAT(_kw_abbreviated, SUBSTR(_name, LENGTH(_kw) +1));
-                    _len := LENGTH(_name);
-                    IF raise_notice THEN RAISE NOTICE ' name=% len=%', _name, _len; END IF;
-                    _words_rebuild := TRUE;
-                END IF;
-
-            -- abbreviate holy word(s)
-            ELSIF _steps[_step_i] = _STEP_ABBR_HOLY THEN
-                _name := fr.normalize_abbreviate_holy(_name);
-                _len := LENGTH(_name);
-                IF raise_notice THEN RAISE NOTICE ' name=% len=%', _name, _len; END IF;
-                _words_rebuild := TRUE;
-
-            -- abbreviate firstname
-            ELSIF _steps[_step_i] = _STEP_ABBR_FIRSTNAME THEN
-                --IF _words_i = 0 THEN _words_i := 1; END IF;
-                _words_i := _words_i +1;
-                -- firstname can't be last word!
-                FOR _i IN _words_i .. _words_len -1
-                LOOP
-                    IF raise_notice THEN RAISE NOTICE ' search firstname : %', _words[_i]; END IF;
-                    _found := fr.is_normalized_firstname(_words[_i]);
-                    IF _found THEN
-                        _words_i := _i;
-                        IF raise_notice THEN RAISE NOTICE ' firstname (at %)', _words_i; END IF;
-                        EXIT;
-                    END IF;
-                END LOOP;
-                IF _found THEN
-                    _len := _len - LENGTH(_words[_words_i]) +1;                    _words[_words_i] := SUBSTR(_words[_words_i], 1, 1);
-                    IF raise_notice THEN RAISE NOTICE ' words=% len=%', _words, _len; END IF;
-                    _name_rebuild := TRUE;
-                    _step_change := FALSE;
-                END IF;
-
-            -- delete _article(s)
-            ELSIF _steps[_step_i] = _STEP_DELETE_ARTICLE THEN
-                IF raise_notice THEN RAISE NOTICE ' words=% len=%', _words, _len; END IF;
-                IF _words_i = 0 THEN
-                    _words_i := 1;
-                    _tmp_name := _name;
-                    _name := '';
-                ELSE
-                    _name := _words[1];
-                    FOR _i IN 2 .. _words_i -1
-                    LOOP
-                        _name := CONCAT(_name, ' ', _words[_i]);
-                    END LOOP;
-                END IF;
-                IF raise_notice THEN RAISE NOTICE ' search article from : %', _words_i; END IF;
-
-                FOR _i IN _words_i .. _words_len
-                LOOP
-                    _found := fr.is_normalized_article(_words[_i]);
-                    IF _found THEN
-                        IF raise_notice THEN RAISE NOTICE ' article=% i=%', _words[_i], _i; END IF;
-                        _words_i := _i;
-                        EXIT;
-                    ELSE
-                        IF LENGTH(_name) > 0 THEN
-                            _name := CONCAT(_name, ' ', _words[_i]);
-                        ELSE
-                            _name := _words[_i];
-                        END IF;
-                    END IF;
-                END LOOP;
-                IF _found THEN
-                    _step_change := FALSE;
-                    -- delete array item
-                    -- https://dba.stackexchange.com/questions/94639/delete-array-element-by-index
-                    _words := _words[:_words_i-1] || _words[_words_i+1:];
-                    _words_len := _words_len -1;
-                    IF raise_notice THEN RAISE NOTICE ' name=%', _name; END IF;
-                    FOR _j IN _words_i .. _words_len
-                    LOOP
-                        _name := CONCAT(_name, ' ', _words[_j]);
-                        IF raise_notice THEN RAISE NOTICE ' name=%', _name; END IF;
-                    END LOOP;
-                END IF;
-
-                _len := LENGTH(_name);
-                IF raise_notice THEN RAISE NOTICE ' words=% len=%', _words, _len; END IF;
-            END IF;
-        END IF;
-
-        IF _name_rebuild THEN
-            _name := ARRAY_TO_STRING(_words, ' ');
-        END IF;
-        IF _words_rebuild THEN
-            _words := REGEXP_SPLIT_TO_ARRAY(_name, '\s+');
-            _words_len := ARRAY_LENGTH(_words, 1);
-        END IF;
-        IF _step_change THEN
-            _steps_done[_step_i] := TRUE;
-            _step_words := _words;
-            _step_words_len := _words_len;
-            _step_i := _step_i +1;
-            _words_i := 0;
-        END IF;
-    END LOOP;
-     */
 END
 $func$ LANGUAGE plpgsql;
 

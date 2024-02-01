@@ -280,7 +280,7 @@ BEGIN
                 --, ('TITLE', 'CHANOINE', NULL)
                 , ('TITLE', 'CHAPELLE', 'CHAP')
                 , ('TITLE', 'CHATEAU', 'CHAT')
-                , ('TITLE', 'CHEMIN', NULL)
+                , ('TITLE', 'CHEMIN', 'CHEM')
                 , ('TITLE', 'CHEMINS', 'CHEM')
                 , ('TITLE', 'CITADELLE', NULL)
                 , ('TITLE', 'COLLEGE', NULL)

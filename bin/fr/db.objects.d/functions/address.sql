@@ -378,6 +378,7 @@ CREATE OR REPLACE FUNCTION fr.get_descriptors_of_street(
     , descriptors OUT VARCHAR
     , words_by_descriptor OUT TEXT[]
     , words_abbreviated_by_descriptor OUT TEXT[]
+    , words_todo_by_descriptor OUT TEXT[]
 )
 AS
 $func$
@@ -467,6 +468,11 @@ BEGIN
                     );
                     words_by_descriptor := ARRAY_APPEND(words_by_descriptor, _kw);
                     words_abbreviated_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] := _kw_abbreviated;
+                    words_todo_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] := CASE
+                        WHEN _kw_is_abbreviated THEN '+'
+                        ELSE '-'
+                        END
+                    ;
                     _init_by_descriptor := TRUE;
                 ELSE
                     -- firstname
