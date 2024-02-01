@@ -387,15 +387,16 @@ DECLARE
     _words_normalized_len INT;
     _descriptors TEXT[];
     _descriptor VARCHAR;
+    _each VARCHAR;
 
     _i INT;
     _j INT;
     _nchanges INT := 0;
     _position INT;
-    _position_a INT := 1;
-    _position_p INT := 1;
-    _position_t INT := 1;
-    _position_v INT := 1;
+    _items_a INT := 0;
+    _items_p INT := 0;
+    _items_t INT := 0;
+    _items_v INT := 0;
     _positions_a INT[];
     _positions_p INT[];
     _positions_t INT[];
@@ -408,10 +409,10 @@ DECLARE
     _done_p BOOLEAN[];
     _done_t BOOLEAN[];
     _done_v BOOLEAN[];
+    _total_a INT := 0;
     _words_t TEXT[];
     _more_t BOOLEAN[];
     _again_t BOOLEAN;
-    _factor INT;
 
     _tmp_t VARCHAR;
     _tmp_v VARCHAR;
@@ -458,6 +459,10 @@ BEGIN
             _positions_a := ARRAY_APPEND(_positions_a, _i);
         --ELSIF _descriptors[_i] ~ 'N' THEN
         ELSIF _descriptors[_i] ~ 'P' THEN
+            -- exception
+            IF _i > 1 AND _words[_i -1] ~ '^(ST|STE|SAINT|SAINTE)$' THEN
+                CONTINUE;
+            END IF;
             _positions_p := ARRAY_APPEND(_positions_p, _i);
         ELSIF _descriptors[_i] ~ 'T' THEN
             _positions_t := ARRAY_APPEND(_positions_t, _i);
@@ -468,26 +473,30 @@ BEGIN
 
     -- eval earnings for each word of each descriptor
     IF _positions_a IS NOT NULL THEN
-        _nchanges := _nchanges + ARRAY_LENGTH(_positions_a, 1);
-        FOR _i IN 1 .. ARRAY_LENGTH(_positions_a, 1)
+        _items_a := ARRAY_LENGTH(_positions_a, 1);
+        _nchanges := _nchanges + _items_a;
+        FOR _i IN 1 .. _items_a
         LOOP
             -- delete article : don't forget to count space (as separator)!
             _earn_sz_a[_i] := LENGTH(_words[_positions_a[_i]]) +1;
+            _total_a := _total_a + _earn_sz_a[_i];
         END LOOP;
-        _done_a := ARRAY_FILL(FALSE, ARRAY[ARRAY_LENGTH(_positions_a, 1)]);
+        _done_a := ARRAY_FILL(FALSE, ARRAY[_items_a]);
     END IF;
     IF _positions_p IS NOT NULL THEN
-        _nchanges := _nchanges + ARRAY_LENGTH(_positions_p, 1);
-        FOR _i IN 1 .. ARRAY_LENGTH(_positions_p, 1)
+        _items_p := ARRAY_LENGTH(_positions_p, 1);
+        _nchanges := _nchanges + _items_p;
+        FOR _i IN 1 .. _items_p
         LOOP
             -- remain 1st letter only
             _earn_sz_p[_i] := LENGTH(_words[_positions_p[_i]]) -1;
         END LOOP;
-        _done_p := ARRAY_FILL(FALSE, ARRAY[ARRAY_LENGTH(_positions_p, 1)]);
+        _done_p := ARRAY_FILL(FALSE, ARRAY[_items_p]);
     END IF;
     IF _positions_t IS NOT NULL THEN
-        _nchanges := _nchanges + ARRAY_LENGTH(_positions_t, 1);
-        FOR _i IN 1 .. ARRAY_LENGTH(_positions_t, 1)
+        _items_t := ARRAY_LENGTH(_positions_t, 1);
+        _nchanges := _nchanges + _items_t;
+        FOR _i IN 1 .. _items_t
         LOOP
             IF _words_abbreviated[_positions_t[_i]] IS NULL THEN
                 _words_t := REGEXP_SPLIT_TO_ARRAY(_words[_positions_t[_i]], '\s+');
@@ -502,29 +511,18 @@ BEGIN
             END IF;
             -- replace w/ abbreviation
             _earn_sz_t[_i] := LENGTH(_words[_positions_t[_i]]) - LENGTH(_words_abbreviated[_positions_t[_i]]);
-            _factor := CASE
-                WHEN _words_todo[_positions_t[_i]] = '-' THEN 1
-                ELSE -1
-                END
-            ;
-            _earn_sz_t[_i] := _earn_sz_t[_i] * _factor;
         END LOOP;
-        _done_t := ARRAY_FILL(FALSE, ARRAY[ARRAY_LENGTH(_positions_t, 1)]);
+        _done_t := ARRAY_FILL(FALSE, ARRAY[_items_t]);
     END IF;
     IF _positions_v IS NOT NULL THEN
-        _nchanges := _nchanges + ARRAY_LENGTH(_positions_v, 1);
-        FOR _i IN 1 .. ARRAY_LENGTH(_positions_v, 1)
+        _items_v := ARRAY_LENGTH(_positions_v, 1);
+        _nchanges := _nchanges + _items_v;
+        FOR _i IN 1 .. _items_v
         LOOP
             -- replace w/ abbreviation
             _earn_sz_v[_i] := LENGTH(_words[_positions_v[_i]]) - LENGTH(_words_abbreviated[_positions_v[_i]]);
-            _factor := CASE
-                WHEN _words_todo[_positions_t[_i]] = '-' THEN 1
-                ELSE -1
-                END
-            ;
-            _earn_sz_v[_i] := _earn_sz_v[_i] * _factor;
         END LOOP;
-        _done_v := ARRAY_FILL(FALSE, ARRAY[ARRAY_LENGTH(_positions_v, 1)]);
+        _done_v := ARRAY_FILL(FALSE, ARRAY[_items_v]);
     END IF;
 
     _words_normalized := _words;
@@ -534,64 +532,91 @@ BEGIN
     ) + (_words_len -1);
     FOR _i IN 1 .. _nchanges
     LOOP
-        WITH
-        earn_descriptor(descriptor, earn, i) AS (
+        IF _each IS NULL THEN
+            WITH
+            earn_descriptor(descriptor, earn, i) AS (
+                SELECT
+                    'A' descriptor
+                    , o.earn
+                    , o.i
+                    , _done_a[o.i] done
+                FROM
+                    UNNEST(_earn_sz_a) WITH ORDINALITY AS o(earn, i)
+                UNION
+                SELECT
+                    'P'
+                    , o.earn
+                    , o.i
+                    , _done_p[o.i] done
+                FROM
+                    UNNEST(_earn_sz_p) WITH ORDINALITY AS o(earn, i)
+                UNION
+                SELECT
+                    'T'
+                    , o.earn
+                    , o.i
+                    , _done_t[o.i] done
+                FROM
+                    UNNEST(_earn_sz_t) WITH ORDINALITY AS o(earn, i)
+                UNION
+                SELECT
+                    'V'
+                    , o.earn
+                    , o.i
+                    , _done_v[o.i] done
+                FROM
+                    UNNEST(_earn_sz_v) WITH ORDINALITY AS o(earn, i)
+                ORDER BY
+                    earn DESC
+                /*
+                VALUES
+                    ('A', _earn_sz_a[_position_a])
+                    , ('P', _earn_sz_p[_position_p])
+                    , ('T', _earn_sz_t[_position_t])
+                    , ('V', _earn_sz_v[_position_v])
+                */
+            )
             SELECT
-                'A' descriptor
-                , o.earn
-                , o.i
-                , _done_a[o.i] done
+                descriptor
+                , i
+            INTO
+                _descriptor
+                , _position
             FROM
-                UNNEST(_earn_sz_a) WITH ORDINALITY AS o(earn, i)
-            UNION
-            SELECT
-                'P'
-                , o.earn
-                , o.i
-                , _done_p[o.i] done
-            FROM
-                UNNEST(_earn_sz_p) WITH ORDINALITY AS o(earn, i)
-            UNION
-            SELECT
-                'T'
-                , o.earn
-                , o.i
-                , _done_t[o.i] done
-            FROM
-                UNNEST(_earn_sz_t) WITH ORDINALITY AS o(earn, i)
-            UNION
-            SELECT
-                'V'
-                , o.earn
-                , o.i
-                , _done_v[o.i] done
-            FROM
-                UNNEST(_earn_sz_v) WITH ORDINALITY AS o(earn, i)
+                earn_descriptor
+            WHERE
+                NOT done
             ORDER BY
                 earn DESC
-            /*
-            VALUES
-                ('A', _earn_sz_a[_position_a])
-                , ('P', _earn_sz_p[_position_p])
-                , ('T', _earn_sz_t[_position_t])
-                , ('V', _earn_sz_v[_position_v])
-             */
-        )
-        SELECT
-            descriptor
-            , i
-        INTO
-            _descriptor
-            , _position
-        FROM
-            earn_descriptor
-        WHERE
-            NOT done
-        ORDER BY
-            earn DESC
-        LIMIT
-            1
-        ;
+                , i
+            LIMIT
+                1
+            ;
+        ELSE
+            _descriptor := _each;
+            FOR _j IN 1 .. CASE
+                WHEN _each = 'A' THEN _items_a
+                WHEN _each = 'P' THEN _items_p
+                WHEN _each = 'T' THEN _items_t
+                WHEN _each = 'V' THEN _items_v
+                END
+            LOOP
+                IF (
+                    (_each = 'A' AND _done_a[_j])
+                    OR
+                    (_each = 'P' AND _done_p[_j])
+                    OR
+                    (_each = 'T' AND _done_t[_j])
+                    OR
+                    (_each = 'V' AND _done_v[_j])
+                ) THEN
+                    CONTINUE;
+                ELSE
+                    _position := _j;
+                END IF;
+            END LOOP;
+        END IF;
+
         IF _descriptor IS NULL THEN
             RAISE 'changement %/% non trouvé!', _i, _nchanges;
         ELSE
@@ -622,9 +647,15 @@ BEGIN
             _len_normalized := _len_normalized - _earn_sz_t[_position];
             _done_t[_position] := TRUE;
         ELSIF _descriptor = 'V' THEN
-            _words_normalized[_positions_v[_position]] := _words_abbreviated[_positions_v[_position]];
-            _len_normalized := _len_normalized - _earn_sz_v[_position];
-            _done_v[_position] := TRUE;
+            -- OK if deleting all article(s)
+            IF ((_len_normalized - _total_a) <= 32) THEN
+                _each = 'A';
+                CONTINUE;
+            ELSE
+                _words_normalized[_positions_v[_position]] := _words_abbreviated[_positions_v[_position]];
+                _len_normalized := _len_normalized - _earn_sz_v[_position];
+                _done_v[_position] := TRUE;
+            END IF;
         END IF;
 
         IF raise_notice THEN RAISE NOTICE 'NN=% #=%', _words_normalized, _len_normalized; END IF;
