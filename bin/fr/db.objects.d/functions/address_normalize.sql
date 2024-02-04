@@ -365,6 +365,39 @@ ORDER BY
     ;
  */
 
+-- order changes by heuristic value
+SELECT public.drop_all_functions_if_exists('fr', 'normalize_street_name');
+CREATE OR REPLACE FUNCTION fr.normalize_street_name(
+    changes IN VARCHAR[]
+    , earns IN INT[]
+    , raise_notice IN BOOLEAN DEFAULT FALSE
+    , heuristic_method IN VARCHAR DEFAULT 'MNLR'
+    , changes_ordered OUT VARCHAR
+)
+AS
+$func$
+DECLARE
+BEGIN
+    -- bigger earn
+    IF heuristic_method = 'BE' THEN
+        changes_ordered :=
+            ARRAY(
+                SELECT
+                    c.change
+                FROM
+                    UNNEST(earns) WITH ORDINALITY AS e(earn, i)
+                        JOIN UNNEST(changes) WITH ORDINALITY AS c(change, i) ON e.i = c.i
+                ORDER BY
+                    e.earn DESC
+            )
+        ;
+
+    -- maximize name (nearest 32) & least number of replaces
+    ELSIF heuristic_method = 'MNLR' THEN
+    END IF;
+END
+$func$ LANGUAGE plpgsql;
+
 -- normalize name of street
 SELECT public.drop_all_functions_if_exists('fr', 'normalize_street_name');
 CREATE OR REPLACE FUNCTION fr.normalize_street_name(
@@ -393,7 +426,16 @@ DECLARE
     _i INT;
     _j INT;
     _nchanges INT := 0;
+    _set_changes VARCHAR[];
+    _earn_changes INT[];
+    _ITEMS_DESCRIPTOR INT := 4;
+    _positions INT[_ITEMS_DESCRIPTOR];
+    _POSITION_DESCRIPTOR_A INT := 1;
+    _POSITION_DESCRIPTOR_P INT := 2;
+    _POSITION_DESCRIPTOR_T INT := 3;
+    _POSITION_DESCRIPTOR_V INT := 4;
     _position INT;
+
     _items_a INT := 0;
     _items_p INT := 0;
     _items_t INT := 0;
@@ -453,81 +495,53 @@ BEGIN
             , nwords => _words_len
         ) da;
 
-    -- store position(s) for each word of each descriptor
+    -- eval change and its earn size
+    _positions := ARRAY_FILL(0, ARRAY[_ITEMS_DESCRIPTOR]);
     FOR _i IN 1 .. _words_len
     LOOP
-        IF _descriptors[_i] ~ 'A' THEN
-            _positions_a := ARRAY_APPEND(_positions_a, _i);
-        --ELSIF _descriptors[_i] ~ 'N' THEN
-        ELSIF _descriptors[_i] ~ 'P' THEN
-            -- exception
-            IF _i > 1 AND _words[_i -1] ~ '^(ST|STE|SAINT|SAINTE)$' THEN
-                CONTINUE;
-            END IF;
-            _positions_p := ARRAY_APPEND(_positions_p, _i);
-        ELSIF _descriptors[_i] ~ 'T' THEN
-            _positions_t := ARRAY_APPEND(_positions_t, _i);
-        ELSIF _descriptors[_i] ~ 'V' THEN
-            _positions_v := ARRAY_APPEND(_positions_v, _i);
-        END IF;
-    END LOOP;
+        _position := CASE
+            WHEN _descriptors[_i] ~ 'A' THEN _POSITION_DESCRIPTOR_A
+            WHEN _descriptors[_i] ~ 'P' THEN
+                CASE
+                -- exception
+                WHEN _i > 1 AND _words[_i -1] ~ '^(ST|STE|SAINT|SAINTE)$' THEN 0
+                ELSE _POSITION_DESCRIPTOR_P
+                END
+            WHEN _descriptors[_i] ~ 'T' THEN _POSITION_DESCRIPTOR_T
+            WHEN _descriptors[_i] ~ 'V' THEN _POSITION_DESCRIPTOR_V
+            ELSE 0
+            END
+        ;
+        IF _position > 0 THEN
+            _positions[_position] := _positions[_position] +1;
+            _set_changes := ARRAY_APPEND(_set_changes, CONCAT(_descriptors[_i], _positions[_position]));
+            _nchanges := _nchanges +1;
 
-    -- eval earnings for each word of each descriptor
-    IF _positions_a IS NOT NULL THEN
-        _items_a := ARRAY_LENGTH(_positions_a, 1);
-        _nchanges := _nchanges + _items_a;
-        FOR _i IN 1 .. _items_a
-        LOOP
-            -- delete article : don't forget to count space (as separator)!
-            _earn_sz_a[_i] := LENGTH(_words[_positions_a[_i]]) +1;
-            _total_a := _total_a + _earn_sz_a[_i];
-        END LOOP;
-        _done_a := ARRAY_FILL(FALSE, ARRAY[_items_a]);
-    END IF;
-    IF _positions_p IS NOT NULL THEN
-        _items_p := ARRAY_LENGTH(_positions_p, 1);
-        _nchanges := _nchanges + _items_p;
-        FOR _i IN 1 .. _items_p
-        LOOP
-            -- remain 1st letter only
-            _earn_sz_p[_i] := LENGTH(_words[_positions_p[_i]]) -1;
-        END LOOP;
-        _done_p := ARRAY_FILL(FALSE, ARRAY[_items_p]);
-    END IF;
-    IF _positions_t IS NOT NULL THEN
-        _items_t := ARRAY_LENGTH(_positions_t, 1);
-        _nchanges := _nchanges + _items_t;
-        FOR _i IN 1 .. _items_t
-        LOOP
-            IF _words_abbreviated[_positions_t[_i]] IS NULL THEN
-                _words_t := REGEXP_SPLIT_TO_ARRAY(_words[_positions_t[_i]], '\s+');
+            IF _descriptors[_i] ~ 'T' AND _words_abbreviated[_i] IS NULL THEN
+                _words_t := REGEXP_SPLIT_TO_ARRAY(_words[_i], '\s+');
                 SELECT name_abbreviated, one_more_time
                 INTO _tmp_t, _again_t
                 FROM fr.normalize_abbreviate_keyword(
-                    name => _words[_positions_t[_i]]
+                    name => _words[_i]
                     , words => _words_t
                 );
-                _words_abbreviated[_positions_t[_i]] := _tmp_t;
+                _words_abbreviated[_i] := _tmp_t;
                 _more_t[_i] := _again_t;
             END IF;
-            -- replace w/ abbreviation
-            _earn_sz_t[_i] := LENGTH(_words[_positions_t[_i]]) - LENGTH(_words_abbreviated[_positions_t[_i]]);
-        END LOOP;
-        _done_t := ARRAY_FILL(FALSE, ARRAY[_items_t]);
-    END IF;
-    IF _positions_v IS NOT NULL THEN
-        _items_v := ARRAY_LENGTH(_positions_v, 1);
-        _nchanges := _nchanges + _items_v;
-        FOR _i IN 1 .. _items_v
-        LOOP
-            -- replace w/ abbreviation
-            _earn_sz_v[_i] := LENGTH(_words[_positions_v[_i]]) - LENGTH(_words_abbreviated[_positions_v[_i]]);
-        END LOOP;
-        _done_v := ARRAY_FILL(FALSE, ARRAY[_items_v]);
-    END IF;
+
+            _earn_changes[_nchanges] := CASE
+                -- don't forget to count space (as separator)!
+                WHEN _descriptors[_i] ~ 'A' THEN LENGTH(_words[_i]) +1
+                -- remain 1st letter only
+                WHEN _descriptors[_i] ~ 'P' THEN LENGTH(_words[_i]) -1
+                -- replace w/ abbreviation (if defined)
+                ELSE LENGTH(_words[_i]) - LENGTH(COALESCE(_words_abbreviated[_i], _words[_i]))
+                END
+            ;
+        END IF;
+    END LOOP;
 
     _words_normalized := _words;
-    _words_normalized_abbreviated := _words_abbreviated;
     _words_normalized_len := _words_len;
     _len_normalized := (
         SELECT SUM(LENGTH(w)) FROM UNNEST(_words_normalized) w
