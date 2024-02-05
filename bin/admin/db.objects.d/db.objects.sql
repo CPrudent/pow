@@ -16,6 +16,7 @@ begins w/ drop.sql due to drop_all_functions_if_exists() called for each functio
  */
 \include_relative ./functions/drop.sql
 \include_relative ./functions/admin.sql
+\include_relative ./functions/math.sql
 \include_relative ./functions/exists.sql
 \include_relative ./functions/alter.sql
 \include_relative ./functions/comments.sql
