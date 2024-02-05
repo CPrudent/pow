@@ -373,12 +373,17 @@ CREATE OR REPLACE FUNCTION fr.order_changes(
     , changes IN VARCHAR[]
     , earns IN INT[]
     , raise_notice IN BOOLEAN DEFAULT FALSE
+    , simulation IN BOOLEAN DEFAULT FALSE
     , heuristic_method IN VARCHAR DEFAULT 'MNmC'
     , ordered_changes OUT VARCHAR
 )
 AS
 $func$
 DECLARE
+    _query_select TEXT;
+    _query_columns TEXT;
+    _query_orderby TEXT;
+    _query TEXT;
     _subsets VARCHAR[];
     _ordered_changes VARCHAR[];
     _earns INT[];
@@ -411,8 +416,97 @@ BEGIN
             RAISE NOTICE 'subsets=%', _subsets;
         END IF;
 
+        IF simulation THEN _query_columns := ', $4 len, es.*'; END IF;
+        _query_select := CONCAT('
+            WITH
+            subsets AS (
+                SELECT
+                    i
+                    , subsets
+                FROM
+                    UNNEST($1) WITH ORDINALITY AS s(subsets, i)
+            )
+            , subsets_as_items AS (
+                SELECT
+                    i
+                    , UNNEST(STRING_TO_ARRAY(subsets, '','')) item
+                FROM
+                    subsets
+            )
+            , change_and_earn AS (
+                SELECT
+                    c.change
+                    , e.earn
+                FROM
+                    UNNEST($2) WITH ORDINALITY AS c(change, i)
+                        JOIN UNNEST($3) WITH ORDINALITY AS e(earn, i) ON c.i = e.i
+            )
+            , earn_by_subset AS (
+                SELECT
+                    s.i
+                    , SUM(ce.earn) earn
+                    , COUNT(*) nchanges
+                    , SUM(CASE WHEN ce.change ~ ''^V'' THEN 1 ELSE 0 END) n_v
+                    , SUM(CASE WHEN ce.change ~ ''^T'' THEN 1 ELSE 0 END) n_t
+                    , SUM(CASE WHEN ce.change ~ ''^P'' THEN 1 ELSE 0 END) n_p
+                    , SUM(CASE WHEN ce.change ~ ''^A'' THEN 1 ELSE 0 END) n_a
+                FROM
+                    subsets_as_items s
+                        JOIN change_and_earn ce ON s.item = ce.change
+                GROUP BY
+                    s.i
+            )
+            SELECT
+                STRING_TO_ARRAY(s.subsets, '','') subsets
+                ', _query_columns, '
+            FROM
+                subsets s
+                    JOIN earn_by_subset es ON s.i = es.i
+            WHERE
+                -- normalized name
+                ($4 - es.earn) <= 32
+            '
+        );
+        IF simulation THEN
+            _query := CONCAT('
+                DROP TABLE IF EXISTS fr.tmp_order_changes;
+                CREATE TABLE fr.tmp_order_changes AS
+                '
+                , _query_select
+            );
+            EXECUTE _query USING _subsets, changes, earns, len;
+        END IF;
+
         -- maximize name (nearest 32) & minimize change(s)
         IF heuristic_method = 'MNmC' THEN
+            _query_orderby := CONCAT('
+                ORDER BY
+                    -- nearest max size
+                    ($4 - earn) DESC
+                    -- favour P,A against V,T
+                    , ((n_v * 4 + n_t * 3 + n_p * 2 + n_a) / 10)
+                    -- least change(s)
+                    , nchanges
+                LIMIT
+                    1
+                '
+            );
+            IF simulation THEN
+                _query := '
+                    SELECT subsets
+                    FROM fr.tmp_order_changes
+                    '
+                ;
+            ELSE
+                _query := _query_select;
+            END IF;
+
+            EXECUTE CONCAT(_query, _query_orderby)
+                INTO ordered_changes
+                USING _subsets, changes, earns, len
+                ;
+
+            /*
             ordered_changes := (
                 WITH
                 subsets AS (
@@ -471,6 +565,7 @@ BEGIN
                 LIMIT
                     1
             );
+             */
         END IF;
     END IF;
 END
@@ -622,6 +717,7 @@ BEGIN
             , changes => _set_changes
             , earns => _earn_changes
             , raise_notice => raise_notice
+            , simulation => simulation
             , heuristic_method => heuristic_method
         )
     );
