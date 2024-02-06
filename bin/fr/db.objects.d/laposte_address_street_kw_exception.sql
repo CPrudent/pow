@@ -192,7 +192,7 @@ BEGIN
     ('SOUS', 'A', 'T', 'LIEUTENANT')
     , ('SOUS', 'A', 'N', 'MARIN')
     , ('SOUS', 'A', 'N', 'PREFECTURE')
-    --, ('SOUS', 'A', 'T', 'PREFET')
+    , ('SOUS', 'A', 'N', 'STATION')
     ;
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Exceptions (article): ', _nrows));
