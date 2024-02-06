@@ -461,6 +461,8 @@ BEGIN
                         WHEN (_i + _kw_nwords -1) = _words_len THEN 'N'
                         -- type
                         WHEN _i = 1 AND _kw_group = 'TYPE' THEN 'V'
+                        -- name (w/ abbreviation)
+                        WHEN _kw_group = 'NAME' THEN 'N'
                         -- title
                         ELSE 'T'
                         END

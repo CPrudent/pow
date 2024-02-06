@@ -89,7 +89,8 @@ BEGIN
     correction_abbr AS (
         SELECT *
         FROM (
-            VALUES ('ANCIEN CHEMIN', 'ANCI CHEMIN')
+            VALUES
+                  ('ANCIEN CHEMIN', 'ANCI CHEMIN')
                 , ('ANCIENNE ROUTE', 'ANCI ROUTE')
                 , ('CHEMIN VICINAL', 'CHEM VICINAL')
                 , ('MAISON FORESTIERE', 'MAIS FORESTIERE')
@@ -190,6 +191,50 @@ BEGIN
 END;
 $proc$ LANGUAGE plpgsql;
 
+-- build LAPOSTE street : list of names
+SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_street_name');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_name()
+AS
+$proc$
+DECLARE
+    _nrows INT;
+BEGIN
+    IF NOT table_exists('fr', 'laposte_address_street') THEN
+        RAISE 'Données LAPOSTE non présentes';
+    END IF;
+
+    CALL public.log_info('Gestion des noms (avec abbréviation) dans le nom des voies');
+
+    CALL public.log_info(' Purge');
+    DELETE FROM fr.laposte_address_street_keyword WHERE "group" = 'NAME';
+
+    CALL public.log_info(' Initialisation');
+    INSERT INTO fr.laposte_address_street_keyword("group", name, name_abbreviated)
+        SELECT *
+        FROM (
+            VALUES
+                  ('NAME', 'AFN', 'A')
+                , ('NAME', 'AFRIQUE', 'A')
+                , ('NAME', 'ALGERIE', 'A')
+                , ('NAME', 'ANCIENS', 'ANC')
+                , ('NAME', 'CHASSEURS', 'C')
+                , ('NAME', 'COMBATTANTS', 'COMB')
+                , ('NAME', 'COMMUNALE', 'C')
+                , ('NAME', 'DEPARTEMENTALE', 'D')
+                , ('NAME', 'ECRIVAINS', 'ECRIV')
+                , ('NAME', 'NATIONALE', 'N')
+                , ('NAME', 'NUMERO', 'N')
+                , ('NAME', 'MONUMENT', 'M')
+                , ('NAME', 'RURALE', 'R')
+                , ('NAME', 'TUNISIE', 'T')
+        ) AS x("group", name, name_abbreviated)
+        ;
+
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(CONCAT(' Noms: ', _nrows));
+END;
+$proc$ LANGUAGE plpgsql;
+
 -- build LAPOSTE extension (of housenumber), w/ abbreviated value
 SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_extension_of_housenumber');
 SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_street_ext');
@@ -264,10 +309,11 @@ BEGIN
     INSERT INTO fr.laposte_address_street_keyword("group", name, name_abbreviated)
         SELECT *
         FROM (
-            VALUES --('TITLE', 'ABBAYE', NULL)
+            VALUES
+                --('TITLE', 'ABBAYE', NULL)
                 --, ('TITLE', 'ABBE', NULL)
                 --,
-                ('TITLE', 'ADJUDANT', 'ADJ')
+                  ('TITLE', 'ADJUDANT', 'ADJ')
                 , ('TITLE', 'AERODROME', 'AER')
                 , ('TITLE', 'AEROGARE', NULL)
                 , ('TITLE', 'AERONAUTIQUE', NULL)

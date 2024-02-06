@@ -559,11 +559,12 @@ DECLARE
     _ordered_changes VARCHAR[];
     _nordered_changes INT;
     _positions INT[];
-    _ITEMS_DESCRIPTOR INT := 4;
+    _ITEMS_DESCRIPTOR INT := 5;
     _POSITION_DESCRIPTOR_A INT := 1;
-    _POSITION_DESCRIPTOR_P INT := 2;
-    _POSITION_DESCRIPTOR_T INT := 3;
-    _POSITION_DESCRIPTOR_V INT := 4;
+    _POSITION_DESCRIPTOR_N INT := 2;
+    _POSITION_DESCRIPTOR_P INT := 3;
+    _POSITION_DESCRIPTOR_T INT := 4;
+    _POSITION_DESCRIPTOR_V INT := 5;
     _position INT;
     _word INT;
 
@@ -607,6 +608,12 @@ BEGIN
     LOOP
         _position := CASE
             WHEN _descriptors[_i] ~ 'A' THEN _POSITION_DESCRIPTOR_A
+            WHEN _descriptors[_i] ~ 'N' THEN
+                CASE
+                -- only if abbreviatable
+                WHEN _words_abbreviated[_i] IS NULL THEN 0
+                ELSE _POSITION_DESCRIPTOR_N
+                END
             WHEN _descriptors[_i] ~ 'P' THEN
                 CASE
                 -- exception

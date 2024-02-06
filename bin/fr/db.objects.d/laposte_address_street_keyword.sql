@@ -17,7 +17,7 @@ CREATE OR REPLACE FUNCTION fr.get_keyword_of_street(
     name IN VARCHAR
     , words IN TEXT[] DEFAULT NULL
     , at_ IN INT DEFAULT 1
-    , groups VARCHAR DEFAULT 'ALL'      -- TITLE|TYPE|EXT
+    , groups VARCHAR DEFAULT 'ALL'
     , with_abbreviation IN BOOLEAN DEFAULT TRUE
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , kw_group OUT VARCHAR
@@ -43,7 +43,7 @@ BEGIN
     END IF;
 
     IF groups = 'ALL' THEN
-        _groups := '{TITLE,TYPE,EXT}'::VARCHAR[];
+        _groups := '{TITLE,TYPE,EXT,NAME}'::VARCHAR[];
     ELSE
         _groups := STRING_TO_ARRAY(groups, ',');
     END IF;
@@ -55,6 +55,7 @@ BEGIN
         IF (SELECT COUNT(*)
             FROM fr.laposte_address_street_keyword k
             WHERE k.name_abbreviated = words[at_]
+            AND LENGTH(k.name_abbreviated) > 1
         ) > 1 THEN
             _is_abbreviated := TRUE;
         ELSE
@@ -62,6 +63,7 @@ BEGIN
             INTO _kw
             FROM fr.laposte_address_street_keyword k
             WHERE k.name_abbreviated = words[at_]
+            AND LENGTH(k.name_abbreviated) > 1
             AND ARRAY_POSITION(_groups, k.group) > 0
             ORDER BY k.occurs DESC
             LIMIT 1;
@@ -126,11 +128,9 @@ BEGIN
                 AND (
                     ARRAY_POSITION(_groups, k.group) > 0
                 )
-                -- exclude one-char EXT keywords (A..Z)
+                -- exclude one-char EXT keywords (A..Z), NAME 1-letter abbreviation (A, ...)
                 AND (
-                    ((k.group = 'EXT') AND (LENGTH(k.name) > 1))
-                    OR
-                    (k.group != 'EXT')
+                    (LENGTH(k.name) > 1)
                 )
             -- keyword composed by many words (decreasing order)
             ORDER BY
