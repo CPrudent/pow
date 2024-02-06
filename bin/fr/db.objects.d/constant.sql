@@ -310,10 +310,9 @@ BEGIN
         SELECT *
         FROM (
             VALUES
-                --('TITLE', 'ABBAYE', NULL)
+                  ('TITLE', 'ABBAYE', 'ABBA')
                 --, ('TITLE', 'ABBE', NULL)
-                --,
-                  ('TITLE', 'ADJUDANT', 'ADJ')
+                , ('TITLE', 'ADJUDANT', 'ADJ')
                 , ('TITLE', 'AERODROME', 'AER')
                 , ('TITLE', 'AEROGARE', NULL)
                 , ('TITLE', 'AERONAUTIQUE', NULL)

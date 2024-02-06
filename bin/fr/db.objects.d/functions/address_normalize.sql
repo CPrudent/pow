@@ -376,7 +376,7 @@ CREATE OR REPLACE FUNCTION fr.order_changes(
     --, words IN VARCHAR[]
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , simulation IN BOOLEAN DEFAULT FALSE
-    , heuristic_method IN VARCHAR DEFAULT 'MNmC'
+    , heuristic_method IN VARCHAR DEFAULT 'MEmC'
     , ordered_changes OUT VARCHAR
 )
 AS
@@ -503,21 +503,32 @@ BEGIN
                     1
                 '
             );
-            IF simulation THEN
-                _query := '
-                    SELECT subsets
-                    FROM fr.tmp_order_changes
-                    '
-                ;
-            ELSE
-                _query := _query_select;
-            END IF;
-
-            EXECUTE CONCAT(_query, _query_orderby)
-                INTO ordered_changes
-                USING _subsets, changes, earns, len--, positions, words
-                ;
+        -- maximize earning w/ min change(s)
+        ELSIF heuristic_method = 'MEmC' THEN
+            _query_orderby := CONCAT('
+                ORDER BY
+                    (earn::NUMERIC / nchanges) DESC
+                    -- favour P,A against V,T
+                    , (n_v + n_t + (n_p * 2) + (n_a * 3)) DESC
+                    -- respect ascending order of changes (A1 before A2)
+                    , subsets
+                '
+            );
         END IF;
+        IF simulation THEN
+            _query := '
+                SELECT subsets
+                FROM fr.tmp_order_changes
+                '
+            ;
+        ELSE
+            _query := _query_select;
+        END IF;
+
+        EXECUTE CONCAT(_query, _query_orderby)
+            INTO ordered_changes
+            USING _subsets, changes, earns, len--, positions, words
+            ;
     END IF;
 END
 $func$ LANGUAGE plpgsql;
@@ -528,7 +539,7 @@ CREATE OR REPLACE FUNCTION fr.normalize_street_name(
     name IN VARCHAR
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , simulation IN BOOLEAN DEFAULT FALSE
-    , heuristic_method IN VARCHAR DEFAULT 'MNmC'
+    , heuristic_method IN VARCHAR DEFAULT 'MEmC'
     , name_normalized OUT VARCHAR
     , descriptors OUT VARCHAR
 )
