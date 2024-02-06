@@ -372,8 +372,8 @@ CREATE OR REPLACE FUNCTION fr.order_changes(
     , nchanges IN INT
     , changes IN VARCHAR[]
     , earns IN INT[]
-    --, positions IN INT[]
-    --, words IN VARCHAR[]
+    , positions IN INT[]
+    , words IN VARCHAR[]
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , simulation IN BOOLEAN DEFAULT FALSE
     , heuristic_method IN VARCHAR DEFAULT 'MEmC'
@@ -439,12 +439,12 @@ BEGIN
                 SELECT
                     c.change
                     , e.earn
-                    --, w.word
+                    , w.word
                 FROM
                     UNNEST($2) WITH ORDINALITY AS c(change, i)
                         JOIN UNNEST($3) WITH ORDINALITY AS e(earn, i) ON c.i = e.i
-                        --JOIN UNNEST($5) WITH ORDINALITY AS p(position, i) ON c.i = p.i
-                        --JOIN UNNEST($6) WITH ORDINALITY AS w(word, i) ON w.i = p.position
+                        JOIN UNNEST($5) WITH ORDINALITY AS p(position, i) ON c.i = p.i
+                        JOIN UNNEST($6) WITH ORDINALITY AS w(word, i) ON w.i = p.position
             )
             , earn_by_subset AS (
                 SELECT
@@ -455,11 +455,11 @@ BEGIN
                     , SUM(CASE WHEN ce.change ~ ''^T'' THEN 1 ELSE 0 END) n_t
                     , SUM(CASE WHEN ce.change ~ ''^P'' THEN 1 ELSE 0 END) n_p
                     , SUM(CASE WHEN ce.change ~ ''^A'' THEN 1 ELSE 0 END) n_a
-                    --, SUM(CASE WHEN w.word IS NOT NULL THEN w.rank_0 ELSE 0 END) nranks
+                    , SUM(CASE WHEN w.word IS NOT NULL THEN w.rank_0 ELSE 0 END) nranks
                 FROM
                     subsets_as_items s
                         JOIN change_and_earn ce ON s.item = ce.change
-                        --LEFT OUTER JOIN fr.laposte_address_street_word w ON w.word = ce.word
+                        LEFT OUTER JOIN fr.laposte_address_street_word w ON w.word = ce.word
                 GROUP BY
                     s.i
             )
@@ -482,14 +482,13 @@ BEGIN
                 , _query_select
             );
             EXECUTE _query
-                USING _subsets, changes, earns, len--, positions, words
+                USING _subsets, changes, earns, len, positions, words
                 ;
         END IF;
 
         -- maximize name (nearest 32) & minimize change(s)
         IF heuristic_method = 'MNmC' THEN
-            _query_orderby := CONCAT('
-                ORDER BY
+            _query_orderby := '
                     -- nearest max size
                     (32 - ($4 - earn))
                     -- favour P,A against V,T
@@ -498,22 +497,25 @@ BEGIN
                     , (nchanges)
                     -- respect ascending order of changes (A1 before A2)
                     , subsets
-                    --, nranks DESC
-                LIMIT
-                    1
-                '
-            );
+            ';
         -- maximize earning w/ min change(s)
         ELSIF heuristic_method = 'MEmC' THEN
-            _query_orderby := CONCAT('
-                ORDER BY
-                    (earn::NUMERIC / nchanges) DESC
+            /* NOTE
+            avoid unusual title (rank_0 at 1001 only for lt 200 occurs)
+            example: AVENUE DE LA GRANDE CHARMILLE DU PARC
+            w/ title CHARMILLE (abbr CHI not really readable!)
+            => normalized: AV LA GRANDE CHARMILLE DU PARC
+             */
+            _query_orderby := '
+                    CASE WHEN n_t > 0 AND nranks > 1001 THEN 1
+                    ELSE
+                        earn::NUMERIC / nchanges
+                    END DESC
                     -- favour P,A against V,T
                     , (n_v + n_t + (n_p * 2) + (n_a * 3)) DESC
                     -- respect ascending order of changes (A1 before A2)
                     , subsets
-                '
-            );
+            ';
         END IF;
         IF simulation THEN
             _query := '
@@ -525,9 +527,9 @@ BEGIN
             _query := _query_select;
         END IF;
 
-        EXECUTE CONCAT(_query, _query_orderby)
+        EXECUTE CONCAT(_query, ' ORDER BY ', _query_orderby, ' LIMIT 1')
             INTO ordered_changes
-            USING _subsets, changes, earns, len--, positions, words
+            USING _subsets, changes, earns, len, positions, words
             ;
     END IF;
 END
@@ -655,7 +657,7 @@ BEGIN
 
             -- earn of change
             _earn_changes[_nchanges] := CASE
-                -- don't forget to count space (as separator)!
+                -- delete article, and count space (as separator)!
                 WHEN _descriptors[_i] ~ 'A' THEN LENGTH(_words[_i]) +1
                 -- remain 1st letter only
                 WHEN _descriptors[_i] ~ 'P' THEN LENGTH(_words[_i]) -1
@@ -663,7 +665,7 @@ BEGIN
                 ELSE LENGTH(_words[_i]) - LENGTH(COALESCE(_words_abbreviated[_i], _words[_i]))
                 END
             ;
-            -- position of change (ith word)
+            -- position of change (i-th word)
             _position_changes[_nchanges] := _i;
         END IF;
     END LOOP;
@@ -685,8 +687,8 @@ BEGIN
             , nchanges => _nchanges
             , changes => _set_changes
             , earns => _earn_changes
-            --, positions => _position_changes
-            --, words => _words_normalized
+            , positions => _position_changes
+            , words => _words_normalized
             , raise_notice => raise_notice
             , simulation => simulation
             , heuristic_method => heuristic_method
@@ -710,9 +712,8 @@ BEGIN
 
         IF _descriptor IS NULL THEN
             RAISE 'changement %/% non trouvé!', _i, _nordered_changes;
-        ELSE
-            IF raise_notice THEN RAISE NOTICE 'changement %/% : % (w=%)', _i, _nordered_changes, _descriptor, _word; END IF;
         END IF;
+        IF raise_notice THEN RAISE NOTICE 'changement %/% : % (w=%)', _i, _nordered_changes, _descriptor, _word; END IF;
 
         IF _descriptor = 'A' THEN
             _words_normalized[_word] := NULL;
