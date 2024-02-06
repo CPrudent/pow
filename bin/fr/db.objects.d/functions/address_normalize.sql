@@ -372,6 +372,8 @@ CREATE OR REPLACE FUNCTION fr.order_changes(
     , nchanges IN INT
     , changes IN VARCHAR[]
     , earns IN INT[]
+    , positions IN INT[]
+    , words IN VARCHAR[]
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , simulation IN BOOLEAN DEFAULT FALSE
     , heuristic_method IN VARCHAR DEFAULT 'MNmC'
@@ -437,9 +439,12 @@ BEGIN
                 SELECT
                     c.change
                     , e.earn
+                    , w.word
                 FROM
                     UNNEST($2) WITH ORDINALITY AS c(change, i)
                         JOIN UNNEST($3) WITH ORDINALITY AS e(earn, i) ON c.i = e.i
+                        JOIN UNNEST($5) WITH ORDINALITY AS p(position, i) ON c.i = p.i
+                        JOIN UNNEST($6) WITH ORDINALITY AS w(word, i) ON w.i = p.position
             )
             , earn_by_subset AS (
                 SELECT
@@ -450,9 +455,11 @@ BEGIN
                     , SUM(CASE WHEN ce.change ~ ''^T'' THEN 1 ELSE 0 END) n_t
                     , SUM(CASE WHEN ce.change ~ ''^P'' THEN 1 ELSE 0 END) n_p
                     , SUM(CASE WHEN ce.change ~ ''^A'' THEN 1 ELSE 0 END) n_a
+                    , SUM(CASE WHEN w.word IS NOT NULL THEN w.rank_0 ELSE 0 END) nranks
                 FROM
                     subsets_as_items s
                         JOIN change_and_earn ce ON s.item = ce.change
+                        LEFT OUTER JOIN fr.laposte_address_street_word w ON w.word = ce.word
                 GROUP BY
                     s.i
             )
@@ -474,19 +481,26 @@ BEGIN
                 '
                 , _query_select
             );
-            EXECUTE _query USING _subsets, changes, earns, len;
+            EXECUTE _query
+                USING _subsets, changes, earns, len, positions, words
+                ;
         END IF;
 
         -- maximize name (nearest 32) & minimize change(s)
         IF heuristic_method = 'MNmC' THEN
             _query_orderby := CONCAT('
                 ORDER BY
-                    -- nearest max size
-                    ($4 - earn) DESC
-                    -- favour P,A against V,T
-                    , ((n_v * 4 + n_t * 3 + n_p * 2 + n_a) / 10)
-                    -- least change(s)
-                    , nchanges
+                    (
+                        -- nearest max size
+                        (($4 - earn) * 5)
+                        +
+                        -- favour P,A against V,T
+                        (((n_v * 4 + n_t * 3 + n_p * 2 + n_a) / 10) * 5)
+                        +
+                        -- least change(s)
+                        (nchanges * 5)
+                    )
+                    , nranks DESC
                 LIMIT
                     1
                 '
@@ -503,69 +517,8 @@ BEGIN
 
             EXECUTE CONCAT(_query, _query_orderby)
                 INTO ordered_changes
-                USING _subsets, changes, earns, len
+                USING _subsets, changes, earns, len, positions, words
                 ;
-
-            /*
-            ordered_changes := (
-                WITH
-                subsets AS (
-                    SELECT
-                        i
-                        , subsets
-                    FROM
-                        UNNEST(_subsets) WITH ORDINALITY AS s(subsets, i)
-                )
-                , subsets_as_items AS (
-                    SELECT
-                        i
-                        , UNNEST(STRING_TO_ARRAY(subsets, ',')) item
-                    FROM
-                        subsets
-                )
-                , change_and_earn AS (
-                    SELECT
-                        c.change
-                        , e.earn
-                    FROM
-                        UNNEST(changes) WITH ORDINALITY AS c(change, i)
-                            JOIN UNNEST(earns) WITH ORDINALITY AS e(earn, i) ON c.i = e.i
-                )
-                , earn_by_subset AS (
-                    SELECT
-                        s.i
-                        , SUM(ce.earn) earn
-                        , COUNT(*) nchanges
-                        , SUM(CASE WHEN ce.change ~ '^V' THEN 1 ELSE 0 END) n_v
-                        , SUM(CASE WHEN ce.change ~ '^T' THEN 1 ELSE 0 END) n_t
-                        , SUM(CASE WHEN ce.change ~ '^P' THEN 1 ELSE 0 END) n_p
-                        , SUM(CASE WHEN ce.change ~ '^A' THEN 1 ELSE 0 END) n_a
-                    FROM
-                        subsets_as_items s
-                            JOIN change_and_earn ce ON s.item = ce.change
-                    GROUP BY
-                        s.i
-                )
-                SELECT
-                    STRING_TO_ARRAY(s.subsets, ',') subsets
-                    --, es.earn
-                FROM
-                    subsets s
-                        JOIN earn_by_subset es ON s.i = es.i
-                WHERE
-                    -- normalized name
-                    (len - es.earn) <= 32
-                ORDER BY
-                    -- nearest max size
-                    (len - es.earn) DESC
-                    -- favour P,A against V,T
-                    , ((n_v * 4 + n_t * 3 + n_p * 2 + n_a) / 10)
-                    -- least change(s)
-                    , es.nchanges
-                LIMIT
-                    1
-            );
-             */
         END IF;
     END IF;
 END
@@ -716,6 +669,8 @@ BEGIN
             , nchanges => _nchanges
             , changes => _set_changes
             , earns => _earn_changes
+            , positions => _position_changes
+            , words => _words_normalized
             , raise_notice => raise_notice
             , simulation => simulation
             , heuristic_method => heuristic_method
