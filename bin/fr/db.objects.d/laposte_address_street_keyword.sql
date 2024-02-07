@@ -51,12 +51,21 @@ BEGIN
         RAISE NOTICE ' name=% (w=%, g=%)', name, words, _groups;
     END IF;
 
-    IF with_abbreviation THEN
+    IF (with_abbreviation
+        -- not article: EN abbreviation of ENCEINTE !
+        AND NOT fr.is_normalized_article(words[at_])
+        -- ARC abbr of ARCADE
+        AND NOT EXISTS(
+            SELECT 1
+            FROM fr.laposte_address_street_word
+            WHERE word = words[at_] AND as_default = 'N'
+        )
+    ) THEN
         IF (SELECT COUNT(*)
             FROM fr.laposte_address_street_keyword k
             WHERE k.name_abbreviated = words[at_]
             AND LENGTH(k.name_abbreviated) > 1
-            -- not article: EN abbreviation of ENCEINTE !
+
             AND NOT fr.is_normalized_article(k.name_abbreviated)
         ) > 1 THEN
             _is_abbreviated := TRUE;
@@ -67,7 +76,6 @@ BEGIN
             WHERE k.name_abbreviated = words[at_]
             AND LENGTH(k.name_abbreviated) > 1
             AND ARRAY_POSITION(_groups, k.group) > 0
-            AND NOT fr.is_normalized_article(k.name_abbreviated)
             ORDER BY k.occurs DESC
             LIMIT 1;
             IF FOUND THEN

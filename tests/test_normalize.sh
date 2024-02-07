@@ -25,7 +25,7 @@ bash_args \
         test
     ' \
     --args_v '
-        test:SPLIT|DESCRIPTORS_DIFF|DESCRIPTORS_LIST|DESCRIPTORS_CASE|NAME_LIST|NAME_CASE;
+        test:SPLIT|DESCRIPTORS_DIFF|DESCRIPTORS_LIST|DESCRIPTORS_CASE|NAME_DIFF|NAME_LIST|NAME_CASE;
         number_line:no|yes
     ' \
     --args_d '
@@ -271,6 +271,48 @@ _ko=0
     exit $_rc
 }
 
+[ "$get_arg_test" = NAME_DIFF ] && {
+    execute_query \
+        --name NAME_DIFF \
+        --query "
+            COPY (
+                SELECT
+                    name_normalized_pow
+                    , LENGTH(name_normalized_pow)
+                    , name_normalized_laposte
+                    , LENGTH(name_normalized_laposte)
+                    , code
+                    , name
+                    , LENGTH(name)
+                    , descriptors_pow
+                    , descriptors_laposte
+                FROM (
+                    SELECT
+                        nn.name_normalized name_normalized_pow
+                        , lb_voie_normalise AS name_normalized_laposte
+                        , co_cea code
+                        , lb_voie name
+                        , nn.descriptors descriptors_pow
+                        , lb_desc descriptors_laposte
+                    FROM
+                        fr.laposte_address_street s
+                            CROSS JOIN fr.normalize_street_name(lb_voie) nn
+                    WHERE
+                        fl_active
+                        AND
+                        lb_voie_normalise IS DISTINCT FROM lb_voie
+                    ) t
+                WHERE
+                    name_normalized_pow IS DISTINCT FROM name_normalized_laposte
+                ORDER BY
+                    name
+            ) TO STDOUT WITH (DELIMITER E',', FORMAT CSV, HEADER TRUE, ENCODING UTF8)
+            " \
+        --output $POW_DIR_TMP/normalized_name_diff.txt || exit $ERROR_CODE
+
+    exit $SUCCESS_CODE
+}
+
 [ "$get_arg_test" = NAME_LIST ] && {
     set_log_echo no
     for ((_i=0; _i < ${#TEST_A4S_NAME[*]}; _i++)); do
@@ -304,6 +346,131 @@ _ko=0
             _ko=$((_ko +1))
             [ "${_array[0]}" != "${TEST_A4S_NAME_NORMALIZED[$_i]}" ] && echo " nom ${_array[0]} : ${TEST_A4S_NAME_NORMALIZED[$_i]}"
             [ "${_array[1]}" != "${TEST_A4S_DESCRIPTOR[$_i]}" ] && echo " descripteur ${_array[1]}) : ${TEST_A4S_DESCRIPTOR[$_i]}"
+        }
+    done
+
+    echo
+    echo "Avec succès: $_ok"
+    echo "Avec erreur: $_ko"
+
+    [ $_ko -gt 0 ] && _rc=$ERROR_CODE || _rc=$SUCCESS_CODE
+    exit $_rc
+}
+
+[ "$get_arg_test" = NAME_CASE ] && {
+    declare -a _TEST_A4S_NAME=(
+        # abbr at the end (N|P)
+        'CHEMIN VICINAL 5 DE BRATEAU A LA GARE DE BOURAY'                       #  1
+        'RESTAURANT BON APPETIT SAINT VINCENT DURFORT'                          #  2
+        'QUARTIER LES CHENELETTES DE SAINT JULIEN EN SAINT ALBAN'               #  3
+        # restore full type (previously abbreviated) at the end
+        'MAISON RETRAITE VAGUEMESTRE ROSERAIE'                                  #  4
+        'AVENUE DU CORPS EXPEDITIONNAIRE FRANCAIS EN ITALIE'                    #  5
+        # no abbr firstname but delete article
+        'CHEMIN ROMAIN D ARLES A SAINT REMY'                                    #  6
+        # w/ abbr BAS/BASSE, ARC/ARCADES
+        'IMPASSE DES BAS DE SAINTE RADEGONDE'                                   #  7
+        'LOTISSEMENT JEANNE D ARC LES BONNETTES'                                #  8
+        # abbr title
+        'LE COTEAU DE SAINT DENIS DU TERTRE'                                    #  9
+        # abbr type
+        'CHEMIN DE LA SOUS STATION DE TIVERNON'                                 # 10
+        # abbr name (at the end, N|P) again!
+        'RUE NATIONALE AVENUE DU PRESIDENT FRANCOIS MITTERRAND'                 # 11
+        'ROUTE DE BEAUCAIRE ROUTE DEPARTEMENTALE 15'                            # 12
+        'VOIE COMMUNALE NUMERO 5 DE BEAUTHEIL A COULOMMIERS'                    # 13
+        #
+        'PLACE DES ANCIENS COMBATTANTS D AFRIQUE DU NORD 1952 1962'             # 14
+        'RUE DU 1ER REGIMENT DE CHASSEURS PARACHUTISTES'                        # 15
+        'PLACE DU MONUMENT AUX MORTS 11 NOVEMBRE 1918'                          # 16
+        'SQUARE DES ECRIVAINS COMBATTANTS MORTS POUR LA FRANCE'                 # 17
+        'ALLEE DE L ABBAYE NOTRE DAME DU GRAND MARCHE'                          # 18
+        # typo, but!
+        'ZONE ARTISANALE ZAC DU PRE DE PAQUES'                                  # 19
+        #
+        'RUE DE LA ZONE D AMENAGEMENT CONCERTE'                                 # 20
+
+    )
+    declare -a _TEST_A4S_DESCRIPTOR=(
+        VVCANAATAN                                                              #  1
+        TNNTPN                                                                  #  2
+        VANATPATN                                                               #  3
+        TNNN                                                                    #  4
+        VANNTAN                                                                 #  5
+        VPANATN                                                                 #  6
+        VATATN                                                                  #  7
+        VPANAN                                                                  #  8
+        ATATPAN                                                                 #  9
+        VAANTAN                                                                 # 10
+        VNTATPN                                                                 # 11
+        VANTNC                                                                  # 12
+        VNNCANAN                                                                # 13
+        VANNANANCC                                                              # 14
+        VACTANN                                                                 # 15
+        VANANCNC                                                                # 16
+        VATNNNAN                                                                # 17
+        VAATTTATN                                                               # 18
+        VVNATAN                                                                 # 19
+        VAANNNN                                                                 # 20
+    )
+
+    declare -a _TEST_A4S_NAME_NORMALIZED=(
+        #         1         2         3
+        #12345678901234567890123456789012
+        'CHEMIN VICINAL 5 B GARE BOURAY'                                        #  1
+        'RESTAURANT B A ST V DURFORT'                                           #  2
+        'QUA CHENELETTES ST J ST ALBAN'                                         #  3
+        'MAISON R VAGUEMESTRE ROSERAIE'                                         #  4
+        'AV C EXPEDITIONNAIRE FR ITALIE'                                        #  5
+        'CHEMIN ROMAIN ARLES A SAINT REMY'                                      #  6
+        'IMPASSE DES BAS SAINTE RADEGONDE'                                      #  7
+        'LOTISSEMENT JEANNE ARC BONNETTES'                                      #  8
+        'LE COTE DE SAINT DENIS DU TERTRE'                                      #  9
+        'CHE LA SOUS STATION DE TIVERNON'                                       # 10
+        'R NATIONALE AV PDT F MITTERRAND'                                       # 11
+        'ROUTE B RTE DEPARTEMENTALE 15'                                         # 12
+        'VOIE C N 5 BEAUTHEIL COULOMMIERS'                                      # 13
+        'PL A COMB AFRIQUE NORD 1952 1962'                                      # 14
+        'RUE 1ER RGT C PARACHUTISTES'                                           # 15
+        'PLACE M MORTS 11 NOVEMBRE 1918'                                        # 16
+        'SQ ECRIV COMB MORTS POUR FRANCE'                                       # 17
+        'ALL DE ABBAYE ND DU GRAND MARCHE'                                      # 18
+        'ZA ZAC DU PRE DE PAQUES'                                               # 19
+        'R LA ZONE D AMENAGEMENT CONCERTE'                                      # 20
+    )
+
+    set_log_echo no
+    for ((_i=0; _i < ${#_TEST_A4S_NAME[*]}; _i++)); do
+        execute_query \
+        --name NAME_CASE \
+        --query "
+            SELECT name_normalized, descriptors
+            FROM fr.normalize_street_name(
+                name => '${_TEST_A4S_NAME[$_i]}'
+            )
+        " \
+        --psql_arguments 'tuples-only:pset=format=unaligned' \
+        --return _normalize || {
+            cat $POW_DIR_ARCHIVE/NAME_CASE.error.log
+            exit $ERROR_CODE
+        }
+
+        _tmp=${_normalize// /:}
+        _array=(${_tmp//|/ })
+        _array[0]=${_array[0]//:/ }
+        _array[1]=${_array[1]//:/ }
+
+        [ "$get_arg_number_line" = yes ] && { echo_number_line ${#_TEST_A4S_NAME[*]} $((_i +1)); }
+        echo -n "nom='${_TEST_A4S_NAME[$_i]}' : "
+        [ "${_array[0]}" = "${_TEST_A4S_NAME_NORMALIZED[$_i]}" ] &&
+        [ "${_array[1]}" = "${_TEST_A4S_DESCRIPTOR[$_i]}" ] && {
+            echo 'OK'
+            _ok=$((_ok +1))
+        } || {
+            echo 'KO'
+            _ko=$((_ko +1))
+            [ "${_array[0]}" != "${_TEST_A4S_NAME_NORMALIZED[$_i]}" ] && echo " nom ${_array[0]} : ${_TEST_A4S_NAME_NORMALIZED[$_i]}"
+            [ "${_array[1]}" != "${_TEST_A4S_DESCRIPTOR[$_i]}" ] && echo " descripteur ${_array[1]}) : ${_TEST_A4S_DESCRIPTOR[$_i]}"
         }
     done
 
