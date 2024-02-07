@@ -213,20 +213,21 @@ BEGIN
         SELECT *
         FROM (
             VALUES
-                  ('NAME', 'AFN', 'A')
-                , ('NAME', 'AFRIQUE', 'A')
-                , ('NAME', 'ALGERIE', 'A')
-                , ('NAME', 'ANCIENS', 'ANC')
-                , ('NAME', 'CHASSEURS', 'C')
+                --  ('NAME', 'AFN', 'A')
+                --, ('NAME', 'AFRIQUE', 'A')
+                --, ('NAME', 'ALGERIE', 'A')
+                --,
+                  ('NAME', 'ANCIENS', 'ANC')
+                --, ('NAME', 'CHASSEURS', 'C')
                 , ('NAME', 'COMBATTANTS', 'COMB')
-                , ('NAME', 'COMMUNALE', 'C')
-                , ('NAME', 'DEPARTEMENTALE', 'D')
+                --, ('NAME', 'COMMUNALE', 'C')
+                --, ('NAME', 'DEPARTEMENTALE', 'D')
                 , ('NAME', 'ECRIVAINS', 'ECRIV')
-                , ('NAME', 'NATIONALE', 'N')
-                , ('NAME', 'NUMERO', 'N')
-                , ('NAME', 'MONUMENT', 'M')
-                , ('NAME', 'RURALE', 'R')
-                , ('NAME', 'TUNISIE', 'T')
+                --, ('NAME', 'NATIONALE', 'N')
+                --, ('NAME', 'NUMERO', 'N')
+                --, ('NAME', 'MONUMENT', 'M')
+                --, ('NAME', 'RURALE', 'R')
+                --, ('NAME', 'TUNISIE', 'T')
         ) AS x("group", name, name_abbreviated)
         ;
 
@@ -372,6 +373,7 @@ BEGIN
                 , ('TITLE', 'COMPAGNONS', 'COMP')
                 , ('TITLE', 'COOPERATIVE', 'COOP')
                 , ('TITLE', 'COULOIR', NULL)
+                , ('TITLE', 'COUR', 'COUR')
                 , ('TITLE', 'COURS', 'COUR')
                 , ('TITLE', 'CROIX', 'CRX')
                 --, ('TITLE', 'DEPARTEMENTAL', 'DEP')

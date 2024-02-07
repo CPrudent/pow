@@ -389,10 +389,19 @@ DECLARE
     _subsets VARCHAR[];
     _ordered_changes VARCHAR[];
     _earns INT[];
+    _nrows INT;
+    _i INT;
 BEGIN
     IF raise_notice THEN RAISE NOTICE 'C=% E=% #=% len=%', changes, earns, nchanges, len; END IF;
 
-    -- descending bigger earn
+    /* NOTE
+    many filters
+
+    DBE: descending bigger earn
+    MNmC: maximize name (nearest 32) & minimize change(s)
+    MEmC: maximize earning w/ min change(s)
+     */
+
     IF heuristic_method = 'DBE' THEN
         ordered_changes :=
             ARRAY(
@@ -418,119 +427,145 @@ BEGIN
             RAISE NOTICE 'subsets=%', _subsets;
         END IF;
 
-        IF simulation THEN _query_columns := ', $4 len, es.*'; END IF;
-        _query_select := CONCAT('
-            WITH
-            subsets AS (
+        /* NOTE
+        step 1 to find all solutions w/ NN restriction, so lt 32
+        step 2 better solution from all, but gt 32
+         */
+        FOR _i IN 1 .. 2
+        LOOP
+            IF simulation THEN _query_columns := ', $4 len, es.*'; END IF;
+            _query_select := CONCAT('
+                WITH
+                subsets AS (
+                    SELECT
+                        i
+                        , subsets
+                    FROM
+                        UNNEST($1) WITH ORDINALITY AS s(subsets, i)
+                )
+                , subsets_as_items AS (
+                    SELECT
+                        i
+                        , UNNEST(STRING_TO_ARRAY(subsets, '','')) item
+                    FROM
+                        subsets
+                )
+                , change_and_earn AS (
+                    SELECT
+                        c.change
+                        , e.earn
+                        , w.word
+                    FROM
+                        UNNEST($2) WITH ORDINALITY AS c(change, i)
+                            JOIN UNNEST($3) WITH ORDINALITY AS e(earn, i) ON c.i = e.i
+                            JOIN UNNEST($5) WITH ORDINALITY AS p(position, i) ON c.i = p.i
+                            JOIN UNNEST($6) WITH ORDINALITY AS w(word, i) ON w.i = p.position
+                )
+                , earn_by_subset AS (
+                    SELECT
+                        s.i
+                        , SUM(ce.earn) earn
+                        , COUNT(*) nchanges
+                        , SUM(CASE WHEN ce.change ~ ''^V'' THEN 1 ELSE 0 END) n_v
+                        , SUM(CASE WHEN ce.change ~ ''^T'' THEN 1 ELSE 0 END) n_t
+                        , SUM(CASE WHEN ce.change ~ ''^P'' THEN 1 ELSE 0 END) n_p
+                        , SUM(CASE WHEN ce.change ~ ''^A'' THEN 1 ELSE 0 END) n_a
+                        , SUM(CASE WHEN w.word IS NOT NULL THEN w.rank_0 ELSE 0 END) nranks
+                    FROM
+                        subsets_as_items s
+                            JOIN change_and_earn ce ON s.item = ce.change
+                            LEFT OUTER JOIN fr.laposte_address_street_word w ON w.word = ce.word
+                    GROUP BY
+                        s.i
+                )
                 SELECT
-                    i
-                    , subsets
+                    STRING_TO_ARRAY(s.subsets, '','') subsets
+                    ', _query_columns, '
                 FROM
-                    UNNEST($1) WITH ORDINALITY AS s(subsets, i)
-            )
-            , subsets_as_items AS (
-                SELECT
-                    i
-                    , UNNEST(STRING_TO_ARRAY(subsets, '','')) item
-                FROM
-                    subsets
-            )
-            , change_and_earn AS (
-                SELECT
-                    c.change
-                    , e.earn
-                    , w.word
-                FROM
-                    UNNEST($2) WITH ORDINALITY AS c(change, i)
-                        JOIN UNNEST($3) WITH ORDINALITY AS e(earn, i) ON c.i = e.i
-                        JOIN UNNEST($5) WITH ORDINALITY AS p(position, i) ON c.i = p.i
-                        JOIN UNNEST($6) WITH ORDINALITY AS w(word, i) ON w.i = p.position
-            )
-            , earn_by_subset AS (
-                SELECT
-                    s.i
-                    , SUM(ce.earn) earn
-                    , COUNT(*) nchanges
-                    , SUM(CASE WHEN ce.change ~ ''^V'' THEN 1 ELSE 0 END) n_v
-                    , SUM(CASE WHEN ce.change ~ ''^T'' THEN 1 ELSE 0 END) n_t
-                    , SUM(CASE WHEN ce.change ~ ''^P'' THEN 1 ELSE 0 END) n_p
-                    , SUM(CASE WHEN ce.change ~ ''^A'' THEN 1 ELSE 0 END) n_a
-                    , SUM(CASE WHEN w.word IS NOT NULL THEN w.rank_0 ELSE 0 END) nranks
-                FROM
-                    subsets_as_items s
-                        JOIN change_and_earn ce ON s.item = ce.change
-                        LEFT OUTER JOIN fr.laposte_address_street_word w ON w.word = ce.word
-                GROUP BY
-                    s.i
-            )
-            SELECT
-                STRING_TO_ARRAY(s.subsets, '','') subsets
-                ', _query_columns, '
-            FROM
-                subsets s
-                    JOIN earn_by_subset es ON s.i = es.i
-            WHERE
-                -- normalized name
-                ($4 - es.earn) <= 32
-            '
-        );
-        IF simulation THEN
-            _query := CONCAT('
-                DROP TABLE IF EXISTS fr.tmp_order_changes;
-                CREATE TABLE fr.tmp_order_changes AS
+                    subsets s
+                        JOIN earn_by_subset es ON s.i = es.i
                 '
-                , _query_select
+                , CASE WHEN _i = 1 THEN
+                    '
+                    WHERE
+                        -- normalized name
+                        ($4 - es.earn) <= 32
+                    '
+                END
             );
-            EXECUTE _query
+            IF simulation THEN
+                _query := CONCAT('
+                    DROP TABLE IF EXISTS fr.tmp_order_changes;
+                    CREATE TABLE fr.tmp_order_changes AS
+                    '
+                    , _query_select
+                );
+                EXECUTE _query
+                    USING _subsets, changes, earns, len, positions, words
+                    ;
+            END IF;
+
+            _query_orderby := CASE
+                WHEN _i = 1 THEN
+                    CASE
+                    WHEN heuristic_method = 'MNmC' THEN
+                        '
+                        -- nearest max size
+                        (32 - ($4 - earn))
+                        -- favour P,A against V,T
+                        , (n_v + n_t + (n_p * 2) + (n_a * 3)) DESC
+                        -- least change(s)
+                        , (nchanges)
+                        -- respect ascending order of changes (A1 before A2)
+                        , subsets
+                        '
+                    WHEN heuristic_method = 'MEmC' THEN
+                        /* NOTE
+                        avoid unusual title (rank_0 at 1001 only for lt 200 occurs)
+                        example: AVENUE DE LA GRANDE CHARMILLE DU PARC
+                        w/ title CHARMILLE (abbr CHI not really readable!)
+                        => normalized: AV LA GRANDE CHARMILLE DU PARC
+                        */
+                        '
+                        CASE WHEN n_t > 0 AND nranks > 1001 THEN 1
+                        ELSE
+                            earn::NUMERIC / nchanges
+                        END DESC
+                        -- favour P,A against V,T
+                        , (n_v + n_t + (n_p * 2) + (n_a * 3)) DESC
+                        -- respect ascending order of changes (A1 before A2)
+                        , subsets
+                        '
+                    END
+                ELSE
+                    '
+                    earn DESC
+                    '
+                END
+            ;
+
+            IF simulation THEN
+                _query := '
+                    SELECT subsets
+                    FROM fr.tmp_order_changes
+                    '
+                ;
+            ELSE
+                _query := _query_select;
+            END IF;
+
+            EXECUTE CONCAT(_query, ' ORDER BY ', _query_orderby, ' LIMIT 1')
+                INTO ordered_changes
                 USING _subsets, changes, earns, len, positions, words
                 ;
-        END IF;
+            GET DIAGNOSTICS _nrows = ROW_COUNT;
+            IF raise_notice THEN RAISE NOTICE '#cas=%', _nrows; END IF;
 
-        -- maximize name (nearest 32) & minimize change(s)
-        IF heuristic_method = 'MNmC' THEN
-            _query_orderby := '
-                    -- nearest max size
-                    (32 - ($4 - earn))
-                    -- favour P,A against V,T
-                    , (n_v + n_t + (n_p * 2) + (n_a * 3)) DESC
-                    -- least change(s)
-                    , (nchanges)
-                    -- respect ascending order of changes (A1 before A2)
-                    , subsets
-            ';
-        -- maximize earning w/ min change(s)
-        ELSIF heuristic_method = 'MEmC' THEN
-            /* NOTE
-            avoid unusual title (rank_0 at 1001 only for lt 200 occurs)
-            example: AVENUE DE LA GRANDE CHARMILLE DU PARC
-            w/ title CHARMILLE (abbr CHI not really readable!)
-            => normalized: AV LA GRANDE CHARMILLE DU PARC
-             */
-            _query_orderby := '
-                    CASE WHEN n_t > 0 AND nranks > 1001 THEN 1
-                    ELSE
-                        earn::NUMERIC / nchanges
-                    END DESC
-                    -- favour P,A against V,T
-                    , (n_v + n_t + (n_p * 2) + (n_a * 3)) DESC
-                    -- respect ascending order of changes (A1 before A2)
-                    , subsets
-            ';
-        END IF;
-        IF simulation THEN
-            _query := '
-                SELECT subsets
-                FROM fr.tmp_order_changes
-                '
-            ;
-        ELSE
-            _query := _query_select;
-        END IF;
-
-        EXECUTE CONCAT(_query, ' ORDER BY ', _query_orderby, ' LIMIT 1')
-            INTO ordered_changes
-            USING _subsets, changes, earns, len, positions, words
-            ;
+            -- with solution ?
+            IF _nrows > 0 THEN
+                EXIT;
+            END IF;
+        END LOOP;
     END IF;
 END
 $func$ LANGUAGE plpgsql;
@@ -657,7 +692,7 @@ BEGIN
 
             -- earn of change
             _earn_changes[_nchanges] := CASE
-                -- delete article, and count space (as separator)!
+                -- delete article (count space separator, +1)
                 WHEN _descriptors[_i] ~ 'A' THEN LENGTH(_words[_i]) +1
                 -- remain 1st letter only
                 WHEN _descriptors[_i] ~ 'P' THEN LENGTH(_words[_i]) -1
@@ -681,65 +716,111 @@ BEGIN
         RETURN;
     END IF;
 
-    _ordered_changes := (
-        SELECT fr.order_changes(
-            len => _len_normalized
-            , nchanges => _nchanges
-            , changes => _set_changes
-            , earns => _earn_changes
-            , positions => _position_changes
-            , words => _words_normalized
-            , raise_notice => raise_notice
-            , simulation => simulation
-            , heuristic_method => heuristic_method
-        )
-    );
-    IF _ordered_changes IS NULL THEN
-        name_normalized := NULL;
-        RAISE NOTICE 'pas de normalisation (%) : NN=% #=%', name, _words_normalized, _len_normalized;
-        RETURN;
+    -- at least 1 change
+    IF _nchanges > 0 THEN
+        -- search for better solution (subset) of all change(s)
+        _ordered_changes := (
+            SELECT fr.order_changes(
+                len => _len_normalized
+                , nchanges => _nchanges
+                , changes => _set_changes
+                , earns => _earn_changes
+                , positions => _position_changes
+                , words => _words_normalized
+                , raise_notice => raise_notice
+                , simulation => simulation
+                , heuristic_method => heuristic_method
+            )
+        );
+
+        IF raise_notice THEN RAISE NOTICE 'C=%, P=%, G=%, O=%', _set_changes, _position_changes, _earn_changes, _ordered_changes; END IF;
+        IF simulation THEN name_normalized := NULL; RETURN; END IF;
+
+        _nordered_changes := ARRAY_LENGTH(_ordered_changes, 1);
+        FOR _i IN 1 .. _nordered_changes
+        LOOP
+            _position := ARRAY_POSITION(_set_changes, _ordered_changes[_i]);
+            _word := _position_changes[_position];
+            _descriptor := SUBSTR(_ordered_changes[_i], 1, 1);
+
+            IF _descriptor IS NULL THEN
+                RAISE 'changement %/% non trouvé!', _i, _nordered_changes;
+            END IF;
+            IF raise_notice THEN RAISE NOTICE 'changement %/% : % (w=%)', _i, _nordered_changes, _descriptor, _word; END IF;
+
+            IF _descriptor = 'A' THEN
+                _words_normalized[_word] := NULL;
+                _words_normalized_len := _words_normalized_len -1;
+                _len_normalized := _len_normalized - _earn_changes[_position];
+            ELSIF _descriptor = 'P' THEN
+                _words_normalized[_word] := SUBSTR(_words_normalized[_word], 1, 1);
+                _len_normalized := _len_normalized - _earn_changes[_position];
+            ELSE
+                _words_normalized[_word] := _words_abbreviated[_word];
+                _len_normalized := _len_normalized - _earn_changes[_position];
+            /*
+            ELSIF _descriptor = 'V' THEN
+                -- OK if deleting all article(s)
+                IF ((_len_normalized - _total_a) <= 32) THEN
+                    _each = 'A';
+                    CONTINUE;
+                END IF;
+            */
+            END IF;
+
+            IF _len_normalized <= 32 THEN
+                EXIT;
+            END IF;
+        END LOOP;
     END IF;
 
-    IF raise_notice THEN RAISE NOTICE 'C=%, P=%, G=%, O=%', _set_changes, _position_changes, _earn_changes, _ordered_changes; END IF;
-    IF simulation THEN name_normalized := NULL; RETURN; END IF;
-
-    _nordered_changes := ARRAY_LENGTH(_ordered_changes, 1);
-    FOR _i IN 1 .. _nordered_changes
-    LOOP
-        _position := ARRAY_POSITION(_set_changes, _ordered_changes[_i]);
-        _word := _position_changes[_position];
-        _descriptor := SUBSTR(_ordered_changes[_i], 1, 1);
-
-        IF _descriptor IS NULL THEN
-            RAISE 'changement %/% non trouvé!', _i, _nordered_changes;
-        END IF;
-        IF raise_notice THEN RAISE NOTICE 'changement %/% : % (w=%)', _i, _nordered_changes, _descriptor, _word; END IF;
-
-        IF _descriptor = 'A' THEN
-            _words_normalized[_word] := NULL;
-            _words_normalized_len := _words_normalized_len -1;
-            _len_normalized := _len_normalized - _earn_changes[_position];
-        ELSIF _descriptor = 'P' THEN
-            _words_normalized[_word] := SUBSTR(_words_normalized[_word], 1, 1);
-            _len_normalized := _len_normalized - _earn_changes[_position];
+    -- not normalized ? try to abbreviate name(s) to just initials (1-letter)
+    IF _len_normalized > 32 THEN
+        -- exists ST|STE w/ firstname as following word (so not abbreviated) ?
+        _j := COALESCE(ARRAY_POSITION(_words, 'SAINT'), ARRAY_POSITION(_words, 'SAINTE'));
+        IF (_j IS NOT NULL
+            AND
+            _j < _words_len
+            AND
+            _descriptors[_j +1] ~ 'P'
+            AND
+            (_len_normalized - (LENGTH(_words[_j +1]) - 1)) <= 32
+        ) THEN
+            _j := _j +1;
         ELSE
-            _words_normalized[_word] := _words_abbreviated[_word];
-            _len_normalized := _len_normalized - _earn_changes[_position];
-        /*
-        ELSIF _descriptor = 'V' THEN
-            -- OK if deleting all article(s)
-            IF ((_len_normalized - _total_a) <= 32) THEN
-                _each = 'A';
-                CONTINUE;
+            _j := CASE
+                -- don't abbreviate 1st name
+                WHEN _descriptors[1] = 'N' THEN 2
+                ELSE 1
+                END
+            ;
+        END IF;
+        FOR _i IN _j .. _words_len
+        LOOP
+            _descriptor := CASE WHEN _i = _j THEN 'N|P' ELSE 'N' END;
+            IF _descriptors[_i] ~ _descriptor AND _words_normalized[_i] IS NOT NULL THEN
+                _len_normalized := _len_normalized - (LENGTH(_words_normalized[_i]) -1);
+                _words_normalized[_i] := SUBSTR(_words_normalized[_i], 1, 1);
+                IF _len_normalized <= 32 THEN
+                    EXIT;
+                END IF;
             END IF;
-         */
-        END IF;
+        END LOOP;
+    END IF;
 
-        IF _len_normalized <= 32 THEN
-            EXIT;
+    IF _len_normalized <= 32 THEN
+        -- try to restore type (if abbreviated and NN is possible w/o)
+        IF (_descriptors[1] ~ 'V|T'
+            AND
+            (_len_normalized + (LENGTH(_words[1]) - LENGTH(_words_abbreviated[1]))) <= 32
+        ) THEN
+            _words_normalized[1] := _words[1];
         END IF;
-    END LOOP;
-    name_normalized := ARRAY_TO_STRING(_words_normalized, ' ');
+        name_normalized := ARRAY_TO_STRING(_words_normalized, ' ');
+    ELSE
+        name_normalized := NULL;
+        RAISE NOTICE 'pas de normalisation (%) : NN=% #=%', name, _words_normalized, _len_normalized;
+    END IF;
 END
 $func$ LANGUAGE plpgsql;
 

@@ -56,6 +56,8 @@ BEGIN
             FROM fr.laposte_address_street_keyword k
             WHERE k.name_abbreviated = words[at_]
             AND LENGTH(k.name_abbreviated) > 1
+            -- not article: EN abbreviation of ENCEINTE !
+            AND NOT fr.is_normalized_article(k.name_abbreviated)
         ) > 1 THEN
             _is_abbreviated := TRUE;
         ELSE
@@ -65,6 +67,7 @@ BEGIN
             WHERE k.name_abbreviated = words[at_]
             AND LENGTH(k.name_abbreviated) > 1
             AND ARRAY_POSITION(_groups, k.group) > 0
+            AND NOT fr.is_normalized_article(k.name_abbreviated)
             ORDER BY k.occurs DESC
             LIMIT 1;
             IF FOUND THEN
@@ -176,16 +179,16 @@ BEGIN
         kw_group := _kw.group;
         kw := _kw.name;
         kw_abbreviated := _kw.name_abbreviated;
-        kw_is_abbreviated := CASE
-            WHEN _is_abbreviated THEN TRUE
-            ELSE
-                (
-                    (words[at_] IS NOT DISTINCT FROM _kw.name_abbreviated)
-                    AND
-                    (_kw.name != _kw.name_abbreviated)
-                )
-            END
-            ;
+        /* NOTE
+        event if is_abbreviated is TRUE, eval kw to verify if distinct
+        counter example: (COUR, abbr COUR) return TRUE!
+        because many kw w/ COUR as abbr
+         */
+        kw_is_abbreviated := (
+            (words[at_] IS NOT DISTINCT FROM _kw.name_abbreviated)
+            AND
+            (_kw.name != _kw.name_abbreviated)
+        );
         kw_nwords := count_words(_kw.name);
     END IF;
 END
