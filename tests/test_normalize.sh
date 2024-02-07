@@ -25,7 +25,7 @@ bash_args \
         test
     ' \
     --args_v '
-        test:SPLIT|DESCRIPTORS_DIFF|DESCRIPTORS_LIST|DESCRIPTORS_CASE;
+        test:SPLIT|DESCRIPTORS_DIFF|DESCRIPTORS_LIST|DESCRIPTORS_CASE|NAME_LIST|NAME_CASE;
         number_line:no|yes
     ' \
     --args_d '
@@ -260,6 +260,50 @@ _ko=0
         } || {
             _ko=$((_ko +1))
             echo "<<<$_normalize>>>, KO"
+        }
+    done
+
+    echo
+    echo "Avec succès: $_ok"
+    echo "Avec erreur: $_ko"
+
+    [ $_ko -gt 0 ] && _rc=$ERROR_CODE || _rc=$SUCCESS_CODE
+    exit $_rc
+}
+
+[ "$get_arg_test" = NAME_LIST ] && {
+    set_log_echo no
+    for ((_i=0; _i < ${#TEST_A4S_NAME[*]}; _i++)); do
+        execute_query \
+        --name NAME_LIST \
+        --query "
+            SELECT name_normalized, descriptors
+            FROM fr.normalize_street_name(
+                name => '${TEST_A4S_NAME[$_i]}'
+            )
+        " \
+        --psql_arguments 'tuples-only:pset=format=unaligned' \
+        --return _normalize || {
+            cat $POW_DIR_ARCHIVE/NAME_LIST.error.log
+            exit $ERROR_CODE
+        }
+
+        _tmp=${_normalize// /:}
+        _array=(${_tmp//|/ })
+        _array[0]=${_array[0]//:/ }
+        _array[1]=${_array[1]//:/ }
+
+        [ "$get_arg_number_line" = yes ] && { echo_number_line $TEST_A4S_SZ $((_i +1)); }
+        echo -n "nom='${TEST_A4S_NAME[$_i]}' : "
+        [ "${_array[0]}" = "${TEST_A4S_NAME_NORMALIZED[$_i]}" ] &&
+        [ "${_array[1]}" = "${TEST_A4S_DESCRIPTOR[$_i]}" ] && {
+            echo 'OK'
+            _ok=$((_ok +1))
+        } || {
+            echo 'KO'
+            _ko=$((_ko +1))
+            [ "${_array[0]}" != "${TEST_A4S_NAME_NORMALIZED[$_i]}" ] && echo " nom ${_array[0]} : ${TEST_A4S_NAME_NORMALIZED[$_i]}"
+            [ "${_array[1]}" != "${TEST_A4S_DESCRIPTOR[$_i]}" ] && echo " descripteur ${_array[1]}) : ${TEST_A4S_DESCRIPTOR[$_i]}"
         }
     done
 

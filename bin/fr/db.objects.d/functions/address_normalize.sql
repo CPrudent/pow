@@ -376,7 +376,7 @@ CREATE OR REPLACE FUNCTION fr.order_changes(
     , words IN VARCHAR[]
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , simulation IN BOOLEAN DEFAULT FALSE
-    , heuristic_method IN VARCHAR DEFAULT 'MEmC'
+    , heuristic_method IN VARCHAR DEFAULT 'MEmCMN'
     , ordered_changes OUT VARCHAR
 )
 AS
@@ -395,11 +395,12 @@ BEGIN
     IF raise_notice THEN RAISE NOTICE 'C=% E=% #=% len=%', changes, earns, nchanges, len; END IF;
 
     /* NOTE
-    many filters
+    heuristic orders
 
     DBE: descending bigger earn
     MNmC: maximize name (nearest 32) & minimize change(s)
     MEmC: maximize earning w/ min change(s)
+    MEmCMN: maximize earning w/ min change(s) maximize name (nearest 32)
      */
 
     IF heuristic_method = 'DBE' THEN
@@ -536,6 +537,14 @@ BEGIN
                         -- respect ascending order of changes (A1 before A2)
                         , subsets
                         '
+                    WHEN heuristic_method = 'MEmCMN' THEN
+                        '
+                        CASE WHEN n_t > 0 AND nranks > 1001 THEN 1
+                        ELSE
+                            (earn::NUMERIC / nchanges) /
+                                NULLIF((((32 - ($4 - earn)) * nchanges)), 0)
+                        END DESC
+                        '
                     END
                 ELSE
                     '
@@ -576,7 +585,7 @@ CREATE OR REPLACE FUNCTION fr.normalize_street_name(
     name IN VARCHAR
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , simulation IN BOOLEAN DEFAULT FALSE
-    , heuristic_method IN VARCHAR DEFAULT 'MEmC'
+    , heuristic_method IN VARCHAR DEFAULT 'MEmCMN'
     , name_normalized OUT VARCHAR
     , descriptors OUT VARCHAR
 )
@@ -664,8 +673,11 @@ BEGIN
                 END
             WHEN _descriptors[_i] ~ 'P' THEN
                 CASE
-                -- exception
+                -- exception if
+                --  previous word is holy
                 WHEN _i > 1 AND _words[_i -1] ~ '^(ST|STE|SAINT|SAINTE)$' THEN 0
+                --  next is number
+                WHEN _i < _words_len AND _descriptors[_i +1] ~ 'C' THEN 0
                 ELSE _POSITION_DESCRIPTOR_P
                 END
             WHEN _descriptors[_i] ~ 'T' THEN _POSITION_DESCRIPTOR_T
@@ -797,7 +809,11 @@ BEGIN
         END IF;
         FOR _i IN _j .. _words_len
         LOOP
-            _descriptor := CASE WHEN _i = _j THEN 'N|P' ELSE 'N' END;
+            _descriptor := CASE
+                WHEN _i = _j OR _i = (_words_len -1) THEN 'N|P'
+                ELSE 'N'
+                END
+            ;
             IF _descriptors[_i] ~ _descriptor AND _words_normalized[_i] IS NOT NULL THEN
                 _len_normalized := _len_normalized - (LENGTH(_words_normalized[_i]) -1);
                 _words_normalized[_i] := SUBSTR(_words_normalized[_i], 1, 1);

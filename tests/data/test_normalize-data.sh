@@ -61,103 +61,105 @@ declare -a TEST_A4S_DESCRIPTOR=(
 )
 
 declare -a TEST_A4S_NAME_NORMALIZED=(
-    'RUE 19 FEVRIER 1416 CHEM DIGUE'                                        #  1
+    #         1         2         3
+    #12345678901234567890123456789012
+    'RUE 19 FEVRIER 1416 CHEMIN DIGUE'                                      #  1
     'RUE DU LTDV D ESTIENNE D ORVES'                                        #  2
-    'RUE DR P LAFLOTTE L ANC HOPITAL'                                       #  3
-    'ZONE ARTISANALE C HT TAPPES'                                           #  4
-    'CHEMIN ND CHAMPS ET DES VIGNES'                                        #  5
-    'PL ND DE LA LEGION D HONNEUR'                                          #  6
+    'R DR P LAFLOTTE L ANCIEN HOPITAL'                                      #  3
+    'ZA ET COMMERCIALE DU HAUT TAPPES'                                      #  4
+    'CHE NOTRE DAME CHAMPS DES VIGNES'                                      #  5
+    'PLACE ND DE LA LEGION D HONNEUR'                                       #  6
     'PARC A NURIEUX CRX CHALON'                                             #  7
-    'AV A COMBATTANTS FR INDOCHINE'                                         #  8
-    'CHEM R 21 GRAVIERS CRX MARAIS'                                         #  9
-    'ZONE ARTISANALE CCIAL BEAUGE'                                          # 10
-    'CHEMIN LA DEBOISSET CLOS ST ANNE'                                      # 11
-    'ANCIENNE ROUTE CHAT ST LEONARD'                                        # 12
+    'AV ANC COMB FRANCAIS D INDOCHINE'                                      #  8
+    'CHE RURAL 21 GRAVIERS CRX MARAIS'                                      #  9
+    'ZA CENTRE COMMERCIAL BEAUGE'                                           # 10
+    'CHE LA DEBOISSET CLOS SAINT ANNE'                                      # 11
+    'ANCI ROUTE CHATEAU SAINT LEONARD'                                      # 12
     'AV LA 9E DIV INFANT DE CAVALERIE'                                      # 13
-    'LD LE GD BOIS DE LA DURANDIERE'                                        # 14
-    'CHEMIN EXPLOITATION MAS ST PAUL'                                       # 15
+    'LD GRAND BOIS DE LA DURANDIERE'                                        # 14
+    'CHE EXPLOITATION MAS SAINT PAUL'                                       # 15
     'LD MAIS FORESTIERE LA NOE BADON'                                       # 16
     'LD LA MAIS FORESTIERE DU VIRLET'                                       # 17
-    'CHEM RURAL 55 ANCIEN MONTPELLIER'                                      # 18
-    'CHEM R D ANCIENNE SEYSSEL ANNECY'                                      # 19
-    'CHEM R DIT ANCIEN BRISON THUET'                                        # 20
-    'RUE DU TERT DE ND DE LA SALETTE'                                       # 21
-    'RUE ADJ BESNAULT GENDARME LEFORT'                                      # 22
+    'CHE R 55 ANCI CHEMIN MONTPELLIER'                                      # 18
+    'CHEMIN R D ANCI ROUTE S ANNECY'                                        # 19
+    'CHE R D ANCI CHEMIN BRISON THUET'                                      # 20
+    'RUE TRT NOTRE DAME DE LA SALETTE'                                      # 21
+    'R L ADJ BESNAULT GENDARME LEFORT'                                      # 22
 )
 
 declare -a TEST_A4S_DESCRIPTORS_NORMALIZED=(
-    VACNCTAAN                                                               #  1
-    VATTTANAN                                                               #  2
-    VATPNAAATN                                                              #  3
-    VVANATAN                                                                #  4
-    VATTANAAN                                                               #  5
-    VTTAANAN                                                                #  6
-    VANNTN                                                                  #  7
-    VANNTAN                                                                 #  8
-    VNCANAATAN                                                              #  9
-    VVTTN                                                                   # 10
-    VAANTTN                                                                 # 11
-    VVATTN                                                                  # 12
-    VAACTTAN                                                                # 13
-    VATTAAN                                                                 # 14
-    VANATTN                                                                 # 15
+    VCNCTN                                                                  #  1
+    VATANAN                                                                 #  2
+    VTPNATN                                                                 #  3
+    VANATN                                                                  #  4
+    VTTNAN                                                                  #  5
+    VTTNAN                                                                  #  6
+    VNNTN                                                                   #  7
+    VNNTAN                                                                  #  8
+    VNCNTN                                                                  #  9
+    VTTN                                                                    # 10
+    VANTTN                                                                  # 11
+    VVTTN                                                                   # 12
+    VACTTAN                                                                 # 13
+    VTTAAN                                                                  # 14
+    VNTTN                                                                   # 15
     VTTANN                                                                  # 16
     VATTAN                                                                  # 17
     VNCTTAN                                                                 # 18
-    VNNTTANAN                                                               # 19
-    VNNTTANAN                                                               # 20
-    VATATTAAN                                                               # 21
-    VAATNAANN                                                               # 22
+    VNNTTNN                                                                 # 19
+    VNNTTNN                                                                 # 20
+    VTTTAAN                                                                 # 21
+    VATNNN                                                                  # 22
 )
 
 declare -a TEST_A4S_SPLIT_NAME_NORMALIZED=(
-    '{RUE,19,FEVRIER,1416,CHEM,DIGUE}'                                      #  1
+    '{RUE,19,FEVRIER,1416,CHEMIN,DIGUE}'                                    #  1
     '{RUE,DU,LTDV,D,ESTIENNE,D,ORVES}'                                      #  2
-    '{RUE,DR,P,LAFLOTTE,L,ANC,HOPITAL}'                                     #  3
-    '{"ZONE ARTISANALE",C,HT,TAPPES}'                                       #  4
-    '{CHEMIN,ND,CHAMPS,"ET DES",VIGNES}'                                    #  5
-    '{PL,ND,"DE LA",LEGION,D,HONNEUR}'                                      #  6
+    '{R,DR,P,LAFLOTTE,L,ANCIEN,HOPITAL}'                                    #  3
+    '{ZA,ET,COMMERCIALE,DU,HAUT,TAPPES}'                                    #  4
+    '{CHE,"NOTRE DAME",CHAMPS,DES,VIGNES}'                                  #  5
+    '{PLACE,ND,"DE,LA",LEGION,D,HONNEUR}'                                   #  6
     '{PARC,"A NURIEUX",CRX,CHALON}'                                         #  7
-    '{AV,"A COMBATTANTS",FR,INDOCHINE}'                                     #  8
+    '{AV,"ANC COMB",FRANCAIS,D,INDOCHINE}'                                  #  8
     '{CHEM,R,21,GRAVIERS,CRX,MARAIS}'                                       #  9
-    '{"ZONE ARTISANALE",CCIAL,BEAUGE}'                                      # 10
-    '{CHEMIN,LA,DEBOISSET,"CLOS ST",ANNE}'                                  # 11
-    '{"ANCIENNE ROUTE","CHAT ST",LEONARD}'                                  # 12
+    '{ZA,"CENTRE COMMERCIAL",BEAUGE}'                                       # 10
+    '{CHE,LA,DEBOISSET,"CLOS SAINT",ANNE}'                                  # 11
+    '{"ANCI ROUTE","CHATEAU SAINT",LEONARD}'                                # 12
     '{AV,LA,9E,"DIV INFANT",DE,CAVALERIE}'                                  # 13
-    '{LD,LE,"GD BOIS","DE LA",DURANDIERE}'                                  # 14
-    '{CHEMIN,EXPLOITATION,"MAS ST",PAUL}'                                   # 15
+    '{LD,"GRAND BOIS","DE LA",DURANDIERE}'                                  # 14
+    '{CHE,EXPLOITATION,"MAS ST",PAUL}'                                      # 15
     '{LD,"MAIS FORESTIERE",LA,"NOE BADON"}'                                 # 16
     '{LD,LA,"MAIS FORESTIERE",DU,VIRLET}'                                   # 17
-    '{CHEM,RURAL,55,ANCIEN,MONTPELLIER}'                                    # 18
-    '{CHEM,"R D",ANCIENNE,"SEYSSEL ANNECY"}'                                # 19
-    '{CHEM,"R DIT",ANCIEN,"BRISON THUET"}'                                  # 20
-    '{RUE,DU,TERT,DE,ND,"DE LA",SALETTE}'                                   # 21
-    '{RUE,ADJ,"BESNAULT GENDARME LEFORT"}'                                  # 22
+    '{CHE,R,55,"ANCI CHEMIN",MONTPELLIER}'                                  # 18
+    '{CHEMIN,"R D","ANCI ROUTE","S ANNECY"}'                                # 19
+    '{CHE,"R D","ANCI CHEMIN","BRISON THUET"}'                              # 20
+    '{RUE,"TRT NOTRE DAME","DE LA",SALETTE}'                                # 21
+    '{R,L,ADJ,"BESNAULT GENDARME LEFORT"}'                                  # 22
 )
 
 declare -a TEST_A4S_SPLIT_DESCRIPTORS_NORMALIZED=(
     '{V,C,N,C,T,N}'                                                         #  1
     '{V,A,T,A,N,A,N}'                                                       #  2
     '{V,T,P,N,A,T,N}'                                                       #  3
-    '{VV,N,T,N}'                                                            #  4
-    '{V,T,N,AA,N}'                                                          #  5
+    '{V,A,N,A,T,N}'                                                         #  4
+    '{V,TT,N,A,N}'                                                          #  5
     '{V,T,AA,N,A,N}'                                                        #  6
     '{V,NN,T,N}'                                                            #  7
-    '{V,NN,T,N}'                                                            #  8
+    '{V,NN,T,A,N}'                                                          #  8
     '{V,N,C,N,T,N}'                                                         #  9
-    '{VV,T,N}'                                                              # 10
+    '{V,TT,N}'                                                              # 10
     '{V,A,N,TT,N}'                                                          # 11
     '{VV,TT,N}'                                                             # 12
     '{V,A,C,TT,A,N}'                                                        # 13
-    '{V,A,TT,AA,N}'                                                         # 14
+    '{V,TT,AA,N}'                                                           # 14
     '{V,N,TT,N}'                                                            # 15
     '{V,TT,A,NN}'                                                           # 16
     '{V,A,TT,A,N}'                                                          # 17
-    '{V,N,C,T,N}'                                                           # 18
-    '{V,NN,T,NN}'                                                           # 19
-    '{V,NN,T,NN}'                                                           # 20
-    '{V,A,T,A,T,AA,N}'                                                      # 21
-    '{V,T,NNN}'                                                             # 22
+    '{V,N,C,TT,N}'                                                          # 18
+    '{V,NN,TT,NN}'                                                          # 19
+    '{V,NN,TT,NN}'                                                          # 20
+    '{V,TTT,AA,N}'                                                          # 21
+    '{V,A,T,NNN}'                                                           # 22
 )
 
 declare -i TEST_A4S_SZ=${#TEST_A4S_NAME[*]}
