@@ -181,6 +181,9 @@ END
 $func$ LANGUAGE plpgsql;
 
 -- split descriptors as array
+/* NOTE
+words here must be the result of fr.get_descriptors_of_street(), splitted w/ descriptors
+ */
 SELECT drop_all_functions_if_exists('fr', 'split_descriptors_as_array');
 CREATE OR REPLACE FUNCTION fr.split_descriptors_as_array(
     descriptors IN VARCHAR
@@ -205,6 +208,29 @@ BEGIN
     END LOOP;
 END
 $func$ LANGUAGE plpgsql;
+
+/* TEST
+SELECT
+    -- VVATPAN
+    ds.descriptors
+    -- {"ANCIENNE ROUTE",DE,SAINT,LAURENT,DES,ARBRES}
+    , ds.words_by_descriptor
+    -- {"ANCI ROUTE",NULL,ST}
+    , ds.words_abbreviated_by_descriptor
+    -- {-,NULL,-}
+    , ds.words_todo_by_descriptor
+FROM
+    fr.get_descriptors_of_street(
+        name => 'ANCIENNE ROUTE DE SAINT LAURENT DES ARBRES'
+        , with_abbreviation => TRUE
+    ) ds;
+
+SELECT fr.split_descriptors_as_array(
+    descriptors => 'VVATPAN'
+    , words => '{"ANCIENNE ROUTE",DE,SAINT,LAURENT,DES,ARBRES}'
+    , nwords => 6
+) => {VV,A,T,P,A,N}
+ */
 
 -- get type of street (from full name)
 SELECT drop_all_functions_if_exists('fr', 'get_type_of_street');
@@ -716,7 +742,7 @@ WHERE
     ;
  */
 
-SELECT drop_all_functions_if_exists('fr', 'get_difference_between_descriptors');
+-- analyze differences of descriptors
 SELECT drop_all_functions_if_exists('fr', 'get_differences_between_descriptors');
 CREATE OR REPLACE FUNCTION fr.get_differences_between_descriptors(
     reference VARCHAR
@@ -771,6 +797,94 @@ BEGIN
     END LOOP;
 END
 $func$ LANGUAGE plpgsql;
+
+-- analyze differences of normalized name
+SELECT drop_all_functions_if_exists('fr', 'get_differences_between_normalized_name');
+CREATE OR REPLACE FUNCTION fr.get_differences_between_normalized_name(
+    name VARCHAR
+    , reference VARCHAR
+    , other VARCHAR
+    , reference_descriptors VARCHAR
+    , other_descriptors VARCHAR
+    , raise_notice IN BOOLEAN DEFAULT FALSE
+    , differences OUT VARCHAR[]
+)
+AS
+$func$
+DECLARE
+    _name_words TEXT[] := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
+    _reference_words TEXT[] := REGEXP_SPLIT_TO_ARRAY(reference, '\s+');
+    _other_words TEXT[] := REGEXP_SPLIT_TO_ARRAY(other, '\s+');
+    _reference_words_len INT := ARRAY_LENGTH(_reference_words, 1);
+    _other_words_len INT := ARRAY_LENGTH(_other_words, 1);
+    _name_i INT;
+    _reference_i INT;
+    _other_i INT;
+    _descriptor VARCHAR;
+    _reference_deleted INT := 0;
+    _other_deleted INT := 0;
+    _reference_article BOOLEAN;
+    _other_article BOOLEAN;
+    _reference_abbreviated BOOLEAN;
+    _other_abbreviated BOOLEAN;
+    _usecase VARCHAR;
+BEGIN
+    IF reference_descriptors != other_descriptors THEN
+        differences := ARRAY_APPEND(differences, 'DESCRIPTORS');
+        RETURN;
+    END IF;
+    FOR _name_i IN 1 .. LENGTH(reference_descriptors)
+    LOOP
+        _descriptor := SUBSTR(reference_descriptors, _name_i, 1);
+        _reference_i := _name_i + _reference_deleted;
+        _other_i := _name_i + _other_deleted;
+
+        -- delete word (article)
+        IF _descriptor = 'A' THEN
+            _reference_article := fr.is_normalized_article(_reference_words[_reference_i]);
+            _other_article := fr.is_normalized_article(_other_words[_other_i]);
+
+            _usecase := CASE
+                WHEN (NOT _reference_article) AND (_other_article) THEN 'MORE'
+                WHEN (_reference_article) AND (NOT _other_article) THEN 'LESS'
+                ELSE 'OK'
+                END
+                ;
+
+            IF NOT _reference_article THEN
+                _reference_deleted := _reference_deleted +1;
+            END IF;
+            IF NOT _other_article THEN
+                _other_deleted := _other_deleted +1;
+            END IF;
+            IF _usecase = 'OK' THEN CONTINUE; END IF;
+
+        -- abbreviate word
+        ELSE
+            _reference_abbreviated := (_name_words[_name_i] = _reference_words[_reference_i]);
+            _other_abbreviated := (_name_words[_name_i] = _other_words[_other_i]);
+
+            _usecase := CASE
+                WHEN (NOT _reference_abbreviated) AND (_other_abbreviated) THEN 'ABBR'
+                WHEN (_reference_abbreviated) AND (NOT _other_abbreviated) THEN 'UNABBR'
+                ELSE 'OK'
+                END
+                ;
+            IF _usecase = 'OK' THEN CONTINUE; END IF;
+        END IF;
+        differences := ARRAY_APPEND(differences, CONCAT_WS('-'
+            , _descriptor
+            , _usecase
+            , _name_i
+            )
+        );
+    END LOOP;
+END
+$func$ LANGUAGE plpgsql;
+
+/* NOTE
+old functions built to help, but useful now ?
+ */
 
 -- split name of street as words, descriptors (w/ same descriptor)
 SELECT drop_all_functions_if_exists('fr', 'split_name_of_street_as_descriptor');

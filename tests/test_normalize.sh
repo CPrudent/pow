@@ -428,7 +428,7 @@ _ko=0
         'LE COTE DE SAINT DENIS DU TERTRE'                                      #  9
         'CHE LA SOUS STATION DE TIVERNON'                                       # 10
         'R NATIONALE AV PDT F MITTERRAND'                                       # 11
-        'ROUTE B RTE DEPARTEMENTALE 15'                                         # 12
+        'ROUTE BEAUCAIRE RTE D 15'                                              # 12
         'VOIE C N 5 BEAUTHEIL COULOMMIERS'                                      # 13
         'PL A COMB AFRIQUE NORD 1952 1962'                                      # 14
         'RUE 1ER RGT C PARACHUTISTES'                                           # 15
