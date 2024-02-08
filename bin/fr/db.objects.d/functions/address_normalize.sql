@@ -586,9 +586,9 @@ CREATE OR REPLACE FUNCTION fr.normalize_street_name(
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , simulation IN BOOLEAN DEFAULT FALSE
     , heuristic_method IN VARCHAR DEFAULT 'MEmCMN'
-    , descriptors OUT VARCHAR
     , name_as_words OUT TEXT[]
-    , name_normalized OUT VARCHAR
+    , descriptors OUT VARCHAR
+    , name_normalized_as_words OUT TEXT[]
     , descriptors_normalized OUT VARCHAR
 )
 AS
@@ -598,10 +598,9 @@ DECLARE
     _len_normalized INT;
     _words_abbreviated TEXT[];
     _words_todo TEXT[];
-    _words_normalized TEXT[];
     _words_len INT;
-    _words_normalized_len INT;
     _descriptors TEXT[];
+    _descriptors_normalized TEXT[];
     _descriptor VARCHAR;
     /*
     _words_t TEXT[];
@@ -727,14 +726,14 @@ BEGIN
         END IF;
     END LOOP;
 
-    _words_normalized := name_as_words;
-    _words_normalized_len := _words_len;
+    name_normalized_as_words := name_as_words;
+    _descriptors_normalized := _descriptors;
     _len_normalized := (
-        SELECT SUM(LENGTH(w)) FROM UNNEST(_words_normalized) w
+        SELECT SUM(LENGTH(w)) FROM UNNEST(name_normalized_as_words) w
     ) + (_words_len -1);
-    IF raise_notice THEN RAISE NOTICE 'NN=% #=%', _words_normalized, _len_normalized; END IF;
+    IF raise_notice THEN RAISE NOTICE 'NN=% #=%', name_normalized_as_words, _len_normalized; END IF;
+    -- already OK ?
     IF _len_normalized <= 32 THEN
-        name_normalized := ARRAY_TO_STRING(_words_normalized, ' ');
         RETURN;
     END IF;
 
@@ -748,7 +747,7 @@ BEGIN
                 , changes => _set_changes
                 , earns => _earn_changes
                 , positions => _position_changes
-                , words => _words_normalized
+                , words => name_normalized_as_words
                 , raise_notice => raise_notice
                 , simulation => simulation
                 , heuristic_method => heuristic_method
@@ -756,7 +755,7 @@ BEGIN
         );
 
         IF raise_notice THEN RAISE NOTICE 'C=%, P=%, G=%, O=%', _set_changes, _position_changes, _earn_changes, _ordered_changes; END IF;
-        IF simulation THEN name_normalized := NULL; RETURN; END IF;
+        IF simulation THEN RETURN; END IF;
 
         -- apply solution
         _nordered_changes := ARRAY_LENGTH(_ordered_changes, 1);
@@ -772,14 +771,14 @@ BEGIN
             IF raise_notice THEN RAISE NOTICE 'changement %/% : % (w=%)', _i, _nordered_changes, _descriptor, _word; END IF;
 
             IF _descriptor = 'A' THEN
-                _words_normalized[_word] := NULL;
-                _words_normalized_len := _words_normalized_len -1;
+                name_normalized_as_words[_word] := NULL;
+                _descriptors_normalized[_word] := NULL;
                 _len_normalized := _len_normalized - _earn_changes[_position];
             ELSIF _descriptor = 'P' THEN
-                _words_normalized[_word] := SUBSTR(_words_normalized[_word], 1, 1);
+                name_normalized_as_words[_word] := SUBSTR(name_normalized_as_words[_word], 1, 1);
                 _len_normalized := _len_normalized - _earn_changes[_position];
             ELSE
-                _words_normalized[_word] := _words_abbreviated[_word];
+                name_normalized_as_words[_word] := _words_abbreviated[_word];
                 _len_normalized := _len_normalized - _earn_changes[_position];
             /*
             ELSIF _descriptor = 'V' THEN
@@ -837,9 +836,9 @@ BEGIN
                 ELSE 'N'
                 END
             ;
-            IF _descriptors[_i] ~ _descriptor AND _words_normalized[_i] IS NOT NULL THEN
-                _len_normalized := _len_normalized - (LENGTH(_words_normalized[_i]) -1);
-                _words_normalized[_i] := SUBSTR(_words_normalized[_i], 1, 1);
+            IF _descriptors[_i] ~ _descriptor AND name_normalized_as_words[_i] IS NOT NULL THEN
+                _len_normalized := _len_normalized - (LENGTH(name_normalized_as_words[_i]) -1);
+                name_normalized_as_words[_i] := SUBSTR(name_normalized_as_words[_i], 1, 1);
                 IF _len_normalized <= 32 THEN
                     EXIT;
                 END IF;
@@ -853,12 +852,11 @@ BEGIN
             AND
             (_len_normalized + (LENGTH(name_as_words[1]) - LENGTH(_words_abbreviated[1]))) <= 32
         ) THEN
-            _words_normalized[1] := name_as_words[1];
+            name_normalized_as_words[1] := name_as_words[1];
         END IF;
-        name_normalized := ARRAY_TO_STRING(_words_normalized, ' ');
+        descriptors_normalized := ARRAY_TO_STRING(_descriptors_normalized, '');
     ELSE
-        name_normalized := NULL;
-        RAISE NOTICE 'pas de normalisation (%) : NN=% #=%', name, _words_normalized, _len_normalized;
+        RAISE NOTICE 'pas de normalisation (%) : NN=% #=%', name, name_normalized_as_words, _len_normalized;
     END IF;
 END
 $func$ LANGUAGE plpgsql;
