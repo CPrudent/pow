@@ -688,20 +688,6 @@ BEGIN
             _set_changes := ARRAY_APPEND(_set_changes, CONCAT(descriptors_as_words[_i], _positions[_position]));
             _nchanges := _nchanges +1;
 
-            /*
-            IF descriptors_as_words[_i] ~ 'T' AND name_abbreviated_as_words[_i] IS NULL THEN
-                _words_t := REGEXP_SPLIT_TO_ARRAY(name_as_words[_i], '\s+');
-                SELECT name_abbreviated, one_more_time
-                INTO _tmp_t, _again_t
-                FROM fr.normalize_abbreviate_keyword(
-                    name => name_as_words[_i]
-                    , words => _words_t
-                );
-                name_abbreviated_as_words[_i] := _tmp_t;
-                _more_t[_i] := _again_t;
-            END IF;
-             */
-
             -- earn of change
             _earn_changes[_nchanges] := CASE
                 -- delete article (count space separator, +1)
@@ -772,14 +758,6 @@ BEGIN
                 name_normalized_as_words[_word] := name_abbreviated_as_words[_word];
                 descriptors_normalized_as_words[_word] := REPEAT(_descriptor, count_words(name_abbreviated_as_words[_word]));
                 _len_normalized := _len_normalized - _earn_changes[_position];
-            /*
-            ELSIF _descriptor = 'V' THEN
-                -- OK if deleting all article(s)
-                IF ((_len_normalized - _total_a) <= 32) THEN
-                    _each = 'A';
-                    CONTINUE;
-                END IF;
-            */
             END IF;
 
             IF _len_normalized <= 32 THEN

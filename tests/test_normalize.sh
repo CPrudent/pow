@@ -294,8 +294,13 @@ _ko=0
                                 name_normalized => u.name_normalized
                                 , name_as_words => nn.name_as_words
                                 , name_abbreviated_as_words => nn.name_abbreviated_as_words
+                                , descriptors_as_words => nn.descriptors_as_words
                                 , nwords => nn.nwords
                             ) aw
+                    WHERE
+                        u.name_normalized IS NOT NULL
+                    LIMIT
+                        100
                 )
                 SELECT
                     UNNEST(

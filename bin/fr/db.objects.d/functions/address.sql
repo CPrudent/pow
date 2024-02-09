@@ -822,17 +822,23 @@ CREATE OR REPLACE FUNCTION fr.get_differences_between_normalized_name(
 AS
 $func$
 DECLARE
-    _reference_words_len INT := ARRAY_LENGTH(reference_name_normalized_as_words, 1);
-    _other_words_len INT := ARRAY_LENGTH(other_name_normalized_as_words, 1);
+    _reference_descriptors VARCHAR;
+    _other_descriptors VARCHAR;
     _i INT;
     _usecase VARCHAR;
     _descriptor VARCHAR;
     _reference_unabbreviated BOOLEAN;
     _other_unabbreviated BOOLEAN;
 BEGIN
-    IF ARRAY_TO_STRING(reference_descriptors_normalized_as_words, '') !=
-        ARRAY_TO_STRING(other_descriptors_normalized_as_words, '') THEN
-        differences := ARRAY_APPEND(differences, 'DESCRIPTORS');
+    _reference_descriptors := ARRAY_TO_STRING(reference_descriptors_normalized_as_words, '');
+    _other_descriptors := ARRAY_TO_STRING(other_descriptors_normalized_as_words, '');
+    IF _reference_descriptors != _other_descriptors THEN
+        differences := ARRAY_APPEND(differences, CONCAT_WS('-'
+                , 'DESCRIPTORS'
+                , _reference_descriptors
+                , _other_descriptors
+            )
+        );
         RETURN;
     END IF;
 

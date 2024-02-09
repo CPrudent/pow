@@ -93,7 +93,7 @@ declare -a TEST_A4S_DESCRIPTORS_NORMALIZED=(
     VTPNATN                                                                 #  3
     VANATN                                                                  #  4
     VTTNAN                                                                  #  5
-    VTTNAN                                                                  #  6
+    VTAANAN                                                                 #  6
     VNNTN                                                                   #  7
     VNNTAN                                                                  #  8
     VNCNTN                                                                  #  9
@@ -105,7 +105,7 @@ declare -a TEST_A4S_DESCRIPTORS_NORMALIZED=(
     VNTTN                                                                   # 15
     VTTANN                                                                  # 16
     VATTAN                                                                  # 17
-    VNCTTAN                                                                 # 18
+    VNCTTN                                                                  # 18
     VNNTTNN                                                                 # 19
     VNNTTNN                                                                 # 20
     VTTTAAN                                                                 # 21
