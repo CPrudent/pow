@@ -35,7 +35,7 @@ declare -a TEST_A4S_NAME=(
     'RUE DE L ADJUDANT BESNAULT ET DU GENDARME LEFORT'                      # 22
 )
 
-declare -a TEST_A4S_DESCRIPTOR=(
+declare -a TEST_A4S_DESCRIPTORS=(
     VACNCTAAN                                                               #  1
     VATTTANAN                                                               #  2
     VATPNAAATN                                                              #  3

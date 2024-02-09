@@ -48,7 +48,7 @@ _ko=0
             _is_normalized=1
         } || {
             _name=${TEST_A4S_NAME[$_i]}
-            _descriptor=${TEST_A4S_DESCRIPTOR[$_i]}
+            _descriptor=${TEST_A4S_DESCRIPTORS[$_i]}
             _split_name=${TEST_A4S_SPLIT_NAME[$_i]}
             _split_descriptor=${TEST_A4S_SPLIT_DESCRIPTOR[$_i]}
             _is_normalized=0
@@ -151,14 +151,14 @@ _ko=0
         }
 
         [ "$get_arg_number_line" = yes ] && { echo_number_line $TEST_A4S_SZ $((_i +1)); }
-        echo -n "nom='${TEST_A4S_NAME[$_i]}' descripteur='${TEST_A4S_DESCRIPTOR[$_i]}' : "
-        [ "$_normalize" = "${TEST_A4S_DESCRIPTOR[$_i]}" ] && {
+        echo -n "nom='${TEST_A4S_NAME[$_i]}' descripteur='${TEST_A4S_DESCRIPTORS[$_i]}' : "
+        [ "$_normalize" = "${TEST_A4S_DESCRIPTORS[$_i]}" ] && {
             echo 'OK'
             _ok=$((_ok +1))
         } || {
             echo 'KO'
             _ko=$((_ko +1))
-            echo " descripteur $_normalize : ${TEST_A4S_DESCRIPTOR[$_i]}"
+            echo " descripteur $_normalize : ${TEST_A4S_DESCRIPTORS[$_i]}"
         }
     done
 
@@ -208,7 +208,7 @@ _ko=0
         'CORNICHE SUPERIEURE'                                                   # 25
         'RUE 1954 1962'                                                         # 26
     )
-    declare -a _TEST_A4S_DESCRIPTOR=(
+    declare -a _TEST_A4S_DESCRIPTORS=(
         ATNN                                                                    #  1
         VAACTN                                                                  #  2
         VAATNN                                                                  #  3
@@ -253,8 +253,8 @@ _ko=0
         }
 
         [ "$get_arg_number_line" = yes ] && { echo_number_line ${#_TEST_A4S_NAME[*]} $((_i +1)); }
-        echo -n "nom='${_TEST_A4S_NAME[$_i]}' descripteur='${_TEST_A4S_DESCRIPTOR[$_i]}' : "
-        [ "$_normalize" = "${_TEST_A4S_DESCRIPTOR[$_i]}" ] && {
+        echo -n "nom='${_TEST_A4S_NAME[$_i]}' descripteur='${_TEST_A4S_DESCRIPTORS[$_i]}' : "
+        [ "$_normalize" = "${_TEST_A4S_DESCRIPTORS[$_i]}" ] && {
             echo 'OK'
             _ok=$((_ok +1))
         } || {
@@ -276,36 +276,46 @@ _ko=0
         --name NAME_DIFF \
         --query "
             COPY (
-                SELECT
-                    name_normalized_pow
-                    , LENGTH(name_normalized_pow)
-                    , name_normalized_laposte
-                    , LENGTH(name_normalized_laposte)
-                    , code
-                    , name
-                    , LENGTH(name)
-                    , descriptors_pow
-                    , descriptors_laposte
-                FROM (
+                WITH
+                nn_words AS (
                     SELECT
-                        nn.name_normalized name_normalized_pow
-                        , lb_voie_normalise AS name_normalized_laposte
-                        , co_cea code
-                        , lb_voie name
-                        , nn.descriptors descriptors_pow
-                        , lb_desc descriptors_laposte
+                        nn.nwords
+                        , nn.name_as_words
+                        , nn.descriptors_as_words
+                        , nn.name_normalized_as_words name_normalized_as_words_pow
+                        , nn.descriptors_normalized_as_words descriptors_normalized_as_words_pow
+                        , aw.name_normalized_as_words name_normalized_as_words_laposte
+                        , aw.descriptors_normalized_as_words descriptors_normalized_as_words_laposte
+                        , u.name
                     FROM
-                        fr.laposte_address_street s
-                            CROSS JOIN fr.normalize_street_name(lb_voie) nn
-                    WHERE
-                        fl_active
-                        AND
-                        lb_voie_normalise IS DISTINCT FROM lb_voie
-                    ) t
+                        fr.laposte_address_street_uniq u
+                            CROSS JOIN fr.normalize_street_name(u.name) nn
+                            CROSS JOIN fr.normalize_name_get_as_words(
+                                name_normalized => u.name_normalized
+                                , name_as_words => nn.name_as_words
+                                , name_abbreviated_as_words => nn.name_abbreviated_as_words
+                                , nwords => nn.nwords
+                            ) aw
+                )
+                SELECT
+                    UNNEST(
+                        fr.get_differences_between_normalized_name(
+                            name_as_words => name_as_words
+                            , descriptors_as_words => descriptors_as_words
+                            , nwords => nwords
+                            , reference_name_normalized_as_words => name_normalized_as_words_laposte
+                            , reference_descriptors_normalized_as_words => descriptors_normalized_as_words_laposte
+                            , other_name_normalized_as_words => name_normalized_as_words_pow
+                            , other_descriptors_normalized_as_words => descriptors_normalized_as_words_pow
+                        )
+                    ) descriptor_diff
+                    , name
+                FROM
+                    nn_words
                 WHERE
-                    name_normalized_pow IS DISTINCT FROM name_normalized_laposte
+                    ARRAY_TO_STRING(descriptors_normalized_as_words_pow, '') IS DISTINCT FROM ARRAY_TO_STRING(descriptors_normalized_as_words_laposte, '')
                 ORDER BY
-                    name
+                    1
             ) TO STDOUT WITH (DELIMITER E',', FORMAT CSV, HEADER TRUE, ENCODING UTF8)
             " \
         --output $POW_DIR_TMP/normalized_name_diff.txt || exit $ERROR_CODE
@@ -319,7 +329,7 @@ _ko=0
         execute_query \
         --name NAME_LIST \
         --query "
-            SELECT name_normalized, descriptors
+            SELECT ARRAY_TO_STRING(name_normalized_as_words, ' '), ARRAY_TO_STRING(descriptors_normalized_as_words, '')
             FROM fr.normalize_street_name(
                 name => '${TEST_A4S_NAME[$_i]}'
             )
@@ -338,14 +348,14 @@ _ko=0
         [ "$get_arg_number_line" = yes ] && { echo_number_line $TEST_A4S_SZ $((_i +1)); }
         echo -n "nom='${TEST_A4S_NAME[$_i]}' : "
         [ "${_array[0]}" = "${TEST_A4S_NAME_NORMALIZED[$_i]}" ] &&
-        [ "${_array[1]}" = "${TEST_A4S_DESCRIPTOR[$_i]}" ] && {
+        [ "${_array[1]}" = "${TEST_A4S_DESCRIPTORS_NORMALIZED[$_i]}" ] && {
             echo 'OK'
             _ok=$((_ok +1))
         } || {
             echo 'KO'
             _ko=$((_ko +1))
             [ "${_array[0]}" != "${TEST_A4S_NAME_NORMALIZED[$_i]}" ] && echo " nom ${_array[0]} : ${TEST_A4S_NAME_NORMALIZED[$_i]}"
-            [ "${_array[1]}" != "${TEST_A4S_DESCRIPTOR[$_i]}" ] && echo " descripteur ${_array[1]}) : ${TEST_A4S_DESCRIPTOR[$_i]}"
+            [ "${_array[1]}" != "${TEST_A4S_DESCRIPTORS_NORMALIZED[$_i]}" ] && echo " descripteur ${_array[1]} : ${TEST_A4S_DESCRIPTORS_NORMALIZED[$_i]}"
         }
     done
 
@@ -391,7 +401,7 @@ _ko=0
         'RUE DE LA ZONE D AMENAGEMENT CONCERTE'                                 # 20
 
     )
-    declare -a _TEST_A4S_DESCRIPTOR=(
+    declare -a _TEST_A4S_DESCRIPTORS=(
         VVCANAATAN                                                              #  1
         TNNTPN                                                                  #  2
         VANATPATN                                                               #  3
@@ -439,12 +449,35 @@ _ko=0
         'R LA ZONE D AMENAGEMENT CONCERTE'                                      # 20
     )
 
+    declare -a _TEST_A4S_DESCRIPTORS_NORMALIZED=(
+        VVCNTN                                                                  #  1
+        TNNTPN                                                                  #  2
+        VNTPTN                                                                  #  3
+        TNNN                                                                    #  4
+        VNNTN                                                                   #  5
+        VPNATN                                                                  #  6
+        VATTN                                                                   #  7
+        VPNN                                                                    #  8
+        ATATPAN                                                                 #  9
+        VANTAN                                                                  # 10
+        VNTTPN                                                                  # 11
+        VNTNC                                                                   # 12
+        VNNCNN                                                                  # 13
+        VNNNNCC                                                                 # 14
+        VCTNN                                                                   # 15
+        VNNCNC                                                                  # 16
+        VTNNNN                                                                  # 17
+        VATTATN                                                                 # 18
+        VNATAN                                                                  # 19
+        VANNNN                                                                  # 20
+    )
+
     set_log_echo no
     for ((_i=0; _i < ${#_TEST_A4S_NAME[*]}; _i++)); do
         execute_query \
         --name NAME_CASE \
         --query "
-            SELECT name_normalized, descriptors
+            SELECT ARRAY_TO_STRING(name_normalized_as_words, ' '), ARRAY_TO_STRING(descriptors_normalized_as_words, '')
             FROM fr.normalize_street_name(
                 name => '${_TEST_A4S_NAME[$_i]}'
             )
@@ -463,14 +496,14 @@ _ko=0
         [ "$get_arg_number_line" = yes ] && { echo_number_line ${#_TEST_A4S_NAME[*]} $((_i +1)); }
         echo -n "nom='${_TEST_A4S_NAME[$_i]}' : "
         [ "${_array[0]}" = "${_TEST_A4S_NAME_NORMALIZED[$_i]}" ] &&
-        [ "${_array[1]}" = "${_TEST_A4S_DESCRIPTOR[$_i]}" ] && {
+        [ "${_array[1]}" = "${_TEST_A4S_DESCRIPTORS_NORMALIZED[$_i]}" ] && {
             echo 'OK'
             _ok=$((_ok +1))
         } || {
             echo 'KO'
             _ko=$((_ko +1))
             [ "${_array[0]}" != "${_TEST_A4S_NAME_NORMALIZED[$_i]}" ] && echo " nom ${_array[0]} : ${_TEST_A4S_NAME_NORMALIZED[$_i]}"
-            [ "${_array[1]}" != "${_TEST_A4S_DESCRIPTOR[$_i]}" ] && echo " descripteur ${_array[1]}) : ${_TEST_A4S_DESCRIPTOR[$_i]}"
+            [ "${_array[1]}" != "${_TEST_A4S_DESCRIPTORS_NORMALIZED[$_i]}" ] && echo " descripteur ${_array[1]} : ${_TEST_A4S_DESCRIPTORS_NORMALIZED[$_i]}"
         }
     done
 

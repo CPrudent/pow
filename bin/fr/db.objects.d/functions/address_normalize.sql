@@ -586,29 +586,21 @@ CREATE OR REPLACE FUNCTION fr.normalize_street_name(
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , simulation IN BOOLEAN DEFAULT FALSE
     , heuristic_method IN VARCHAR DEFAULT 'MEmCMN'
+    , nwords OUT INT
     , name_as_words OUT TEXT[]
-    , descriptors OUT VARCHAR
+    , name_abbreviated_as_words OUT TEXT[]
+    , descriptors_as_words OUT TEXT[]
     , name_normalized_as_words OUT TEXT[]
-    , descriptors_normalized OUT VARCHAR
+    , descriptors_normalized_as_words OUT TEXT[]
 )
 AS
 $func$
 DECLARE
     _name VARCHAR;
     _len_normalized INT;
-    _words_abbreviated TEXT[];
     _words_todo TEXT[];
-    _words_len INT;
-    _descriptors TEXT[];
-    _descriptors_normalized TEXT[];
+    _descriptors VARCHAR;
     _descriptor VARCHAR;
-    /*
-    _words_t TEXT[];
-    _more_t BOOLEAN[];
-    _again_t BOOLEAN;
-    _tmp_t VARCHAR;
-     */
-
     _i INT;
     _j INT;
     _nchanges INT := 0;
@@ -626,7 +618,6 @@ DECLARE
     _POSITION_DESCRIPTOR_V INT := 5;
     _position INT;
     _word INT;
-
 BEGIN
     -- only upper and not special characters
     _name := clean_address_label(name);
@@ -639,66 +630,66 @@ BEGIN
         , ds.words_abbreviated_by_descriptor
         , ds.words_todo_by_descriptor
     INTO
-        normalize_street_name.descriptors
+        _descriptors
         , name_as_words
-        , _words_abbreviated
+        , name_abbreviated_as_words
         , _words_todo
     FROM
         fr.get_descriptors_of_street(
             name => _name
             , with_abbreviation => TRUE
         ) ds;
-    _words_len := ARRAY_LENGTH(name_as_words, 1);
-    -- descriptors as array
+    nwords := ARRAY_LENGTH(name_as_words, 1);
+    -- descriptors_as_words as array
     SELECT
         as_array
     INTO
-        _descriptors
+        descriptors_as_words
     FROM
         fr.split_descriptors_as_array(
-            descriptors => normalize_street_name.descriptors
+            descriptors => _descriptors
             , words => name_as_words
-            , nwords => _words_len
+            , nwords => nwords
         ) da;
 
     -- eval changes and their earning size
     _positions := ARRAY_FILL(0, ARRAY[_ITEMS_DESCRIPTOR]);
-    FOR _i IN 1 .. _words_len
+    FOR _i IN 1 .. nwords
     LOOP
         _position := CASE
-            WHEN _descriptors[_i] ~ 'A' THEN _POSITION_DESCRIPTOR_A
-            WHEN _descriptors[_i] ~ 'N' THEN
+            WHEN descriptors_as_words[_i] ~ 'A' THEN _POSITION_DESCRIPTOR_A
+            WHEN descriptors_as_words[_i] ~ 'N' THEN
                 CASE
                 -- only if abbreviatable
-                WHEN _words_abbreviated[_i] IS NULL THEN 0
+                WHEN name_abbreviated_as_words[_i] IS NULL THEN 0
                 ELSE _POSITION_DESCRIPTOR_N
                 END
-            WHEN _descriptors[_i] ~ 'P' THEN
+            WHEN descriptors_as_words[_i] ~ 'P' THEN
                 CASE
                 -- exception if
                 --  previous word is holy
                 WHEN _i > 1 AND name_as_words[_i -1] ~ '^(ST|STE|SAINT|SAINTE)$' THEN 0
                 --  next is number
-                WHEN _i < _words_len AND _descriptors[_i +1] ~ 'C' THEN 0
+                WHEN _i < nwords AND descriptors_as_words[_i +1] ~ 'C' THEN 0
                 ELSE _POSITION_DESCRIPTOR_P
                 END
-            WHEN _descriptors[_i] ~ 'T' THEN
+            WHEN descriptors_as_words[_i] ~ 'T' THEN
                 CASE
                 -- only if abbreviatable
-                WHEN _words_abbreviated[_i] IS NULL THEN 0
+                WHEN name_abbreviated_as_words[_i] IS NULL THEN 0
                 ELSE _POSITION_DESCRIPTOR_T
                 END
-            WHEN _descriptors[_i] ~ 'V' THEN _POSITION_DESCRIPTOR_V
+            WHEN descriptors_as_words[_i] ~ 'V' THEN _POSITION_DESCRIPTOR_V
             ELSE 0
             END
         ;
         IF _position > 0 THEN
             _positions[_position] := _positions[_position] +1;
-            _set_changes := ARRAY_APPEND(_set_changes, CONCAT(_descriptors[_i], _positions[_position]));
+            _set_changes := ARRAY_APPEND(_set_changes, CONCAT(descriptors_as_words[_i], _positions[_position]));
             _nchanges := _nchanges +1;
 
             /*
-            IF _descriptors[_i] ~ 'T' AND _words_abbreviated[_i] IS NULL THEN
+            IF descriptors_as_words[_i] ~ 'T' AND name_abbreviated_as_words[_i] IS NULL THEN
                 _words_t := REGEXP_SPLIT_TO_ARRAY(name_as_words[_i], '\s+');
                 SELECT name_abbreviated, one_more_time
                 INTO _tmp_t, _again_t
@@ -706,7 +697,7 @@ BEGIN
                     name => name_as_words[_i]
                     , words => _words_t
                 );
-                _words_abbreviated[_i] := _tmp_t;
+                name_abbreviated_as_words[_i] := _tmp_t;
                 _more_t[_i] := _again_t;
             END IF;
              */
@@ -714,11 +705,11 @@ BEGIN
             -- earn of change
             _earn_changes[_nchanges] := CASE
                 -- delete article (count space separator, +1)
-                WHEN _descriptors[_i] ~ 'A' THEN LENGTH(name_as_words[_i]) +1
+                WHEN descriptors_as_words[_i] ~ 'A' THEN LENGTH(name_as_words[_i]) +1
                 -- remain 1st letter only
-                WHEN _descriptors[_i] ~ 'P' THEN LENGTH(name_as_words[_i]) -1
+                WHEN descriptors_as_words[_i] ~ 'P' THEN LENGTH(name_as_words[_i]) -1
                 -- replace w/ abbreviation (if defined)
-                ELSE LENGTH(name_as_words[_i]) - LENGTH(COALESCE(_words_abbreviated[_i], name_as_words[_i]))
+                ELSE LENGTH(name_as_words[_i]) - LENGTH(COALESCE(name_abbreviated_as_words[_i], name_as_words[_i]))
                 END
             ;
             -- position of change (i-th word)
@@ -727,10 +718,10 @@ BEGIN
     END LOOP;
 
     name_normalized_as_words := name_as_words;
-    _descriptors_normalized := _descriptors;
+    descriptors_normalized_as_words := descriptors_as_words;
     _len_normalized := (
         SELECT SUM(LENGTH(w)) FROM UNNEST(name_normalized_as_words) w
-    ) + (_words_len -1);
+    ) + (nwords -1);
     IF raise_notice THEN RAISE NOTICE 'NN=% #=%', name_normalized_as_words, _len_normalized; END IF;
     -- already OK ?
     IF _len_normalized <= 32 THEN
@@ -772,13 +763,14 @@ BEGIN
 
             IF _descriptor = 'A' THEN
                 name_normalized_as_words[_word] := NULL;
-                _descriptors_normalized[_word] := NULL;
+                descriptors_normalized_as_words[_word] := NULL;
                 _len_normalized := _len_normalized - _earn_changes[_position];
             ELSIF _descriptor = 'P' THEN
                 name_normalized_as_words[_word] := SUBSTR(name_normalized_as_words[_word], 1, 1);
                 _len_normalized := _len_normalized - _earn_changes[_position];
             ELSE
-                name_normalized_as_words[_word] := _words_abbreviated[_word];
+                name_normalized_as_words[_word] := name_abbreviated_as_words[_word];
+                descriptors_normalized_as_words[_word] := REPEAT(_descriptor, count_words(name_abbreviated_as_words[_word]));
                 _len_normalized := _len_normalized - _earn_changes[_position];
             /*
             ELSIF _descriptor = 'V' THEN
@@ -802,9 +794,9 @@ BEGIN
         _j := COALESCE(ARRAY_POSITION(name_as_words, 'SAINT'), ARRAY_POSITION(name_as_words, 'SAINTE'));
         IF (_j IS NOT NULL
             AND
-            _j < _words_len
+            _j < nwords
             AND
-            _descriptors[_j +1] ~ 'P'
+            descriptors_as_words[_j +1] ~ 'P'
             AND
             (_len_normalized - (LENGTH(name_as_words[_j +1]) - 1)) <= 32
         ) THEN
@@ -823,20 +815,20 @@ BEGIN
             ) THEN
                 -- abbreviate (asc order) either name or fname (except 1st)
                 _j := CASE
-                    WHEN _descriptors[1] = 'N' THEN 2
+                    WHEN descriptors_as_words[1] = 'N' THEN 2
                     ELSE 1
                     END
                 ;
             END IF;
         END IF;
-        FOR _i IN _j .. _words_len
+        FOR _i IN _j .. nwords
         LOOP
             _descriptor := CASE
-                WHEN _i = _j OR _i = (_words_len -1) THEN 'N|P'
+                WHEN _i = _j OR _i = (nwords -1) THEN 'N|P'
                 ELSE 'N'
                 END
             ;
-            IF _descriptors[_i] ~ _descriptor AND name_normalized_as_words[_i] IS NOT NULL THEN
+            IF descriptors_as_words[_i] ~ _descriptor AND name_normalized_as_words[_i] IS NOT NULL THEN
                 _len_normalized := _len_normalized - (LENGTH(name_normalized_as_words[_i]) -1);
                 name_normalized_as_words[_i] := SUBSTR(name_normalized_as_words[_i], 1, 1);
                 IF _len_normalized <= 32 THEN
@@ -848,13 +840,12 @@ BEGIN
 
     IF _len_normalized <= 32 THEN
         -- try to restore type (if abbreviated and NN is possible w/o)
-        IF (_descriptors[1] ~ 'V|T'
+        IF (descriptors_as_words[1] ~ 'V|T'
             AND
-            (_len_normalized + (LENGTH(name_as_words[1]) - LENGTH(_words_abbreviated[1]))) <= 32
+            (_len_normalized + (LENGTH(name_as_words[1]) - LENGTH(name_abbreviated_as_words[1]))) <= 32
         ) THEN
             name_normalized_as_words[1] := name_as_words[1];
         END IF;
-        descriptors_normalized := ARRAY_TO_STRING(_descriptors_normalized, '');
     ELSE
         RAISE NOTICE 'pas de normalisation (%) : NN=% #=%', name, name_normalized_as_words, _len_normalized;
     END IF;
@@ -862,35 +853,57 @@ END
 $func$ LANGUAGE plpgsql;
 
 /* TEST
--- differences
-SELECT
-    name_normalized_pow
-    , LENGTH(name_normalized_pow)
-    , name_normalized_laposte
-    , LENGTH(name_normalized_laposte)
-    , name
-    , LENGTH(name)
-    , descriptors_pow
-    , descriptors_laposte
-FROM (
-    SELECT
-        nn.name_normalized name_normalized_pow
-        , u.name_normalized AS name_normalized_laposte
-        , u.name
-        , nn.descriptors descriptors_pow
-        , u.descriptors descriptors_laposte
-    FROM
-        fr.laposte_address_street_uniq u
-            CROSS JOIN fr.normalize_street_name(u.name) nn
-    WHERE
-        u.name_normalized IS NOT NULL
-    LIMIT
-        500
-    ) t
-WHERE
-    name_normalized_pow IS DISTINCT FROM name_normalized_laposte
-ORDER BY
-    5
+view test_normalize.sh : option NAME_DIFF, NAME_LIST, NAME_CASE
+ */
+
+-- get normalized (name, descriptors) as words from normalized name w/ (name, descriptors) as words (of complete name)
+SELECT drop_all_functions_if_exists('fr', 'normalize_name_get_as_words');
+CREATE OR REPLACE FUNCTION fr.normalize_name_get_as_words(
+    name_normalized IN VARCHAR
+    , name_as_words IN TEXT[]
+    , name_abbreviated_as_words IN TEXT[]
+    , descriptors_as_words IN TEXT[]
+    , nwords IN INT
+    , raise_notice IN BOOLEAN DEFAULT FALSE
+    , name_normalized_as_words OUT TEXT[]
+    , descriptors_normalized_as_words OUT TEXT[]
+)
+AS
+$func$
+DECLARE
+    _i INT;
+BEGIN
+    -- through complete name
+    FOR _i IN 1 .. nwords
+    LOOP
+        IF extract_words(
+            str => name_normalized
+            , n => count_words(name_as_words[_i])
+            , from_ => _i) = name_as_words[_i] THEN
+            -- same word(s), within the meaning of descriptor
+            name_normalized_as_words[_i] := name_as_words[_i];
+            descriptors_normalized_as_words[_i] := descriptors_as_words[_i];
+        ELSIF (name_abbreviated_as_words[_i] IS NOT NULL
+            AND
+            extract_words(
+                str => name_normalized
+                , n => count_words(name_abbreviated_as_words[_i])
+                , from_ => _i) = name_abbreviated_as_words[_i]
+        ) THEN
+            -- abbreviated word(s)
+            name_normalized_as_words[_i] := name_abbreviated_as_words[_i];
+            descriptors_normalized_as_words[_i] := REPEAT(SUBSTR(descriptors_as_words[_i], 1, 1), count_words(name_abbreviated_as_words[_i]));
+        ELSE
+            -- deleted article
+            name_normalized_as_words[_i] := NULL;
+            descriptors_normalized_as_words[_i] := NULL;
+        END IF;
+    END LOOP;
+END
+$func$ LANGUAGE plpgsql;
+
+/* TEST
+view test_normalize.sh : option NAME_DIFF
  */
 
 -- normalize one address

@@ -623,9 +623,13 @@ BEGIN
                     END IF;
                 END IF;
             ELSIF fr.is_normalized_reserved_word(_words[_i]) THEN
-                -- too bad! 11N / 10E when nwords=2, always E
-                -- VN: CORNICHE INFERIEURE
-                -- NE: CORNICHE SUPERIEURE
+                /* NOTE
+                too bad! 11N (name) / 10E (reserved) when nwords=2
+                and sometimes N & E for same
+                    VN: CORNICHE INFERIEURE
+                    NE: CORNICHE SUPERIEURE
+                => always E
+                 */
                 _words_d := 'E';
             END IF;
         END IF;
@@ -798,89 +802,86 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+/* TEST
+view test_normalize.sh : option DESCRIPTORS_DIFF
+ */
+
 -- analyze differences of normalized name
 SELECT drop_all_functions_if_exists('fr', 'get_differences_between_normalized_name');
 CREATE OR REPLACE FUNCTION fr.get_differences_between_normalized_name(
-    name VARCHAR
-    , reference VARCHAR
-    , other VARCHAR
-    , reference_descriptors VARCHAR
-    , other_descriptors VARCHAR
+    name_as_words IN TEXT[]
+    , descriptors_as_words IN TEXT[]
+    , nwords IN INT
+    , reference_name_normalized_as_words IN TEXT[]
+    , reference_descriptors_normalized_as_words IN TEXT[]
+    , other_name_normalized_as_words IN TEXT[]
+    , other_descriptors_normalized_as_words IN TEXT[]
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , differences OUT VARCHAR[]
 )
 AS
 $func$
 DECLARE
-    _name_words TEXT[] := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
-    _reference_words TEXT[] := REGEXP_SPLIT_TO_ARRAY(reference, '\s+');
-    _other_words TEXT[] := REGEXP_SPLIT_TO_ARRAY(other, '\s+');
-    _reference_words_len INT := ARRAY_LENGTH(_reference_words, 1);
-    _other_words_len INT := ARRAY_LENGTH(_other_words, 1);
-    _name_i INT;
-    _reference_i INT;
-    _other_i INT;
-    _descriptor VARCHAR;
-    _reference_deleted INT := 0;
-    _other_deleted INT := 0;
-    _reference_article BOOLEAN;
-    _other_article BOOLEAN;
-    _reference_abbreviated BOOLEAN;
-    _other_abbreviated BOOLEAN;
+    _reference_words_len INT := ARRAY_LENGTH(reference_name_normalized_as_words, 1);
+    _other_words_len INT := ARRAY_LENGTH(other_name_normalized_as_words, 1);
+    _i INT;
     _usecase VARCHAR;
+    _descriptor VARCHAR;
+    _reference_unabbreviated BOOLEAN;
+    _other_unabbreviated BOOLEAN;
 BEGIN
-    IF reference_descriptors != other_descriptors THEN
+    IF ARRAY_TO_STRING(reference_descriptors_normalized_as_words, '') !=
+        ARRAY_TO_STRING(other_descriptors_normalized_as_words, '') THEN
         differences := ARRAY_APPEND(differences, 'DESCRIPTORS');
         RETURN;
     END IF;
-    FOR _name_i IN 1 .. LENGTH(reference_descriptors)
+
+    /* NOTE
+    search for differences, basing w/ other
+     */
+    FOR _i IN 1 .. nwords
     LOOP
-        _descriptor := SUBSTR(reference_descriptors, _name_i, 1);
-        _reference_i := _name_i + _reference_deleted;
-        _other_i := _name_i + _other_deleted;
+        _descriptor := SUBSTR(descriptors_as_words[_i], 1, 1);
 
         -- delete word (article)
         IF _descriptor = 'A' THEN
-            _reference_article := fr.is_normalized_article(_reference_words[_reference_i]);
-            _other_article := fr.is_normalized_article(_other_words[_other_i]);
-
             _usecase := CASE
-                WHEN (NOT _reference_article) AND (_other_article) THEN 'MORE'
-                WHEN (_reference_article) AND (NOT _other_article) THEN 'LESS'
+                WHEN (reference_name_normalized_as_words[_i] IS NULL) AND (other_name_normalized_as_words[_i] IS NOT NULL) THEN 'MORE'
+                WHEN (reference_name_normalized_as_words[_i] IS NOT NULL) AND (other_name_normalized_as_words[_i] IS NULL) THEN 'LESS'
                 ELSE 'OK'
                 END
                 ;
-
-            IF NOT _reference_article THEN
-                _reference_deleted := _reference_deleted +1;
-            END IF;
-            IF NOT _other_article THEN
-                _other_deleted := _other_deleted +1;
-            END IF;
             IF _usecase = 'OK' THEN CONTINUE; END IF;
 
         -- abbreviate word
         ELSE
-            _reference_abbreviated := (_name_words[_name_i] = _reference_words[_reference_i]);
-            _other_abbreviated := (_name_words[_name_i] = _other_words[_other_i]);
+            _reference_unabbreviated := (name_as_words[_i] = reference_name_normalized_as_words[_i]);
+            _other_unabbreviated := (name_as_words[_i] = other_name_normalized_as_words[_i]);
 
             _usecase := CASE
-                WHEN (NOT _reference_abbreviated) AND (_other_abbreviated) THEN 'ABBR'
-                WHEN (_reference_abbreviated) AND (NOT _other_abbreviated) THEN 'UNABBR'
+                WHEN (NOT _reference_unabbreviated) AND (_other_unabbreviated) THEN 'UNABBR'
+                WHEN (_reference_unabbreviated) AND (NOT _other_unabbreviated) THEN 'ABBR'
                 ELSE 'OK'
                 END
                 ;
             IF _usecase = 'OK' THEN CONTINUE; END IF;
         END IF;
+
         differences := ARRAY_APPEND(differences, CONCAT_WS('-'
             , _descriptor
             , _usecase
-            , _name_i
+            , _i
             )
         );
     END LOOP;
 END
 $func$ LANGUAGE plpgsql;
+
+/* TEST
+view test_normalize.sh : option NAME_DIFF
+ */
+
+
 
 /* NOTE
 old functions built to help, but useful now ?
