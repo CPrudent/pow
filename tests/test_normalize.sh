@@ -314,13 +314,15 @@ _ko=0
                             , other_descriptors_normalized_as_words => descriptors_normalized_as_words_pow
                         )
                     ) descriptor_diff
+                    , name_normalized_as_words_laposte
+                    , name_normalized_as_words_pow
                     , name
                 FROM
                     nn_words
                 WHERE
                     ARRAY_TO_STRING(descriptors_normalized_as_words_pow, '') IS DISTINCT FROM ARRAY_TO_STRING(descriptors_normalized_as_words_laposte, '')
                 ORDER BY
-                    1
+                    2, 1
             ) TO STDOUT WITH (DELIMITER E',', FORMAT CSV, HEADER TRUE, ENCODING UTF8)
             " \
         --output $POW_DIR_TMP/normalized_name_diff.txt || exit $ERROR_CODE

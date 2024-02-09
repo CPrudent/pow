@@ -850,32 +850,53 @@ AS
 $func$
 DECLARE
     _i INT;
+    _j INT := 1;
+    _nwords INT;
+    _name_abbreviated VARCHAR;
 BEGIN
     -- through complete name
     FOR _i IN 1 .. nwords
     LOOP
+        _nwords := count_words(name_as_words[_i]);
         IF extract_words(
             str => name_normalized
-            , n => count_words(name_as_words[_i])
-            , from_ => _i) = name_as_words[_i] THEN
+            , n => _nwords
+            , from_ => _j) = name_as_words[_i] THEN
             -- same word(s), within the meaning of descriptor
             name_normalized_as_words[_i] := name_as_words[_i];
             descriptors_normalized_as_words[_i] := descriptors_as_words[_i];
-        ELSIF (name_abbreviated_as_words[_i] IS NOT NULL
-            AND
-            extract_words(
-                str => name_normalized
-                , n => count_words(name_abbreviated_as_words[_i])
-                , from_ => _i) = name_abbreviated_as_words[_i]
-        ) THEN
-            -- abbreviated word(s)
-            name_normalized_as_words[_i] := name_abbreviated_as_words[_i];
-            descriptors_normalized_as_words[_i] := REPEAT(SUBSTR(descriptors_as_words[_i], 1, 1), count_words(name_abbreviated_as_words[_i]));
         ELSE
-            -- deleted article
-            name_normalized_as_words[_i] := NULL;
-            descriptors_normalized_as_words[_i] := NULL;
+            _name_abbreviated := CASE
+                WHEN descriptors_as_words[_i] ~ 'V|T' THEN
+                    name_abbreviated_as_words[_i]
+                WHEN descriptors_as_words[_i] ~ 'N|P' THEN
+                    SUBSTR(name_as_words[_i], 1, 1)
+                ELSE NULL
+                END
+            ;
+            _nwords := count_words(_name_abbreviated);
+            /* NOTE
+            use similarity because of abbreviation error!
+            CHEM for CHE if type, by example
+             */
+            IF (_name_abbreviated IS NOT NULL
+                AND
+                extract_words(
+                    str => name_normalized
+                    , n => _nwords
+                    , from_ => _j) % _name_abbreviated
+            ) THEN
+                -- abbreviated word(s)
+                name_normalized_as_words[_i] := _name_abbreviated;
+                descriptors_normalized_as_words[_i] := REPEAT(SUBSTR(descriptors_as_words[_i], 1, 1), _nwords);
+            ELSE
+                -- deleted article
+                _nwords := 0;
+                name_normalized_as_words[_i] := NULL;
+                descriptors_normalized_as_words[_i] := NULL;
+            END IF;
         END IF;
+        _j := _j + _nwords;
     END LOOP;
 END
 $func$ LANGUAGE plpgsql;

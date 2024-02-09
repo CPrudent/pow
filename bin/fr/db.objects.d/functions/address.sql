@@ -832,14 +832,15 @@ DECLARE
 BEGIN
     _reference_descriptors := ARRAY_TO_STRING(reference_descriptors_normalized_as_words, '');
     _other_descriptors := ARRAY_TO_STRING(other_descriptors_normalized_as_words, '');
-    IF _reference_descriptors != _other_descriptors THEN
+    IF LENGTH(_reference_descriptors) != LENGTH(_other_descriptors) THEN
         differences := ARRAY_APPEND(differences, CONCAT_WS('-'
-                , 'DESCRIPTORS'
+                , 0
+                , 'D'
                 , _reference_descriptors
                 , _other_descriptors
             )
         );
-        RETURN;
+        --RETURN;
     END IF;
 
     /* NOTE
@@ -874,9 +875,9 @@ BEGIN
         END IF;
 
         differences := ARRAY_APPEND(differences, CONCAT_WS('-'
+            , _i
             , _descriptor
             , _usecase
-            , _i
             )
         );
     END LOOP;
