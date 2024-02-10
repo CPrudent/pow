@@ -184,10 +184,10 @@ BEGIN
         WHERE k1.group = 'TYPE'
     )
     UPDATE fr.laposte_address_street_keyword k SET
-        name_abbreviated = sp.type_abbr_plural
+        name_abbreviated = sp.type_abbr_singular
         FROM type_singular_plural sp
         WHERE k.name = sp.type_plural
-        AND k.name_abbreviated != sp.type_abbr_plural
+        AND k.name_abbreviated != sp.type_abbr_singular
         AND k.group = 'TYPE'
         ;
     GET DIAGNOSTICS _nrows = ROW_COUNT;
