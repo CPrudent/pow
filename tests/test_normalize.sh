@@ -303,8 +303,13 @@ _ko=0
                         100
                 )
                 SELECT
-                    UNNEST(
-                        fr.get_differences_between_normalized_name(
+                    dnn.differences
+                    , name
+                    , name_normalized_as_words_laposte
+                    , name_normalized_as_words_pow
+                FROM
+                    nn_words nn
+                        CROSS JOIN                         fr.get_differences_between_normalized_name(
                             name_as_words => name_as_words
                             , descriptors_as_words => descriptors_as_words
                             , nwords => nwords
@@ -312,17 +317,11 @@ _ko=0
                             , reference_descriptors_normalized_as_words => descriptors_normalized_as_words_laposte
                             , other_name_normalized_as_words => name_normalized_as_words_pow
                             , other_descriptors_normalized_as_words => descriptors_normalized_as_words_pow
-                        )
-                    ) descriptor_diff
-                    , name_normalized_as_words_laposte
-                    , name_normalized_as_words_pow
-                    , name
-                FROM
-                    nn_words
+                        ) dnn
                 WHERE
                     ARRAY_TO_STRING(descriptors_normalized_as_words_pow, '') IS DISTINCT FROM ARRAY_TO_STRING(descriptors_normalized_as_words_laposte, '')
                 ORDER BY
-                    2, 1
+                    1
             ) TO STDOUT WITH (DELIMITER E',', FORMAT CSV, HEADER TRUE, ENCODING UTF8)
             " \
         --output $POW_DIR_TMP/normalized_name_diff.txt || exit $ERROR_CODE

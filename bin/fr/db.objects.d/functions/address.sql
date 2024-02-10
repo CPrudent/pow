@@ -380,19 +380,21 @@ $func$ LANGUAGE plpgsql;
 
 /* TEST
 -- one word after
+-- VNN
 SELECT * FROM fr.get_descriptor_from_exception(
     words => '{JETEE,ALBERT,EDOUARD}'::TEXT[]
     , nwords => 3
     , at_ => 2
     , as_descriptor => 'P'
-);
+) => N
 -- many words after
+-- VNAN
 SELECT * FROM fr.get_descriptor_from_exception(
     words => '{QUAI,AGENOR,DE,GASPARIN}'::TEXT[]
     , nwords => 4
     , at_ => 2
     , as_descriptor => 'N'
-);
+) => N
  */
 
  -- get descriptors of street (from full name)
@@ -830,19 +832,6 @@ DECLARE
     _reference_unabbreviated BOOLEAN;
     _other_unabbreviated BOOLEAN;
 BEGIN
-    _reference_descriptors := ARRAY_TO_STRING(reference_descriptors_normalized_as_words, '');
-    _other_descriptors := ARRAY_TO_STRING(other_descriptors_normalized_as_words, '');
-    IF LENGTH(_reference_descriptors) != LENGTH(_other_descriptors) THEN
-        differences := ARRAY_APPEND(differences, CONCAT_WS('-'
-                , 0
-                , 'D'
-                , _reference_descriptors
-                , _other_descriptors
-            )
-        );
-        --RETURN;
-    END IF;
-
     /* NOTE
     search for differences, basing w/ other
      */
@@ -875,12 +864,25 @@ BEGIN
         END IF;
 
         differences := ARRAY_APPEND(differences, CONCAT_WS('-'
-            , _i
             , _descriptor
             , _usecase
+            , _i
             )
         );
     END LOOP;
+
+    /*
+    _reference_descriptors := ARRAY_TO_STRING(reference_descriptors_normalized_as_words, '');
+    _other_descriptors := ARRAY_TO_STRING(other_descriptors_normalized_as_words, '');
+    IF LENGTH(_reference_descriptors) != LENGTH(_other_descriptors) THEN
+        differences := ARRAY_APPEND(differences, CONCAT_WS('-'
+                , 'D'
+                , _reference_descriptors
+                , _other_descriptors
+            )
+        );
+    END IF;
+     */
 END
 $func$ LANGUAGE plpgsql;
 

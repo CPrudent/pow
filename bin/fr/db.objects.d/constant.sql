@@ -361,7 +361,7 @@ BEGIN
                 , ('TITLE', 'COLLINE', 'COLL')
                 , ('TITLE', 'COLLINES', 'COLL')
                 , ('TITLE', 'COLONEL', 'CNL')
-                , ('TITLE', 'COLONIE', NULL)
+                , ('TITLE', 'COLONIE', 'COLO')
                 , ('TITLE', 'COMITE', NULL)
                 , ('TITLE', 'COMMANDANT', 'CDT')
                 , ('TITLE', 'COMMERCIAL', 'CIAL')
