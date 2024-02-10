@@ -47,6 +47,9 @@ BEGIN
     DELETE FROM fr.laposte_address_street_keyword WHERE "group" = 'TYPE';
 
     CALL public.log_info(' Initialisation');
+    /* NOTE
+    lb_type_abrege must be AN32 abbreviation (not NN38) !
+     */
     INSERT INTO fr.laposte_address_street_keyword("group", name, name_abbreviated)
         WITH
         type_with_abbr AS (
@@ -85,6 +88,30 @@ BEGIN
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Types: ', _nrows));
 
+    /*              AN32            NN38
+    AGGLOMERATION   AGL   0   1     AGGL
+    AUTOROUTE       AUT   0   1     AUTO
+    BOUCLE          BCLE  0   1     BOUC
+    CARREFOUR       CAR   0   10    CARR
+    CHAUSSEE        CHS   0   2     CHAU
+    CHEMIN          CHE   0   246   CHEM
+    DOMAINE         DOM   0   3     DOMA
+    ESCALIER        ESC   0   1     ESCA
+    ESPLANADE       ESP   0   10    ESPL
+    GALERIE         GAL   0   2     GALE
+    MONTEE          MTE   0   3     MONT
+    MOULIN          MLN   0   1     MOUL
+    PARVIS          PRV   0   2     PARV
+    PASSERELLE      PLE   0   1     PASS
+    QUARTIER        QUA   0   4     QUAR
+    RACCOURCI       RAC   0   1     RACC
+    REMPART         REM   0   2     REMP
+    RUELLE          RLE   0   2     RUEL
+    SENTE           SEN   0   2     SENT
+    SENTIER         SEN   0   2     SENT
+    TERRASSE        TSSE  0   1     TERR
+    TRAVERSE        TRA   0   2     TRAV
+    */
     WITH
     correction_abbr AS (
         SELECT *
@@ -97,6 +124,38 @@ BEGIN
                 , ('PASSAGE A NIVEAU', 'PASS A NIVEAU')
                 , ('PETIT CHEMIN', 'PETI CHEMIN')
                 , ('PETITE ROUTE', 'PETI ROUTE')
+                , ('AGGLOMERATION', 'AGGL')
+                , ('AUTOROUTE', 'AUTO')
+                , ('BOUCLE', 'BOUC')
+                , ('CARREFOUR', 'CARR')
+                , ('CHAUSSEE', 'CHAU')
+                --, ('CHAUSSEES', 'CHAU')
+                , ('CHEMIN', 'CHEM')
+                --, ('CHEMINS', 'CHEM')
+                , ('DOMAINE', 'DOMA')
+                --, ('DOMAINES', 'DOMA')
+                , ('ESCALIER', 'ESCA')
+                --, ('ESCALIERS', 'ESCA')
+                , ('ESPLANADE', 'ESPL')
+                , ('GALERIE', 'GALE')
+                , ('MONTEE', 'MONT')
+                --, ('MONTEES', 'MONT')
+                , ('MOULIN', 'MOUL')
+                --, ('MOULINS', 'MOUL')
+                , ('PARVIS', 'PARV')
+                , ('PASSERELLE', 'PASS')
+                , ('QUARTIER', 'QUAR')
+                , ('RACCOURCI', 'RACC')
+                , ('REMPART', 'REMP')
+                , ('RUELLE', 'RUEL')
+                --, ('RUELLES', 'RUEL')
+                , ('SENTE', 'SENT')
+                --, ('SENTES', 'SENT')
+                , ('SENTIER', 'SENT')
+                --, ('SENTIERS', 'SENT')
+                , ('TERRASSE', 'TERR')
+                --, ('TERRASSES', 'TERR')
+                , ('TRAVERSE', 'TRAV')
         ) AS x(name, name_abbreviated)
     )
     UPDATE fr.laposte_address_street_keyword st SET
@@ -109,7 +168,30 @@ BEGIN
             st.name = ca.name
         ;
     GET DIAGNOSTICS _nrows = ROW_COUNT;
-    CALL public.log_info(CONCAT(' Mises à jour (abréviation): ', _nrows));
+    CALL public.log_info(CONCAT(' Mises à jour (abréviation au singulier): ', _nrows));
+
+    WITH
+    type_singular_plural AS (
+        SELECT
+            k1.name type_singular
+            , k1.name_abbreviated type_abbr_singular
+            , k2.name type_plural
+            , k2.name_abbreviated type_abbr_plural
+        FROM
+            fr.laposte_address_street_keyword k1
+                JOIN fr.laposte_address_street_keyword k2
+                ON k2.name = CONCAT(k1.name, 'S') AND k2.group = k1.group
+        WHERE k1.group = 'TYPE'
+    )
+    UPDATE fr.laposte_address_street_keyword k SET
+        name_abbreviated = sp.type_abbr_plural
+        FROM type_singular_plural sp
+        WHERE k.name = sp.type_plural
+        AND k.name_abbreviated != sp.type_abbr_plural
+        AND k.group = 'TYPE'
+        ;
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(CONCAT(' Mises à jour (abréviation au pluriel): ', _nrows));
 
     WITH
     first_word_of_type AS (
@@ -327,7 +409,7 @@ BEGIN
                 , ('TITLE', 'ASPIRANT', 'ASP')
                 , ('TITLE', 'ASSOCIATION', NULL)
                 , ('TITLE', 'ATELIER', NULL)
-                , ('TITLE', 'AUTOROUTE', 'AUTO')
+                --, ('TITLE', 'AUTOROUTE', 'AUTO')
                 , ('TITLE', 'BAS', NULL)
                 , ('TITLE', 'BASSE', 'BAS')
                 , ('TITLE', 'BASSES', 'BAS')
@@ -345,7 +427,7 @@ BEGIN
                 --, ('TITLE', 'CAPITAINE', NULL)
                 , ('TITLE', 'CARDINAL', 'CDL')
                 , ('TITLE', 'CARREAU', 'CARR')
-                , ('TITLE', 'CARREFOUR', 'CARR')
+                --, ('TITLE', 'CARREFOUR', 'CARR')
                 , ('TITLE', 'CARRIERE', 'CARR')
                 , ('TITLE', 'CARRIERES', 'CARR')
                 , ('TITLE', 'CASERNE', 'CASR')
@@ -354,7 +436,7 @@ BEGIN
                 --, ('TITLE', 'CHANOINE', NULL)
                 , ('TITLE', 'CHAPELLE', 'CHAP')
                 , ('TITLE', 'CHATEAU', 'CHAT')
-                , ('TITLE', 'CHEMIN', 'CHEM')
+                --, ('TITLE', 'CHEMIN', 'CHEM')
                 , ('TITLE', 'CHEMINS', 'CHEM')
                 , ('TITLE', 'CITADELLE', NULL)
                 , ('TITLE', 'COLLEGE', NULL)
@@ -382,7 +464,7 @@ BEGIN
                 , ('TITLE', 'DIRECTION', 'DIR')
                 , ('TITLE', 'DIVISION', 'DIV')
                 , ('TITLE', 'DOCTEUR', 'DR')
-                , ('TITLE', 'DOMAINE', 'DOMA')
+                --, ('TITLE', 'DOMAINE', 'DOMA')
                 , ('TITLE', 'ECLUSE', 'ECLU')
                 --, ('TITLE', 'ECOLE', NULL)
                 , ('TITLE', 'ECONOMIQUE', 'ECO')
@@ -394,7 +476,7 @@ BEGIN
                 , ('TITLE', 'ENTREES', NULL)
                 , ('TITLE', 'ENTREPRISE', NULL)
                 , ('TITLE', 'EPOUX', NULL)
-                , ('TITLE', 'ESPLANADE', 'ESPL')
+                --, ('TITLE', 'ESPLANADE', 'ESPL')
                 , ('TITLE', 'ESPLANADES', 'ESPL')
                 , ('TITLE', 'ETABLISSEMENT', NULL)
                 , ('TITLE', 'ETABLISSEMENTS', NULL)
@@ -463,8 +545,8 @@ BEGIN
                 , ('TITLE', 'MILITAIRE', 'MIL')
                 , ('TITLE', 'MONSEIGNEUR', 'MGR')
                 , ('TITLE', 'MONSIEUR', 'M')
-                , ('TITLE', 'MONTEE', 'MONT')
-                , ('TITLE', 'MOULIN', 'MOUL')
+                --, ('TITLE', 'MONTEE', 'MONT')
+                --, ('TITLE', 'MOULIN', 'MOUL')
                 , ('TITLE', 'MOULINS', 'MOUL')
                 , ('TITLE', 'MUNICIPAL', 'MUN')
                 , ('TITLE', 'MUSEE', 'MUSE')
@@ -475,8 +557,8 @@ BEGIN
                 , ('TITLE', 'OBSERVATOIRE', NULL)
                 , ('TITLE', 'PALAIS', 'PALA')
                 , ('TITLE', 'PARKING', 'PARK')
-                , ('TITLE', 'PARVIS', 'PARV')
-                , ('TITLE', 'PASSERELLE', 'PASS')
+                --, ('TITLE', 'PARVIS', 'PARV')
+                --, ('TITLE', 'PASSERELLE', 'PASS')
                 , ('TITLE', 'PASSERELLES', NULL)
                 , ('TITLE', 'PASSES', NULL)
                 , ('TITLE', 'PASTEUR', 'PAST')
@@ -497,21 +579,22 @@ BEGIN
                 , ('TITLE', 'PROLONGE', NULL)
                 , ('TITLE', 'PROLONGEE', NULL)
                 , ('TITLE', 'PROPRIETE', NULL)
-                , ('TITLE', 'QUARTIER', 'QUAR')
-                , ('TITLE', 'RACCOURCI', 'RACC')
+                --, ('TITLE', 'QUARTIER', 'QUAR')
+                --, ('TITLE', 'RACCOURCI', 'RACC')
                 , ('TITLE', 'RECTEUR', 'RECT')
                 , ('TITLE', 'REGIMENT', 'RGT')
                 , ('TITLE', 'REGIONAL', NULL)
                 , ('TITLE', 'REPUBLIQUE', 'REP')
                 , ('TITLE', 'RESIDENCES', 'RESI')
                 , ('TITLE', 'RESTAURANT', NULL)
-                , ('TITLE', 'RUELLE', 'RUEL')
+                , ('TITLE', 'ROTONDE', 'ROTO')
+                --, ('TITLE', 'RUELLE', 'RUEL')
                 , ('TITLE', 'SAINT', 'ST')
                 , ('TITLE', 'SAINTE', 'STE')
                 , ('TITLE', 'SAINTES', NULL)
                 , ('TITLE', 'SAINTS', NULL)
-                , ('TITLE', 'SENTE', 'SENT')
-                , ('TITLE', 'SENTIER', 'SENT')
+                --, ('TITLE', 'SENTE', 'SENT')
+                --, ('TITLE', 'SENTIER', 'SENT')
                 , ('TITLE', 'SERGENT', 'SGT')
                 , ('TITLE', 'SERVICE', 'SCE')
                 , ('TITLE', 'SOCIETE', NULL)
@@ -522,8 +605,8 @@ BEGIN
                 , ('TITLE', 'SYNDICAT', NULL)
                 , ('TITLE', 'TECHNIQUE', NULL)
                 , ('TITLE', 'TERRAIN', 'TERR')
-                , ('TITLE', 'TERRASSES', 'TERR')
-                , ('TITLE', 'TRAVERSE', 'TRAV')
+                --, ('TITLE', 'TERRASSES', 'TERR')
+                --, ('TITLE', 'TRAVERSE', 'TRAV')
                 , ('TITLE', 'TUNNEL', 'TUN')
                 , ('TITLE', 'UNIVERSITAIRE', 'UNVT')
                 , ('TITLE', 'UNIVERSITE', 'UNIV')

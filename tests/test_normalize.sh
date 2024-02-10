@@ -19,7 +19,8 @@ echo_number_line() {
 bash_args \
     --args_p '
         test:Lister les communes même si elles possèdent déjà des altitudes;
-        number_line:Ajouter le numéro de chaque test
+        number_line:Ajouter le numéro de chaque test;
+        limit:Limiter la requête
     ' \
     --args_o '
         test
@@ -110,6 +111,7 @@ _ko=0
                     FROM
                         fr.laposte_address_street_uniq u
                             CROSS JOIN fr.get_descriptors_of_street(u.name) ds
+                    $([ -n "$get_arg_limit" ] && echo ' LIMIT '$get_arg_limit)
                 )
                 SELECT
                     UNNEST(
@@ -299,8 +301,7 @@ _ko=0
                             ) aw
                     WHERE
                         u.name_normalized IS NOT NULL
-                    LIMIT
-                        100
+                    $([ -n "$get_arg_limit" ] && echo ' LIMIT '$get_arg_limit)
                 )
                 SELECT
                     dnn.differences
