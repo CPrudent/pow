@@ -268,7 +268,7 @@ BEGIN
             NOT fr.is_normalized_article(mots.mot)
             AND
             -- fault!
-            NOT mots.mot = ANY('{GAY,FLEUR}')
+            NOT mots.mot = ANY('{GAY,FLEUR,PARIS}')
     );
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Prénoms: ', _nrows));
@@ -297,21 +297,8 @@ BEGIN
         SELECT *
         FROM (
             VALUES
-                --  ('NAME', 'AFN', 'A')
-                --, ('NAME', 'AFRIQUE', 'A')
-                --, ('NAME', 'ALGERIE', 'A')
-                --,
                   ('NAME', 'ANCIENS', 'ANC')
-                --, ('NAME', 'CHASSEURS', 'C')
                 , ('NAME', 'COMBATTANTS', 'COMB')
-                --, ('NAME', 'COMMUNALE', 'C')
-                --, ('NAME', 'DEPARTEMENTALE', 'D')
-                , ('NAME', 'ECRIVAINS', 'ECRIV')
-                --, ('NAME', 'NATIONALE', 'N')
-                --, ('NAME', 'NUMERO', 'N')
-                --, ('NAME', 'MONUMENT', 'M')
-                --, ('NAME', 'RURALE', 'R')
-                --, ('NAME', 'TUNISIE', 'T')
         ) AS x("group", name, name_abbreviated)
         ;
 
@@ -577,9 +564,10 @@ BEGIN
                 , ('TITLE', 'PORTE', 'PORT')
                 , ('TITLE', 'PREFET', NULL)
                 , ('TITLE', 'PRESIDENT', 'PDT')
+                , ('TITLE', 'PRESQU ILE', 'PRES ILE')
                 , ('TITLE', 'PROFESSEUR', 'PR')
-                , ('TITLE', 'PROLONGE', NULL)
-                , ('TITLE', 'PROLONGEE', NULL)
+                , ('TITLE', 'PROLONGE', 'PROL')
+                , ('TITLE', 'PROLONGEE', 'PROL')
                 , ('TITLE', 'PROPRIETE', NULL)
                 --, ('TITLE', 'QUARTIER', 'QUAR')
                 --, ('TITLE', 'RACCOURCI', 'RACC')

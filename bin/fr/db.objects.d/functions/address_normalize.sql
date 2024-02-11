@@ -610,14 +610,16 @@ DECLARE
     _ordered_changes VARCHAR[];
     _nordered_changes INT;
     _positions INT[];
-    _ITEMS_DESCRIPTOR INT := 5;
+    _ITEMS_DESCRIPTOR INT := 6;
     _POSITION_DESCRIPTOR_A INT := 1;
-    _POSITION_DESCRIPTOR_N INT := 2;
-    _POSITION_DESCRIPTOR_P INT := 3;
-    _POSITION_DESCRIPTOR_T INT := 4;
-    _POSITION_DESCRIPTOR_V INT := 5;
+    _POSITION_DESCRIPTOR_E INT := 2;
+    _POSITION_DESCRIPTOR_N INT := 3;
+    _POSITION_DESCRIPTOR_P INT := 4;
+    _POSITION_DESCRIPTOR_T INT := 5;
+    _POSITION_DESCRIPTOR_V INT := 6;
     _position INT;
     _word INT;
+    _abbr_t_to_1 BOOLEAN;
 BEGIN
     -- only upper and not special characters
     _name := clean_address_label(name);
@@ -658,6 +660,11 @@ BEGIN
     LOOP
         _position := CASE
             WHEN descriptors_as_words[_i] ~ 'A' THEN _POSITION_DESCRIPTOR_A
+            /* NOTE
+            example: ANCIENNE CARRAIRE DES TROUPEAUX D ARLES PROLONGEE
+            w/o E-abbreviation : {ANCIENNE,C,NULL,T,NULL,ARLES,PROLONGEE}
+                */
+            WHEN descriptors_as_words[_i] ~ 'E' THEN _POSITION_DESCRIPTOR_E
             WHEN descriptors_as_words[_i] ~ 'N' THEN
                 CASE
                 -- only if abbreviatable
@@ -791,12 +798,31 @@ BEGIN
                 AND
                 (_len_normalized - (LENGTH(name_as_words[_j]) - 1)) <= 32
             ) THEN
-                -- abbreviate (asc order) either name or fname (except 1st)
-                _j := CASE
-                    WHEN descriptors_as_words[1] = 'N' THEN 2
-                    ELSE 1
-                    END
-                ;
+                _abbr_t_to_1 := FALSE;
+                -- all article(s) deleted and all words already abbreviated
+                IF ((CARDINALITY(ARRAY_POSITIONS(name_normalized_as_words, NULL)) = CARDINALITY(ARRAY_POSITIONS(descriptors_as_words, 'A')))
+                    AND
+                    (name_normalized_as_words @> ARRAY_REMOVE(name_abbreviated_as_words, NULL))
+                ) THEN
+                    /* NOTE
+                    example: CHEMIN VICINAL VOIE COMMUNALE 5 LESIGNY A BRIE COMTE ROBERT
+                     */
+                    -- abbreviate title to 1-letter ...
+                    _abbr_t_to_1 := TRUE;
+                    -- ... starting at 2nd word (if type) else 1st
+                    _j := CASE
+                        WHEN descriptors_as_words[1] ~ 'V' THEN 2
+                        ELSE 1
+                        END
+                    ;
+                ELSE
+                    -- abbreviate (asc order) either name or fname (except 1st)
+                    _j := CASE
+                        WHEN descriptors_as_words[1] = 'N' THEN 2
+                        ELSE 1
+                        END
+                    ;
+                END IF;
             END IF;
         END IF;
         FOR _i IN _j .. nwords
@@ -806,7 +832,12 @@ BEGIN
                 ELSE 'N'
                 END
             ;
-            IF descriptors_as_words[_i] ~ _descriptor AND name_normalized_as_words[_i] IS NOT NULL THEN
+            IF ((descriptors_as_words[_i] ~ _descriptor)
+                OR
+                ((descriptors_as_words[_i] ~ 'T') AND _abbr_t_to_1)
+                AND
+                (name_normalized_as_words[_i] IS NOT NULL)
+            ) THEN
                 _len_normalized := _len_normalized - (LENGTH(name_normalized_as_words[_i]) -1);
                 name_normalized_as_words[_i] := SUBSTR(name_normalized_as_words[_i], 1, 1);
                 IF _len_normalized <= 32 THEN
@@ -877,7 +908,6 @@ BEGIN
             _nwords := count_words(_name_abbreviated);
             /* NOTE
             use similarity because of abbreviation error!
-            CHEM for CHE if type, by example
              */
             IF (_name_abbreviated IS NOT NULL
                 AND

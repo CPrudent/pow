@@ -469,7 +469,7 @@ BEGIN
                 ;
         ELSE
             _words_d := 'N';
-            IF _i < _words_len THEN
+            --IF _i < _words_len THEN
                 _with_exception := FALSE;
 
                 SELECT kw_group, kw, kw_abbreviated, kw_is_abbreviated, kw_nwords
@@ -485,12 +485,12 @@ BEGIN
                 IF _kw IS NOT NULL THEN
                     _words_d := REPEAT(
                         CASE
-                        -- up to last word, as name
-                        WHEN (_i + _kw_nwords -1) = _words_len THEN 'N'
+                        -- reserved word
+                        WHEN fr.is_normalized_reserved_word(_kw) THEN 'E'
+                        -- up to last word, as name or name (w/ abbreviation)
+                        WHEN ((_i + _kw_nwords -1) = _words_len) OR (_kw_group = 'NAME') THEN 'N'
                         -- type
                         WHEN _i = 1 AND _kw_group = 'TYPE' THEN 'V'
-                        -- name (w/ abbreviation)
-                        WHEN _kw_group = 'NAME' THEN 'N'
                         -- title
                         ELSE 'T'
                         END
@@ -624,7 +624,7 @@ BEGIN
                         _words_d := REPEAT(_exception, LENGTH(_words_d));
                     END IF;
                 END IF;
-            ELSIF fr.is_normalized_reserved_word(_words[_i]) THEN
+            --ELSIF fr.is_normalized_reserved_word(_words[_i]) THEN
                 /* NOTE
                 too bad! 11N (name) / 10E (reserved) when nwords=2
                 and sometimes N & E for same
@@ -632,8 +632,8 @@ BEGIN
                     NE: CORNICHE SUPERIEURE
                 => always E
                  */
-                _words_d := 'E';
-            END IF;
+                --_words_d := 'E';
+            --END IF;
         END IF;
 
         IF NOT _init_by_descriptor THEN
