@@ -485,8 +485,8 @@ BEGIN
                 IF _kw IS NOT NULL THEN
                     _words_d := REPEAT(
                         CASE
-                        -- reserved word
-                        WHEN fr.is_normalized_reserved_word(_kw) THEN 'E'
+                        -- reserved word (if last word)
+                        WHEN (_i = _words_len) AND fr.is_normalized_reserved_word(_kw) THEN 'E'
                         -- up to last word, as name or name (w/ abbreviation)
                         WHEN ((_i + _kw_nwords -1) = _words_len) OR (_kw_group = 'NAME') THEN 'N'
                         -- type

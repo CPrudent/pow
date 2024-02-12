@@ -470,6 +470,8 @@ BEGIN
                         , SUM(CASE WHEN ce.change ~ ''^V'' THEN 1 ELSE 0 END) n_v
                         , SUM(CASE WHEN ce.change ~ ''^T'' THEN 1 ELSE 0 END) n_t
                         , SUM(CASE WHEN ce.change ~ ''^P'' THEN 1 ELSE 0 END) n_p
+                        , SUM(CASE WHEN ce.change ~ ''^N'' THEN 1 ELSE 0 END) n_n
+                        , SUM(CASE WHEN ce.change ~ ''^E'' THEN 1 ELSE 0 END) n_e
                         , SUM(CASE WHEN ce.change ~ ''^A'' THEN 1 ELSE 0 END) n_a
                         , SUM(CASE WHEN w.word IS NOT NULL THEN w.rank_0 ELSE 0 END) nranks
                     FROM
@@ -522,6 +524,7 @@ BEGIN
                         '
                     WHEN heuristic_method = 'MEmC' THEN
                         /* NOTE
+                        reminder: the lower is rank, the greater word is usual
                         avoid unusual title (rank_0 at 1001 only for lt 200 occurs)
                         example: AVENUE DE LA GRANDE CHARMILLE DU PARC
                         w/ title CHARMILLE (abbr CHI not really readable!)
@@ -541,9 +544,18 @@ BEGIN
                         '
                         CASE WHEN n_t > 0 AND nranks > 1001 THEN 1
                         ELSE
-                            (earn::NUMERIC / nchanges) /
-                                NULLIF((((32 - ($4 - earn)) * nchanges)), 0)
-                        END DESC
+                            CASE
+                            WHEN ((32 - ($4 - earn)) * nchanges) > 0 THEN
+                                (earn::NUMERIC / nchanges) / ((32 - ($4 - earn)) * nchanges)
+                            ELSE
+                                (earn::NUMERIC / nchanges)
+                            END
+                        END * (
+                            -- minimize if NAME are abbreviated
+                            CASE WHEN n_n > 0 THEN 0.95
+                            ELSE 1
+                            END
+                        ) DESC
                         '
                     END
                 ELSE
@@ -568,7 +580,6 @@ BEGIN
                 USING _subsets, changes, earns, len, positions, words
                 ;
             GET DIAGNOSTICS _nrows = ROW_COUNT;
-            IF raise_notice THEN RAISE NOTICE '#cas=%', _nrows; END IF;
 
             -- with solution ?
             IF _nrows > 0 THEN
@@ -603,8 +614,8 @@ DECLARE
     _descriptor VARCHAR;
     _i INT;
     _j INT;
+    _changes VARCHAR[];
     _nchanges INT := 0;
-    _set_changes VARCHAR[];
     _earn_changes INT[];
     _position_changes INT[];
     _ordered_changes VARCHAR[];
@@ -692,7 +703,7 @@ BEGIN
         ;
         IF _position > 0 THEN
             _positions[_position] := _positions[_position] +1;
-            _set_changes := ARRAY_APPEND(_set_changes, CONCAT(descriptors_as_words[_i], _positions[_position]));
+            _changes := ARRAY_APPEND(_changes, CONCAT(descriptors_as_words[_i], _positions[_position]));
             _nchanges := _nchanges +1;
 
             -- earn of change
@@ -728,7 +739,7 @@ BEGIN
             SELECT fr.normalize_order_changes(
                 len => _len_normalized
                 , nchanges => _nchanges
-                , changes => _set_changes
+                , changes => _changes
                 , earns => _earn_changes
                 , positions => _position_changes
                 , words => name_normalized_as_words
@@ -738,14 +749,14 @@ BEGIN
             )
         );
 
-        IF raise_notice THEN RAISE NOTICE 'C=%, P=%, G=%, O=%', _set_changes, _position_changes, _earn_changes, _ordered_changes; END IF;
+        IF raise_notice THEN RAISE NOTICE 'C=%, P=%, G=%, O=%', _changes, _position_changes, _earn_changes, _ordered_changes; END IF;
         IF simulation THEN RETURN; END IF;
 
         -- apply solution
         _nordered_changes := ARRAY_LENGTH(_ordered_changes, 1);
         FOR _i IN 1 .. _nordered_changes
         LOOP
-            _position := ARRAY_POSITION(_set_changes, _ordered_changes[_i]);
+            _position := ARRAY_POSITION(_changes, _ordered_changes[_i]);
             _word := _position_changes[_position];
             _descriptor := SUBSTR(_ordered_changes[_i], 1, 1);
 
