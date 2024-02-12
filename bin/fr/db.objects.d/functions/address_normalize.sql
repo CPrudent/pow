@@ -671,17 +671,7 @@ BEGIN
     LOOP
         _position := CASE
             WHEN descriptors_as_words[_i] ~ 'A' THEN _POSITION_DESCRIPTOR_A
-            /* NOTE
-            example: ANCIENNE CARRAIRE DES TROUPEAUX D ARLES PROLONGEE
-            w/o E-abbreviation : {ANCIENNE,C,NULL,T,NULL,ARLES,PROLONGEE}
-                */
-            WHEN descriptors_as_words[_i] ~ 'E' THEN _POSITION_DESCRIPTOR_E
-            WHEN descriptors_as_words[_i] ~ 'N' THEN
-                CASE
-                -- only if abbreviatable
-                WHEN name_abbreviated_as_words[_i] IS NULL THEN 0
-                ELSE _POSITION_DESCRIPTOR_N
-                END
+            WHEN descriptors_as_words[_i] ~ 'V' THEN _POSITION_DESCRIPTOR_V
             WHEN descriptors_as_words[_i] ~ 'P' THEN
                 CASE
                 -- exception if
@@ -691,14 +681,22 @@ BEGIN
                 WHEN _i < nwords AND descriptors_as_words[_i +1] ~ 'C' THEN 0
                 ELSE _POSITION_DESCRIPTOR_P
                 END
-            WHEN descriptors_as_words[_i] ~ 'T' THEN
+            ELSE
                 CASE
                 -- only if abbreviatable
                 WHEN name_abbreviated_as_words[_i] IS NULL THEN 0
-                ELSE _POSITION_DESCRIPTOR_T
+                ELSE
+                    CASE
+                    /* NOTE
+                    example: ANCIENNE CARRAIRE DES TROUPEAUX D ARLES PROLONGEE
+                    w/o E-abbreviation : {ANCIENNE,C,NULL,T,NULL,ARLES,PROLONGEE}
+                     */
+                    WHEN descriptors_as_words[_i] ~ 'E' THEN _POSITION_DESCRIPTOR_E
+                    WHEN descriptors_as_words[_i] ~ 'N' THEN _POSITION_DESCRIPTOR_N
+                    WHEN descriptors_as_words[_i] ~ 'T' THEN _POSITION_DESCRIPTOR_T
+                    ELSE 0
+                    END
                 END
-            WHEN descriptors_as_words[_i] ~ 'V' THEN _POSITION_DESCRIPTOR_V
-            ELSE 0
             END
         ;
         IF _position > 0 THEN

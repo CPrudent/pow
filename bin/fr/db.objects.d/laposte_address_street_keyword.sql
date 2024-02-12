@@ -54,11 +54,11 @@ BEGIN
     IF (with_abbreviation
         -- not article: EN abbreviation of ENCEINTE !
         AND NOT fr.is_normalized_article(words[at_])
-        -- ARC abbr of ARCADE
+        -- ARC => ARCADE, GARE => GARENNE, PORT => PORTE, BAS => BASSE, CAMP => CAMPAGNE
         AND NOT EXISTS(
             SELECT 1
             FROM fr.laposte_address_street_word
-            WHERE word = words[at_] AND as_default = 'N'
+            WHERE word = words[at_] AND as_default ~ 'N|T'
         )
     ) THEN
         IF (SELECT COUNT(*)

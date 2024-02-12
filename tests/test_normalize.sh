@@ -383,7 +383,7 @@ _ko=0
         # restore full type (previously abbreviated) at the end
         'MAISON RETRAITE VAGUEMESTRE ROSERAIE'                                  #  4
         'AVENUE DU CORPS EXPEDITIONNAIRE FRANCAIS EN ITALIE'                    #  5
-        # no abbr firstname but delete article
+        #
         'CHEMIN ROMAIN D ARLES A SAINT REMY'                                    #  6
         # w/ abbr BAS/BASSE, ARC/ARCADES
         'IMPASSE DES BAS DE SAINTE RADEGONDE'                                   #  7
@@ -406,6 +406,15 @@ _ko=0
         'ZONE ARTISANALE ZAC DU PRE DE PAQUES'                                  # 19
         #
         'RUE DE LA ZONE D AMENAGEMENT CONCERTE'                                 # 20
+        # E-abbr
+        'ANCIENNE CARRAIRE DES TROUPEAUX D ARLES PROLONGEE'                     # 21
+        # DEP
+        'CHEMIN DEPARTEMENTAL 6 PLAN DE CAMPAGNE'                               # 22
+        # w/o abbr
+        'RUE DE L ANCIEN PORT DES CATALANS'                                     # 23
+        'ROUTE DE LA GARE DES FORGES D ABEL'                                    # 24
+        'CHEMIN DU BAS DE LA PLANTE DES ROCHES'                                 # 25
+        'IMPASSE CAMI DEL CAMP D EN CEILLES'                                    # 26
 
     )
     declare -a _TEST_A4S_DESCRIPTORS=(
@@ -429,6 +438,12 @@ _ko=0
         VAATTTATN                                                               # 18
         VVNATAN                                                                 # 19
         VAANNNN                                                                 # 20
+        NNANANE                                                                 # 21
+        VNCNAN                                                                  # 22
+        VAATTAN                                                                 # 23
+        VAATANAN                                                                # 24
+        VATAANAN                                                                # 25
+        VNNTAAN                                                                  # 26
     )
 
     declare -a _TEST_A4S_NAME_NORMALIZED=(
@@ -436,14 +451,14 @@ _ko=0
         #12345678901234567890123456789012
         'CHEMIN VICINAL 5 B GARE BOURAY'                                        #  1
         'RESTAURANT B A ST V DURFORT'                                           #  2
-        'QUA CHENELETTES ST J ST ALBAN'                                         #  3
-        'MAISON R VAGUEMESTRE ROSERAIE'                                         #  4
+        'QUAR CHENELETTES ST J ST ALBAN'                                        #  3
+        'M RETRAITE VAGUEMESTRE ROSERAIE'                                       #  4
         'AV C EXPEDITIONNAIRE FR ITALIE'                                        #  5
-        'CHEMIN ROMAIN ARLES A SAINT REMY'                                      #  6
-        'IMPASSE DES BAS SAINTE RADEGONDE'                                      #  7
-        'LOTISSEMENT JEANNE ARC BONNETTES'                                      #  8
-        'LE COTE DE SAINT DENIS DU TERTRE'                                      #  9
-        'CHE LA SOUS STATION DE TIVERNON'                                       # 10
+        'CHEMIN ROMAIN D ARLES A ST REMY'                                       #  6
+        'IMP DES BAS DE SAINTE RADEGONDE'                                       #  7
+        'LOT JEANNE D ARC LES BONNETTES'                                        #  8
+        'COTEAU DE SAINT DENIS DU TERTRE'                                       #  9
+        'CHEM LA SOUS STATION DE TIVERNON'                                      # 10
         'R NATIONALE AV PDT F MITTERRAND'                                       # 11
         'ROUTE BEAUCAIRE RTE D 15'                                              # 12
         'VOIE C N 5 BEAUTHEIL COULOMMIERS'                                      # 13
@@ -454,6 +469,12 @@ _ko=0
         'ALL DE ABBAYE ND DU GRAND MARCHE'                                      # 18
         'ZA ZAC DU PRE DE PAQUES'                                               # 19
         'R LA ZONE D AMENAGEMENT CONCERTE'                                      # 20
+        'A CARRAIRE TROUPEAUX ARLES PROL'                                       # 21
+        'CHEMIN DEP 6 PLAN DE CAMPAGNE'                                         # 22
+        'R DE L ANCIEN PORT DES CATALANS'                                       # 23
+        'ROUTE LA GARE DES FORGES D ABEL'                                       # 24
+        'CHEM BAS DE LA PLANTE DES ROCHES'                                      # 25
+        'IMPASSE CAMI DEL CAMP D CEILLES'                                       # 26
     )
 
     declare -a _TEST_A4S_DESCRIPTORS_NORMALIZED=(
@@ -462,10 +483,10 @@ _ko=0
         VNTPTN                                                                  #  3
         TNNN                                                                    #  4
         VNNTN                                                                   #  5
-        VPNATN                                                                  #  6
-        VATTN                                                                   #  7
-        VPNN                                                                    #  8
-        ATATPAN                                                                 #  9
+        VPANATN                                                                 #  6
+        VATATN                                                                  #  7
+        VPANAN                                                                  #  8
+        TATPAN                                                                  #  9
         VANTAN                                                                  # 10
         VNTTPN                                                                  # 11
         VNTNC                                                                   # 12
@@ -477,6 +498,12 @@ _ko=0
         VATTATN                                                                 # 18
         VNATAN                                                                  # 19
         VANNNN                                                                  # 20
+        NNNNE                                                                   # 21
+        VTCTAN                                                                  # 22
+        VAATTAN                                                                 # 23
+        VATANAN                                                                 # 24
+        VTAANAN                                                                 # 25
+        VNNTAN                                                                  # 26
     )
 
     set_log_echo no

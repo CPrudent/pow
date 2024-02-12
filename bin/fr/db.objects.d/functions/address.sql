@@ -431,6 +431,7 @@ DECLARE
     _is_exception BOOLEAN;
     _exception VARCHAR;
     _init_by_descriptor BOOLEAN;
+    _abbr_e VARCHAR;
 BEGIN
     IF raise_notice THEN RAISE NOTICE 'name="%"', name; END IF;
 
@@ -469,7 +470,7 @@ BEGIN
                 ;
         ELSE
             _words_d := 'N';
-            --IF _i < _words_len THEN
+            IF _i < _words_len THEN
                 _with_exception := FALSE;
 
                 SELECT kw_group, kw, kw_abbreviated, kw_is_abbreviated, kw_nwords
@@ -485,8 +486,6 @@ BEGIN
                 IF _kw IS NOT NULL THEN
                     _words_d := REPEAT(
                         CASE
-                        -- reserved word (if last word)
-                        WHEN (_i = _words_len) AND fr.is_normalized_reserved_word(_kw) THEN 'E'
                         -- up to last word, as name or name (w/ abbreviation)
                         WHEN ((_i + _kw_nwords -1) = _words_len) OR (_kw_group = 'NAME') THEN 'N'
                         -- type
@@ -624,7 +623,7 @@ BEGIN
                         _words_d := REPEAT(_exception, LENGTH(_words_d));
                     END IF;
                 END IF;
-            --ELSIF fr.is_normalized_reserved_word(_words[_i]) THEN
+            ELSIF fr.is_normalized_reserved_word(_words[_i]) THEN
                 /* NOTE
                 too bad! 11N (name) / 10E (reserved) when nwords=2
                 and sometimes N & E for same
@@ -632,12 +631,24 @@ BEGIN
                     NE: CORNICHE SUPERIEURE
                 => always E
                  */
-                --_words_d := 'E';
-            --END IF;
+                _words_d := 'E';
+                SELECT kw_abbreviated
+                INTO _abbr_e
+                FROM fr.get_keyword_of_street(
+                    name => name
+                    , at_ => _i
+                    , words => _words
+                    , with_abbreviation => FALSE
+                );
+            END IF;
         END IF;
 
         IF NOT _init_by_descriptor THEN
             words_by_descriptor := ARRAY_APPEND(words_by_descriptor, _words[_i]);
+        END IF;
+        IF (_words_d = 'E' AND _abbr_e IS NOT NULL) THEN
+            words_abbreviated_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] := _abbr_e;
+            words_todo_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] := '+';
         END IF;
         descriptors := CONCAT(descriptors, _words_d);
         _words_skip := _i;
