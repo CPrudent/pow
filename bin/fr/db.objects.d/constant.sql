@@ -304,6 +304,40 @@ BEGIN
 
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Noms: ', _nrows));
+
+    WITH
+    name_occurs AS (
+        SELECT
+            k.name
+            , COUNT(*) occurs
+        FROM
+            fr.laposte_address_street s
+            , fr.laposte_address_street_keyword k
+        WHERE
+            s.fl_active
+            AND
+            k.group = 'NAME'
+            AND (
+                s.lb_voie ~ CONCAT('^', k.name, ' ')
+                OR
+                s.lb_voie ~ CONCAT(' ', k.name, ' ')
+                OR
+                s.lb_voie ~ CONCAT(' ', k.name, '$')
+            )
+        GROUP BY
+            k.name
+    )
+    --SELECT * FROM name_occurs ORDER BY 1
+    UPDATE fr.laposte_address_street_keyword k SET
+        occurs = o.occurs
+        FROM name_occurs o
+        WHERE
+            k.group = 'NAME'
+            AND
+            k.name = o.name
+        ;
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(CONCAT(' Mises à jour (occurence): ', _nrows));
 END;
 $proc$ LANGUAGE plpgsql;
 
