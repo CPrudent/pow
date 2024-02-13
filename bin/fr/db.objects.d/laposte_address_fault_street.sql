@@ -586,7 +586,26 @@ BEGIN
                         AND
                         fs.help_to_fix = na.word
                 ;
-            --ELSIF _keys[_fault_i] = 'TYPO_ERROR' THEN
+            ELSIF _keys[_fault_i] = 'TYPO_ERROR' THEN
+                WITH
+                manual_correction(id, name) AS (
+                    VALUES
+                          (432462, 'RUE DES QUATRE VENTS')
+                        , (465695, 'VALLEE DE LA NERE')
+                        , (601484, 'CHEMIN DES QUATRE VENTS')
+                        , (632288, 'CHEMIN DE BRISEMUR')
+                        , (777777, 'RUE DU 6 MAI 1802')
+                        , (865959, 'CHEMIN DU PUIFRAUD')
+                        , (962227, 'IMPASSE DE L EGLISE')
+                        , (1007700, 'LOTISSEMENT LES CHARMILLES')
+                )
+                UPDATE fr.laposte_address_street_uniq u SET
+                    name = mc.name
+                    FROM
+                        manual_correction mc
+                    WHERE
+                        mc.id = u.id
+                ;
             ELSIF _keys[_fault_i] = 'DESCRIPTORS' THEN
                 _address_update_column := 'lb_desc';
                 _column_with_new_value := 'descriptors';
