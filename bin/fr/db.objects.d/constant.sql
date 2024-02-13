@@ -268,7 +268,7 @@ BEGIN
             NOT fr.is_normalized_article(mots.mot)
             AND
             -- fault!
-            NOT mots.mot = ANY('{GAY,FLEUR,PARIS}')
+            NOT mots.mot = ANY('{GAY,FLEUR,PARIS,HUTTES,PRIX}')
     );
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Prénoms: ', _nrows));
@@ -579,6 +579,7 @@ BEGIN
                 , ('TITLE', 'NOUVELLE', 'NOUV')
                 , ('TITLE', 'OBSERVATOIRE', NULL)
                 , ('TITLE', 'PALAIS', 'PALA')
+                , ('TITLE', 'PARCS', NULL)
                 , ('TITLE', 'PARKING', 'PARK')
                 --, ('TITLE', 'PARVIS', 'PARV')
                 --, ('TITLE', 'PASSERELLE', 'PASS')
