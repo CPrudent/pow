@@ -120,7 +120,7 @@ io_history_begin \
                                 fault => 'BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION,TYPO_ERROR'
                             );
                             CALL fr.fix_laposte_address_fault_street(
-                                fault => 'BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION'
+                                fault => 'BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION,TYPO_ERROR'
                             );
                         "
                     ;;
