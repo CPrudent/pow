@@ -1,5 +1,5 @@
 /***
- * FR: add LAPOSTE/RAN street uniq
+ * FR: add LAPOSTE/RAN street uniq (dictionary)
  */
 
 /* NOTE
@@ -16,46 +16,52 @@ BEGIN
         NOT column_exists(
             schema_name => 'fr'
             , table_name => 'laposte_address_street_uniq'
-            , column_name => 'id'
+            , column_name => 'as_words'
         ) THEN
         DROP TABLE fr.laposte_address_street_uniq;
     END IF;
 END $$;
 
--- to store uniq name
+-- to store uniq name (as dictionary of street)
 CREATE TABLE IF NOT EXISTS fr.laposte_address_street_uniq (
     id SERIAL NOT NULL
     , name VARCHAR NOT NULL
-    , name_normalized VARCHAR
     , descriptors VARCHAR
-    , type_of_street VARCHAR
+    , as_words INT[]
+    , name_normalized VARCHAR
+    , descriptors_normalized VARCHAR
+    , as_words_normalized INT[]
     , occurs INT
     , words TEXT[]
     , nwords INT
 )
 ;
 
-DO $UNIQ$
-BEGIN
-    IF NOT column_exists('fr', 'laposte_address_street_uniq', 'type_of_street') THEN
-        ALTER TABLE fr.laposte_address_street_uniq ADD COLUMN type_of_street VARCHAR;
-    END IF;
-END $UNIQ$;
-
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_street_uniq_index');
-CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_uniq_index()
+CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_uniq_index(
+    set_case VARCHAR DEFAULT 'ALL'             -- ALL | ONLY_BASED | ONLY_NORMALIZED
+)
 AS
 $proc$
 BEGIN
-    CREATE UNIQUE INDEX IF NOT EXISTS ix_laposte_address_street_uniq_id ON fr.laposte_address_street_uniq (id);
+    IF set_case = ANY('{ALL,ONLY_BASED}') THEN
+        CREATE UNIQUE INDEX IF NOT EXISTS ix_laposte_address_street_uniq_id ON fr.laposte_address_street_uniq (id);
 
-    CREATE INDEX IF NOT EXISTS ix_laposte_address_street_uniq_name ON fr.laposte_address_street_uniq USING GIN(name GIN_TRGM_OPS);
+        CREATE INDEX IF NOT EXISTS ix_laposte_address_street_uniq_name ON fr.laposte_address_street_uniq USING GIN(name GIN_TRGM_OPS);
+    END IF;
+
+    IF set_case = ANY('{ALL,ONLY_ONLY_NORMALIZED}') THEN
+        CREATE INDEX IF NOT EXISTS ix_laposte_address_street_uniq_name_normalized ON fr.laposte_address_street_uniq USING GIN(name_normalized GIN_TRGM_OPS)
+        WHERE name_normalized IS NOT NULL;
+    END IF;
 END
 $proc$ LANGUAGE plpgsql;
 
 -- build street dictionnary w/ (normalized name, descriptors, words array, nof words)
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_street_uniq');
-CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_uniq()
+CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_uniq(
+    set_case VARCHAR DEFAULT 'ALL'             -- ALL | INSERT | UPDATE
+)
 AS
 $proc$
 DECLARE
@@ -67,114 +73,62 @@ BEGIN
 
     CALL public.log_info('Dictionnaire des voies');
 
-    CALL public.log_info(' Purge');
-    TRUNCATE TABLE fr.laposte_address_street_uniq;
-    PERFORM public.drop_table_indexes('fr', 'laposte_address_street_uniq');
+    IF set_case = ANY('{ALL,INSERT}') THEN
+        CALL public.log_info(' Purge');
+        TRUNCATE TABLE fr.laposte_address_street_uniq;
+        PERFORM public.drop_table_indexes('fr', 'laposte_address_street_uniq');
 
-    CALL public.log_info(' Initialisation');
-    -- reminder: words, nwords are initiated by trigger
-    INSERT INTO fr.laposte_address_street_uniq(
-        name
-        , name_normalized
-        , descriptors
-        , type_of_street
-        , occurs
-    )
-    WITH
-    /* NOTE
-    columns would be uniq, but not! #367 same names own 2 different descriptors (so type)
-    group by is OK because they are 1..1 (descriptors involve type)
-     */
-    name_with_counters AS (
-        SELECT
-            lb_voie name
-            , COUNT(DISTINCT lb_desc) n_descriptors
-            , COUNT(DISTINCT lb_type) n_types
-            , COUNT(*) occurs
-            , MIN(lb_desc) descriptors
-            , MIN(lb_type) type_of_street
-            , MIN(lb_voie_normalise) name_normalized
-        FROM
-            fr.laposte_address_street s
-        WHERE
-            fl_active
-        GROUP BY
-            lb_voie
-    )
-    , name_with_many_descriptors AS (
-        SELECT
-            s.lb_voie name
-            , s.lb_desc descriptors
-            , COUNT(*) n
-        FROM
-            fr.laposte_address_street s
-                JOIN name_with_counters wc ON s.lb_voie = wc.name
-        WHERE
-            s.fl_active
-            AND
-            wc.n_descriptors > 1
-        GROUP BY
-            s.lb_voie
-            , s.lb_desc
-    )
-    , name_with_larger_value AS (
-        SELECT
+        CALL public.log_info(' Initialisation');
+        -- reminder: words, nwords are initiated by trigger
+        INSERT INTO fr.laposte_address_street_uniq(
             name
-            , FIRST(descriptors ORDER BY n DESC) AS descriptors
-        FROM
-            name_with_many_descriptors
-        GROUP BY
-            name
-    )
-    , name_other_attributs_for_larger_value AS (
-        SELECT
-            lv.name
-            , lv.descriptors
-            , MIN(s.lb_type) type_of_street
-            , MIN(s.lb_voie_normalise) name_normalized
-        FROM
-            fr.laposte_address_street s
-                JOIN name_with_larger_value lv ON (s.lb_voie, s.lb_desc) = (lv.name, lv.descriptors)
-        WHERE
-            s.fl_active
-        GROUP BY
-            lv.name
-            , lv.descriptors
-    )
-    , uniq_street AS (
-        SELECT
-            oalv.name
-            , CASE WHEN oalv.name != oalv.name_normalized THEN oalv.name_normalized
-                ELSE NULL
-                END name_normalized
-            , oalv.descriptors
-            , oalv.type_of_street
-            , wc.occurs
-        FROM
-            name_other_attributs_for_larger_value oalv
-                JOIN name_with_counters wc ON oalv.name = wc.name
-        UNION
-        SELECT
-            wc.name
-            , CASE WHEN wc.name != wc.name_normalized THEN wc.name_normalized
-                ELSE NULL
-                END name_normalized
-            , wc.descriptors
-            , wc.type_of_street
-            , wc.occurs
-        FROM
-            name_with_counters wc
-        WHERE
-            wc.n_descriptors = 1
-    )
-    -- #1120726
-    SELECT * FROM uniq_street
-    ;
-    GET DIAGNOSTICS _nrows = ROW_COUNT;
-    CALL public.log_info(CONCAT(' Création: ', _nrows));
+            , occurs
+        )
+        WITH
+        name_uniq AS (
+            SELECT
+                lb_voie name
+                , COUNT(*) occurs
+            FROM
+                fr.laposte_address_street s
+            WHERE
+                fl_active
+            GROUP BY
+                lb_voie
+        )
+        -- #1120726
+        SELECT * FROM name_uniq
+        ;
+        GET DIAGNOSTICS _nrows = ROW_COUNT;
+        CALL public.log_info(CONCAT(' Création: ', _nrows));
 
-    CALL fr.set_laposte_address_street_uniq_index();
-    CALL public.log_info(' Indexation');
+        CALL fr.set_laposte_address_street_uniq_index('ONLY_BASED');
+        CALL public.log_info(' Indexation');
+    END IF;
+
+    IF set_case = ANY('{ALL,UPDATE}') THEN
+        CALL public.log_info(' Mise à jour (Attributs)');
+        WITH
+        name_attributs AS (
+            SELECT
+                u.id
+                , nn.descriptors_as_words
+                , nn.name_normalized_as_words
+                , nn.descriptors_normalized_as_words
+                , nn.as_words
+            FROM
+                fr.laposte_address_street_uniq u
+                    CROSS JOIN fr.normalize_street_name(u.name) nn
+
+        )
+        UPDATE fr.laposte_address_street_uniq
+
+        GET DIAGNOSTICS _nrows = ROW_COUNT;
+        CALL public.log_info(CONCAT(' Mise à jour: ', _nrows));
+
+        CALL fr.set_laposte_address_street_uniq_index('ONLY_NORMALIZED');
+        CALL public.log_info(' Indexation');
+    END IF;
 END
 $proc$ LANGUAGE plpgsql;
 
@@ -197,7 +151,6 @@ RETURNS TRIGGER AS
 $func$
 DECLARE
     _words TEXT[];
-    --_v TEXT[];
 BEGIN
     -- words, nwords
     IF (((TG_OP = 'UPDATE') AND (OLD.name != NEW.name))
@@ -210,24 +163,6 @@ BEGIN
         NEW.nwords := ARRAY_LENGTH(_words, 1);
         --RAISE NOTICE 'end % : OLD=%, NEW=%', TG_OP, OLD, NEW;
     END IF;
-
-    /*
-    -- type_of_street
-    IF ((TG_OP = 'INSERT') AND (NEW.type_of_street IS NULL)) THEN
-        _v := REGEXP_MATCHES(NEW.descriptors, '^(V+)');
-        NEW.type_of_street := CASE
-            WHEN _v IS NOT NULL THEN
-                items_of_array_to_string(
-                    elements => NEW.words
-                    , from_ => 1
-                    , to_ => LENGTH(_v[1])
-                )
-            ELSE
-                NULL
-            END
-        ;
-    END IF;
-     */
 
     RETURN NEW;
 END

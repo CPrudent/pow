@@ -598,6 +598,7 @@ CREATE OR REPLACE FUNCTION fr.normalize_street_name(
     , simulation IN BOOLEAN DEFAULT FALSE
     , heuristic_method IN VARCHAR DEFAULT 'MEmCMN'
     , nwords OUT INT
+    , as_words OUT INT[]
     , name_as_words OUT TEXT[]
     , name_abbreviated_as_words OUT TEXT[]
     , descriptors_as_words OUT TEXT[]
@@ -642,11 +643,13 @@ BEGIN
         , ds.words_by_descriptor
         , ds.words_abbreviated_by_descriptor
         , ds.words_todo_by_descriptor
+        , ds.as_words
     INTO
         _descriptors
         , name_as_words
         , name_abbreviated_as_words
         , _words_todo
+        , normalize_street_name.as_words
     FROM
         fr.get_descriptors_of_street(
             name => _name
