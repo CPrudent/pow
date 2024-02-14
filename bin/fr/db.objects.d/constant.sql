@@ -924,18 +924,81 @@ BEGIN
 
     DELETE FROM fr.constant WHERE usecase ~ '^LAPOSTE_ADDRESS_FAULT_';
     INSERT INTO fr.constant (usecase, key, value) VALUES
-        ('LAPOSTE_ADDRESS_FAULT_STREET', 'BAD_SPACE', '1')
-        , ('LAPOSTE_ADDRESS_FAULT_STREET', 'DUPLICATE_WORD', '2')
-        , ('LAPOSTE_ADDRESS_FAULT_STREET', 'WITH_ABBREVIATION', '3')
-        , ('LAPOSTE_ADDRESS_FAULT_STREET', 'TYPO_ERROR', '4')
-        , ('LAPOSTE_ADDRESS_FAULT_STREET', 'DESCRIPTORS', '5')
-        , ('LAPOSTE_ADDRESS_FAULT_STREET', 'TYPE', '6')
+        ('LAPOSTE_ADDRESS_FAULT_ADDRESS', 'COMPLEMENT_WITH_STREET_ERROR', '0')
 
-        , ('LAPOSTE_ADDRESS_FAULT_HOUSENUMBER', 'BAD_NUMBER', '100')
-        , ('LAPOSTE_ADDRESS_FAULT_HOUSENUMBER', 'BAD_EXTENSION', '101')
+        , ('LAPOSTE_ADDRESS_FAULT_AREA', 'BAD_SPACE', '100')
 
-        , ('LAPOSTE_ADDRESS_FAULT_COMPLEMENT', 'BAD_SPACE', '200')
-        , ('LAPOSTE_ADDRESS_FAULT_COMPLEMENT', 'WITH_STREET_ERROR', '201')
+        , ('LAPOSTE_ADDRESS_FAULT_STREET', 'BAD_SPACE', '200')
+        , ('LAPOSTE_ADDRESS_FAULT_STREET', 'DUPLICATE_WORD', '201')
+        , ('LAPOSTE_ADDRESS_FAULT_STREET', 'WITH_ABBREVIATION', '202')
+        , ('LAPOSTE_ADDRESS_FAULT_STREET', 'TYPO_ERROR', '203')
+
+        , ('LAPOSTE_ADDRESS_FAULT_HOUSENUMBER', 'BAD_NUMBER', '300')
+        , ('LAPOSTE_ADDRESS_FAULT_HOUSENUMBER', 'BAD_EXTENSION', '301')
+
+        , ('LAPOSTE_ADDRESS_FAULT_COMPLEMENT', 'BAD_SPACE', '400')
     ;
+END;
+$proc$ LANGUAGE plpgsql;
+
+SELECT public.drop_all_functions_if_exists('fr', 'set_constant_address');
+CREATE OR REPLACE PROCEDURE fr.set_constant_address()
+AS
+$proc$
+DECLARE
+    _listof INT[];
+BEGIN
+    SELECT public.drop_table_indexes('fr', 'constant');
+    CALL fr.set_laposte_address_fault_list();
+
+    CALL fr.set_laposte_address_street_uniq(
+        set_case => 'DICTIONARY'
+    );
+    CALL fr.set_laposte_address_street_membership(
+        set_case => 'CREATION'
+    );
+
+    CALL fr.set_laposte_address_fault_street(
+        fault => 'BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION,TYPO_ERROR'
+    );
+    CALL fr.fix_laposte_address_fault_street(
+        fault => 'BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION,TYPO_ERROR'
+    );
+
+    _listof := ARRAY(
+        SELECT
+            name_id
+        FROM
+            fr.laposte_address_fault_street fs
+            , fr.constant c
+        WHERE
+            c.usecase = 'LAPOSTE_ADDRESS_FAULT_STREET'
+            AND
+            c.key = 'DUPLICATE_WORD'
+            AND
+            fs.fault_id = c.value::INT
+    );
+    IF _listof IS NOT NULL THEN
+        CALL fr.set_laposte_address_street_membership(
+            set_case => 'CORRECTION'
+            , listof => _listof
+        );
+    END IF;
+    CALL fr.set_laposte_address_street_uniq(
+        set_case => 'ATTRIBUTS'
+    );
+
+    CALL fr.set_laposte_address_street_word();
+
+    CALL fr.set_laposte_address_street_type();
+    CALL fr.set_laposte_address_street_ext();
+    CALL fr.set_laposte_address_street_title();
+    CALL fr.set_laposte_address_street_firstname();
+    CALL fr.set_laposte_address_street_kw_exception();
+
+    CALL fr.set_laposte_municipality_normalized_label_exception();
+    CALL fr.set_territory_overseas();
+
+    CALL fr.set_constant_index();
 END;
 $proc$ LANGUAGE plpgsql;

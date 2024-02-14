@@ -81,12 +81,12 @@ BEGIN
     split_as_word AS (
         SELECT
             w.word
-            , SUBSTR(s.descriptors, w.i::INT, 1) descriptor
+            , SUBSTR(u.descriptors, w.i::INT, 1) descriptor
             , w.i::INT
-            , s.nwords
+            , u.nwords
         FROM
-            fr.laposte_address_street_uniq s
-                INNER JOIN LATERAL UNNEST(s.words) WITH ORDINALITY AS w(word, i) ON TRUE
+            fr.laposte_address_street_uniq u
+                INNER JOIN LATERAL UNNEST(u.words) WITH ORDINALITY AS w(word, i) ON TRUE
     )
     , word_with_descriptor AS (
         SELECT

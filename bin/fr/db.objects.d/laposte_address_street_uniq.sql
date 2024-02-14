@@ -39,18 +39,18 @@ CREATE TABLE IF NOT EXISTS fr.laposte_address_street_uniq (
 
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_street_uniq_index');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_uniq_index(
-    set_case VARCHAR DEFAULT 'ALL'             -- ALL | ONLY_BASED | ONLY_NORMALIZED
+    set_case VARCHAR DEFAULT 'ALL'             -- ALL | ONLY_BASE | ONLY_ATTRIBUTS
 )
 AS
 $proc$
 BEGIN
-    IF set_case = ANY('{ALL,ONLY_BASED}') THEN
+    IF set_case = ANY('{ALL,ONLY_BASE}') THEN
         CREATE UNIQUE INDEX IF NOT EXISTS ix_laposte_address_street_uniq_id ON fr.laposte_address_street_uniq (id);
 
         CREATE INDEX IF NOT EXISTS ix_laposte_address_street_uniq_name ON fr.laposte_address_street_uniq USING GIN(name GIN_TRGM_OPS);
     END IF;
 
-    IF set_case = ANY('{ALL,ONLY_ONLY_NORMALIZED}') THEN
+    IF set_case = ANY('{ALL,ONLY_ATTRIBUTS}') THEN
         CREATE INDEX IF NOT EXISTS ix_laposte_address_street_uniq_name_normalized ON fr.laposte_address_street_uniq USING GIN(name_normalized GIN_TRGM_OPS)
         WHERE name_normalized IS NOT NULL;
     END IF;
@@ -60,7 +60,7 @@ $proc$ LANGUAGE plpgsql;
 -- build street dictionnary w/ (normalized name, descriptors, words array, nof words)
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_street_uniq');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_uniq(
-    set_case VARCHAR DEFAULT 'ALL'             -- ALL | INSERT | UPDATE
+    set_case IN VARCHAR DEFAULT 'ALL'             -- ALL | DICTIONARY | ATTRIBUTS
 )
 AS
 $proc$
@@ -73,7 +73,7 @@ BEGIN
 
     CALL public.log_info('Dictionnaire des voies');
 
-    IF set_case = ANY('{ALL,INSERT}') THEN
+    IF set_case = ANY('{ALL,DICTIONARY}') THEN
         CALL public.log_info(' Purge');
         TRUNCATE TABLE fr.laposte_address_street_uniq;
         PERFORM public.drop_table_indexes('fr', 'laposte_address_street_uniq');
@@ -102,11 +102,14 @@ BEGIN
         GET DIAGNOSTICS _nrows = ROW_COUNT;
         CALL public.log_info(CONCAT(' Création: ', _nrows));
 
-        CALL fr.set_laposte_address_street_uniq_index('ONLY_BASED');
+        CALL fr.set_laposte_address_street_uniq_index('ONLY_BASE');
         CALL public.log_info(' Indexation');
     END IF;
 
-    IF set_case = ANY('{ALL,UPDATE}') THEN
+    /* NOTE
+    this 2nd section is todo after fix of street-faults, view set_constant_address()
+     */
+    IF set_case = ANY('{ALL,ATTRIBUTS}') THEN
         CALL public.log_info(' Mise à jour (Attributs)');
         WITH
         name_attributs AS (
@@ -116,17 +119,37 @@ BEGIN
                 , nn.name_normalized_as_words
                 , nn.descriptors_normalized_as_words
                 , nn.as_words
+                , CASE
+                    WHEN nn.name_normalized_as_words IS NOT NULL THEN
+                        fr.get_as_words_from_splitted_value(
+                            property_as_words => nn.name_normalized_as_words
+                        )
+                    END as_words_normalized
             FROM
                 fr.laposte_address_street_uniq u
                     CROSS JOIN fr.normalize_street_name(u.name) nn
-
         )
-        UPDATE fr.laposte_address_street_uniq
-
+        UPDATE fr.laposte_address_street_uniq u SET
+            descriptors = ARRAY_TO_STRING(na.descriptors_as_words, '')
+            , as_words = na.as_words
+            , name_normalized = CASE
+                WHEN na.name_normalized_as_words IS NOT NULL THEN
+                    ARRAY_TO_STRING(na.name_normalized_as_words, ' ')
+                END
+            , descriptors_normalized = CASE
+                WHEN na.name_normalized_as_words IS NOT NULL THEN
+                    ARRAY_TO_STRING(na.descriptors_normalized_as_words, '')
+                END
+            , as_words_normalized = na.as_words_normalized
+            FROM
+                name_attributs na
+            WHERE
+                u.id = na.id
+        ;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
-        CALL public.log_info(CONCAT(' Mise à jour: ', _nrows));
+        CALL public.log_info(CONCAT(' Attributs: ', _nrows));
 
-        CALL fr.set_laposte_address_street_uniq_index('ONLY_NORMALIZED');
+        CALL fr.set_laposte_address_street_uniq_index('ONLY_ATTRIBUTS');
         CALL public.log_info(' Indexation');
     END IF;
 END

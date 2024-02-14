@@ -170,6 +170,33 @@ SELECT fr.split_descriptors_as_array(
 ) => {VV,A,T,P,A,N}
  */
 
+-- get property item (from as_words array)
+SELECT drop_all_functions_if_exists('fr', 'get_property_ordinal_item');
+CREATE OR REPLACE FUNCTION fr.get_property_ordinal_item(
+    property_key IN VARCHAR
+    , property_value IN VARCHAR
+    , as_words IN INT[]
+    , ordinal IN INT
+    , ordinal_as_words IN INT DEFAULT 1     -- useful for type of street (1st item)
+    , property_ordinal_item OUT VARCHAR
+)
+AS
+$func$
+BEGIN
+    property_ordinal_item := CASE
+        WHEN property_key = 'DESCRIPTORS' THEN
+            SUBSTR(property_value, ordinal_as_words, as_words[ordinal])
+        WHEN property_key = 'NAME' THEN
+            extract_words(
+                str => property_value
+                , n => as_words[ordinal]
+                , from_ => ordinal_as_words
+            )
+        END
+    ;
+END
+$func$ LANGUAGE plpgsql;
+
 -- split property as words
 SELECT drop_all_functions_if_exists('fr', 'split_property_as_words');
 CREATE OR REPLACE FUNCTION fr.split_property_as_words(
@@ -188,18 +215,33 @@ DECLARE
 BEGIN
     FOR _i IN 1 .. _nwords
     LOOP
-        _item := CASE
-            WHEN property_key = 'DESCRIPTORS' THEN SUBSTR(property_value, _j, as_words[_i])
-            WHEN property_key = 'NAME' THEN
-                extract_words(
-                    str => property_value
-                    , n => as_words[_i]
-                    , from_ => _j
-                )
-            END
-        ;
+        _item := fr.get_property_ordinal_item(
+            property_key => property_key
+            , property_value => property_value
+            , ordinal => _i
+            , ordinal_as_words => _j
+        );
         property_as_words := ARRAY_APPEND(property_as_words, _item);
         _j := _j + as_words[_i];
+    END LOOP;
+END
+$func$ LANGUAGE plpgsql;
+
+-- define as_words array from splitted value (name or descriptors)
+SELECT drop_all_functions_if_exists('fr', 'get_as_words_from_splitted_value');
+CREATE OR REPLACE FUNCTION fr.get_as_words_from_splitted_value(
+    property_as_words IN TEXT[]
+    , as_words OUT INT[]
+)
+AS
+$func$
+DECLARE
+    _nwords INT := ARRAY_LENGTH(property_as_words, 1);
+    _i INT;
+BEGIN
+    FOR _i IN 1 .. _nwords
+    LOOP
+        as_words := ARRAY_APPEND(as_words, count_words(property_as_words[_i]));
     END LOOP;
 END
 $func$ LANGUAGE plpgsql;
