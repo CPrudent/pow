@@ -932,6 +932,8 @@ BEGIN
         , ('LAPOSTE_ADDRESS_FAULT_STREET', 'DUPLICATE_WORD', '201')
         , ('LAPOSTE_ADDRESS_FAULT_STREET', 'WITH_ABBREVIATION', '202')
         , ('LAPOSTE_ADDRESS_FAULT_STREET', 'TYPO_ERROR', '203')
+        , ('LAPOSTE_ADDRESS_FAULT_STREET', 'DESCRIPTORS', '204')
+        , ('LAPOSTE_ADDRESS_FAULT_STREET', 'TYPE', '205')
 
         , ('LAPOSTE_ADDRESS_FAULT_HOUSENUMBER', 'BAD_NUMBER', '300')
         , ('LAPOSTE_ADDRESS_FAULT_HOUSENUMBER', 'BAD_EXTENSION', '301')
@@ -951,20 +953,22 @@ BEGIN
     SELECT public.drop_table_indexes('fr', 'constant');
     CALL fr.set_laposte_address_fault_list();
 
+    -- build street-dictionary
     CALL fr.set_laposte_address_street_uniq(
         set_case => 'DICTIONARY'
     );
+    -- and links dictionary w/ referential
+    CALL fr.set_laposte_address_street_reference();
+    -- and membership of words
     CALL fr.set_laposte_address_street_membership(
         set_case => 'CREATION'
     );
 
-    CALL fr.set_laposte_address_fault_street(
-        fault => 'BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION,TYPO_ERROR'
-    );
-    CALL fr.fix_laposte_address_fault_street(
-        fault => 'BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION,TYPO_ERROR'
-    );
+    -- street-faults
+    CALL fr.set_laposte_address_fault_street();
+    CALL fr.fix_laposte_address_fault_street();
 
+    -- following street-faults fixes, have to fix membership too!
     _listof := ARRAY(
         SELECT
             name_id
@@ -984,12 +988,15 @@ BEGIN
             , listof => _listof
         );
     END IF;
+
+    -- once all fixed street-faults:
+    -- set attributs in dictionary
     CALL fr.set_laposte_address_street_uniq(
         set_case => 'ATTRIBUTS'
     );
-
+    -- classify all words
     CALL fr.set_laposte_address_street_word();
-
+    -- define keywords (type, title, ...) and exceptions
     CALL fr.set_laposte_address_street_type();
     CALL fr.set_laposte_address_street_ext();
     CALL fr.set_laposte_address_street_title();

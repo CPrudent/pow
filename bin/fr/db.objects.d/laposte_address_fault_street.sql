@@ -13,19 +13,13 @@ BEGIN
             , table_name => 'laposte_address_fault_street'
         )
         AND (
-            NOT column_exists(
-                schema_name => 'fr'
-                , table_name => 'laposte_address_fault_street'
-                , column_name => 'help_to_fix'
-            )
-            OR
-            NOT column_exists(
+            column_exists(
                 schema_name => 'fr'
                 , table_name => 'laposte_address_fault_street'
                 , column_name => 'name_before'
             )
         ) THEN
-        DROP TABLE fr.laposte_address_fault_street;
+        ALTER TABLE fr.laposte_address_fault_street DROP COLUMN name_before;
     END IF;
 END $$;
 
@@ -34,7 +28,6 @@ CREATE TABLE IF NOT EXISTS fr.laposte_address_fault_street (
     name_id INT NOT NULL
     , fault_id INT NOT NULL
     , help_to_fix VARCHAR
-    , name_before VARCHAR
 )
 ;
 
@@ -46,6 +39,93 @@ BEGIN
     CREATE UNIQUE INDEX IF NOT EXISTS iux_laposte_address_fault_street_id ON fr.laposte_address_fault_street (name_id, fault_id);
 END
 $proc$ LANGUAGE plpgsql;
+
+-- fix fault of address (referential)
+SELECT drop_all_functions_if_exists('fr', 'fix_laposte_address_fault');
+CREATE OR REPLACE FUNCTION fr.fix_laposte_address_fault(
+    address_element IN VARCHAR                -- AREA|STREET|HOUSENUMBER|COMPLEMENT
+    , address_join_column IN VARCHAR
+    , address_update_column IN VARCHAR
+    , fault_id IN INT
+    , nrows OUT INT
+    , column_with_new_value IN VARCHAR DEFAULT 'name'
+    , address_alias IN VARCHAR DEFAULT 'a'
+    , fault_alias IN VARCHAR DEFAULT 'f'
+    , uniq_alias IN VARCHAR DEFAULT 'u'
+    , reference_alias IN VARCHAR DEFAULT 'r'
+    , simulation IN BOOLEAN DEFAULT FALSE
+)
+AS
+$func$
+DECLARE
+    _query TEXT;
+    _address_table VARCHAR;
+    _fault_table VARCHAR;
+    _uniq_table VARCHAR;
+    _reference_table VARCHAR;
+    _fault_key VARCHAR := CONCAT(fault_alias, '.name_id');
+    _uniq_key VARCHAR := CONCAT(uniq_alias, '.id');
+    _reference_key VARCHAR := CONCAT(reference_alias, '.name_id');
+    _join_uniq_fault VARCHAR := CONCAT(_fault_key, ' = ', _uniq_key);
+    _join_uniq_reference VARCHAR := CONCAT(_reference_key, ' = ', _uniq_key);
+    _address_join_column VARCHAR := CONCAT(address_alias, '.', address_join_column);
+    _address_update_column VARCHAR := CONCAT(address_alias, '.', address_update_column);
+    _column_with_new_value VARCHAR := CASE
+        WHEN count_words(column_with_new_value) = 1 THEN
+            CONCAT(uniq_alias, '.', column_with_new_value)
+        ELSE
+            column_with_new_value
+        END
+        ;
+BEGIN
+    IF NOT address_element = ANY('{AREA,STREET,HOUSENUMBER,COMPLEMENT}') THEN
+        RAISE 'élément adresse (%) non valide!', address_element;
+    END IF;
+
+    _address_table := CONCAT('fr.laposte_address_', LOWER(address_element));
+    _fault_table := CONCAT('fr.laposte_address_fault_', LOWER(address_element));
+    _uniq_table := CONCAT(_address_table, '_uniq');
+    _reference_table := CONCAT(_address_table, '_reference');
+
+    /*
+    UPDATE fr.laposte_address_street s SET
+        lb_voie = u.name
+        FROM
+            fr.laposte_address_fault_street fs
+                JOIN fr.laposte_address_street_uniq u ON u.id = fs.name_id
+        WHERE
+            fs.fault_id = _values[_fault_i]::INT
+            AND
+            s.lb_voie = fs.name_before
+            AND
+            s.lb_voie IS DISTINCT FROM u.name
+    ;
+     */
+
+    _query := CONCAT('UPDATE ', _address_table, ' ', address_alias, ' SET
+        ', address_update_column, ' = ', _column_with_new_value, '
+        , dt_reference = TIMEOFDAY()::DATE
+        FROM
+        ', _fault_table, ' ', fault_alias, '
+            JOIN ', _uniq_table, ' ', uniq_alias, ' ON ', _join_uniq_fault, '
+            JOIN ', _reference_table, ' ', reference_alias, ' ON ', _join_uniq_reference, '
+        WHERE
+            ', fault_alias, '.fault_id = ', fault_id, '
+            AND
+            ', _address_join_column, ' = ', CONCAT(reference_alias, '.address_id'), '
+            AND
+            ', _address_update_column, ' IS DISTINCT FROM ', _column_with_new_value
+    );
+
+    IF NOT simulation THEN
+        EXECUTE _query;
+        GET DIAGNOSTICS nrows = ROW_COUNT;
+    ELSE
+        RAISE NOTICE ' requête=%', _query;
+        nrows := 0;
+    END IF;
+END
+$func$ LANGUAGE plpgsql;
 
 -- identify street faults
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_fault_street');
@@ -234,6 +314,7 @@ BEGIN
                         NOT fr.is_normalized_number(m.word)
 
                     ;
+            /*
             ELSIF _keys[_fault_i] = 'DESCRIPTORS' THEN
                 INSERT INTO fr.laposte_address_fault_street
                     WITH
@@ -304,6 +385,7 @@ BEGIN
                     WHERE
                         type_pow IS DISTINCT FROM type_laposte
                     ;
+             */
             END IF;
             GET DIAGNOSTICS _nrows = ROW_COUNT;
             CALL public.log_info(CONCAT(' Ajout anomalies (', _keys[_fault_i], '): ', _nrows));
@@ -341,111 +423,19 @@ END $$;
 
 Query returned successfully in 17 secs 919 msec.
 
--- DESCRIPTORS
-execute_query --name FAULT_DESCRIPTORS --query 'CALL fr.set_laposte_address_fault_street(
-fault => '"'"'DESCRIPTORS'"'"')'
-
-2024-01-29T09:01:41Z|info|5438|christophe|/usr/bin/bash|Lancement de l'exécution de FAULT_DESCRIPTORS (requête)
-2024-01-29T09:13:46Z|info|5438|christophe|/usr/bin/bash|Exécution avec succès de FAULT_DESCRIPTORS en 0h:12m:5s
-
--- TYPE
-execute_query --name FAULT_TYPE --query 'CALL fr.set_laposte_address_fault_street(
-fault => '"'"'TYPE'"'"')'
-2024-01-29T09:19:18Z|info|5438|christophe|/usr/bin/bash|Lancement de l'exécution de FAULT_TYPE (requête)
-2024-01-29T09:19:19Z|info|5438|christophe|/usr/bin/bash|Exécution avec succès de FAULT_TYPE en 0h:0m:1s
-
 -- COUNTS
 FAULT   COUNT
     1       6
     2     134
     3      46
     4      11
-    5    8507
-    6     604
-
  */
-
--- fix fault of address (referential)
-SELECT drop_all_functions_if_exists('fr', 'fix_laposte_address_fault');
-CREATE OR REPLACE FUNCTION fr.fix_laposte_address_fault(
-    address_element IN VARCHAR                -- AREA|STREET|HOUSENUMBER|COMPLEMENT
-    , address_join_column IN VARCHAR
-    , address_update_column IN VARCHAR
-    , fault_id IN INT
-    , nrows OUT INT
-    , column_with_new_value IN VARCHAR DEFAULT 'name'
-    , column_with_old_value IN VARCHAR DEFAULT 'name_before'
-    , address_alias IN VARCHAR DEFAULT 'a'
-    , fault_alias IN VARCHAR DEFAULT 'f'
-    , uniq_alias IN VARCHAR DEFAULT 'u'
-    , simulation IN BOOLEAN DEFAULT FALSE
-)
-AS
-$func$
-DECLARE
-    _query TEXT;
-    _address_table VARCHAR;
-    _fault_table VARCHAR;
-    _uniq_table VARCHAR;
-    _fault_key VARCHAR := CONCAT(fault_alias, '.name_id');
-    _uniq_key VARCHAR := CONCAT(uniq_alias, '.id');
-    _join_uniq_fault VARCHAR := CONCAT(_fault_key, ' = ', _uniq_key);
-    _address_join_column VARCHAR := CONCAT(address_alias, '.', address_join_column);
-    _address_update_column VARCHAR := CONCAT(address_alias, '.', address_update_column);
-    _column_with_old_value VARCHAR := CONCAT(fault_alias, '.', column_with_old_value);
-    _column_with_new_value VARCHAR := CONCAT(uniq_alias, '.', column_with_new_value);
-BEGIN
-    IF NOT address_element = ANY('{AREA,STREET,HOUSENUMBER,COMPLEMENT}') THEN
-        RAISE 'élément adresse (%) non valide!', address_element;
-    END IF;
-
-    _address_table := CONCAT('fr.laposte_address_', LOWER(address_element));
-    _fault_table := CONCAT('fr.laposte_address_fault_', LOWER(address_element));
-    _uniq_table := CONCAT('fr.laposte_address_', LOWER(address_element), '_uniq');
-
-    /*
-    UPDATE fr.laposte_address_street s SET
-        lb_voie = u.name
-        FROM
-            fr.laposte_address_fault_street fs
-                JOIN fr.laposte_address_street_uniq u ON u.id = fs.name_id
-        WHERE
-            fs.fault_id = _values[_fault_i]::INT
-            AND
-            s.lb_voie = fs.name_before
-            AND
-            s.lb_voie IS DISTINCT FROM u.name
-    ;
-     */
-
-    _query := CONCAT('UPDATE ', _address_table, ' ', address_alias, ' SET
-        ', address_update_column, ' = ', _column_with_new_value, '
-        , dt_reference = TIMEOFDAY()::DATE
-        FROM
-        ', _fault_table, ' ', fault_alias, '
-            JOIN ', _uniq_table, ' ', uniq_alias, ' ON ', _join_uniq_fault, '
-        WHERE
-            ', fault_alias, '.fault_id = ', fault_id, '
-            AND
-            ', _address_join_column, ' = ', _column_with_old_value, '
-            AND
-            ', _address_update_column, ' IS DISTINCT FROM ', _column_with_new_value
-    );
-
-    IF NOT simulation THEN
-        EXECUTE _query;
-        GET DIAGNOSTICS nrows = ROW_COUNT;
-    ELSE
-        RAISE NOTICE 'requête=%', _query;
-        nrows := 0;
-    END IF;
-END
-$func$ LANGUAGE plpgsql;
 
 -- fix street faults
 SELECT drop_all_functions_if_exists('fr', 'fix_laposte_address_fault_street');
 CREATE OR REPLACE PROCEDURE fr.fix_laposte_address_fault_street(
     fault IN VARCHAR DEFAULT 'ALL'
+    , fix IN VARCHAR DEFAULT 'ALL'
     , simulation IN BOOLEAN DEFAULT FALSE
 )
 AS
@@ -454,16 +444,17 @@ DECLARE
     _faults VARCHAR[];
     _keys VARCHAR[];
     _values VARCHAR[];
-    _fix BOOLEAN;
+    _fix_dictionary BOOLEAN;
+    _query TEXT;
     _i INT;
     _fault_i INT;
+    _fault_id INT;
     _nrows INT;
     _nrows_history INT;
     _nrows_referential INT;
     _address_element VARCHAR := 'STREET';
     _address_join_column VARCHAR;
     _address_update_column VARCHAR;
-    _column_with_old_value VARCHAR;
     _column_with_new_value VARCHAR;
 BEGIN
     IF NOT table_exists('fr', 'laposte_address_street_uniq') THEN
@@ -493,161 +484,157 @@ BEGIN
             ;
 
         IF (_fault_i > 0) THEN
-            IF simulation THEN
-                RAISE NOTICE ' Anomalie (%)', _keys[_fault_i];
-                CONTINUE;
-            END IF;
-
-            _fix := TRUE;
-            _address_join_column := 'lb_voie';
-            _address_update_column := _address_join_column;
+            _fix_dictionary := TRUE;
+            _address_join_column := 'co_cea';
+            _address_update_column := 'lb_voie';
             _column_with_new_value := 'name';
+            _fault_id := _values[_fault_i]::INT;
             IF _keys[_fault_i] = 'BAD_SPACE' THEN
-                UPDATE fr.laposte_address_street_uniq u SET
-                    name = fs.help_to_fix
-                    FROM fr.laposte_address_fault_street fs
-                    WHERE
-                        fs.fault_id = _values[_fault_i]::INT
-                        AND
-                        u.id = fs.name_id
-                        AND
-                        u.name = fs.name_before
-                ;
+                _query := CONCAT('
+                    UPDATE fr.laposte_address_street_uniq u SET
+                        name = fs.help_to_fix
+                        FROM fr.laposte_address_fault_street fs
+                        WHERE
+                            fs.fault_id = ', _fault_id, '
+                            AND
+                            u.id = fs.name_id
+                    '
+                );
             ELSIF _keys[_fault_i] = 'DUPLICATE_WORD' THEN
-                WITH
-                fix_bad_space AS (
-                    SELECT
-                        u.id
-                        , fix.name
-                    FROM
-                        fr.laposte_address_street_uniq u
-                            JOIN fr.laposte_address_fault_street fs ON u.id = fs.name_id
-                        , bad_space_in_name(
-                            name => REGEXP_REPLACE(
-                                u.name
-                                , CONCAT('\m', fs.help_to_fix, '\M')
-                                , ''
-                            )
-                        ) fix
-                    WHERE
-                        fs.fault_id = _values[_fault_i]::INT
-                        AND
-                        u.name = fs.name_before
-                )
-                UPDATE fr.laposte_address_street_uniq u SET
-                    name = fbs.name
-                    FROM fix_bad_space fbs
-                    WHERE u.id = fbs.id
-                ;
-            ELSIF _keys[_fault_i] = 'WITH_ABBREVIATION' THEN
-                WITH
-                word_abbreviation(word) AS (
-                    SELECT DISTINCT
-                        help_to_fix
-                    FROM
-                        fr.laposte_address_fault_street
-                    WHERE
-                        fault_id = _values[_fault_i]::INT
-                )
-                , not_abbreviated AS (
-                    SELECT
-                        MIN(wa.word) word
-                        , MIN(k.name) name
-                    FROM
-                        fr.laposte_address_street_keyword k
-                            JOIN word_abbreviation wa ON k.name_abbreviated = wa.word
-                    WHERE
-                        k.group = ANY('{TITLE,TYPE}')
-                    GROUP BY
-                        k.name_abbreviated
-                    HAVING COUNT(*) = 1
-                    /*
-                    UNION
-                    VALUES
-                        ('STE', 'SAINTE')
-                     */
-                )
-                UPDATE fr.laposte_address_street_uniq u SET
-                    name = REGEXP_REPLACE(
-                        u.name
-                        , CONCAT('\m', fs.help_to_fix, '\M')
-                        , na.name
-                        , 'g'
+                _query := CONCAT('
+                    WITH
+                    fix_bad_space(id, name) AS (
+                        SELECT
+                            u.id
+                            , fix.name
+                        FROM
+                            fr.laposte_address_street_uniq u
+                                JOIN fr.laposte_address_fault_street fs ON u.id = fs.name_id
+                            , bad_space_in_name(
+                                name => REGEXP_REPLACE(
+                                    u.name
+                                    , CONCAT(''\m'', fs.help_to_fix, ''\M'')
+                                    , ''
+                                )
+                            ) fix
+                        WHERE
+                            fs.fault_id = ', _fault_id, '
                     )
-                    FROM
-                        fr.laposte_address_fault_street fs
-                        , not_abbreviated na
-                    WHERE
-                        fs.fault_id = _values[_fault_i]::INT
-                        AND
-                        u.id = fs.name_id
-                        AND
-                        u.name = fs.name_before
-                        AND
-                        fs.help_to_fix = na.word
-                ;
+                    UPDATE fr.laposte_address_street_uniq u SET
+                        name = fbs.name
+                        FROM fix_bad_space fbs
+                        WHERE u.id = fbs.id
+                    '
+                );
+            ELSIF _keys[_fault_i] = 'WITH_ABBREVIATION' THEN
+                _query := CONCAT('
+                    WITH
+                    word_abbreviation(word) AS (
+                        SELECT DISTINCT
+                            help_to_fix
+                        FROM
+                            fr.laposte_address_fault_street
+                        WHERE
+                            fault_id = ', _fault_id, '
+                    )
+                    , not_abbreviated(abbr, name) AS (
+                        SELECT
+                            MIN(wa.word)
+                            , MIN(k.name)
+                        FROM
+                            fr.laposte_address_street_keyword k
+                                JOIN word_abbreviation wa ON k.name_abbreviated = wa.word
+                        WHERE
+                            k.group = ANY(''{TITLE,TYPE}'')
+                        GROUP BY
+                            k.name_abbreviated
+                        HAVING COUNT(*) = 1
+                        /*
+                        UNION
+                        VALUES
+                            (''STE'', ''SAINTE'')
+                        */
+                    )
+                    UPDATE fr.laposte_address_street_uniq u SET
+                        name = REGEXP_REPLACE(
+                            u.name
+                            , CONCAT(''\m'', fs.help_to_fix, ''\M'')
+                            , na.name
+                            , ''g''
+                        )
+                        FROM
+                            fr.laposte_address_fault_street fs
+                            , not_abbreviated na
+                        WHERE
+                            fs.fault_id = ', _values[_fault_i]::INT, '
+                            AND
+                            u.id = fs.name_id
+                            AND
+                            fs.help_to_fix = na.abbr
+                    '
+                );
             ELSIF _keys[_fault_i] = 'TYPO_ERROR' THEN
-                WITH
-                manual_correction(id, name) AS (
-                    VALUES
-                          (432462, 'RUE DES QUATRE VENTS')
-                        , (465695, 'VALLEE DE LA NERE')
-                        , (601484, 'CHEMIN DES QUATRE VENTS')
-                        , (632288, 'CHEMIN DE BRISEMUR')
-                        , (777777, 'RUE DU 6 MAI 1802')
-                        , (865959, 'CHEMIN DU PUIFRAUD')
-                        , (962227, 'IMPASSE DE L EGLISE')
-                        , (1007700, 'LOTISSEMENT LES CHARMILLES')
-                )
-                UPDATE fr.laposte_address_street_uniq u SET
-                    name = mc.name
-                    FROM
-                        manual_correction mc
-                    WHERE
-                        mc.id = u.id
-                ;
-            ELSIF _keys[_fault_i] = 'DESCRIPTORS' THEN
-                _address_update_column := 'lb_desc';
-                _column_with_new_value := 'descriptors';
-                UPDATE fr.laposte_address_street_uniq u SET
-                    descriptors = fs.help_to_fix
-                    FROM
-                        fr.laposte_address_fault_street fs
-                    WHERE
-                        fs.fault_id = _values[_fault_i]::INT
-                        AND
-                        u.id = fs.name_id
-                ;
-            ELSIF _keys[_fault_i] = 'TYPE' THEN
-                _address_update_column := 'lb_type';
-                _column_with_new_value := 'type_of_street';
-                UPDATE fr.laposte_address_street_uniq u SET
-                    type_of_street = fs.help_to_fix
-                    FROM
-                        fr.laposte_address_fault_street fs
-                    WHERE
-                        fs.fault_id = _values[_fault_i]::INT
-                        AND
-                        u.id = fs.name_id
-                ;
+                _query := CONCAT('
+                    WITH
+                    manual_correction(id, name) AS (
+                        VALUES
+                            (432462, ''RUE DES QUATRE VENTS'')
+                            , (465695, ''VALLEE DE LA NERE'')
+                            , (601484, ''CHEMIN DES QUATRE VENTS'')
+                            , (632288, ''CHEMIN DE BRISEMUR'')
+                            , (777777, ''RUE DU 6 MAI 1802'')
+                            , (865959, ''CHEMIN DU PUIFRAUD'')
+                            , (962227, ''IMPASSE DE L EGLISE'')
+                            , (1007700, ''LOTISSEMENT LES CHARMILLES'')
+                    )
+                    UPDATE fr.laposte_address_street_uniq u SET
+                        name = mc.name
+                        FROM
+                            manual_correction mc
+                        WHERE
+                            mc.id = u.id
+                    '
+                );
             ELSE
-                _fix := FALSE;
+                _fix_dictionary := FALSE;
+                _fault_id := 0;
+                IF _keys[_fault_i] = 'DESCRIPTORS' THEN
+                    _address_update_column := 'lb_desc';
+                    _column_with_new_value := 'descriptors';
+                ELSIF _keys[_fault_i] = 'TYPE' THEN
+                    _address_update_column := 'lb_type';
+                    _column_with_new_value := 'CASE
+                        WHEN u.descriptors ~ ''^V'' THEN
+                            fr.get_property_ordinal_item(
+                                property_key => ''NAME''
+                                , property_value => u.name
+                                , as_words => u.as_words
+                                , ordinal => 1
+                        END';
+                END IF;
             END IF;
 
-            IF _fix THEN
-                GET DIAGNOSTICS _nrows = ROW_COUNT;
-                CALL public.log_info(CONCAT(' Mise à jour anomalies (', _keys[_fault_i], '): ', _nrows));
+            IF fix = ANY('{ALL,DICTIONARY}') AND _fix_dictionary THEN
+                IF simulation THEN
+                    RAISE NOTICE ' requête=%', _query;
+                ELSE
+                    EXECUTE _query;
+                    GET DIAGNOSTICS _nrows = ROW_COUNT;
+                    CALL public.log_info(CONCAT(' Mise à jour anomalies (', _keys[_fault_i], '): ', _nrows));
+                END IF;
+            END IF;
 
-                -- history (before fix)
+            IF fix = ANY('{ALL,REFERENTIAL}') THEN
+                -- history (before updating referential)
                 SELECT nrows
                 INTO _nrows_history
                 FROM fr.add_history_address_fault(
                     address_change => _keys[_fault_i]
                     , address_element => _address_element
-                    , address_join_column => _address_join_column
                     , address_update_column => _address_update_column
                     , fault_id => _values[_fault_i]::INT
                     , column_with_new_value => _column_with_new_value
+                    , simulation => simulation
                 );
                 CALL public.log_info(CONCAT(' Insertion Historique (', _keys[_fault_i], '): ', _nrows_history));
 
@@ -655,20 +642,22 @@ BEGIN
                 SELECT nrows
                 INTO _nrows_referential
                 FROM fr.fix_laposte_address_fault(
-                    address_element => _address_element
+                    address_change => _keys[_fault_i]
+                    , address_element => _address_element
                     , address_join_column => _address_join_column
                     , address_update_column => _address_update_column
-                    , fault_id => _values[_fault_i]::INT
+                    , fault_id => _fault_id
                     , column_with_new_value => _column_with_new_value
+                    , simulation => simulation
                 );
                 CALL public.log_info(CONCAT(' Mise à jour Référentiel (', _keys[_fault_i], '): ', _nrows_referential));
 
-                IF _nrows_history IS DISTINCT FROM _nrows_referential THEN
-                    RAISE ' Ecart (%): hist=%, ref=%', _keys[_fault_i], _nrows_history, _nrows_referential;
+                IF NOT simulation THEN
+                    IF _nrows_history IS DISTINCT FROM _nrows_referential THEN
+                        RAISE ' Ecart (%): hist=%, ref=%', _keys[_fault_i], _nrows_history, _nrows_referential;
+                    END IF;
+                    COMMIT;
                 END IF;
-                COMMIT;
-            ELSE
-                RAISE NOTICE ' Anomalie % non corrigée en automatique', _faults[_i];
             END IF;
         ELSE
             RAISE NOTICE ' Anomalie % non valide!', _faults[_i];
