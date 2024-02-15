@@ -155,6 +155,8 @@ DECLARE
     _keys VARCHAR[];
     _values VARCHAR[];
     _delete BOOLEAN := FALSE;
+    _set_dictionary BOOLEAN;
+    _query TEXT;
     _i INT;
     _fault_i INT;
     _nrows INT;
@@ -180,10 +182,8 @@ BEGIN
     IF fault = 'ALL' AND NOT simulation THEN
         CALL public.log_info(' Purge');
         TRUNCATE TABLE fr.laposte_address_fault_street;
-        _delete := TRUE;
-    END IF;
-    IF NOT simulation THEN
         PERFORM public.drop_table_indexes('fr', 'laposte_address_fault_street');
+        _delete := TRUE;
     END IF;
 
     CALL public.log_info(' Identification');
@@ -194,14 +194,8 @@ BEGIN
             ELSE ARRAY_POSITION(_keys, _faults[_i])
             END
             ;
-
         IF (_fault_i > 0) THEN
-            IF simulation THEN
-                RAISE NOTICE ' Anomalie (%)', _keys[_fault_i];
-                CONTINUE;
-            END IF;
-
-            IF NOT _delete THEN
+            IF NOT _delete AND NOT simulation THEN
                 DELETE FROM fr.laposte_address_fault_street
                 WHERE
                     fault_id = _values[_fault_i]::INT
@@ -210,196 +204,165 @@ BEGIN
                 CALL public.log_info(CONCAT(' Purge anomalies (', _keys[_fault_i], '): ', _nrows));
             END IF;
 
+            _set_dictionary := TRUE;
             IF _keys[_fault_i] = 'BAD_SPACE' THEN
-                INSERT INTO fr.laposte_address_fault_street
-                    WITH
-                    bad_space AS (
+                _query := CONCAT(
+                    '
+                        WITH
+                        bad_space AS (
+                            SELECT
+                                u.id
+                            FROM
+                                fr.laposte_address_street_uniq u
+                                , bad_space_in_name(
+                                    name => u.name
+                                    , test_only => TRUE
+                                ) bs
+                            WHERE
+                                bs.to_fix
+                        )
                         SELECT
                             u.id
+                            , ', _values[_fault_i]::INT, '
+                            , fix.name
                         FROM
                             fr.laposte_address_street_uniq u
+                                JOIN bad_space bs ON u.id = bs.id
                             , bad_space_in_name(
                                 name => u.name
-                                , test_only => TRUE
-                            ) bs
-                        WHERE
-                            bs.to_fix
-                    )
-                    SELECT
-                        u.id
-                        , _values[_fault_i]::INT
-                        , fix.name
-                    FROM
-                        fr.laposte_address_street_uniq u
-                            JOIN bad_space bs ON u.id = bs.id
-                        , bad_space_in_name(
-                            name => u.name
-                        ) fix
-                    ;
+                            ) fix
+                    '
+                );
             ELSIF _keys[_fault_i] = 'DUPLICATE_WORD' THEN
-                INSERT INTO fr.laposte_address_fault_street
-                    WITH
-                    -- real double words!
-                    except_dup_words(word) AS (
-                        VALUES
-                            ('AH')
-                            , ('BIN')
-                            , ('BLIN')
-                            , ('BORA')
-                            , ('CRI')
-                            , ('CUIS')
-                            , ('FOU')
-                            , ('FROUS')
-                            , ('HA')
-                            , ('HOURA')
-                            , ('MOUCOU')
-                            , ('MOUKOUS')
-                            , ('PILI')
-                            , ('POUSSE')
-                            , ('PRIS')
-                            , ('QUIN')
-                            , ('TCHA')
-                            , ('TECS')
-                            , ('TUIT')
-                            , ('TUITS')
-                            , ('VALA')
-                            , ('YLANG')
-                            , ('YLANGS')
-                    )
-                    , dup_words AS (
-                        SELECT
-                            id
-                            , REGEXP_MATCHES(name, '\m([ A-Z]+)\s+\1\M') dup
-                        FROM
-                            fr.laposte_address_street_uniq
-                    )
-                    SELECT
-                        u.id
-                        , _values[_fault_i]::INT
-                        , d.dup[1]
-                    FROM
-                        fr.laposte_address_street_uniq u
-                            JOIN dup_words d ON u.id = d.id
-                    WHERE
-                        d.dup IS NOT NULL
-                        AND
-                        NOT EXISTS(
-                            SELECT 1 FROM except_dup_words x
-                            WHERE d.dup[1] = x.word
+                _query := CONCAT(
+                    '
+                        WITH
+                        -- true double words!
+                        except_dup_words(word) AS (
+                            VALUES
+                                  (''AH'')
+                                , (''BADEN'')
+                                , (''BIN'')
+                                , (''BLIN'')
+                                , (''BORA'')
+                                , (''BOUTSI'')
+                                , (''CASSE'')
+                                , (''COLLES'')
+                                , (''COTTE'')
+                                , (''CRI'')
+                                , (''CUIS'')
+                                , (''FOU'')
+                                , (''FROUS'')
+                                , (''GABA'')
+                                , (''HA'')
+                                , (''JEAN'')
+                                , (''HOURA'')
+                                , (''MOUCOU'')
+                                , (''MOUKOUS'')
+                                , (''NOEL'')
+                                , (''PAUL'')
+                                , (''PEUT'')
+                                , (''PILI'')
+                                , (''PITE'')
+                                , (''PIOU'')
+                                , (''POC'')
+                                , (''POUSSE'')
+                                , (''PRIS'')
+                                , (''RENE'')
+                                , (''SOEURS'')
+                                , (''QUIN'')
+                                , (''TCHA'')
+                                , (''TCHAT'')
+                                , (''TECS'')
+                                , (''TRIN'')
+                                , (''TUIT'')
+                                , (''TUITS'')
+                                , (''VALA'')
+                                , (''YLANG'')
+                                , (''YLANGS'')
                         )
-                    ;
-            ELSIF _keys[_fault_i] = 'WITH_ABBREVIATION' THEN
-                INSERT INTO fr.laposte_address_fault_street
-                    -- others than ST|STE have too counter examples
-                    --  DU|EN not classified as article, ALL (ALL blacks), COR (chasse)
-                    WITH
-                    word_abbreviation(abbr) AS (
-                        VALUES
-                            ('ST')
-                            , ('STE')
-                    )
-                    SELECT
-                        u.id
-                        , _values[_fault_i]::INT
-                        , wa.abbr
-                    FROM
-                        fr.laposte_address_street_uniq u
-                        , word_abbreviation wa
-                    WHERE
-                        u.words @> ARRAY[wa.abbr]::TEXT[]
-                    ;
-            ELSIF _keys[_fault_i] = 'TYPO_ERROR' THEN
-                -- word containing digit, but not classified as number
-                INSERT INTO fr.laposte_address_fault_street
-                    SELECT DISTINCT
-                        m.name_id
-                        , _values[_fault_i]::INT
-                        , m.word
-                    FROM
-                        fr.laposte_address_street_membership m
-                            JOIN fr.laposte_address_street_uniq u ON m.name_id = u.id
-                    WHERE
-                        m.word ~ '[0-9]+'
-                        -- even if not necessary (membership exclude is_number)
-                        AND
-                        NOT fr.is_normalized_number(m.word)
-
-                    ;
-            /*
-            ELSIF _keys[_fault_i] = 'DESCRIPTORS' THEN
-                INSERT INTO fr.laposte_address_fault_street
-                    WITH
-                    descriptors AS (
-                        SELECT
-                            id
-                            , ds.descriptors descriptor_pow
-                            , u.descriptors descriptor_laposte
-                            , u.name
-                        FROM
-                            fr.laposte_address_street_uniq u
-                                CROSS JOIN fr.get_descriptors_of_street(u.name) ds
-                    )
-                    SELECT
-                        id
-                        , _values[_fault_i]::INT
-                        , descriptors_pow
-                        , name
-                    FROM
-                        descriptors
-                    WHERE
-                        descriptors_pow IS DISTINCT FROM descriptors_laposte
-                    ;
-            ELSIF _keys[_fault_i] = 'TYPE' THEN
-                /* NOTE
-                need DESCRIPTORS-fault before!
-                 */
-                INSERT INTO fr.laposte_address_fault_street
-                    WITH
-                    type_of_street AS (
+                        , dup_words AS (
+                            SELECT
+                                id
+                                , REGEXP_MATCHES(name, ''\m([ A-Z]+)\s+\1\M'') dup
+                            FROM
+                                fr.laposte_address_street_uniq
+                        )
                         SELECT
                             u.id
-                            , u.type_of_street type_laposte
-                            , CASE
-                                WHEN p.v IS NOT NULL THEN
-                                    items_of_array_to_string(
-                                        elements => u.words
-                                        , from_ => 1
-                                        , to_ => LENGTH(p.v[1])
-                                    )
-                                ELSE
-                                    NULL
-                                END type_pow
-                            , u.name
+                            , ', _values[_fault_i]::INT, '
+                            , d.dup[1]
                         FROM
                             fr.laposte_address_street_uniq u
-                                JOIN fr.laposte_address_fault_street fs ON u.id = fs.name_id
-                                LEFT OUTER JOIN LATERAL REGEXP_MATCHES(fs.help_to_fix, '^(V+)') p(v) ON TRUE
+                                JOIN dup_words d ON u.id = d.id
                         WHERE
-                            fs.fault_id = (
-                                SELECT
-                                    value::INT
-                                FROM
-                                    fr.constant
-                                WHERE
-                                    usecase = 'LAPOSTE_ADDRESS_FAULT_STREET'
-                                    AND
-                                    key = 'DESCRIPTORS'
+                            d.dup IS NOT NULL
+                            AND
+                            NOT EXISTS(
+                                SELECT 1 FROM except_dup_words x
+                                WHERE d.dup[1] = x.word
                             )
-                    )
-                    SELECT
-                        id
-                        , _values[_fault_i]::INT
-                        , type_pow
-                        , name
-                    FROM
-                        type_of_street
-                    WHERE
-                        type_pow IS DISTINCT FROM type_laposte
-                    ;
-             */
+                    '
+                );
+            ELSIF _keys[_fault_i] = 'WITH_ABBREVIATION' THEN
+                -- others than ST|STE have too counter examples
+                --  DU|EN not classified as article, ALL (ALL blacks), COR (chasse)
+                _query := CONCAT(
+                    '
+                        WITH
+                        word_abbreviation(abbr) AS (
+                            VALUES
+                                (''ST'')
+                                , (''STE'')
+                        )
+                        SELECT
+                            u.id
+                            , ', _values[_fault_i]::INT, '
+                            , wa.abbr
+                        FROM
+                            fr.laposte_address_street_uniq u
+                            , word_abbreviation wa
+                        WHERE
+                            u.words @> ARRAY[wa.abbr]::TEXT[]
+                    '
+                );
+            ELSIF _keys[_fault_i] = 'TYPO_ERROR' THEN
+                -- word containing digit, but not classified as number
+                _query := CONCAT(
+                    '
+                        SELECT DISTINCT
+                            m.name_id
+                            , ', _values[_fault_i]::INT, '
+                            , m.word
+                        FROM
+                            fr.laposte_address_street_membership m
+                                JOIN fr.laposte_address_street_uniq u ON m.name_id = u.id
+                        WHERE
+                            m.word ~ ''[0-9]+''
+                            -- even if not necessary (membership exclude is_number)
+                            AND
+                            NOT fr.is_normalized_number(m.word)
+                    '
+                );
+            ELSE
+                _set_dictionary := FALSE;
             END IF;
-            GET DIAGNOSTICS _nrows = ROW_COUNT;
-            CALL public.log_info(CONCAT(' Ajout anomalies (', _keys[_fault_i], '): ', _nrows));
+
+            IF _set_dictionary THEN
+                _query := CONCAT(
+                    '
+                    INSERT INTO fr.laposte_address_fault_street
+                    '
+                    , _query
+                );
+                IF simulation THEN
+                    RAISE NOTICE ' requête=%', _query;
+                ELSE
+                    EXECUTE _query;
+                    GET DIAGNOSTICS _nrows = ROW_COUNT;
+                    CALL public.log_info(CONCAT(' Ajout anomalies (', _keys[_fault_i], '): ', _nrows));
+                END IF;
+            END IF;
         ELSE
             RAISE NOTICE ' Anomalie % non valide!', _faults[_i];
         END IF;
@@ -413,33 +376,17 @@ END
 $proc$ LANGUAGE plpgsql;
 
 /* TEST
-DO $$
-BEGIN
-    CALL fr.set_laposte_address_fault_street(
-        fault => 'BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION,TYPO_ERROR'
-    );
-END $$;
+CALL fr.set_laposte_address_fault_street();
 
-16:53:42.448 Identification des anomalies dans les libellés de voie
-16:53:42.449  Identification
-16:53:42.449  Purge anomalies (BAD_SPACE): 0
-16:53:46.236  Ajout anomalies (BAD_SPACE): 6
-16:53:46.236  Purge anomalies (DUPLICATE_WORD): 0
-16:53:58.570  Ajout anomalies (DUPLICATE_WORD): 134
-16:53:58.570  Purge anomalies (WITH_ABBREVIATION): 0
-16:53:59.182  Ajout anomalies (WITH_ABBREVIATION): 46
-16:53:59.182  Purge anomalies (TYPO_ERROR): 0
-16:54:00.022  Ajout anomalies (TYPO_ERROR): 11
-16:54:00.057  Indexation
-
-Query returned successfully in 17 secs 919 msec.
-
--- COUNTS
-FAULT   COUNT
-    1       6
-    2     134
-    3      46
-    4      11
+13:09:59.573 Identification des anomalies dans les libellés de voie
+13:09:59.574  Purge
+DROP INDEX IF EXISTS fr.iux_laposte_address_fault_street_id
+13:09:59.665  Identification
+13:10:02.911  Ajout anomalies (BAD_SPACE): 33
+13:10:14.620  Ajout anomalies (DUPLICATE_WORD): 134
+13:10:15.236  Ajout anomalies (WITH_ABBREVIATION): 46
+13:10:16.021  Ajout anomalies (TYPO_ERROR): 10
+13:10:16.066  Indexation
  */
 
 -- fix street faults
@@ -525,7 +472,7 @@ BEGIN
                                 name => REGEXP_REPLACE(
                                     u.name
                                     , CONCAT(''\m'', fs.help_to_fix, ''\M'')
-                                    , ''
+                                    , ''''
                                 )
                             ) fix
                         WHERE
@@ -621,17 +568,20 @@ BEGIN
                                 , property_value => u.name
                                 , as_words => u.as_words
                                 , ordinal => 1
+                            )
                         END';
                 END IF;
             END IF;
 
-            IF fix = ANY('{ALL,DICTIONARY}') AND _fix_dictionary THEN
-                IF simulation THEN
-                    RAISE NOTICE ' requête=%', _query;
-                ELSE
-                    EXECUTE _query;
-                    GET DIAGNOSTICS _nrows = ROW_COUNT;
-                    CALL public.log_info(CONCAT(' Mise à jour anomalies (', _keys[_fault_i], '): ', _nrows));
+            IF fix = ANY('{ALL,DICTIONARY}') THEN
+                IF _fix_dictionary THEN
+                    IF simulation THEN
+                        RAISE NOTICE ' requête=%', _query;
+                    ELSE
+                        EXECUTE _query;
+                        GET DIAGNOSTICS _nrows = ROW_COUNT;
+                        CALL public.log_info(CONCAT(' Mise à jour anomalies (', _keys[_fault_i], '): ', _nrows));
+                    END IF;
                 END IF;
             END IF;
 

@@ -964,9 +964,11 @@ BEGIN
         set_case => 'CREATION'
     );
 
-    -- street-faults
+    -- street-faults (part/1)
     CALL fr.set_laposte_address_fault_street();
-    CALL fr.fix_laposte_address_fault_street();
+    CALL fr.fix_laposte_address_fault_street(
+        fault => 'BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION,TYPO_ERROR'
+    );
 
     -- following street-faults fixes, have to fix membership too!
     _listof := ARRAY(
@@ -994,6 +996,11 @@ BEGIN
     CALL fr.set_laposte_address_street_uniq(
         set_case => 'ATTRIBUTS'
     );
+    -- street-faults (part/2)
+    CALL fr.fix_laposte_address_fault_street(
+        fault => 'DESCRIPTORS,TYPE'
+    );
+
     -- classify all words
     CALL fr.set_laposte_address_street_word();
     -- define keywords (type, title, ...) and exceptions
@@ -1009,3 +1016,24 @@ BEGIN
     CALL fr.set_constant_index();
 END;
 $proc$ LANGUAGE plpgsql;
+
+/* TEST
+16:02:28.937 Dictionnaire des voies
+16:02:28.937  Purge
+16:02:28.965  Initialisation
+16:02:36.153  Création: 1120741
+16:02:41.586  Indexation
+16:02:41.614 Référence des voies (Dictionnaire/Référentiel)
+16:02:41.614  Purge
+DROP INDEX IF EXISTS fr.ix_laposte_address_street_reference_name_id
+DROP INDEX IF EXISTS fr.ix_laposte_address_street_reference_address_id
+16:02:42.034  Initialisation
+16:02:56.092  Création: 2392148
+16:03:02.807  Indexation
+16:03:02.835 Gestion de l'appartenance des mots dans les noms de voies
+16:03:02.835  Purge
+DROP INDEX IF EXISTS fr.ix_laposte_address_street_membership_word
+16:03:03.381  Initialisation
+16:07:42.004  Appartenance (mots): 2726082
+16:07:45.044  Indexation
+ */
