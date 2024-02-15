@@ -23,10 +23,10 @@ $proc$ LANGUAGE plpgsql;
 -- add history for address faults
 SELECT drop_all_functions_if_exists('fr', 'add_history_address_fault');
 CREATE OR REPLACE FUNCTION fr.add_history_address_fault(
-    address_change IN VARCHAR                            -- fault name
-    , address_element IN VARCHAR                         -- AREA|STREET|HOUSENUMBER|COMPLEMENT
-    , address_update_column IN VARCHAR                   -- column to change
-    , fault_id IN INT                                    -- fault ID (or 0 if NONE)
+    address_change IN VARCHAR                           -- fault name
+    , address_element IN VARCHAR                        -- AREA|STREET|HOUSENUMBER|COMPLEMENT
+    , address_update_column IN VARCHAR                  -- column to change
+    , fault_id IN INT                                   -- fault ID (or 0 if NONE)
     , column_with_new_value IN VARCHAR DEFAULT 'name'
     , address_key IN VARCHAR DEFAULT 'co_cea'
     , address_alias IN VARCHAR DEFAULT 'a'

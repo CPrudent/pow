@@ -43,17 +43,17 @@ $proc$ LANGUAGE plpgsql;
 -- fix fault of address (referential)
 SELECT drop_all_functions_if_exists('fr', 'fix_laposte_address_fault');
 CREATE OR REPLACE FUNCTION fr.fix_laposte_address_fault(
-    address_element IN VARCHAR                -- AREA|STREET|HOUSENUMBER|COMPLEMENT
-    , address_join_column IN VARCHAR
-    , address_update_column IN VARCHAR
-    , fault_id IN INT
-    , nrows OUT INT
+    address_element IN VARCHAR                          -- AREA|STREET|HOUSENUMBER|COMPLEMENT
+    , address_join_column IN VARCHAR                    -- join ADDRESS to REFERENCE
+    , address_update_column IN VARCHAR                  -- column to change
+    , fault_id IN INT                                   -- fault ID (or 0 if NONE)
     , column_with_new_value IN VARCHAR DEFAULT 'name'
     , address_alias IN VARCHAR DEFAULT 'a'
     , fault_alias IN VARCHAR DEFAULT 'f'
     , uniq_alias IN VARCHAR DEFAULT 'u'
     , reference_alias IN VARCHAR DEFAULT 'r'
     , simulation IN BOOLEAN DEFAULT FALSE
+    , nrows OUT INT
 )
 AS
 $func$
@@ -106,13 +106,28 @@ BEGIN
         ', address_update_column, ' = ', _column_with_new_value, '
         , dt_reference = TIMEOFDAY()::DATE
         FROM
-        ', _fault_table, ' ', fault_alias, '
-            JOIN ', _uniq_table, ' ', uniq_alias, ' ON ', _join_uniq_fault, '
-            JOIN ', _reference_table, ' ', reference_alias, ' ON ', _join_uniq_reference, '
-        WHERE
+        '
+    );
+    IF fault_id > 0 THEN
+        _query := CONCAT(_query
+            , _fault_table, ' ', fault_alias, '
+                JOIN ', _uniq_table, ' ', uniq_alias, ' ON ', _join_uniq_fault, '
+                JOIN ', _reference_table, ' ', reference_alias, ' ON ', _join_uniq_reference, '
+            WHERE
             ', fault_alias, '.fault_id = ', fault_id, '
             AND
-            ', _address_join_column, ' = ', CONCAT(reference_alias, '.address_id'), '
+            '
+        );
+    ELSE
+        _query := CONCAT(_query
+            , _uniq_table, ' ', uniq_alias, '
+                JOIN ', _reference_table, ' ', reference_alias, ' ON ', _join_uniq_reference, '
+            WHERE
+            '
+        );
+    END IF;
+    _query := CONCAT(_query
+            , _address_join_column, ' = ', CONCAT(reference_alias, '.address_id'), '
             AND
             ', _address_update_column, ' IS DISTINCT FROM ', _column_with_new_value
     );
@@ -214,7 +229,6 @@ BEGIN
                         u.id
                         , _values[_fault_i]::INT
                         , fix.name
-                        , u.name
                     FROM
                         fr.laposte_address_street_uniq u
                             JOIN bad_space bs ON u.id = bs.id
@@ -263,7 +277,6 @@ BEGIN
                         u.id
                         , _values[_fault_i]::INT
                         , d.dup[1]
-                        , u.name
                     FROM
                         fr.laposte_address_street_uniq u
                             JOIN dup_words d ON u.id = d.id
@@ -289,7 +302,6 @@ BEGIN
                         u.id
                         , _values[_fault_i]::INT
                         , wa.abbr
-                        , u.name
                     FROM
                         fr.laposte_address_street_uniq u
                         , word_abbreviation wa
@@ -303,7 +315,6 @@ BEGIN
                         m.name_id
                         , _values[_fault_i]::INT
                         , m.word
-                        , u.name
                     FROM
                         fr.laposte_address_street_membership m
                             JOIN fr.laposte_address_street_uniq u ON m.name_id = u.id
@@ -632,7 +643,7 @@ BEGIN
                     address_change => _keys[_fault_i]
                     , address_element => _address_element
                     , address_update_column => _address_update_column
-                    , fault_id => _values[_fault_i]::INT
+                    , fault_id => _fault_id
                     , column_with_new_value => _column_with_new_value
                     , simulation => simulation
                 );
@@ -642,8 +653,7 @@ BEGIN
                 SELECT nrows
                 INTO _nrows_referential
                 FROM fr.fix_laposte_address_fault(
-                    address_change => _keys[_fault_i]
-                    , address_element => _address_element
+                    address_element => _address_element
                     , address_join_column => _address_join_column
                     , address_update_column => _address_update_column
                     , fault_id => _fault_id

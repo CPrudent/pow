@@ -18,7 +18,7 @@ CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_reference_index()
 AS
 $proc$
 BEGIN
-    CREATE UNIQUE INDEX IF NOT EXISTS ix_laposte_address_street_reference_name_id ON fr.laposte_address_street_reference (name_id);
+    CREATE INDEX IF NOT EXISTS ix_laposte_address_street_reference_name_id ON fr.laposte_address_street_reference (name_id);
 
     CREATE INDEX IF NOT EXISTS ix_laposte_address_street_reference_address_id ON fr.laposte_address_street_reference (address_id);
 END
@@ -35,7 +35,7 @@ BEGIN
         RAISE 'Données LAPOSTE non suffisantes';
     END IF;
 
-    CALL public.log_info('Référence des voies (Dictionnaire/Référentiel');
+    CALL public.log_info('Référence des voies (Dictionnaire/Référentiel)');
 
     CALL public.log_info(' Purge');
     TRUNCATE TABLE fr.laposte_address_street_reference;
