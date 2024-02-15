@@ -403,6 +403,7 @@ DECLARE
     _keys VARCHAR[];
     _values VARCHAR[];
     _fix_dictionary BOOLEAN;
+    _exists BOOLEAN;
     _query TEXT;
     _i INT;
     _fault_i INT;
@@ -459,29 +460,25 @@ BEGIN
                     '
                 );
             ELSIF _keys[_fault_i] = 'DUPLICATE_WORD' THEN
+                _exists := table_exists(
+                    schema_name => 'fr'
+                    , table_name => 'street_faults_manual_correction'
+                );
+                IF _exists THEN
+                    _nrows := (
+                        SELECT COUNT(*) FROM fr.street_faults_manual_correction
+                        WHERE fault_key = _keys[_fault_i]
+                    );
+                END IF;
+                IF NOT _exists OR _nrows = 0 THEN
+                    RAISE 'Données de corrections manquantes (%)', _keys[_fault_i];
+                END IF;
+
                 _query := CONCAT('
-                    WITH
-                    fix_bad_space(id, name) AS (
-                        SELECT
-                            u.id
-                            , fix.name
-                        FROM
-                            fr.laposte_address_street_uniq u
-                                JOIN fr.laposte_address_fault_street fs ON u.id = fs.name_id
-                            , bad_space_in_name(
-                                name => REGEXP_REPLACE(
-                                    u.name
-                                    , CONCAT(''\m'', fs.help_to_fix, ''\M'')
-                                    , ''''
-                                )
-                            ) fix
-                        WHERE
-                            fs.fault_id = ', _fault_id, '
-                    )
                     UPDATE fr.laposte_address_street_uniq u SET
-                        name = fbs.name
-                        FROM fix_bad_space fbs
-                        WHERE u.id = fbs.id
+                        name = mc.name_fixed
+                        FROM fr.street_faults_manual_correction mc
+                        WHERE u.name = mc.name
                     '
                 );
             ELSIF _keys[_fault_i] = 'WITH_ABBREVIATION' THEN
@@ -532,25 +529,25 @@ BEGIN
                     '
                 );
             ELSIF _keys[_fault_i] = 'TYPO_ERROR' THEN
+                _exists := table_exists(
+                    schema_name => 'fr'
+                    , table_name => 'street_faults_manual_correction'
+                );
+                IF _exists THEN
+                    _nrows := (
+                        SELECT COUNT(*) FROM fr.street_faults_manual_correction
+                        WHERE fault_key = _keys[_fault_i]
+                    );
+                END IF;
+                IF NOT _exists OR _nrows = 0 THEN
+                    RAISE 'Données de corrections manquantes (%)', _keys[_fault_i];
+                END IF;
+
                 _query := CONCAT('
-                    WITH
-                    manual_correction(id, name) AS (
-                        VALUES
-                            (432462, ''RUE DES QUATRE VENTS'')
-                            , (465695, ''VALLEE DE LA NERE'')
-                            , (601484, ''CHEMIN DES QUATRE VENTS'')
-                            , (632288, ''CHEMIN DE BRISEMUR'')
-                            , (777777, ''RUE DU 6 MAI 1802'')
-                            , (865959, ''CHEMIN DU PUIFRAUD'')
-                            , (962227, ''IMPASSE DE L EGLISE'')
-                            , (1007700, ''LOTISSEMENT LES CHARMILLES'')
-                    )
                     UPDATE fr.laposte_address_street_uniq u SET
-                        name = mc.name
-                        FROM
-                            manual_correction mc
-                        WHERE
-                            mc.id = u.id
+                        name = mc.name_fixed
+                        FROM fr.street_faults_manual_correction mc
+                        WHERE u.name = mc.name
                     '
                 );
             ELSE
