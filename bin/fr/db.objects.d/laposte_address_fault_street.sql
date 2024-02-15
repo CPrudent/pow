@@ -479,7 +479,7 @@ BEGIN
                         name = mc.name_fixed
                         FROM fr.street_faults_manual_correction mc
                         WHERE u.name = mc.name
-                    '
+                        AND mc.fault_key = ', quote_literal(_keys[_fault_i])
                 );
             ELSIF _keys[_fault_i] = 'WITH_ABBREVIATION' THEN
                 _query := CONCAT('
@@ -548,7 +548,7 @@ BEGIN
                         name = mc.name_fixed
                         FROM fr.street_faults_manual_correction mc
                         WHERE u.name = mc.name
-                    '
+                        AND mc.fault_key = ', quote_literal(_keys[_fault_i])
                 );
             ELSE
                 _fix_dictionary := FALSE;
