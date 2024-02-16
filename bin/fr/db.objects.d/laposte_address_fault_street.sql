@@ -389,6 +389,43 @@ DROP INDEX IF EXISTS fr.iux_laposte_address_fault_street_id
 13:10:16.066  Indexation
  */
 
+-- fix street-faults from list (manual corrections)
+SELECT drop_all_functions_if_exists('fr', 'fix_laposte_address_fault_street_from_list');
+CREATE OR REPLACE FUNCTION fr.fix_laposte_address_fault_street_from_list(
+    fault IN VARCHAR
+    , query_fix OUT TEXT
+    , simulation IN BOOLEAN DEFAULT FALSE
+)
+AS
+$func$
+DECLARE
+    _exists BOOLEAN;
+    _nrows INT;
+BEGIN
+    _exists := table_exists(
+        schema_name => 'fr'
+        , table_name => 'laposte_address_fault_street_correction'
+    );
+    IF _exists THEN
+        _nrows := (
+            SELECT COUNT(*) FROM fr.laposte_address_fault_street_correction
+            WHERE fault_key = fault
+        );
+    END IF;
+    IF NOT _exists OR _nrows = 0 THEN
+        RAISE 'Données de corrections manquantes (%)', fault;
+    END IF;
+
+    query_fix := CONCAT('
+        UPDATE fr.laposte_address_street_uniq u SET
+            name = mc.name_fixed
+            FROM fr.laposte_address_fault_street_correction mc
+            WHERE u.name = mc.name
+            AND mc.fault_key = ', quote_literal(fault)
+    );
+END
+$func$ LANGUAGE plpgsql;
+
 -- fix street faults
 SELECT drop_all_functions_if_exists('fr', 'fix_laposte_address_fault_street');
 CREATE OR REPLACE PROCEDURE fr.fix_laposte_address_fault_street(
@@ -460,26 +497,8 @@ BEGIN
                     '
                 );
             ELSIF _keys[_fault_i] = 'DUPLICATE_WORD' THEN
-                _exists := table_exists(
-                    schema_name => 'fr'
-                    , table_name => 'street_faults_manual_correction'
-                );
-                IF _exists THEN
-                    _nrows := (
-                        SELECT COUNT(*) FROM fr.street_faults_manual_correction
-                        WHERE fault_key = _keys[_fault_i]
-                    );
-                END IF;
-                IF NOT _exists OR _nrows = 0 THEN
-                    RAISE 'Données de corrections manquantes (%)', _keys[_fault_i];
-                END IF;
-
-                _query := CONCAT('
-                    UPDATE fr.laposte_address_street_uniq u SET
-                        name = mc.name_fixed
-                        FROM fr.street_faults_manual_correction mc
-                        WHERE u.name = mc.name
-                        AND mc.fault_key = ', quote_literal(_keys[_fault_i])
+                _query := fr.fix_laposte_address_fault_street_from_list(
+                    fault => _keys[_fault_i]
                 );
             ELSIF _keys[_fault_i] = 'WITH_ABBREVIATION' THEN
                 _query := CONCAT('
@@ -529,26 +548,8 @@ BEGIN
                     '
                 );
             ELSIF _keys[_fault_i] = 'TYPO_ERROR' THEN
-                _exists := table_exists(
-                    schema_name => 'fr'
-                    , table_name => 'street_faults_manual_correction'
-                );
-                IF _exists THEN
-                    _nrows := (
-                        SELECT COUNT(*) FROM fr.street_faults_manual_correction
-                        WHERE fault_key = _keys[_fault_i]
-                    );
-                END IF;
-                IF NOT _exists OR _nrows = 0 THEN
-                    RAISE 'Données de corrections manquantes (%)', _keys[_fault_i];
-                END IF;
-
-                _query := CONCAT('
-                    UPDATE fr.laposte_address_street_uniq u SET
-                        name = mc.name_fixed
-                        FROM fr.street_faults_manual_correction mc
-                        WHERE u.name = mc.name
-                        AND mc.fault_key = ', quote_literal(_keys[_fault_i])
+                _query := fr.fix_laposte_address_fault_street_from_list(
+                    fault => _keys[_fault_i]
                 );
             ELSE
                 _fix_dictionary := FALSE;

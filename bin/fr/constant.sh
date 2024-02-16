@@ -97,6 +97,12 @@ io_history_begin \
                         (SELECT COUNT(1) FROM fr.laposte_address_street_uniq)
                         " &&
                     #breakpoint "${io_steps[$io_step]}: query" &&
+                    import_file \
+                        --file_path "$POW_DIR_BATCH/db.objects.d/data/street_faults_manual_correction.csv" \
+                        --schema_name fr \
+                        --table_name laposte_address_fault_street_correction \
+                        --rowid no \
+                        --load_mode OVERWRITE_TABLE &&
                     execute_query \
                         --name FR_CONSTANT_ADDRESS \
                         --query "

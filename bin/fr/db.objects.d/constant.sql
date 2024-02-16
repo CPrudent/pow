@@ -1036,4 +1036,47 @@ DROP INDEX IF EXISTS fr.ix_laposte_address_street_membership_word
 16:03:03.381  Initialisation
 16:07:42.004  Appartenance (mots): 2726082
 16:07:45.044  Indexation
+
+07:36:01.182 Identification des anomalies dans les libellés de voie
+07:36:01.266  Purge
+DROP INDEX IF EXISTS fr.iux_laposte_address_fault_street_id
+07:36:01.420  Identification
+07:36:05.272  Ajout anomalies (BAD_SPACE): 33
+07:36:16.879  Ajout anomalies (DUPLICATE_WORD): 134
+07:36:17.503  Ajout anomalies (WITH_ABBREVIATION): 46
+07:36:18.647  Ajout anomalies (TYPO_ERROR): 10
+07:36:18.683  Indexation
+
+08:08:43.219 Correction des anomalies dans les libellés de voie
+08:08:43.219  Chargement des anomalies de niveau Voie
+08:08:43.431  Mise à jour anomalies (BAD_SPACE): 33
+08:08:44.545  Insertion Historique (BAD_SPACE): 33
+08:08:44.575  Mise à jour Référentiel (BAD_SPACE): 33
+08:08:46.578  Mise à jour anomalies (DUPLICATE_WORD): 38
+08:08:48.736  Insertion Historique (DUPLICATE_WORD): 38
+08:08:48.753  Mise à jour Référentiel (DUPLICATE_WORD): 38
+08:08:48.832  Mise à jour anomalies (WITH_ABBREVIATION): 46
+08:08:49.436  Insertion Historique (WITH_ABBREVIATION): 47
+08:08:49.443  Mise à jour Référentiel (WITH_ABBREVIATION): 47
+08:08:49.681  Mise à jour anomalies (TYPO_ERROR): 8
+08:08:49.880  Insertion Historique (TYPO_ERROR): 8
+08:08:49.885  Mise à jour Référentiel (TYPO_ERROR): 8
+
+-- forget one!
+08:20:42.089 Correction des anomalies dans les libellés de voie
+08:20:42.090  Chargement des anomalies de niveau Voie
+08:20:42.652  Mise à jour anomalies (DUPLICATE_WORD): 1
+08:20:42.655  Insertion Historique (DUPLICATE_WORD): 1
+08:20:42.657  Mise à jour Référentiel (DUPLICATE_WORD): 1
+
+08:28:04.677 Gestion de l'appartenance des mots dans les noms de voies
+08:28:04.677  Purge
+08:28:04.865  Effacement: 395
+08:28:04.865  Correction
+08:28:05.386  Appartenance (mots): 379
+
+08:30:10.462 Dictionnaire des voies
+08:30:10.463  Mise à jour (Attributs)
+08:51:41.899  Attributs: 1120741
+08:51:47.211  Indexation
  */

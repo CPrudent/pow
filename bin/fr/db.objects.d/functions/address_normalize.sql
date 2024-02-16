@@ -668,6 +668,17 @@ BEGIN
             , nwords => nwords
         ) da;
 
+    _len_normalized := (
+        SELECT SUM(LENGTH(w)) FROM UNNEST(name_as_words) w
+    ) + (nwords -1);
+    IF raise_notice THEN RAISE NOTICE 'NN=% #=%', name_as_words, _len_normalized; END IF;
+    -- already OK ?
+    IF _len_normalized <= 32 THEN
+        RETURN;
+    END IF;
+    name_normalized_as_words := name_as_words;
+    descriptors_normalized_as_words := descriptors_as_words;
+
     -- eval changes and their earning size
     _positions := ARRAY_FILL(0, ARRAY[_ITEMS_DESCRIPTOR]);
     FOR _i IN 1 .. nwords
@@ -721,17 +732,6 @@ BEGIN
             _position_changes[_nchanges] := _i;
         END IF;
     END LOOP;
-
-    name_normalized_as_words := name_as_words;
-    descriptors_normalized_as_words := descriptors_as_words;
-    _len_normalized := (
-        SELECT SUM(LENGTH(w)) FROM UNNEST(name_normalized_as_words) w
-    ) + (nwords -1);
-    IF raise_notice THEN RAISE NOTICE 'NN=% #=%', name_normalized_as_words, _len_normalized; END IF;
-    -- already OK ?
-    IF _len_normalized <= 32 THEN
-        RETURN;
-    END IF;
 
     -- at least 1 change
     IF _nchanges > 0 THEN

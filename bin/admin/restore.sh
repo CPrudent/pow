@@ -92,7 +92,7 @@ for _schema_name in ${SCHEMAS[@]}; do
         tables=(l3 numero voie za adresse coord)
         # NOTE convert fixed length to csv (adding header columns)
         # awk -f $POW_DIR_DATA/common/admin/perennite.awk < $POW_DIR_DATA/common/admin/hspraaaa.ai > $POW_DIR_DATA/common/admin/perennite.csv
-        files=(perennite.csv street_faults_manual_correction.csv)
+        files=(perennite.csv)
         ;;
     esac
 
