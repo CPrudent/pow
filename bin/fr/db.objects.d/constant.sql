@@ -1075,6 +1075,44 @@ DROP INDEX IF EXISTS fr.iux_laposte_address_fault_street_id
 08:28:04.865  Correction
 08:28:05.386  Appartenance (mots): 379
 
+-- after ATTRIBUTS, but hope no impact!
+10:58:54.652 Gestion des mots dans les noms de voies
+10:58:54.652  Purge
+10:58:54.715  Initialisation
+10:58:59.001  Comptage descripteurs (mot): 371531
+10:58:59.788  Défaut (mot): 371531
+10:59:01.501  Rangs (mot): 371531
+10:59:03.549  Indexation
+10:59:03.566 Gestion des types dans le nom des voies
+10:59:03.566  Purge
+10:59:03.583  Initialisation
+10:59:04.234  Types: 232
+10:59:04.235  Mises à jour (abréviation au singulier): 30
+10:59:04.237  Mises à jour (abréviation au pluriel): 12
+10:59:04.776  Mises à jour (premier mot, occurence): 232
+10:59:04.778 Gestion des extensions dans le nom des numéros
+10:59:04.778  Purge
+10:59:04.779  Initialisation
+10:59:14.994  Extensions: 31
+10:59:17.045  Mises à jour (occurence): 31
+10:59:17.049 Gestion des titres dans le nom des voies
+10:59:17.049  Purge
+10:59:17.050  Initialisation
+10:59:17.052  Titres: 202
+10:59:17.053  Mises à jour (premier mot): 4
+10:59:25.410  Mises à jour (occurence): 202
+10:59:25.413 Gestion des prénoms dans le nom des voies
+10:59:25.413  Purge
+10:59:25.442  Initialisation
+10:59:49.296  Prénoms: 2320
+10:59:49.299 Gestion des exceptions de mots clé des voies
+10:59:49.299  Purge
+10:59:49.362  Initialisation
+11:00:46.179  Exceptions (prénom): 2842
+11:00:46.179  Exceptions (article): 4
+11:03:14.676  Exceptions (titre): 4262
+11:03:15.805  Indexation
+
 09:24:15.598 Dictionnaire des voies
 09:24:15.599  Mise à jour (Attributs)
 09:43:40.001  Attributs: 1120741
