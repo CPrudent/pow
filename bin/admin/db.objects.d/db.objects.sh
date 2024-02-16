@@ -26,19 +26,16 @@ bash_args \
     --args_p '
         schema_only:Limiter la mise à jour à un schéma;
         constant:Indicateur de génération des constantes;
-        relocate:Changer de schéma (après restauration);
-        correction:Indicateur de correction des données (restaurées)
+        relocate:Indicateur de changement de schéma (après restauration)
     ' \
 	--args_v "
         schema_only:${_schemas_join_pipe};
         constant:no|yes;
-        relocate:no|yes;
-        correction:no|yes
+        relocate:no|yes
     " \
     --args_d '
         constant:no;
-        relocate:no;
-        correction:no
+        relocate:no
     ' \
     "$@" || exit $ERROR_CODE
 
@@ -79,13 +76,6 @@ for _schema in ${_schemas[@]}; do
             {
                 if [ "$get_arg_constant" = yes ] && [ -x "$POW_DIR_BATCH/constant.sh" ]; then
                     $POW_DIR_BATCH/constant.sh
-                fi
-            } &&
-            {
-                if ([ -f "$POW_DIR_BATCH/db.objects.d/correction.sql" ] && [ "$get_arg_correction" = yes ]); then
-                    execute_query \
-                        --name CORRECTION \
-                        --query "$POW_DIR_BATCH/db.objects.d/correction.sql"
                 fi
             } &&
             set_env --schema_name admin &&

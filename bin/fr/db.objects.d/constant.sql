@@ -924,7 +924,7 @@ BEGIN
 
     DELETE FROM fr.constant WHERE usecase ~ '^LAPOSTE_ADDRESS_FAULT_';
     INSERT INTO fr.constant (usecase, key, value) VALUES
-        ('LAPOSTE_ADDRESS_FAULT_ADDRESS', 'COMPLEMENT_WITH_STREET_ERROR', '0')
+        ('LAPOSTE_ADDRESS_FAULT_LINKS', 'COMPLEMENT_WITH_STREET_ERROR', '0')
 
         , ('LAPOSTE_ADDRESS_FAULT_AREA', 'BAD_SPACE', '100')
 
@@ -963,6 +963,9 @@ BEGIN
     CALL fr.set_laposte_address_street_membership(
         set_case => 'CREATION'
     );
+
+    -- link-faults (address table w/ links-element)
+    CALL fr.fix_laposte_address_fault_links();
 
     -- street-faults (part/1)
     CALL fr.set_laposte_address_fault_street();
