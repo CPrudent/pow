@@ -1018,6 +1018,7 @@ END;
 $proc$ LANGUAGE plpgsql;
 
 /* TEST
+-- 5'
 16:02:28.937 Dictionnaire des voies
 16:02:28.937  Purge
 16:02:28.965  Initialisation
@@ -1025,21 +1026,17 @@ $proc$ LANGUAGE plpgsql;
 16:02:41.586  Indexation
 16:02:41.614 Référence des voies (Dictionnaire/Référentiel)
 16:02:41.614  Purge
-DROP INDEX IF EXISTS fr.ix_laposte_address_street_reference_name_id
-DROP INDEX IF EXISTS fr.ix_laposte_address_street_reference_address_id
 16:02:42.034  Initialisation
 16:02:56.092  Création: 2392148
 16:03:02.807  Indexation
 16:03:02.835 Gestion de l'appartenance des mots dans les noms de voies
 16:03:02.835  Purge
-DROP INDEX IF EXISTS fr.ix_laposte_address_street_membership_word
 16:03:03.381  Initialisation
 16:07:42.004  Appartenance (mots): 2726082
 16:07:45.044  Indexation
 
 07:36:01.182 Identification des anomalies dans les libellés de voie
 07:36:01.266  Purge
-DROP INDEX IF EXISTS fr.iux_laposte_address_fault_street_id
 07:36:01.420  Identification
 07:36:05.272  Ajout anomalies (BAD_SPACE): 33
 07:36:16.879  Ajout anomalies (DUPLICATE_WORD): 134
@@ -1075,6 +1072,7 @@ DROP INDEX IF EXISTS fr.iux_laposte_address_fault_street_id
 08:28:04.865  Correction
 08:28:05.386  Appartenance (mots): 379
 
+-- 4'
 -- after ATTRIBUTS, but hope no impact!
 10:58:54.652 Gestion des mots dans les noms de voies
 10:58:54.652  Purge
@@ -1113,15 +1111,19 @@ DROP INDEX IF EXISTS fr.iux_laposte_address_fault_street_id
 11:03:14.676  Exceptions (titre): 4262
 11:03:15.805  Indexation
 
+-- 20'
 09:24:15.598 Dictionnaire des voies
 09:24:15.599  Mise à jour (Attributs)
 09:43:40.001  Attributs: 1120741
 09:43:40.001  Indexation
 
+-- 4'
 09:51:50.257 Correction des anomalies dans les libellés de voie
 09:51:50.258  Chargement des anomalies de niveau Voie
 09:55:22.199  Insertion Historique (DESCRIPTORS): 20670
 09:55:37.647  Mise à jour Référentiel (DESCRIPTORS): 20670
 09:55:50.799  Insertion Historique (TYPE): 1037
 09:56:03.093  Mise à jour Référentiel (TYPE): 1037
+
+=> ~ 33'
  */
