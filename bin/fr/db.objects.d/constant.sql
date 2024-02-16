@@ -991,6 +991,15 @@ BEGIN
         );
     END IF;
 
+    -- classify all words
+    CALL fr.set_laposte_address_street_word();
+    -- define keywords (type, title, ...) and exceptions
+    CALL fr.set_laposte_address_street_type();
+    CALL fr.set_laposte_address_street_ext();
+    CALL fr.set_laposte_address_street_title();
+    CALL fr.set_laposte_address_street_firstname();
+    CALL fr.set_laposte_address_street_kw_exception();
+
     -- once all fixed street-faults:
     -- set attributs in dictionary
     CALL fr.set_laposte_address_street_uniq(
@@ -1000,15 +1009,6 @@ BEGIN
     CALL fr.fix_laposte_address_fault_street(
         fault => 'DESCRIPTORS,TYPE'
     );
-
-    -- classify all words
-    CALL fr.set_laposte_address_street_word();
-    -- define keywords (type, title, ...) and exceptions
-    CALL fr.set_laposte_address_street_type();
-    CALL fr.set_laposte_address_street_ext();
-    CALL fr.set_laposte_address_street_title();
-    CALL fr.set_laposte_address_street_firstname();
-    CALL fr.set_laposte_address_street_kw_exception();
 
     CALL fr.set_laposte_municipality_normalized_label_exception();
     CALL fr.set_territory_overseas();
@@ -1075,8 +1075,15 @@ DROP INDEX IF EXISTS fr.iux_laposte_address_fault_street_id
 08:28:04.865  Correction
 08:28:05.386  Appartenance (mots): 379
 
-08:30:10.462 Dictionnaire des voies
-08:30:10.463  Mise à jour (Attributs)
-08:51:41.899  Attributs: 1120741
-08:51:47.211  Indexation
+09:24:15.598 Dictionnaire des voies
+09:24:15.599  Mise à jour (Attributs)
+09:43:40.001  Attributs: 1120741
+09:43:40.001  Indexation
+
+09:51:50.257 Correction des anomalies dans les libellés de voie
+09:51:50.258  Chargement des anomalies de niveau Voie
+09:55:22.199  Insertion Historique (DESCRIPTORS): 20670
+09:55:37.647  Mise à jour Référentiel (DESCRIPTORS): 20670
+09:55:50.799  Insertion Historique (TYPE): 1037
+09:56:03.093  Mise à jour Référentiel (TYPE): 1037
  */
