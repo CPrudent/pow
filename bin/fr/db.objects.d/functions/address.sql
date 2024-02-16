@@ -545,6 +545,7 @@ BEGIN
                         ELSE '-'
                         END
                     ;
+                    as_words := ARRAY_APPEND(as_words, _kw_nwords);
                     _init_by_descriptor := TRUE;
                 ELSE
                     -- firstname
@@ -630,12 +631,12 @@ BEGIN
 
         IF NOT _init_by_descriptor THEN
             words_by_descriptor := ARRAY_APPEND(words_by_descriptor, _words[_i]);
+            as_words := ARRAY_APPEND(as_words, 1);
         END IF;
         IF (_words_d = 'E' AND _abbr_e IS NOT NULL) THEN
             words_abbreviated_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] := _abbr_e;
             words_todo_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] := '+';
         END IF;
-        as_words := ARRAY_APPEND(as_words, count_words(_words[_i]));
         descriptors := CONCAT(descriptors, _words_d);
         _words_skip := _i;
         IF _kw_nwords > 1 THEN
