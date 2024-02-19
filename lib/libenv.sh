@@ -241,7 +241,7 @@ _set_pg_env() {
     POW_PG_DBNAME=$(get_conf PG_DBNAME)
     # path for tools (psql, pg_dump, pg_restore, ...)
     POW_DIR_PG_BIN="/usr/lib/postgresql/$(get_conf PG_VERSION)/bin"
-    export POW_PG_DBNAME POW_DIR_PG_BIN POW_PG_USERNAME POW_PG_PASSWORD POW_PG_DEFAULT_SCHEMA
+    export POW_PG_DBNAME POW_DIR_PG_BIN POW_PG_USERNAME POW_PG_DEFAULT_SCHEMA
     _set_pg_passwd || return $ERROR_CODE
 
     return $SUCCESS_CODE
@@ -271,7 +271,7 @@ set_env_pg() {
     [ "$get_arg_print" = yes ] && {
         echo "POW's PostgreSQL context"
         echo -e "\thost:port=(${POW_PG_HOST}:${POW_PG_PORT})"
-        echo -e "\tuser/pass=(${POW_PG_USERNAME}/${POW_PG_PASSWORD})"
+        echo -e "\tlogin=${POW_PG_USERNAME}"
         echo -e "\tdefault_schema=$POW_PG_DEFAULT_SCHEMA"
 
         return $SUCCESS_CODE
