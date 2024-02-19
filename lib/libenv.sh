@@ -176,29 +176,42 @@ set_params_conf_file() {
 }
 
 _set_pg_passwd() {
-    local _passwd_all _passwd_files _i _home
+    local _passwd_file=.pgpass _passwd_home _passwd_files _tmp _i _dir_home _pg_login
 
-    get_tmp_file --tmpext txt --tmpfile _passwd_all --create yes --chmod 600
+    _dir_home=$(getent passwd $POW_USER | cut --delimiter : --field 6)
+    [ -z "$_dir_home" ] && {
+        log_error "erreur dossier personnel ($POW_USER)"
+        return $ERROR_CODE
+    }
+    _passwd_home="$_dir_home/$_passwd_file"
+    [ ! -f "$_passwd_home" ] && {
+        get_tmp_file --tmpfile _tmp --create yes --chmod 600    &&
+        mv $_tmp "$_passwd_home"                                || {
+            log_error "erreur création .pgpass ($POW_USER)"
+            return $ERROR_CODE
+        }
+    }
+
     declare -a _passwd_files=( $POW_DIR_ROOT/bin/admin/install.d/.pgpass* )
     for ((_i=0; _i<${#_passwd_files[*]}; _i++)); do
-        sed \
-            --expression 's/%PG_HOST%/'$(hostname)'/' \
-            --expression 's/%PG_PORT%/'$(POW_PG_PORT)'/' \
-            --expression 's/%PG_DBNAME%/'$(POW_PG_DBNAME)'/' \
-            < ${_passwd_files[$_i]} >> $_passwd_all || {
-                log_error "erreur création pgpass (${_passwd_files[$_i]})"
-                return $ERROR_CODE
+        _pg_login=$(cut --delimiter : --field 4 < ${_passwd_files[$_i]})
+        [ -n "$_pg_login" ] && {
+            grep --silent "$_pg_login" "$_passwd_home"
+            [ $? -eq 1 ] && {
+                sed \
+                    --expression 's/%PG_HOST%/'$POW_PG_HOST'/' \
+                    --expression 's/%PG_PORT%/'$POW_PG_PORT'/' \
+                    --expression 's/%PG_DBNAME%/'$POW_PG_DBNAME'/' \
+                    < ${_passwd_files[$_i]} >> "$_passwd_home" || {
+                        log_error "erreur ajout .pgpass (${_passwd_files[$_i]})"
+                        return $ERROR_CODE
+                }
+            }
+        } || {
+            log_error "erreur format (${_passwd_files[$_i]}) : manque pg_login!"
+            return $ERROR_CODE
         }
     done
-    _home=$(getent passwd $POW_USER | cut --delimiter : --field 6)
-    [ -z "$_home" ] && {
-        log_error "erreur dossier personnel ($POW_USER})"
-        return $ERROR_CODE
-    }
-    mv $_passwd_all $_home || {
-        log_error "erreur création pgpass ($POW_USER})"
-        return $ERROR_CODE
-    }
 
     return $SUCCESS_CODE
 }
@@ -229,6 +242,7 @@ _set_pg_env() {
     # path for tools (psql, pg_dump, pg_restore, ...)
     POW_DIR_PG_BIN="/usr/lib/postgresql/$(get_conf PG_VERSION)/bin"
     export POW_PG_DBNAME POW_DIR_PG_BIN POW_PG_USERNAME POW_PG_PASSWORD POW_PG_DEFAULT_SCHEMA
+    _set_pg_passwd || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -270,7 +284,7 @@ set_env_pg() {
 
     # initialize from argument (or default value)
     [ -n "$get_arg_host" ] && POW_PG_HOST=$get_arg_host || {
-        [ -z "$POW_PG_HOST" ] && POW_PG_HOST=localhost
+        [ -z "$POW_PG_HOST" ] && POW_PG_HOST=$(get_conf PG_HOST)
     }
     [ -n "$get_arg_port" ] && POW_PG_PORT=$get_arg_port || {
         [ -z "$POW_PG_PORT" ] && POW_PG_PORT=$(get_conf PG_PORT)
