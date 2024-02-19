@@ -175,6 +175,34 @@ set_params_conf_file() {
     return $SUCCESS_CODE
 }
 
+_set_pg_passwd() {
+    local _passwd_all _passwd_files _i _home
+
+    get_tmp_file --tmpext txt --tmpfile _passwd_all --create yes --chmod 600
+    declare -a _passwd_files=( $POW_DIR_ROOT/bin/admin/install.d/.pgpass* )
+    for ((_i=0; _i<${#_passwd_files[*]}; _i++)); do
+        sed \
+            --expression 's/%PG_HOST%/'$(hostname)'/' \
+            --expression 's/%PG_PORT%/'$(POW_PG_PORT)'/' \
+            --expression 's/%PG_DBNAME%/'$(POW_PG_DBNAME)'/' \
+            < ${_passwd_files[$_i]} >> $_passwd_all || {
+                log_error "erreur création pgpass (${_passwd_files[$_i]})"
+                return $ERROR_CODE
+        }
+    done
+    _home=$(getent passwd $POW_USER | cut --delimiter : --field 6)
+    [ -z "$_home" ] && {
+        log_error "erreur dossier personnel ($POW_USER})"
+        return $ERROR_CODE
+    }
+    mv $_passwd_all $_home || {
+        log_error "erreur création pgpass ($POW_USER})"
+        return $ERROR_CODE
+    }
+
+    return $SUCCESS_CODE
+}
+
 # initialize PostgreSQL's context (user, passwd, default_schema)
 _set_pg_env() {
     bash_args \
@@ -182,26 +210,19 @@ _set_pg_env() {
         --args_d 'schema_name:public' \
         "$@" || return $ERROR_CODE
 
-    # FIXME find solution to hidden passwords
-    # https://unix.stackexchange.com/questions/212329/hiding-password-in-shell-scripts
-
-    # https://www.postgresql.org/docs/current/libpq-pgpass.html
-    # ~/.pgpass
-    #  APACHE:5432:pow:fr:***
-    #  localhost:5432:pow:fr:***
-
     local _std=(admin public)
     in_array _std "$get_arg_schema_name" && {
         POW_PG_USERNAME=postgres
-        POW_PG_PASSWORD=pgpow+123
+#         POW_PG_PASSWORD=pgpow+123
         POW_PG_DEFAULT_SCHEMA=public
     } || {
         POW_PG_USERNAME=$get_arg_schema_name
         POW_PG_DEFAULT_SCHEMA=$get_arg_schema_name
-        case $get_arg_schema_name in
-        fr)     POW_PG_PASSWORD=luxor       ;;
-        *)      return $ERROR_CODE          ;;
-        esac
+
+#         case $get_arg_schema_name in
+#         fr)     POW_PG_PASSWORD=luxor       ;;
+#         *)      return $ERROR_CODE          ;;
+#         esac
     }
 
     POW_PG_DBNAME=$(get_conf PG_DBNAME)

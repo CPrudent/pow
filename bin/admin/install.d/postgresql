@@ -127,7 +127,8 @@ $_pg_bin_dir/psql -U postgres -d $_PG_DBNAME -p $_PG_PORT -c "SELECT 1" > /dev/n
     $_pg_bin_dir/psql -U postgres -p $_PG_PORT -c "CREATE DATABASE $_PG_DBNAME TABLESPACE ${_PG_DBNAME}_tablespace" &&
     su --login postgres --command="$_pg_bin_dir/psql -p $_PG_PORT -c \"ALTER USER postgres WITH ENCRYPTED PASSWORD 'md5c375a6ae9835e94d95d46481b49b6e9a' VALID UNTIL 'infinity';\"" &&
     su --login postgres --command="$_pg_bin_dir/psql -p $_PG_PORT -c 'GRANT ALL PRIVILEGES ON DATABASE \"${_PG_DBNAME}\" TO postgres;'" &&
-    pg_ctlcluster $_PG_VERSION main restart || exit $ERROR_CODE
+    pg_ctlcluster $_PG_VERSION main restart &&
+    _set_pg_passwd || exit $ERROR_CODE
 }
 
 exit $SUCCESS_CODE

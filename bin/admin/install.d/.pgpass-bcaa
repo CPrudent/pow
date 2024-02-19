@@ -1,0 +1,6 @@
+%PG_HOST%:%PG_PORT%:%PG_DBNAME%:divers:pgdivers+123
+localhost:%PG_PORT%:%PG_DBNAME%:divers:pgdivers+123
+%PG_HOST%:%PG_PORT%:%PG_DBNAME%:geopad:pggeopad+123
+localhost:%PG_PORT%:%PG_DBNAME%:geopad:pggeopad+123
+%PG_HOST%:%PG_PORT%:%PG_DBNAME%:ran:pgran+123
+localhost:%PG_PORT%:%PG_DBNAME%:ran:pgran+123
