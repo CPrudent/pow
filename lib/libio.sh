@@ -1149,6 +1149,7 @@ import_geo_file() {
             file_path:Chemin absolu vers le fichier à traiter;
             schema_name:Nom du schema cible;
             table_name:Nom de la table cible;
+            password:Mot de passe;
             load_mode:Mode de chargement des données;
             encoding:Encodage de caractères;
             from_srid:Identifiant du système de projection des objets géographiques;
@@ -1157,7 +1158,7 @@ import_geo_file() {
             spatial_index:Indique si il faut créer un index géographique;
             limit:Limiter a n enregistrements;
             rowid:Générer un identifiant unique rowid' \
-        --args_o 'file_path' \
+        --args_o 'file_path;table_name' \
         --args_v '
             load_mode:OVERWRITE_DATA|OVERWRITE_TABLE|APPEND;
             encoding:UTF-8|LATIN1;
@@ -1196,6 +1197,7 @@ import_geo_file() {
     local file_extension=$(get_file_extension --file_path "$file_path")
     local schema_name=$get_arg_schema_name
     local table_name=$get_arg_table_name
+    local passwd=$get_arg_password
     local load_mode=$get_arg_load_mode
     local load_mode_ogr2ogr
     case "$load_mode" in
@@ -1276,15 +1278,17 @@ import_geo_file() {
     layer_creation_options='-lco FID=rowid -lco GEOMETRY_NAME=geom'
     [ "$spatial_index" = no ] && layer_creation_options+=' -lco SPATIAL_INDEX=no'
 
-    local _rc _passwd
-    get_pg_passwd --user_name $POW_PG_USERNAME --password _passwd || {
-        log_error "Erreur de récupération du mot de passe (user=$POW_PG_USERNAME)"
-        return $ERROR_CODE
+    local _rc
+    [ -z "$passwd" ] && {
+        get_pg_passwd --user_name $POW_PG_USERNAME --password passwd || {
+            log_error "Erreur de récupération du mot de passe (user=$POW_PG_USERNAME)"
+            return $ERROR_CODE
+        }
     }
 
     ogr2ogr \
         -f "PostgreSQL" \
-        PG:"host=$POW_PG_HOST user=$POW_PG_USERNAME dbname=$POW_PG_DBNAME password=$_passwd" \
+        PG:"host=$POW_PG_HOST user=$POW_PG_USERNAME dbname=$POW_PG_DBNAME password=$passwd" \
         "$file_path" \
         -$load_mode_ogr2ogr \
         -nln "${schema_name}.${table_name}" \

@@ -80,6 +80,7 @@ bash_args \
 io_name=FR-TERRITORY-IGN
 io_force=$get_arg_force
 io_clean=$get_arg_clean
+io_passwd=
 
 on_import_error() {
     # import created?
@@ -167,7 +168,13 @@ $POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
     ;;
 esac
 
-log_info "Import du millésime $year de $io_name" &&
+log_info "Import du millésime $year de $io_name" && {
+    get_pg_passwd --user_name $POW_PG_USERNAME --password io_passwd || {
+        log_error "Erreur de récupération du mot de passe (user=$POW_PG_USERNAME)"
+        false
+    }
+} &&
+[ -n "$io_passwd" ] &&
 # # no history (think about requested item, so REGEX)
 # execute_query \
 #     --name "DELETE_IO_${io_name}" \
@@ -216,6 +223,7 @@ io_history_begin \
                     import_geo_file \
                         --file_path "$_shapefile_full_path" \
                         --table_name "$_table_name_tmp" \
+                        --password "$io_passwd" \
                         --geometry_type PROMOTE_TO_MULTI \
                         --load_mode OVERWRITE_TABLE \
                         --spatial_index no || on_import_error
