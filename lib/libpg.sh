@@ -83,7 +83,7 @@ execute_query() {
     }
 
     # call psql
-    env PGPASSWORD=$POW_PG_PASSWORD PGOPTIONS="-c client_min_messages=$_psql_level" $POW_DIR_PG_BIN/psql \
+    env PGOPTIONS="-c client_min_messages=$_psql_level" $POW_DIR_PG_BIN/psql \
         --host $POW_PG_HOST \
         --port $POW_PG_PORT \
         --username $POW_PG_USERNAME \
@@ -398,7 +398,7 @@ backup_table() {
     # available disk space
     df -h $POW_DIR_DATA > $backup_log
 
-    env PGPASSWORD=$POW_PG_PASSWORD $POW_DIR_PG_BIN/pg_dump	\
+    $POW_DIR_PG_BIN/pg_dump	\
         --host=$POW_PG_HOST	\
         --port=$POW_PG_PORT \
         --username=$POW_PG_USERNAME \
@@ -656,7 +656,7 @@ restore_table() {
             fi
         done
 
-        env PGPASSWORD=$POW_PG_PASSWORD $POW_DIR_PG_BIN/pg_restore \
+        $POW_DIR_PG_BIN/pg_restore \
             --host $POW_PG_HOST \
             --port $POW_PG_PORT \
             --username $POW_PG_USERNAME \

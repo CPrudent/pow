@@ -1276,10 +1276,15 @@ import_geo_file() {
     layer_creation_options='-lco FID=rowid -lco GEOMETRY_NAME=geom'
     [ "$spatial_index" = no ] && layer_creation_options+=' -lco SPATIAL_INDEX=no'
 
-    local _rc
+    local _rc _passwd
+    get_pg_passwd --user_name $POW_PG_USERNAME --password _passwd || {
+        log_error "Erreur de récupération du mot de passe (user=$POW_PG_USERNAME)"
+        return $ERROR_CODE
+    }
+
     ogr2ogr \
         -f "PostgreSQL" \
-        PG:"host=$POW_PG_HOST user=$POW_PG_USERNAME dbname=$POW_PG_DBNAME password=$POW_PG_PASSWORD" \
+        PG:"host=$POW_PG_HOST user=$POW_PG_USERNAME dbname=$POW_PG_DBNAME password=$_passwd" \
         "$file_path" \
         -$load_mode_ogr2ogr \
         -nln "${schema_name}.${table_name}" \

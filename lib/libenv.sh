@@ -175,14 +175,57 @@ set_params_conf_file() {
     return $SUCCESS_CODE
 }
 
-_set_pg_passwd() {
-    local _passwd_file=.pgpass _passwd_home _passwd_files _tmp _i _dir_home _pg_login
+# get password from .pgpass
+get_pg_passwd() {
+    bash_args \
+        --args_p '
+            user_name:login;
+            password:password
+        ' \
+        --args_o '
+            user_name;
+            password
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local _passwd_file=.pgpass _passwd_home _dir_home _tmp
+    local -n _passwd_ref=$get_arg_password
 
     _dir_home=$(getent passwd $POW_USER | cut --delimiter : --field 6)
     [ -z "$_dir_home" ] && {
         log_error "erreur dossier personnel ($POW_USER)"
         return $ERROR_CODE
     }
+    _passwd_home="$_dir_home/$_passwd_file"
+    [ ! -f "$_passwd_home" ] && {
+        log_error "non existence .pgpass ($POW_USER)"
+        return $ERROR_CODE
+    }
+
+    # search for user name
+    _tmp=$(grep --perl-regexp \
+            '^[^:]*:[^:]*:[^:]*:'${get_arg_user_name}':[^:]*$' < "$_passwd_home" | \
+            cut --delimiter : --field 5)
+    [ -z "$_tmp" ] && {
+        log_error "non existence login ($get_arg_user_name)"
+        return $ERROR_CODE
+    }
+    _passwd_ref="$_tmp"
+
+    return $SUCCESS_CODE
+}
+
+# create logins file in user home directory
+_set_pg_passwd() {
+    local _passwd_file=.pgpass _passwd_home _dir_home _tmp _passwd_files _i _pg_login
+
+    _dir_home=$(getent passwd $POW_USER | cut --delimiter : --field 6)
+    [ -z "$_dir_home" ] && {
+        log_error "erreur dossier personnel ($POW_USER)"
+        return $ERROR_CODE
+    }
+
+    # create logins file (if not exists)
     _passwd_home="$_dir_home/$_passwd_file"
     [ ! -f "$_passwd_home" ] && {
         get_tmp_file --tmpfile _tmp --create yes --chmod 600    &&
@@ -192,6 +235,7 @@ _set_pg_passwd() {
         }
     }
 
+    # check all pgpass (adding new one)
     declare -a _passwd_files=( $POW_DIR_ROOT/bin/admin/install.d/.pgpass* )
     for ((_i=0; _i<${#_passwd_files[*]}; _i++)); do
         _pg_login=$(cut --delimiter : --field 4 < ${_passwd_files[$_i]})
@@ -206,7 +250,7 @@ _set_pg_passwd() {
                         log_error "erreur ajout .pgpass (${_passwd_files[$_i]})"
                         return $ERROR_CODE
                 }
-            }
+            } || true
         } || {
             log_error "erreur format (${_passwd_files[$_i]}) : manque pg_login!"
             return $ERROR_CODE
@@ -226,16 +270,10 @@ _set_pg_env() {
     local _std=(admin public)
     in_array _std "$get_arg_schema_name" && {
         POW_PG_USERNAME=postgres
-#         POW_PG_PASSWORD=pgpow+123
         POW_PG_DEFAULT_SCHEMA=public
     } || {
         POW_PG_USERNAME=$get_arg_schema_name
         POW_PG_DEFAULT_SCHEMA=$get_arg_schema_name
-
-#         case $get_arg_schema_name in
-#         fr)     POW_PG_PASSWORD=luxor       ;;
-#         *)      return $ERROR_CODE          ;;
-#         esac
     }
 
     POW_PG_DBNAME=$(get_conf PG_DBNAME)
