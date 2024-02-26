@@ -52,5 +52,7 @@ BEGIN
     ELSE
         address_matched.search_area := 21;
     END IF;
+
+    RAISE NOTICE 'address_matched= %', address_matched;
 END
 $func$ LANGUAGE plpgsql;
