@@ -46,9 +46,9 @@ set_env --schema_name fr &&
 execute_query \
     --name ADD_MATCH_REQUEST \
     --query "
-        SELECT CONCAT_WS(' ', id, suffix, new)
+        SELECT CONCAT_WS(' ', id, suffix, new_request)
         FROM fr.add_address_match(file_path => '${match_var[FILE_PATH]}')
-        AS (id INT, suffix VARCHAR, new BOOLEAN)" \
+    " \
     --psql_arguments 'tuples-only:pset=format=unaligned' \
     --return _request &&
 match_request=($_request) &&
@@ -82,10 +82,18 @@ match_var[FORMAT_PATH]="${POW_DIR_BIN}/${match_var[FORMAT]}_format.sql"
 } &&
 log_info "demande de Rapprochement (étape Normalisation)" &&
 execute_query \
-    --name NORMALIZE_MATCH_REQUEST \
+    --name NORMALIZE_REQUEST \
     --query "CALL fr.set_normalize(
         file_path => '${match_var[FILE_PATH]}'
         , mapping => '${match_var[FORMAT_SQL]}'::HSTORE
+        , force => ('${match_var[FORCE]}' = 'yes')
+    )" &&
+log_info "demande de Rapprochement (étape Traitement)" &&
+execute_query \
+    --name MATCH_REQUEST \
+    --query "CALL fr.set_match(
+        file_path => '${match_var[FILE_PATH]}'
+        , force => ('${match_var[FORCE]}' = 'yes')
     )" || exit $ERROR_CODE
 
 exit $SUCCESS_CODE

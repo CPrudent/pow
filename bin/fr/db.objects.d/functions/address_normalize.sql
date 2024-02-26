@@ -1003,17 +1003,24 @@ BEGIN
                         INTO _address_normalized.street
                         USING address;
 
-                    _address_normalized.street := NULLIF(TRIM(public.clean_address_label(_address_normalized.street)), '');
-
-                    SELECT type, type_abbreviated, type_is_abbreviated
-                    INTO _address_normalized.street_type
-                        , _address_normalized.street_type_short
-                        , _street_type_is_abbreviated
-                    FROM fr.get_type_of_street(_address_normalized.street)
-                    AS (type VARCHAR, type_abbreviated VARCHAR, type_is_abbreviated BOOLEAN);
-                    IF _street_type_is_abbreviated THEN
-                        _address_normalized.street := REGEXP_REPLACE(_address_normalized.street, '^\S+', _address_normalized.street_type);
-                    END IF;
+                    SELECT
+                        ARRAY_TO_STRING(COALESCE(name_normalized_as_words, name_as_words), ' ')
+                        , ARRAY_TO_STRING(COALESCE(descriptors_normalized_as_words, descriptors_as_words), '')
+                        , CASE
+                            WHEN name_normalized_as_words IS NULL THEN as_words
+                            ELSE fr.get_as_words_from_splitted_value(
+                                property_as_words => descriptors_normalized_as_words
+                            )
+                            END
+                    INTO
+                        _address_normalized.street
+                        , _address_normalized.descriptors
+                        , _address_normalized.as_words
+                    FROM
+                        fr.normalize_street_name(
+                            name => _address_normalized.street
+                        )
+                    ;
                 WHEN 'municipality_code' THEN
                     EXECUTE CONCAT('SELECT ', _column_map[2])
                         INTO _address_normalized.municipality_code
