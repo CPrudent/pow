@@ -12,7 +12,7 @@ bash_args \
         format:Dépôt du fichier de format (ou chemin absolu);
         import_options:Options import (du fichier) spécifiques à son type;
         import_limit:Limiter à n enregistrements;
-        steps:Ensemble des étapes à réaliser
+        steps:Ensemble des étapes à réaliser (séparées par une virgule, si plusieurs)
     " \
     --args_o '
         file_path
