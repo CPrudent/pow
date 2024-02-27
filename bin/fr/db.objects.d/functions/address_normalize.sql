@@ -968,6 +968,7 @@ DECLARE
     _cadastre_parcel_prefix CHAR(3);
     _street_type_is_abbreviated BOOLEAN;
     _exists BOOLEAN;
+    _timestamp TIMESTAMP := clock_timestamp();
 BEGIN
     FOREACH _column_map SLICE 1 IN ARRAY %# columns_map LOOP
         _column_map[2] := CONCAT('$1.', _column_map[2]);
@@ -1183,6 +1184,7 @@ BEGIN
         WHEN _address_normalized.municipality_code IS NOT NULL THEN 'ZA'
     END;
 
+    /*
     IF _address_normalized.postcode IS NOT NULL
     OR _address_normalized.municipality_code IS NOT NULL
     OR _address_normalized.municipality_name IS NOT NULL
@@ -1198,6 +1200,7 @@ BEGIN
             END IF;
         END IF;
     END IF;
+     */
 
     /*
     -- calcul mot directeur, si absent
@@ -1206,6 +1209,7 @@ BEGIN
     END IF;
      */
 
+    _address_normalized.elapsed_time := clock_timestamp() - _timestamp;
     RETURN _address_normalized;
 END
 $func$ LANGUAGE plpgsql;

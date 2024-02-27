@@ -5,39 +5,34 @@
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'address_normalized')
-    OR NOT EXISTS (
+    OR EXISTS (
         SELECT 1 FROM information_schema.attributes
-        WHERE udt_name = 'address_normalized' AND attribute_name = 'descriptors')
-    OR NOT EXISTS (
-        SELECT 1 FROM information_schema.attributes
-        WHERE udt_name = 'address_normalized' AND attribute_name = 'as_words')
+        WHERE udt_name = 'address_normalized' AND attribute_name = '_order_code_area')
 
     THEN
         DROP TYPE IF EXISTS fr.address_normalized CASCADE;
         CREATE TYPE fr.address_normalized AS (
-            _order_code_area VARCHAR
-            , _order_code_street VARCHAR
-            , _order_code_housenumber VARCHAR
-            , _order_code_complement VARCHAR
-            , id VARCHAR
-            , complement VARCHAR
+              id VARCHAR                        -- client ID
+            , level VARCHAR                     -- AREA|STREET|HOUSENUMBER|COMPLEMENT
+            , complement VARCHAR                -- address complement (known as L3)
             , housenumber INTEGER
-            , housenumber_extension VARCHAR
-            , street VARCHAR
-            , descriptors VARCHAR
-            , as_words INT[]
+            , extension VARCHAR                 -- housenumber extension (BIS, ...)
+            , street VARCHAR                    -- full name of street (w/o abbr)
+            , descriptors VARCHAR               -- LAPOSTE/RAN classified words
+            , as_words INT[]                    -- array of length of each item
+            , strong_word VARCHAR               -- important word (generaly last one)
             /* useful ?
-            , street_normalized VARCHAR
+            , street_normalized VARCHAR         -- normalized name of street
             , descriptors_normalized VARCHAR
             , as_words_normalized INT[]
              */
-            , geom GEOMETRY(POINT, 3857)
-            , level VARCHAR
-            , postcode VARCHAR
-            , municipality_code VARCHAR
-            , municipality_name VARCHAR
-            , municipality_old_code VARCHAR
+            , postcode VARCHAR                  -- postal code
+            , municipality_code VARCHAR         -- INSEE code (municipality)
+            , municipality_name VARCHAR         -- normalized name of municipality
+            , municipality_old_code VARCHAR     -- old municipality (known as L5)
             , municipality_old_name VARCHAR
+            , geom GEOMETRY(POINT, 3857)        -- WGS84-proj geometry
+            , elapsed_time INTERVAL             -- running time
         );
 
         -- has to be rebuild!
@@ -74,17 +69,44 @@ BEGIN
     END IF;
 END $$;
 
-DROP TABLE IF EXISTS fr.address_match_normalize;
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'element_matched')
+    THEN
+        DROP TYPE IF EXISTS fr.element_matched CASCADE;
+        CREATE TYPE fr.element_matched AS (
+              codes_address CHAR(10)[]
+            , level VARCHAR                     -- AREA|STREET|HOUSENUMBER|COMPLEMENT
+            , elapsed_time INTERVAL
+            , status INT
+            , similarity NUMERIC
+            , similarity_semantic NUMERIC
+            , similarity_phonetic NUMERIC
+            , similarity_geometry NUMERIC
+        );
+    END IF;
+
+    IF NOT column_exists('fr', 'address_match_result', 'id_match_code_area') THEN
+        -- has to be rebuild!
+        DROP TABLE IF EXISTS fr.address_match_result;
+    END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS fr.address_match_result (
     id SERIAL NOT NULL
     , id_request INTEGER NOT NULL
     , id_address INT NOT NULL
+    , id_match_code_area INT
+    , id_match_code_street INT
+    , id_match_code_housenumber INT
+    , id_match_code_complement INT
     , address_normalized fr.address_normalized
-    , address_matched fr.address_matched
+    , code_address CHAR(10)
+    --, address_matched fr.address_matched
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS iux_address_match_normalize_id ON fr.address_match_result(id);
-CREATE INDEX IF NOT EXISTS ix_address_match_result_id_request ON fr.address_match_result(id_request);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_address_match_result_ids ON fr.address_match_result(id_request, id_address);
 
 -- normalize addresses
 SELECT drop_all_functions_if_exists('fr', 'set_normalize');
