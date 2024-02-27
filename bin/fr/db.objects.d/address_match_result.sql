@@ -189,27 +189,21 @@ BEGIN
             WITH
             ordered_addresses AS (
                 SELECT
-                    id_request
-                    , id_address
-                    , (SELECT address_matched
-                        FROM fr.match_address(
-                            address_normalized => na.address_normalized
-                        )
-                    ) address_matched
+                    na.id_request
+                    , na.id_address
+                    , ROW(ma.*)::fr.address_matched address_matched
                 FROM
                     fr.address_match_result na
-                        /*
-                        JOIN fr.match_address(
+                        CROSS JOIN fr.match_address(
                                 address_normalized => na.address_normalized
-                            ) AS ma(address_matched) ON TRUE
-                         */
+                            ) ma
                 WHERE
-                    id_request = $1
+                    na.id_request = $1
                 ORDER BY
-                    (address_normalized)._order_code_area
-                    , (address_normalized)._order_code_street
-                    , (address_normalized)._order_code_housenumber
-                    , (address_normalized)._order_code_complement
+                    (na.address_normalized)._order_code_area
+                    , (na.address_normalized)._order_code_street
+                    , (na.address_normalized)._order_code_housenumber
+                    , (na.address_normalized)._order_code_complement
 
             )
             UPDATE fr.address_match_result r SET

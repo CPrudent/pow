@@ -6,16 +6,18 @@
 SELECT drop_all_functions_if_exists('fr', 'match_address');
 CREATE OR REPLACE FUNCTION fr.match_address(
     address_normalized IN fr.address_normalized           -- address to match
-    , address_matched OUT fr.address_matched              -- address matched
+    --, address_matched OUT fr.address_matched              -- address matched
 )
-AS
+RETURNS fr.address_matched AS
 $func$
+DECLARE
+    _address_matched fr.address_matched;
 BEGIN
     -- basic algorithm
     SELECT
         ARRAY_AGG(a.co_adr)
     INTO
-        address_matched.codes_area_possible
+        _address_matched.codes_area_possible
     FROM
         fr.address_view a
     WHERE
@@ -44,15 +46,16 @@ BEGIN
         )
     ;
 
-    IF ARRAY_LENGTH(address_matched.codes_area_possible, 1) = 1 THEN
-        address_matched.code_area := address_matched.codes_area_possible[1];
-        address_matched.search_area := 1;
-    ELSIF address_matched.codes_area_possible IS NOT NULL THEN
-        address_matched.search_area := 22;
+    IF ARRAY_LENGTH(_address_matched.codes_area_possible, 1) = 1 THEN
+        _address_matched.code_area := _address_matched.codes_area_possible[1];
+        _address_matched.search_area := 1;
+    ELSIF _address_matched.codes_area_possible IS NOT NULL THEN
+        _address_matched.search_area := 22;
     ELSE
-        address_matched.search_area := 21;
+        _address_matched.search_area := 21;
     END IF;
 
-    RAISE NOTICE 'address_matched= %', address_matched;
+    RAISE NOTICE 'address_matched= %', _address_matched;
+    RETURN _address_matched;
 END
 $func$ LANGUAGE plpgsql;
