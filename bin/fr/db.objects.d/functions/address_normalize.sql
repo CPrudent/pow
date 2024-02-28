@@ -949,14 +949,15 @@ view test_normalize.sh : option NAME_DIFF
 
 -- normalize one address
 SELECT drop_all_functions_if_exists('fr', 'normalize_address');
-CREATE OR REPLACE FUNCTION fr.normalize_address(
-    address IN RECORD                   -- address to normalize
+SELECT drop_all_functions_if_exists('fr', 'standardize_address');
+CREATE OR REPLACE FUNCTION fr.standardize_address(
+    address IN RECORD                   -- address to standardize
     , columns_map IN HSTORE             -- mapping address(client)/address(reference)
 )
-RETURNS fr.address_normalized AS
+RETURNS fr.standardized_address AS
 $func$
 DECLARE
-    _address_normalized fr.address_normalized;
+    _standardized_address fr.standardized_address;
     _column_map VARCHAR[];
     _geom GEOMETRY;
     _geom_x DOUBLE PRECISION;
@@ -976,32 +977,32 @@ BEGIN
             CASE _column_map[1]
                 WHEN 'id' THEN
                     EXECUTE CONCAT('SELECT ', _column_map[2])
-                        INTO _address_normalized.id
+                        INTO _standardized_address.id
                         USING address;
                 WHEN 'complement' THEN
                     EXECUTE CONCAT('SELECT ', _column_map[2])
-                        INTO _address_normalized.complement
+                        INTO _standardized_address.complement
                         USING address;
-                    _address_normalized.complement := NULLIF(TRIM(public.clean_address_label(_address_normalized.complement)), '');
+                    _standardized_address.complement := NULLIF(TRIM(public.clean_address_label(_standardized_address.complement)), '');
                 WHEN 'housenumber' THEN
                     EXECUTE CONCAT('SELECT NULLIF(TRIM(', _column_map[2], '::TEXT), '''')::INTEGER')
-                        INTO _address_normalized.housenumber
+                        INTO _standardized_address.housenumber
                         USING address;
                     --SELECT '33' ~ '^[0-9]*$'
                     --A ETUDIER : ne permet plus de forcer la recherche d'un numéro si activé
-                    --_address_normalized.housenumber := NULLIF(_address_normalized.housenumber, 0);
-                    IF _address_normalized.housenumber::VARCHAR !~ '^[0-9]*$' THEN
-                        RAISE NOTICE 'Numéro de voie ignoré car invalide : %', _address_normalized.housenumber;
-                        _address_normalized.housenumber := NULL;
+                    --_standardized_address.housenumber := NULLIF(_standardized_address.housenumber, 0);
+                    IF _standardized_address.housenumber::VARCHAR !~ '^[0-9]*$' THEN
+                        RAISE NOTICE 'Numéro de voie ignoré car invalide : %', _standardized_address.housenumber;
+                        _standardized_address.housenumber := NULL;
                     END IF;
-                WHEN 'housenumber_extension' THEN
+                WHEN 'extension' THEN
                     EXECUTE CONCAT('SELECT ', _column_map[2])
-                        INTO _address_normalized.housenumber_extension
+                        INTO _standardized_address.extension
                         USING address;
-                    _address_normalized.housenumber_extension := NULLIF(TRIM(public.clean_address_label(_address_normalized.housenumber_extension)), '');
+                    _standardized_address.extension := NULLIF(TRIM(public.clean_address_label(_standardized_address.extension)), '');
                 WHEN 'street' THEN
                     EXECUTE CONCAT('SELECT ', _column_map[2])
-                        INTO _address_normalized.street
+                        INTO _standardized_address.street
                         USING address;
 
                     SELECT
@@ -1014,51 +1015,51 @@ BEGIN
                             )
                             END
                     INTO
-                        _address_normalized.street
-                        , _address_normalized.descriptors
-                        , _address_normalized.as_words
+                        _standardized_address.street
+                        , _standardized_address.descriptors
+                        , _standardized_address.as_words
                     FROM
                         fr.normalize_street_name(
-                            name => _address_normalized.street
+                            name => _standardized_address.street
                         )
                     ;
                 WHEN 'municipality_code' THEN
                     EXECUTE CONCAT('SELECT ', _column_map[2])
-                        INTO _address_normalized.municipality_code
+                        INTO _standardized_address.municipality_code
                         USING address;
 
                     SELECT EXISTS(
                         SELECT 1 FROM fr.laposte_address_area
-                        WHERE co_insee_commune = _address_normalized.municipality_code
+                        WHERE co_insee_commune = _standardized_address.municipality_code
                         AND fl_active)
                     INTO _exists;
                     IF NOT _exists THEN
-                        RAISE NOTICE 'Code INSEE commune ignoré car invalide : %', _address_normalized.municipality_code;
-                        _address_normalized.municipality_code := NULL;
+                        RAISE NOTICE 'Code INSEE commune ignoré car invalide : %', _standardized_address.municipality_code;
+                        _standardized_address.municipality_code := NULL;
                     END IF;
                 WHEN 'postcode' THEN
                     EXECUTE CONCAT('SELECT ', _column_map[2])
-                        INTO _address_normalized.postcode
+                        INTO _standardized_address.postcode
                         USING address;
                     SELECT EXISTS(
                         SELECT 1 FROM fr.laposte_address_area
-                        WHERE co_postal = _address_normalized.postcode
+                        WHERE co_postal = _standardized_address.postcode
                         AND fl_active)
                     INTO _exists;
                     IF NOT _exists THEN
-                        RAISE NOTICE 'Code Postal commune ignoré car invalide : %', _address_normalized.postcode;
-                        _address_normalized.postcode := NULL;
+                        RAISE NOTICE 'Code Postal commune ignoré car invalide : %', _standardized_address.postcode;
+                        _standardized_address.postcode := NULL;
                     END IF;
                 WHEN 'municipality_name' THEN
                     EXECUTE CONCAT('SELECT ', _column_map[2])
-                        INTO _address_normalized.municipality_name
+                        INTO _standardized_address.municipality_name
                         USING address;
                 -- TODO à intégrer dans lb_ligneX
                 -- mention CEDEX OU libellé Ancienne Commune OU les 2 accollées
                 -- RE=^((BP|CS|CE|CP) *[0-9]+)? *([A-Z ]+)?$
                 WHEN 'municipality_old_name' THEN
                     EXECUTE CONCAT('SELECT ', _column_map[2])
-                        INTO _address_normalized.municipality_old_name
+                        INTO _standardized_address.municipality_old_name
                         USING address;
 
                 WHEN 'geo_xy' THEN
@@ -1125,37 +1126,37 @@ BEGIN
         END;
     END LOOP;
 
-    IF _address_normalized.id IS NULL THEN
+    IF _standardized_address.id IS NULL THEN
         RAISE 'Vous devez spécifier un code identifiant de l''adresse';
     END IF;
 
-    _address_normalized.municipality_name := fr.normalize_municipality_name(
-        code => _address_normalized.municipality_code
-        , name => _address_normalized.municipality_name
+    _standardized_address.municipality_name := fr.normalize_municipality_name(
+        code => _standardized_address.municipality_code
+        , name => _standardized_address.municipality_name
     );
-    IF _address_normalized.municipality_old_name IS NOT NULL THEN
-        _address_normalized.municipality_old_name := fr.normalize_municipality_name(
-            name => _address_normalized.municipality_old_name
+    IF _standardized_address.municipality_old_name IS NOT NULL THEN
+        _standardized_address.municipality_old_name := fr.normalize_municipality_name(
+            name => _standardized_address.municipality_old_name
         );
     END IF;
-    IF _address_normalized.municipality_code IS NULL AND _address_normalized.municipality_name IS NOT NULL THEN
+    IF _standardized_address.municipality_code IS NULL AND _standardized_address.municipality_name IS NOT NULL THEN
         BEGIN
             SELECT DISTINCT co_insee_commune
-            INTO _address_normalized.municipality_code
+            INTO _standardized_address.municipality_code
             FROM fr.laposte_address_area
-            WHERE lb_ach_nn = _address_normalized.municipality_name AND fl_active;
+            WHERE lb_ach_nn = _standardized_address.municipality_name AND fl_active;
         EXCEPTION WHEN OTHERS THEN
-            RAISE NOTICE 'Déduction code Commune à partir du nom % provoquant une erreur : %', _address_normalized.municipality_name,  SQLERRM;
+            RAISE NOTICE 'Déduction code Commune à partir du nom % provoquant une erreur : %', _standardized_address.municipality_name,  SQLERRM;
         END;
     END IF;
-    IF _address_normalized.municipality_name IS NULL AND _address_normalized.municipality_code IS NOT NULL THEN
+    IF _standardized_address.municipality_name IS NULL AND _standardized_address.municipality_code IS NOT NULL THEN
         BEGIN
             SELECT DISTINCT lb_ach_nn
-            INTO _address_normalized.municipality_name
+            INTO _standardized_address.municipality_name
             FROM fr.laposte_address_area
-            WHERE co_insee_commune = _address_normalized.municipality_code AND fl_active;
+            WHERE co_insee_commune = _standardized_address.municipality_code AND fl_active;
         EXCEPTION WHEN OTHERS THEN
-            RAISE NOTICE 'Déduction libellé Commune à partir du code % provoquant une erreur : %', _address_normalized.municipality_code,  SQLERRM;
+            RAISE NOTICE 'Déduction libellé Commune à partir du code % provoquant une erreur : %', _standardized_address.municipality_code,  SQLERRM;
         END;
     END IF;
 
@@ -1172,31 +1173,31 @@ BEGIN
         IF NOT public.is_valid_geometry_in_SRID_bounds(_geom) THEN
             RAISE NOTICE 'Coordonnées en dehors des limites du système de projection : %, SRID %', ST_AsText(_geom), ST_SRID(_geom);
         ELSE
-            _address_normalized.geom := ST_Transform(_geom, 3857);
+            _standardized_address.geom := ST_Transform(_geom, 3857);
         END IF;
     END IF;
 
-    _address_normalized.level :=
+    _standardized_address.level :=
     CASE
-        WHEN _address_normalized.complement IS NOT NULL THEN 'L3'
-        WHEN _address_normalized.housenumber IS NOT NULL THEN 'NUMERO'
-        WHEN _address_normalized.street IS NOT NULL THEN 'VOIE'
-        WHEN _address_normalized.municipality_code IS NOT NULL THEN 'ZA'
+        WHEN _standardized_address.complement IS NOT NULL THEN 'COMPLEMENT'
+        WHEN _standardized_address.housenumber IS NOT NULL THEN 'HOUSENUMBER'
+        WHEN _standardized_address.street IS NOT NULL THEN 'STREET'
+        WHEN _standardized_address.municipality_code IS NOT NULL THEN 'AREA'
     END;
 
     /*
-    IF _address_normalized.postcode IS NOT NULL
-    OR _address_normalized.municipality_code IS NOT NULL
-    OR _address_normalized.municipality_name IS NOT NULL
+    IF _standardized_address.postcode IS NOT NULL
+    OR _standardized_address.municipality_code IS NOT NULL
+    OR _standardized_address.municipality_name IS NOT NULL
     THEN
-        _address_normalized._order_code_area := MD5(CONCAT(_address_normalized.postcode, _address_normalized.municipality_code, _address_normalized.municipality_name));
-        IF _address_normalized.street IS NOT NULL THEN
-            _address_normalized._order_code_street := MD5(CONCAT(_address_normalized.postcode, _address_normalized.municipality_code, _address_normalized.municipality_name, _address_normalized.street));
-            IF _address_normalized.housenumber IS NOT NULL THEN
-                _address_normalized._order_code_housenumber := MD5(CONCAT(_address_normalized.postcode, _address_normalized.municipality_code, _address_normalized.municipality_name, _address_normalized.street, _address_normalized.housenumber, _address_normalized.housenumber_extension));
+        _standardized_address._order_code_area := MD5(CONCAT(_standardized_address.postcode, _standardized_address.municipality_code, _standardized_address.municipality_name));
+        IF _standardized_address.street IS NOT NULL THEN
+            _standardized_address._order_code_street := MD5(CONCAT(_standardized_address.postcode, _standardized_address.municipality_code, _standardized_address.municipality_name, _standardized_address.street));
+            IF _standardized_address.housenumber IS NOT NULL THEN
+                _standardized_address._order_code_housenumber := MD5(CONCAT(_standardized_address.postcode, _standardized_address.municipality_code, _standardized_address.municipality_name, _standardized_address.street, _standardized_address.housenumber, _standardized_address.extension));
             END IF;
-            IF _address_normalized.complement IS NOT NULL THEN
-                _address_normalized._order_code_complement := MD5(CONCAT(_address_normalized.postcode, _address_normalized.municipality_code, _address_normalized.municipality_name, _address_normalized.street, _address_normalized.housenumber, _address_normalized.housenumber_extension, _address_normalized.complement));
+            IF _standardized_address.complement IS NOT NULL THEN
+                _standardized_address._order_code_complement := MD5(CONCAT(_standardized_address.postcode, _standardized_address.municipality_code, _standardized_address.municipality_name, _standardized_address.street, _standardized_address.housenumber, _standardized_address.extension, _standardized_address.complement));
             END IF;
         END IF;
     END IF;
@@ -1204,12 +1205,12 @@ BEGIN
 
     /*
     -- calcul mot directeur, si absent
-    IF _address_normalized.lb_voie_mot_directeur IS NULL AND _address_normalized.street IS NOT NULL THEN
-        _address_normalized.lb_voie_mot_directeur := getVoieMotDirecteur(_address_normalized.street);
+    IF _standardized_address.lb_voie_mot_directeur IS NULL AND _standardized_address.street IS NOT NULL THEN
+        _standardized_address.lb_voie_mot_directeur := getVoieMotDirecteur(_standardized_address.street);
     END IF;
      */
 
-    _address_normalized.elapsed_time := clock_timestamp() - _timestamp;
-    RETURN _address_normalized;
+    _standardized_address.elapsed_time := clock_timestamp() - _timestamp;
+    RETURN _standardized_address;
 END
 $func$ LANGUAGE plpgsql;

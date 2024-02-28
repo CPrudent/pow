@@ -1,19 +1,23 @@
 /***
- * FR-MATCH address (result)
+ * FR-ADDRESS matching address (result)
  */
+
+-- old name
+DROP TYPE IF EXISTS fr.address_normalized CASCADE;
 
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'address_normalized')
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'standardized_address')
     OR EXISTS (
         SELECT 1 FROM information_schema.attributes
-        WHERE udt_name = 'address_normalized' AND attribute_name = '_order_code_area')
+        WHERE udt_name = 'standardized_address' AND attribute_name = '_order_code_area')
 
     THEN
-        DROP TYPE IF EXISTS fr.address_normalized CASCADE;
-        CREATE TYPE fr.address_normalized AS (
+        DROP TYPE IF EXISTS fr.standardized_address CASCADE;
+        CREATE TYPE fr.standardized_address AS (
               id VARCHAR                        -- client ID
             , level VARCHAR                     -- AREA|STREET|HOUSENUMBER|COMPLEMENT
+            , elapsed_time INTERVAL             -- running time
             , complement VARCHAR                -- address complement (known as L3)
             , housenumber INTEGER
             , extension VARCHAR                 -- housenumber extension (BIS, ...)
@@ -32,7 +36,6 @@ BEGIN
             , municipality_old_code VARCHAR     -- old municipality (known as L5)
             , municipality_old_name VARCHAR
             , geom GEOMETRY(POINT, 3857)        -- WGS84-proj geometry
-            , elapsed_time INTERVAL             -- running time
         );
 
         -- has to be rebuild!
@@ -40,6 +43,7 @@ BEGIN
     END IF;
 END $$;
 
+/*
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'address_matched')
@@ -68,13 +72,14 @@ BEGIN
         DROP TABLE IF EXISTS fr.address_match_result;
     END IF;
 END $$;
+ */
 
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'element_matched')
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'matched_element')
     THEN
-        DROP TYPE IF EXISTS fr.element_matched CASCADE;
-        CREATE TYPE fr.element_matched AS (
+        --DROP TYPE IF EXISTS fr.matched_element CASCADE;
+        CREATE TYPE fr.matched_element AS (
               codes_address CHAR(10)[]
             , level VARCHAR                     -- AREA|STREET|HOUSENUMBER|COMPLEMENT
             , elapsed_time INTERVAL
@@ -86,7 +91,7 @@ BEGIN
         );
     END IF;
 
-    IF NOT column_exists('fr', 'address_match_result', 'id_match_code_area') THEN
+    IF NOT column_exists('fr', 'address_match_result', 'id_matched_area') THEN
         -- has to be rebuild!
         DROP TABLE IF EXISTS fr.address_match_result;
     END IF;
@@ -96,19 +101,22 @@ CREATE TABLE IF NOT EXISTS fr.address_match_result (
     id SERIAL NOT NULL
     , id_request INTEGER NOT NULL
     , id_address INT NOT NULL
-    , id_match_code_area INT
-    , id_match_code_street INT
-    , id_match_code_housenumber INT
-    , id_match_code_complement INT
-    , address_normalized fr.address_normalized
+    , id_matched_area INT
+    , id_matched_street INT
+    , id_matched_housenumber INT
+    , id_matched_complement INT
+    , standardized_address fr.standardized_address
     , code_address CHAR(10)
-    --, address_matched fr.address_matched
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS iux_address_match_normalize_id ON fr.address_match_result(id);
 CREATE UNIQUE INDEX IF NOT EXISTS ix_address_match_result_ids ON fr.address_match_result(id_request, id_address);
 
--- normalize addresses
+-- normalize (standardize) addresses
+/* NOTE
+here goal is to standardize address before matching step
+not really obtain normalized name, by example, for street
+ */
 SELECT drop_all_functions_if_exists('fr', 'set_normalize');
 CREATE OR REPLACE PROCEDURE fr.set_normalize(
     file_path IN VARCHAR
@@ -124,6 +132,7 @@ DECLARE
     _query TEXT;
     _table VARCHAR;
     _nrows INTEGER;
+    _info VARCHAR;
 BEGIN
     SELECT id, suffix, is_normalized
     INTO _id_request, _suffix, _is_normalized
@@ -135,11 +144,12 @@ BEGIN
         RAISE 'aucune demande de Rapprochement trouvée pour le fichier ''%''', file_path;
     END IF;
 
+    _info := CONCAT('standardisation demande Rapprochement (', id, ')');
     IF force OR NOT _is_normalized THEN
         DELETE FROM fr.address_match_result WHERE id_request = _id_request;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
         IF _nrows > 0 THEN
-            CALL public.log_info(CONCAT('purge Rapprochement (', _id_request, ') : #', _nrows));
+            CALL public.log_info(CONCAT(_info, ' - PURGE : #', _nrows));
         END IF;
 
         _table := CONCAT('address_match_', _suffix);
@@ -148,13 +158,13 @@ BEGIN
             INSERT INTO fr.address_match_result(
                 id_request
                 , id_address
-                , address_normalized
+                , standardized_address
             )
             (
                 SELECT
                     $1
                     , d.rowid
-                    , ROW(na.*)::address_normalized
+                    , ROW(na.*)::standardized_address
                 FROM fr.
                 '
                 , _table, ' d
@@ -167,7 +177,7 @@ BEGIN
         );
         EXECUTE _query USING _id_request, mapping;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
-        CALL public.log_info(CONCAT('normalisation demande Rapprochement (', _id_request, ') : #', _nrows));
+        CALL public.log_info(CONCAT(_info, ' : #', _nrows));
 
         UPDATE fr.address_match_request SET
             is_normalized = TRUE
@@ -175,7 +185,7 @@ BEGIN
                 id = _id_request
         ;
     ELSE
-        CALL public.log_info(CONCAT('demande Rapprochement (', _id_request, ') : déjà normalisée (option force disponible)'));
+        CALL public.log_info(CONCAT(_info, ' : déjà traitée (option force disponible)'));
     END IF;
 END
 $proc$ LANGUAGE plpgsql;
@@ -217,15 +227,15 @@ BEGIN
                 FROM
                     fr.address_match_result na
                         CROSS JOIN fr.match_address(
-                                address_normalized => na.address_normalized
+                                standardized_address => na.standardized_address
                             ) ma
                 WHERE
                     na.id_request = $1
                 ORDER BY
-                    (na.address_normalized)._order_code_area
-                    , (na.address_normalized)._order_code_street
-                    , (na.address_normalized)._order_code_housenumber
-                    , (na.address_normalized)._order_code_complement
+                    (na.standardized_address)._order_code_area
+                    , (na.standardized_address)._order_code_street
+                    , (na.standardized_address)._order_code_housenumber
+                    , (na.standardized_address)._order_code_complement
 
             )
             UPDATE fr.address_match_result r SET

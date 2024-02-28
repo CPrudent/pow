@@ -1,5 +1,5 @@
 /***
- * FR-MATCH address (request manager)
+ * FR-ADDRESS matching address (request)
  */
 
 CREATE TABLE IF NOT EXISTS fr.address_match_request (
@@ -8,7 +8,9 @@ CREATE TABLE IF NOT EXISTS fr.address_match_request (
     , date_create TIMESTAMP NOT NULL
     , suffix VARCHAR NOT NULL
     , is_normalized BOOLEAN DEFAULT FALSE
-    , is_matched BOOLEAN DEFAULT FALSE
+    , is_match_code BOOLEAN DEFAULT FALSE
+    , is_match_element BOOLEAN DEFAULT FALSE
+    , is_match_address BOOLEAN DEFAULT FALSE
 );
 
 DO $$
@@ -16,13 +18,20 @@ BEGIN
     IF NOT column_exists('fr', 'address_match_request', 'is_normalized') THEN
         ALTER TABLE fr.address_match_request ADD COLUMN is_normalized BOOLEAN DEFAULT FALSE;
     END IF;
-    IF NOT column_exists('fr', 'address_match_request', 'is_matched') THEN
-        ALTER TABLE fr.address_match_request ADD COLUMN is_matched BOOLEAN DEFAULT FALSE;
+    IF NOT column_exists('fr', 'address_match_request', 'is_match_code') THEN
+        ALTER TABLE fr.address_match_request ADD COLUMN is_match_code BOOLEAN DEFAULT FALSE;
+    END IF;
+    IF NOT column_exists('fr', 'address_match_request', 'is_match_element') THEN
+        ALTER TABLE fr.address_match_request ADD COLUMN is_match_element BOOLEAN DEFAULT FALSE;
+    END IF;
+    IF NOT column_exists('fr', 'address_match_request', 'is_match_address') THEN
+        ALTER TABLE fr.address_match_request ADD COLUMN is_match_address BOOLEAN DEFAULT FALSE;
     END IF;
 END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS iux_address_match_request_id ON fr.address_match_request(id);
 
+-- add request (if not exists)
 SELECT drop_all_functions_if_exists('fr', 'add_address_match');
 CREATE OR REPLACE FUNCTION fr.add_address_match(
     file_path IN VARCHAR
