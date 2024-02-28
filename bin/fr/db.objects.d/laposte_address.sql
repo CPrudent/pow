@@ -126,6 +126,7 @@ BEGIN
     -- manage indexes
     CALL fr.set_laposte_address_index();
 
+    -- create views
     _query := '
         SELECT
             --INFORMATIONS IDENTIFIANT L ADRESSE (code, niveau, parenté, composition)
