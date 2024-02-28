@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS fr.address_match_element (
     , matched_element fr.matched_element
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS iux_address_match_element_id_level ON fr.address_match_element(id, level);
+CREATE UNIQUE INDEX IF NOT EXISTS iux_address_match_element_id ON fr.address_match_element(id);
+CREATE INDEX IF NOT EXISTS ix_address_match_element_match_code ON fr.address_match_element(match_code);
 
 -- match each element of address (of a matching request)
 SELECT drop_all_functions_if_exists('fr', 'set_match_element');
@@ -21,10 +22,13 @@ AS
 $proc$
 DECLARE
     _is_match_element BOOLEAN;
-    _query TEXT;
     _nrows INTEGER;
     _info VARCHAR := CONCAT('rapprochement ELEMENT demande Rapprochement (', id, ')');
+    _levels VARCHAR[] := ARRAY['AREA', 'STREET', 'HOUSENUMBER', 'COMPLEMENT'];
+    _level VARCHAR;
     _element RECORD;
+    _query TEXT;
+    _id INT;
 BEGIN
     SELECT is_match_element
     INTO _is_match_element
@@ -37,109 +41,74 @@ BEGIN
     END IF;
 
     IF force OR NOT _is_match_element THEN
-        FOR _element IN (
-            SELECT mc.level, mc.match_code_element, mc.match_code_parent
-            FROM fr.address_match_code mc
-                LEFT OUTER JOIN fr.address_match_element me
-                ON (me.match_code_element, me.match_code_parent) = (mc.match_code_element, mc.match_code_parent)
-            WHERE mc.id_request = id AND me.match_code_element IS NULL
-        )
+        FOREACH _level IN ARRAY _levels
         LOOP
-
-        END LOOP;
-
-        DELETE FROM fr.address_match_code WHERE id_request = id;
-        GET DIAGNOSTICS _nrows = ROW_COUNT;
-        IF _nrows > 0 THEN
-            CALL public.log_info(CONCAT(_info, ' - PURGE : #', _nrows));
-        END IF;
-
-        _query := CONCAT(
-            '
-            WITH
-            match_code AS (
-                SELECT DISTINCT
-                    ''AREA'' level
-                    , CONCAT(
-                          (standardized_address).municipality_old_name
-                        , (standardized_address).postcode
-                        , (standardized_address).municipality_code
-                        , (standardized_address).municipality_name
-                    ) match_code
-                FROM
-                    fr.address_match_result
-                WHERE
-                    id_request = $1
-                UNION
-                SELECT DISTINCT
-                    ''STREET'' level
-                    , CONCAT(
-                          (standardized_address).municipality_old_name
-                        , (standardized_address).postcode
-                        , (standardized_address).municipality_code
-                        , (standardized_address).municipality_name
-                        , (standardized_address).street
-                    ) match_code
-                FROM
-                    fr.address_match_result
-                WHERE
-                    id_request = $1
-                UNION
-                SELECT DISTINCT
-                    ''HOUSENUMBER'' level
-                    , CONCAT(
-                          (standardized_address).municipality_old_name
-                        , (standardized_address).postcode
-                        , (standardized_address).municipality_code
-                        , (standardized_address).municipality_name
-                        , (standardized_address).street
-                        , (standardized_address).housenumber
-                        , (standardized_address).housenumber_extension
-                    ) match_code
-                FROM
-                    fr.address_match_result
-                WHERE
-                    id_request = $1
-                    AND
-                    (standardized_address).housenumber IS NOT NULL
-                UNION
-                SELECT DISTINCT
-                    ''COMPLEMENT'' level
-                    , CONCAT(
-                          (standardized_address).municipality_old_name
-                        , (standardized_address).postcode
-                        , (standardized_address).municipality_code
-                        , (standardized_address).municipality_name
-                        , (standardized_address).street
-                        , (standardized_address).housenumber
-                        , (standardized_address).housenumber_extension
-                        , (standardized_address).complement
-                    ) match_code
-                FROM
-                    fr.address_match_result
-                WHERE
-                    id_request = $1
-                    AND
-                    (standardized_address).complement IS NOT NULL
-            )
-            INSERT INTO fr.address_match_code(
-                id_request
-                , level
-                , match_code
-            )
-            (
+            -- search for element not already matched (w/ its matched parent if exists)
+            _query := '
                 SELECT
-                    $1
-                    , level
-                    , MD5(match_code)
+                    mc.level
+                    , mc.match_code_element
+                    , CASE $2
+                        WHEN ''AREA'' THEN NULL::fr.matched_element
+                        ELSE me.matched_element
+                        END matched_element
+                    , standardized_address
                 FROM
-                    match_code
-            )
-            '
-        );
-        EXECUTE _query USING id;
-        GET DIAGNOSTICS _nrows = ROW_COUNT;
-        CALL public.log_info(CONCAT(_info, ' : #', _nrows));
+                    fr.address_match_code mc
+                '
+            ;
+            IF _level != 'AREA' THEN
+                _query := CONCAT(_query
+                    , '
+                    LEFT OUTER JOIN fr.address_match_element me
+                        ON me.match_code = mc.match_code_parent
+                    '
+                );
+            END IF;
+            _query := CONCAT(_query
+                , '
+                    WHERE
+                        mc.id_request = $1
+                        AND
+                        mc.level = $2
+                        AND
+                        NOT EXISTS(
+                            SELECT 1
+                            FROM fr.address_match_element me2
+                            WHERE mc.match_code_element = me2.match_code
+                        )
+                '
+            );
+            _nrows := 0;
+            FOR _element IN EXECUTE _query USING id, _level
+            LOOP
+                SELECT
+                    matched_element
+                INTO
+                    _matched_element
+                FROM
+                    fr.match_element(
+                        level => _element.level
+                        , standardized_address => _element.standardized_address
+                    )
+                ;
+
+                INSERT INTO fr.address_match_element(
+                      level
+                    , match_code
+                    , matched_element
+                )
+                VALUES(
+                    _element.level
+                    , _element.match_code_element
+                    , _element.match_element
+                )
+                RETURNING id INTO _id
+                ;
+
+                _nrows := nrows +1;
+            END LOOP;
+        END LOOP;
 
         UPDATE fr.address_match_request mr SET
             is_match_element = TRUE

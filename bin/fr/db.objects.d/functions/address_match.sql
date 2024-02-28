@@ -2,6 +2,25 @@
  * add FR-ADDRESS facilities (matching address)
  */
 
+-- match one element
+SELECT drop_all_functions_if_exists('fr', 'match_element');
+CREATE OR REPLACE FUNCTION fr.match_element(
+    level IN VARCHAR
+    , standardized_address IN fr.standardized_address
+    , matched_element OUT fr.matched_element
+)
+AS
+$func$
+DECLARE
+BEGIN
+    IF level = 'AREA' THEN
+    ELSIF level = 'STREET' THEN
+    ELSIF level = 'HOUSENUMBER' THEN
+    ELSIF level = 'COMPLEMENT' THEN
+    END IF;
+END
+$func$ LANGUAGE plpgsql;
+
 -- match one address
 SELECT drop_all_functions_if_exists('fr', 'match_address');
 CREATE OR REPLACE FUNCTION fr.match_address(

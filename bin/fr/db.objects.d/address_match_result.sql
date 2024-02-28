@@ -101,11 +101,11 @@ CREATE TABLE IF NOT EXISTS fr.address_match_result (
     id SERIAL NOT NULL
     , id_request INTEGER NOT NULL
     , id_address INT NOT NULL
+    , standardized_address fr.standardized_address
     , id_matched_area INT
     , id_matched_street INT
     , id_matched_housenumber INT
     , id_matched_complement INT
-    , standardized_address fr.standardized_address
     , code_address CHAR(10)
 );
 
