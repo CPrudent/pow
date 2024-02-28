@@ -18,6 +18,10 @@ BEGIN
               id VARCHAR                        -- client ID
             , level VARCHAR                     -- AREA|STREET|HOUSENUMBER|COMPLEMENT
             , elapsed_time INTERVAL             -- running time
+            , match_code_area VARCHAR
+            , match_code_street VARCHAR
+            , match_code_housenumber VARCHAR
+            , match_code_complement VARCHAR
             , complement VARCHAR                -- address complement (known as L3)
             , housenumber INTEGER
             , extension VARCHAR                 -- housenumber extension (BIS, ...)
@@ -102,10 +106,6 @@ CREATE TABLE IF NOT EXISTS fr.address_match_result (
     , id_request INTEGER NOT NULL
     , id_address INT NOT NULL
     , standardized_address fr.standardized_address
-    , id_matched_area INT
-    , id_matched_street INT
-    , id_matched_housenumber INT
-    , id_matched_complement INT
     , code_address CHAR(10)
 );
 

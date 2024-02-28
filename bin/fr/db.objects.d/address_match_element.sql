@@ -28,7 +28,6 @@ DECLARE
     _level VARCHAR;
     _element RECORD;
     _query TEXT;
-    _id INT;
 BEGIN
     SELECT is_match_element
     INTO _is_match_element
@@ -44,7 +43,8 @@ BEGIN
         FOREACH _level IN ARRAY _levels
         LOOP
             -- search for element not already matched (w/ its matched parent if exists)
-            _query := '
+            _query := CONCAT(
+                '
                 SELECT
                     mc.level
                     , mc.match_code_element
@@ -52,36 +52,42 @@ BEGIN
                         WHEN ''AREA'' THEN NULL::fr.matched_element
                         ELSE me.matched_element
                         END matched_element
-                    , standardized_address
+                    , (SELECT standardized_address
+                        FROM fr.address_match_result
+                        WHERE id_request = $1
+                        AND (standardized_address).'
+                , FORMAT('%I', 'match_code_' || LOWER(_level))
+                , ' = mc.match_code_element LIMIT 1) standardized_address
                 FROM
                     fr.address_match_code mc
                 '
-            ;
+            );
             IF _level != 'AREA' THEN
                 _query := CONCAT(_query
                     , '
-                    LEFT OUTER JOIN fr.address_match_element me
-                        ON me.match_code = mc.match_code_parent
+                        LEFT OUTER JOIN fr.address_match_element me
+                            ON me.match_code = mc.match_code_parent
                     '
                 );
             END IF;
             _query := CONCAT(_query
                 , '
-                    WHERE
-                        mc.id_request = $1
-                        AND
-                        mc.level = $2
-                        AND
-                        NOT EXISTS(
-                            SELECT 1
-                            FROM fr.address_match_element me2
-                            WHERE mc.match_code_element = me2.match_code
-                        )
+                WHERE
+                    mc.id_request = $1
+                    AND
+                    mc.level = $2
+                    AND
+                    NOT EXISTS(
+                        SELECT 1
+                        FROM fr.address_match_element me2
+                        WHERE mc.match_code_element = me2.match_code
+                    )
                 '
             );
             _nrows := 0;
             FOR _element IN EXECUTE _query USING id, _level
             LOOP
+                -- match element
                 SELECT
                     matched_element
                 INTO
@@ -93,6 +99,7 @@ BEGIN
                     )
                 ;
 
+                -- new matched element w/ its match code
                 INSERT INTO fr.address_match_element(
                       level
                     , match_code
@@ -103,11 +110,11 @@ BEGIN
                     , _element.match_code_element
                     , _element.match_element
                 )
-                RETURNING id INTO _id
                 ;
 
                 _nrows := nrows +1;
             END LOOP;
+            CALL public.log_info(CONCAT(_info, ' : #%=%', _level, _nrows));
         END LOOP;
 
         UPDATE fr.address_match_request mr SET

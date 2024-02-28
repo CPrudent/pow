@@ -1185,23 +1185,34 @@ BEGIN
         WHEN _standardized_address.municipality_code IS NOT NULL THEN 'AREA'
     END;
 
-    /*
-    IF _standardized_address.postcode IS NOT NULL
-    OR _standardized_address.municipality_code IS NOT NULL
-    OR _standardized_address.municipality_name IS NOT NULL
-    THEN
-        _standardized_address._order_code_area := MD5(CONCAT(_standardized_address.postcode, _standardized_address.municipality_code, _standardized_address.municipality_name));
+    IF (_standardized_address.postcode IS NOT NULL
+        OR _standardized_address.municipality_code IS NOT NULL
+        OR _standardized_address.municipality_old_name IS NOT NULL
+        OR _standardized_address.municipality_name IS NOT NULL
+    ) THEN
+        _standardized_address.match_code_area := fr.get_match_code(
+            level => 'AREA'
+            , standardized_address => _standardized_address
+        );
         IF _standardized_address.street IS NOT NULL THEN
-            _standardized_address._order_code_street := MD5(CONCAT(_standardized_address.postcode, _standardized_address.municipality_code, _standardized_address.municipality_name, _standardized_address.street));
+            _standardized_address.match_code_area := fr.get_match_code(
+                level => 'STREET'
+                , standardized_address => _standardized_address
+            );
             IF _standardized_address.housenumber IS NOT NULL THEN
-                _standardized_address._order_code_housenumber := MD5(CONCAT(_standardized_address.postcode, _standardized_address.municipality_code, _standardized_address.municipality_name, _standardized_address.street, _standardized_address.housenumber, _standardized_address.extension));
+                _standardized_address.match_code_area := fr.get_match_code(
+                    level => 'HOUSENUMBER'
+                    , standardized_address => _standardized_address
+                );
             END IF;
             IF _standardized_address.complement IS NOT NULL THEN
-                _standardized_address._order_code_complement := MD5(CONCAT(_standardized_address.postcode, _standardized_address.municipality_code, _standardized_address.municipality_name, _standardized_address.street, _standardized_address.housenumber, _standardized_address.extension, _standardized_address.complement));
+                _standardized_address.match_code_area := fr.get_match_code(
+                    level => 'COMPLEMENT'
+                    , standardized_address => _standardized_address
+                );
             END IF;
         END IF;
     END IF;
-     */
 
     /*
     -- calcul mot directeur, si absent

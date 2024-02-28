@@ -93,77 +93,45 @@ BEGIN
             CALL public.log_info(CONCAT(_info, ' - PURGE : #', _nrows));
         END IF;
 
-        _query := CONCAT(
+        _query :=
             '
             WITH
-            match_code AS (
-                SELECT
+            match_codes AS (
+                SELECT DISTINCT
                       ''AREA'' level
-                    , mce.match_code match_code_element
+                    ,(standardized_address).match_code_area match_code_element
                     , NULL match_code_parent
-                    , mc.standardized_address
                 FROM
                     fr.address_match_result
-                        CROSS JOIN fr.get_match_code(
-                            level => ''AREA''
-                            , standardized_address => standardized_address
-                        ) mce
                 WHERE
                     id_request = $1
                 UNION
-                SELECT
+                SELECT DISTINCT
                       ''STREET'' level
-                    , mce.match_code match_code_element
-                    , mcp.match_code match_code_parent
-                    , mc.standardized_address
+                    ,(standardized_address).match_code_street match_code_element
+                    ,(standardized_address).match_code_area match_code_parent
                 FROM
                     fr.address_match_result
-                        CROSS JOIN fr.get_match_code(
-                            level => ''STREET''
-                            , standardized_address => standardized_address
-                        ) mce
-                        CROSS JOIN fr.get_match_code(
-                            level => ''AREA''
-                            , standardized_address => standardized_address
-                        ) mcp
                 WHERE
                     id_request = $1
                 UNION
-                SELECT
+                SELECT DISTINCT
                       ''HOUSENUMBER'' level
-                    , mce.match_code match_code_element
-                    , mcp.match_code match_code_parent
-                    , mc.standardized_address
+                    ,(standardized_address).match_code_housenumber match_code_element
+                    ,(standardized_address).match_code_street match_code_parent
                 FROM
                     fr.address_match_result
-                        CROSS JOIN fr.get_match_code(
-                            level => ''HOUSENUMBER''
-                            , standardized_address => standardized_address
-                        ) mce
-                        CROSS JOIN fr.get_match_code(
-                            level => ''STREET''
-                            , standardized_address => standardized_address
-                        ) mcp
                 WHERE
                     id_request = $1
                     AND
                     (standardized_address).housenumber IS NOT NULL
                 UNION
-                SELECT
+                SELECT DISTINCT
                       ''COMPLEMENT'' level
-                    , mce.match_code match_code_element
-                    , mcp.match_code match_code_parent
-                    , mc.standardized_address
+                    ,(standardized_address).match_code_complement match_code_element
+                    ,(standardized_address).match_code_housenumber match_code_parent
                 FROM
                     fr.address_match_result
-                        CROSS JOIN fr.get_match_code(
-                            level => ''COMPLEMENT''
-                            , standardized_address => standardized_address
-                        ) mce
-                        CROSS JOIN fr.get_match_code(
-                            level => ''HOUSENUMBER''
-                            , standardized_address => standardized_address
-                        ) mcp
                 WHERE
                     id_request = $1
                     AND
@@ -171,21 +139,13 @@ BEGIN
                     AND
                     (standardized_address).housenumber IS NOT NULL
                 UNION
-                SELECT
+                SELECT DISTINCT
                       ''COMPLEMENT'' level
-                    , mce.match_code match_code_element
-                    , mcp.match_code match_code_parent
+                    ,(standardized_address).match_code_complement match_code_element
+                    ,(standardized_address).match_code_street match_code_parent
                     , mc.standardized_address
                 FROM
                     fr.address_match_result
-                        CROSS JOIN fr.get_match_code(
-                            level => ''COMPLEMENT''
-                            , standardized_address => standardized_address
-                        ) mce
-                        CROSS JOIN fr.get_match_code(
-                            level => ''STREET''
-                            , standardized_address => standardized_address
-                        ) mcp
                 WHERE
                     id_request = $1
                     AND
@@ -198,7 +158,6 @@ BEGIN
                 , level
                 , match_code_element
                 , match_code_parent
-                , standardized_address
             )
             (
                 SELECT
@@ -206,16 +165,11 @@ BEGIN
                     , level
                     , match_code_element
                     , match_code_parent
-                    , FIRST(standardized_address) standardized_address
                 FROM
-                    match_code
-                GROUP BY
-                    level
-                    , match_code_element
-                    , match_code_parent
+                    match_codes
             )
             '
-        );
+        ;
         EXECUTE _query USING id;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
         CALL public.log_info(CONCAT(_info, ' : #', _nrows));
