@@ -22,8 +22,8 @@ END
 $func$ LANGUAGE plpgsql;
 
 -- get project code from department code
-SELECT public.drop_all_functions_if_exists('FR','get_project_code_from_department_code');
-CREATE OR REPLACE FUNCTION FR.get_project_code_from_department_code(
+SELECT public.drop_all_functions_if_exists('fr', 'get_project_code_from_department_code');
+CREATE OR REPLACE FUNCTION fr.get_project_code_from_department_code(
     department_code CHARACTER(5)
 )
 RETURNS CHARACTER(1)
@@ -36,7 +36,7 @@ BEGIN
             * + Saint-Barthélemy (977XX), île francophone des Caraïbes
             * + Saint-Martin (978XX). Fait partie des îles Leeward dans la mer des Caraïbes. Elle est divisée entre 2 pays distincts : sa partie nord, appelée Saint-Martin, est française, et sa partie sud, Sint Maarten, est néerlandaise.
          */
-        WHEN department_code IN ('971','972','977','978') THEN '2'
+        WHEN department_code IN ('971', '972', '977', '978') THEN '2'
 
         /* Obsolète (LAMBERT II ETENDU)
         WHEN XXXX THEN '3'
@@ -49,7 +49,7 @@ BEGIN
         WHEN department_code = '974' THEN '5'
 
         --Mayotte (976XX et 985XX sur co_adr), archipel de l'océan Indien situé entre Madagascar et la côte du Mozambique
-        WHEN department_code IN ('976','985'/*Ancien code ? les codes adresses RAN commencent par 985*/) THEN '6'
+        WHEN department_code IN ('976', '985'/*Ancien code ? les codes adresses RAN commencent par 985*/) THEN '6'
 
         /* Saint-Pierre-et-Miquelon (975XX), archipel français au sud de l'île canadienne de Terre-Neuve
          * Pas de code projection RAN défini, ni d'adresse RAN existante
@@ -64,7 +64,7 @@ END
 $func$ LANGUAGE plpgsql;
 
 -- get SRID from project code
-SELECT public.drop_all_functions_if_exists('fr','get_srid_from_project_code');
+SELECT public.drop_all_functions_if_exists('fr', 'get_srid_from_project_code');
 CREATE OR REPLACE FUNCTION fr.get_srid_from_project_code(
     project_code CHARACTER
 )
@@ -151,11 +151,11 @@ $func$ LANGUAGE plpgsql;
 SELECT
     -- VVATPAN
     ds.descriptors
-    -- {"ANCIENNE ROUTE",DE,SAINT,LAURENT,DES,ARBRES}
+    -- {"ANCIENNE ROUTE", DE, SAINT, LAURENT, DES, ARBRES}
     , ds.words_by_descriptor
-    -- {"ANCI ROUTE",NULL,ST}
+    -- {"ANCI ROUTE", NULL, ST}
     , ds.words_abbreviated_by_descriptor
-    -- {-,NULL,-}
+    -- {-, NULL, -}
     , ds.words_todo_by_descriptor
 FROM
     fr.get_descriptors_of_street(
@@ -165,9 +165,9 @@ FROM
 
 SELECT fr.split_descriptors_as_array(
     descriptors => 'VVATPAN'
-    , words => '{"ANCIENNE ROUTE",DE,SAINT,LAURENT,DES,ARBRES}'
+    , words => '{"ANCIENNE ROUTE", DE, SAINT, LAURENT, DES, ARBRES}'
     , nwords => 6
-) => {VV,A,T,P,A,N}
+) => {VV, A, T, P, A, N}
  */
 
 -- get property item (from as_words array)
@@ -367,7 +367,7 @@ $func$ LANGUAGE plpgsql;
 -- one word after
 -- VNN
 SELECT * FROM fr.get_descriptor_from_exception(
-    words => '{JETEE,ALBERT,EDOUARD}'::TEXT[]
+    words => '{JETEE, ALBERT, EDOUARD}'::TEXT[]
     , nwords => 3
     , at_ => 2
     , as_descriptor => 'P'
@@ -375,7 +375,7 @@ SELECT * FROM fr.get_descriptor_from_exception(
 -- many words after
 -- VNAN
 SELECT * FROM fr.get_descriptor_from_exception(
-    words => '{QUAI,AGENOR,DE,GASPARIN}'::TEXT[]
+    words => '{QUAI, AGENOR, DE, GASPARIN}'::TEXT[]
     , nwords => 4
     , at_ => 2
     , as_descriptor => 'N'
@@ -385,7 +385,7 @@ SELECT * FROM fr.get_descriptor_from_exception(
  -- get descriptors of street (from full name)
 /* NOTE
 see WIKIPEDIA, not a name!
-https://fr.wikipedia.org/wiki/Particule_(onomastique)#:~:text=La%20particule%20est%20une%20pr%C3%A9position,du%20%C2%BB%20ou%20%C2%AB%20des%20%C2%BB.
+https://fr.wikipedia.org/wiki/Particule_(onomastique)#:~:text=La%20particule%20est%20une%20pr%C3%A9position, du%20%C2%BB%20ou%20%C2%AB%20des%20%C2%BB.
 
 DE GAULLE:
 if preceded by title then N         VATNN   PLACE DU GENERAL DE GAULLE
@@ -501,8 +501,8 @@ BEGIN
         IF fr.is_normalized_number(_words[_i])
             AND NOT fr.is_normalized_article(_words[_i]) THEN
             _words_d := CASE
-                --WHEN _words[_i] = ANY('{D,L}') THEN 'A'
-                WHEN _words[_i] = ANY('{C,M}') THEN 'N'
+                --WHEN _words[_i] = ANY('{D, L}') THEN 'A'
+                WHEN _words[_i] = ANY('{C, M}') THEN 'N'
                 -- exceptions: DI, LI, MI, CD, CL, ...
                 WHEN fr.get_default_of_word(_words[_i]) != 'C' THEN
                     CASE
@@ -554,7 +554,7 @@ BEGIN
                         IF _i > 1
                             AND fr.is_normalized_article(_words[_i -1])
                             AND NOT (
-                                (_words[_i -1] = ANY('{DE,ET}'))
+                                (_words[_i -1] = ANY('{DE, ET}'))
                                 OR
                                 (_words[_i -1] = 'D' AND _words[_i] ~ '^[AEIOUY]')
                             ) THEN
@@ -960,7 +960,7 @@ CREATE OR REPLACE FUNCTION fr.split_name_of_street_as_descriptor(
     name IN VARCHAR
     , descriptors_in IN VARCHAR
     , is_normalized IN BOOLEAN DEFAULT FALSE
-    , split_only IN VARCHAR DEFAULT NULL        -- specific descriptor: A,C,E,N,P,T,V
+    , split_only IN VARCHAR DEFAULT NULL        -- specific descriptor: A, C, E, N, P, T, V
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , words OUT TEXT[]
     , descriptors OUT TEXT[])
@@ -1285,7 +1285,7 @@ BEGIN
             IF raise_notice THEN RAISE NOTICE ' usecase title=%', _usecase_title; END IF;
 
             -- as such number of words
-            IF _usecase_title = ANY('{1,2,3,5,6}') THEN
+            IF _usecase_title = ANY('{1, 2, 3, 5, 6}') THEN
                 IF (_descriptor != _descriptor_prev) THEN
                     IF _descriptor_word IS NOT NULL AND (
                         (split_only IS NULL)
@@ -1305,7 +1305,7 @@ BEGIN
 
                 -- abbreviated or deleted title ?
                 -- RUE DU LTDV D ESTIENNE D ORVES
-                IF ((_usecase_title = ANY('{2,3}'))
+                IF ((_usecase_title = ANY('{2, 3}'))
                     AND
                     (LENGTH(_descriptor_title) > 1)
                     AND

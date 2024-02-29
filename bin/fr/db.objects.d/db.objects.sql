@@ -55,5 +55,7 @@
 \include_relative address_match_result.sql
 \include_relative address_match_code.sql
 \include_relative address_match_element.sql
+\include_relative ./functions/similarity.sql
 \include_relative ./functions/address_normalize.sql
 \include_relative ./functions/address_match.sql
+

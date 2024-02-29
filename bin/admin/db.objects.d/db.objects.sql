@@ -27,6 +27,7 @@ begins w/ drop.sql due to drop_all_functions_if_exists() called for each functio
 \include_relative ./functions/random.sql
 \include_relative ./functions/string.sql
 \include_relative ./functions/internet.sql
+\include_relative ./functions/similarity.sql
 
 \include_relative ./actions/extensions.sql
 \include_relative ./actions/schemas_roles.sql

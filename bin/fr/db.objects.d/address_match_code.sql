@@ -7,11 +7,17 @@ CREATE TABLE IF NOT EXISTS fr.address_match_code (
     , level VARCHAR
     , match_code_element VARCHAR
     , match_code_parent VARCHAR
-    , standardized_address fr.standardized_address
 );
 
-CREATE INDEX IF NOT EXISTS ix_address_match_code_id_level ON fr.address_match_code(id, level);
-CREATE INDEX IF NOT EXISTS ix_address_match_code_element_parent ON fr.address_match_code(match_code_element, match_code_parent);
+DO $$
+BEGIN
+    IF column_exists('fr', 'address_match_code', 'standardized_address') THEN
+        ALTER TABLE fr.address_match_code DROP COLUMN standardized_address;
+    END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS ix_address_match_code_id_level ON fr.address_match_code(id_request, level);
+CREATE INDEX IF NOT EXISTS iux_address_match_code_element_parent ON fr.address_match_code(match_code_element, match_code_parent);
 
 SELECT drop_all_functions_if_exists('fr', 'get_match_code');
 CREATE OR REPLACE FUNCTION fr.get_match_code(
@@ -45,7 +51,7 @@ BEGIN
                 , (standardized_address).municipality_name
                 , (standardized_address).street
                 , (standardized_address).housenumber
-                , (standardized_address).housenumber_extension
+                , (standardized_address).extension
             )
         WHEN 'COMPLEMENT' THEN
             CONCAT(
@@ -55,7 +61,7 @@ BEGIN
                 , (standardized_address).municipality_name
                 , (standardized_address).street
                 , (standardized_address).housenumber
-                , (standardized_address).housenumber_extension
+                , (standardized_address).extension
                 , (standardized_address).complement
             )
         END
@@ -143,7 +149,6 @@ BEGIN
                       ''COMPLEMENT'' level
                     ,(standardized_address).match_code_complement match_code_element
                     ,(standardized_address).match_code_street match_code_parent
-                    , mc.standardized_address
                 FROM
                     fr.address_match_result
                 WHERE

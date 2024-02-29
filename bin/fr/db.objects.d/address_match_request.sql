@@ -18,6 +18,9 @@ BEGIN
     IF NOT column_exists('fr', 'address_match_request', 'is_normalized') THEN
         ALTER TABLE fr.address_match_request ADD COLUMN is_normalized BOOLEAN DEFAULT FALSE;
     END IF;
+    IF column_exists('fr', 'address_match_request', 'is_matched') THEN
+        ALTER TABLE fr.address_match_request DROP COLUMN is_matched;
+    END IF;
     IF NOT column_exists('fr', 'address_match_request', 'is_match_code') THEN
         ALTER TABLE fr.address_match_request ADD COLUMN is_match_code BOOLEAN DEFAULT FALSE;
     END IF;

@@ -137,10 +137,7 @@ match_var[FORMAT_PATH]="${POW_DIR_BIN}/${match_var[FORMAT]}_format.sql"
                 id => ${match_request[$MATCH_REQUEST_ID]}
                 , force => ('${match_var[FORCE]}' = 'yes')
             )"
-    } || {
-        in_array match_steps NORMALIZE && log_info 'ATTENTION: étape Rapprochement effacée!'
-        true
-    }
+    } || true
 } || exit $ERROR_CODE
 
 exit $SUCCESS_CODE

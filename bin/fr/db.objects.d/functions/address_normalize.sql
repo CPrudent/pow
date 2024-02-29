@@ -948,7 +948,6 @@ view test_normalize.sh : option NAME_DIFF
  */
 
 -- normalize one address
-SELECT drop_all_functions_if_exists('fr', 'normalize_address');
 SELECT drop_all_functions_if_exists('fr', 'standardize_address');
 CREATE OR REPLACE FUNCTION fr.standardize_address(
     address IN RECORD                   -- address to standardize
@@ -1195,18 +1194,18 @@ BEGIN
             , standardized_address => _standardized_address
         );
         IF _standardized_address.street IS NOT NULL THEN
-            _standardized_address.match_code_area := fr.get_match_code(
+            _standardized_address.match_code_street := fr.get_match_code(
                 level => 'STREET'
                 , standardized_address => _standardized_address
             );
             IF _standardized_address.housenumber IS NOT NULL THEN
-                _standardized_address.match_code_area := fr.get_match_code(
+                _standardized_address.match_code_housenumber := fr.get_match_code(
                     level => 'HOUSENUMBER'
                     , standardized_address => _standardized_address
                 );
             END IF;
             IF _standardized_address.complement IS NOT NULL THEN
-                _standardized_address.match_code_area := fr.get_match_code(
+                _standardized_address.match_code_complement := fr.get_match_code(
                     level => 'COMPLEMENT'
                     , standardized_address => _standardized_address
                 );

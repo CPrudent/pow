@@ -114,7 +114,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS ix_address_match_result_ids ON fr.address_matc
 
 -- normalize (standardize) addresses
 /* NOTE
-here goal is to standardize address before matching step
+here goal is to standardize address (upcase, w/o abbr, ...) before matching step
 not really obtain normalized name, by example, for street
  */
 SELECT drop_all_functions_if_exists('fr', 'set_normalize');
@@ -144,7 +144,7 @@ BEGIN
         RAISE 'aucune demande de Rapprochement trouvée pour le fichier ''%''', file_path;
     END IF;
 
-    _info := CONCAT('standardisation demande Rapprochement (', id, ')');
+    _info := CONCAT('standardisation demande Rapprochement (', _id_request, ')');
     IF force OR NOT _is_normalized THEN
         DELETE FROM fr.address_match_result WHERE id_request = _id_request;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
@@ -168,7 +168,7 @@ BEGIN
                 FROM fr.
                 '
                 , _table, ' d
-                    LEFT OUTER JOIN fr.normalize_address(
+                    LEFT OUTER JOIN fr.standardize_address(
                         address =>  d
                         , columns_map => $2
                     ) AS na ON TRUE

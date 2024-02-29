@@ -125,31 +125,32 @@ BEGIN
     -- create views
     _query := '
         SELECT
-            za.co_cea AS co_adr
-            , za.dt_reference AS dt_reference_adr
-            , za.co_postal
-            , za.lb_l5_nn AS lb_ligne5
-            , za.lb_ach_nn AS lb_acheminement
-            , za.co_insee_commune
-            , za.co_insee_commune_precedente
-            , za.co_insee_departement
-            , za.fl_active
-            , za.dt_reference_commune
-        FROM fr.laposte_address_area za
+              area.co_cea AS co_adr
+            , area.dt_reference AS dt_reference_adr
+            , area.co_postal
+            , area.lb_l5_nn AS lb_ligne5
+            , area.lb_ach_nn AS lb_acheminement
+            , area.co_insee_commune
+            , area.co_insee_commune_precedente
+            , area.co_insee_departement
+            , area.fl_active
+            , area.dt_reference_commune
+        FROM
+            fr.laposte_address_area area
     ';
 
     DROP VIEW IF EXISTS fr.area_all_view CASCADE;
     EXECUTE CONCAT_WS(
-        ' '
+          ' '
         , 'CREATE VIEW fr.area_all_view AS'
         , _query
     );
     DROP VIEW IF EXISTS fr.area_view CASCADE;
     EXECUTE CONCAT_WS(
-        ' '
+          ' '
         , 'CREATE VIEW fr.area_view AS'
         , _query
-        , 'WHERE za.fl_active'
+        , 'WHERE area.fl_active'
     );
 END
 $$;

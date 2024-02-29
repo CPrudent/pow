@@ -28,6 +28,7 @@ DECLARE
     _level VARCHAR;
     _element RECORD;
     _query TEXT;
+    _matched_element fr.matched_element;
 BEGIN
     SELECT is_match_element
     INTO _is_match_element
@@ -51,7 +52,7 @@ BEGIN
                     , CASE $2
                         WHEN ''AREA'' THEN NULL::fr.matched_element
                         ELSE me.matched_element
-                        END matched_element
+                        END matched_parent
                     , (SELECT standardized_address
                         FROM fr.address_match_result
                         WHERE id_request = $1
@@ -96,6 +97,7 @@ BEGIN
                     fr.match_element(
                         level => _element.level
                         , standardized_address => _element.standardized_address
+                        , matched_parent => _element.matched_parent
                     )
                 ;
 

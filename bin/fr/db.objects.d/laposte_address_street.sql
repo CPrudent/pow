@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS fr.laposte_address_street (
     co_mouvement CHAR(1) NOT NULL,
     fl_active BOOLEAN NOT NULL,
     fl_diffusable BOOLEAN NOT NULL,
-    co_voie NUMERIC(8,0) NOT NULL,
+    co_voie NUMERIC(8, 0) NOT NULL,
     lb_voie CHARACTER VARYING(60) NOT NULL,
     lb_voie_normalise CHARACTER VARYING(32) NOT NULL,
     lb_type CHARACTER VARYING(38) NULL,
@@ -74,8 +74,80 @@ END
 $proc$ LANGUAGE plpgsql;
 
 DO $$
+DECLARE
+    _query TEXT;
 BEGIN
     -- manage indexes
     CALL fr.set_laposte_address_street_index();
+
+    -- create views
+    _query := '
+        SELECT
+            -- ADDRESS
+              street.co_cea AS co_adr
+            , street.dt_reference AS dt_reference_adr
+            --, street.co_cea AS co_adr_voie
+            --On prend le CEA ZA dénormalisé dans ran.street pour permettre l''utilisation d''un index combiné (exemple : exploité sur rapprochement)
+            --, address.co_cea_za AS co_adr_za
+            , street.co_cea_za AS co_adr_za
+            , street.co_voie
+            , street.lb_type AS lb_type_voie
+            , street.lb_type_abrege AS lb_type_voie_abrege
+            , street.lb_voie
+            , street.lb_voie_normalise
+            , street.lb_md AS lb_voie_mot_directeur
+            , street.lb_desc AS lb_voie_desc
+            , area.co_postal
+            , area.lb_l5_nn AS lb_ligne5
+            --, area.lb_in_ext_loc AS lb_localite
+            --, area.lb_nn AS lb_localite_normalise
+            , area.lb_ach_nn AS lb_acheminement
+            , street.co_insee_commune
+            , area.co_insee_commune_precedente
+            , area.co_insee_departement
+            , street.fl_active
+            , area.fl_active AS fl_active_za
+
+            -- XY
+            , xy.dt_reference AS dt_reference_coord
+            , xy.gm_coord
+            , xy.no_type_localisation AS no_type_localisation_coord
+            , xy.va_x AS x_natif_coord
+            , xy.va_y AS y_natif_coord
+            , fr.get_srid_from_department_code(fr.get_department_code_from_municipality_code(xy.co_insee)) AS srid_natif_coord
+            , ST_SetSRID(
+                ST_MakePoint(xy.va_x, xy.va_y)
+                , fr.get_srid_from_department_code(fr.get_department_code_from_municipality_code(xy.co_insee))
+            ) AS gm_coord_native_ran
+
+            -- DELIVERY
+            , delivery.co_type AS rao_co_type
+            , delivery.lb_libelle AS rao_lb_libelle
+            , delivery.co_roc_site
+            , org.code_regate AS rao_co_regate
+            , org.libelle AS rao_libelle_site
+            , NULLIF(CONCAT(delivery.co_type, delivery.lb_libelle), '''') AS rao_co_tournee
+        FROM
+            fr.laposte_address_street street
+                JOIN fr.laposte_address address ON address.co_cea_determinant = street.co_cea
+                JOIN fr.laposte_address_area area ON area.co_cea = address.co_cea_za
+                LEFT OUTER JOIN fr.laposte_address_xy xy ON xy.co_cea = street.co_cea
+                LEFT OUTER JOIN fr.laposte_delivery_address delivery ON delivery.co_adr = street.co_cea
+                LEFT OUTER JOIN fr.laposte_organization org ON org.code = delivery.co_roc_site::VARCHAR
+    ';
+
+    DROP VIEW IF EXISTS fr.street_all_view CASCADE;
+    EXECUTE CONCAT_WS(
+        ' '
+        , 'CREATE VIEW fr.street_all_view AS'
+        , _query
+    );
+    DROP VIEW IF EXISTS fr.street_view CASCADE;
+    EXECUTE CONCAT_WS(
+        ' '
+        , 'CREATE VIEW fr.street_view AS'
+        , _query
+        , 'WHERE street.fl_active AND street.fl_diffusable'
+    );
 END
 $$;
