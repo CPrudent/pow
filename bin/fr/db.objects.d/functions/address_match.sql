@@ -2,6 +2,9 @@
  * add FR-ADDRESS facilities (matching address)
  */
 
+-- to define global varibales
+-- https://stackoverflow.com/questions/31316053/is-it-possible-to-define-global-variables-in-postgresql
+
 /* NOTE
 AREA: can be factorize!
     fr.match_element_area(
@@ -271,6 +274,7 @@ BEGIN
                 matched_element.status := 21;
             END IF;
 
+            /*
             -- near search (if not already found)
             IF (
                 (matched_element.status != 1)
@@ -301,7 +305,7 @@ BEGIN
                             voie_ran.co_adr
                             ,voie_ran.co_voie
                             ,voie_ran.lb_voie
-                            ,public.getSimilitudeVoie(in_adresse_cherchee.lb_voie, voie_ran.co_adr, voie_ran.lb_voie, voie_ran.co_insee_commune) AS similitude_voie
+                            ,fr.get_similarity_street(in_adresse_cherchee.lb_voie, voie_ran.co_adr, voie_ran.lb_voie, voie_ran.co_insee_commune) AS similitude_voie
                             , 0 similitude_geographique
                             , 0 similitude_numeros
                         FROM
@@ -316,7 +320,9 @@ BEGIN
                 )
                 LOOP
                 END LOOP;
+            END IF;
         ELSE
+         */
         END IF;
     ELSIF level = 'HOUSENUMBER' THEN
     ELSIF level = 'COMPLEMENT' THEN

@@ -888,7 +888,102 @@ $func$ LANGUAGE plpgsql;
 view test_normalize.sh : option NAME_DIFF
  */
 
-/* NOTE *
+-- analyze differences of normalized name
+SELECT drop_all_functions_if_exists('fr', 'get_words_ordered_by_rank');
+CREATE OR REPLACE FUNCTION fr.get_words_ordered_by_rank(
+    name IN VARCHAR
+    , municipality_code IN VARCHAR
+    --, municipality_words IN VARCHAR[] DEFAULT NULL
+    , raise_notice IN BOOLEAN DEFAULT FALSE
+    , similarity_threshold IN REAL DEFAULT 0.75
+    , ordered_words OUT TEXT[]
+)
+AS
+$func$
+DECLARE
+    _words TEXT[] := STRING_TO_ARRAY(name, ' ');
+    _ranks INT[];
+    _i INT;
+BEGIN
+    /*
+    IF municipality_words IS NULL THEN
+        municipality_words := ARRAY(
+            SELECT word
+            FROM fr.laposte_address_municipality_word mw
+            WHERE mw.municipality_code = get_words_ordered_by_rank.municipality_code
+       );
+    END IF;
+     */
+
+    _ranks := ARRAY(
+        WITH
+        similarity_word(i, similarity, descriptor) AS (
+            SELECT
+                w.i
+                , get_similarity(mw.word, w.word)
+                , sw.as_default
+            FROM
+                fr.laposte_address_municipality_word mw
+                    JOIN fr.laposte_address_street_word sw ON mw.word = sw.word
+                    JOIN LATERAL UNNEST(_words) WITH ORDINALITY AS w(word, i) ON TRUE
+            WHERE
+                mw.municipality_code = get_words_ordered_by_rank.municipality_code
+        )
+        SELECT i
+        FROM similarity_word
+        WHERE similarity >= similarity_threshold
+        ORDER BY
+            CASE descriptor
+                WHEN 'A' THEN  1
+                WHEN 'V' THEN  5
+                WHEN 'T' THEN  6
+                ELSE          10
+                END DESC
+            , similarity DESC
+    );
+
+    /*
+    FOR _i IN 1..ARRAY_LENGTH(_words, 1)
+    LOOP
+        IF fr.is_normalized_article(_words[_i]) THEN
+            _ranks[_i] := NULL;
+        ELSE
+            _ranks[_i] := (
+                WITH
+                similarity_word(word, similarity) AS (
+                    SELECT word, get_similarity(word, _words[_i])
+                    FROM fr.laposte_address_municipality_word mw
+                    WHERE mw.municipality_code = get_words_ordered_by_rank.municipality_code
+                )
+                SELECT similarity FROM similarity_word
+                WHERE similarity >= similarity_threshold
+                ORDER BY similarity DESC
+                LIMIT 1
+            );
+        END IF;
+    END LOOP;
+
+    ordered_words := ARRAY(
+        SELECT
+            w.word
+        FROM
+            UNNEST(_ranks) WITH ORDINALITY AS r(rank, i)
+            , UNNEST(_words) WITH ORDINALITY AS w(word, i)
+        WHERE
+            r.i = w.i
+        ORDER BY
+            r.rank
+    );
+     */
+
+    FOR _i IN 1..ARRAY_LENGTH(_words, 1)
+    LOOP
+        ordered_words[_i] := _words[_ranks[_i]];
+    END LOOP;
+END
+$func$ LANGUAGE plpgsql;
+
+/* NOTE
 old functions built to help, but useful now ?
  */
 

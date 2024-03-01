@@ -1015,6 +1015,8 @@ BEGIN
 
     CALL fr.set_laposte_municipality_normalized_label_exception();
     CALL fr.set_territory_overseas();
+    -- words (by municipality)
+    CALL fr.set_laposte_address_municipality_word();
 
     CALL fr.set_constant_index();
 END;

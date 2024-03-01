@@ -3,7 +3,7 @@
  */
 
 SELECT drop_all_functions_if_exists('fr', 'get_similarity_street_with_rarity');
-CREATE OR REPLACE FUNCTION public.get_similarity_street_with_rarity(
+CREATE OR REPLACE FUNCTION fr.get_similarity_street_with_rarity(
     name IN VARCHAR
     , code_address_compare_to IN CHAR(10)
     , municipality_code IN CHAR(5) DEFAULT NULL
@@ -101,7 +101,7 @@ BEGIN
                         (
                             1
                             /
-                            getSimilitude(
+                            get_similarity(
                                 mots.mot
                                 ,_words
                                 --,(SELECT mots FROM tmp_municipality_words WHERE co_insee_commune = '33051')
@@ -131,8 +131,6 @@ BEGIN
                         WITH ORDINALITY AS descripteurs(descripteur, ordre) ON mots.ordre = descripteurs.ordre
                         AND descripteurs.descripteur != 'A'
                 WHERE co_adr = code_address_compare_to
-                --WHERE co_adr = '3305122A33'
-                --WHERE co_adr = '330512229I'
             ) t
         )
         SELECT
@@ -157,7 +155,7 @@ END
 $func$ LANGUAGE plpgsql;
 
 SELECT drop_all_functions_if_exists('fr', 'get_similarity_street');
-CREATE OR REPLACE FUNCTION public.get_similarity_street(
+CREATE OR REPLACE FUNCTION fr.get_similarity_street(
     name IN VARCHAR
     , code_address_compare_to IN CHAR(10)
     , name_compare_to IN VARCHAR

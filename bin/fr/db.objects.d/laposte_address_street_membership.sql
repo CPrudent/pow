@@ -80,9 +80,7 @@ BEGIN
     END IF;
     _query := CONCAT(_query
         , '
-            -- except: number, article
-            NOT fr.is_normalized_number(w.word)
-            AND
+            -- except: article
             NOT fr.is_normalized_article(w.word)
         )
         SELECT * FROM split_as_word

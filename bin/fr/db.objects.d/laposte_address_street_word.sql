@@ -41,7 +41,12 @@ CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_word_index()
 AS
 $proc$
 BEGIN
+    /*
     CREATE UNIQUE INDEX IF NOT EXISTS ix_laposte_address_street_word_word_default ON fr.laposte_address_street_word (word, as_default);
+     */
+
+    -- https://stackoverflow.com/questions/28975517/difference-between-gist-and-gin-index
+    CREATE INDEX IF NOT EXISTS ix_laposte_address_street_word_word ON fr.laposte_address_street_word USING GIN(word GIN_TRGM_OPS);
 END
 $proc$ LANGUAGE plpgsql;
 
