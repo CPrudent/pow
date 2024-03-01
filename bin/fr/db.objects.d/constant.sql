@@ -943,6 +943,19 @@ BEGIN
 END;
 $proc$ LANGUAGE plpgsql;
 
+SELECT public.drop_all_functions_if_exists('fr', 'set_global_variables');
+CREATE OR REPLACE PROCEDURE fr.set_global_variables()
+AS
+$proc$
+BEGIN
+    ALTER DATABASE pow SET fr.address.match.strict = 1;
+    ALTER DATABASE pow SET fr.address.match.near = 2;
+    ALTER DATABASE pow SET fr.address.match.not_near = 10;
+    ALTER DATABASE pow SET fr.address.match.not_found = 21;
+    ALTER DATABASE pow SET fr.address.match.too_many = 22;
+END;
+$proc$ LANGUAGE plpgsql;
+
 SELECT public.drop_all_functions_if_exists('fr', 'set_constant_address');
 CREATE OR REPLACE PROCEDURE fr.set_constant_address()
 AS
@@ -1018,6 +1031,7 @@ BEGIN
     -- words (by municipality)
     CALL fr.set_laposte_address_municipality_word();
 
+    CALL fr.set_global_variables();
     CALL fr.set_constant_index();
 END;
 $proc$ LANGUAGE plpgsql;

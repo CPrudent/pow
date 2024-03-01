@@ -5,18 +5,41 @@
 -- to define global varibales
 -- https://stackoverflow.com/questions/31316053/is-it-possible-to-define-global-variables-in-postgresql
 
+-- status of match element
+SELECT drop_all_functions_if_exists('fr', 'match_element_status');
+CREATE OR REPLACE FUNCTION fr.match_element_status(
+    search IN VARCHAR
+    , matched_element INOUT fr.matched_element
+)
+AS
+$func$
+BEGIN
+    IF ARRAY_LENGTH(matched_element.codes_address, 1) = 1 THEN
+        matched_element.status := CASE search
+            WHEN 'STRICT' THEN 1
+            ELSE 2
+            END
+        ;
+    ELSIF matched_element.codes_address IS NOT NULL THEN
+        matched_element.status := 22;
+    ELSE
+        matched_element.status := 21;
+    END IF;
+END
+$func$ LANGUAGE plpgsql;
+
 /* NOTE
 AREA: can be factorize!
     fr.match_element_area(
-        method IN VARCHAR (STRICT|NEAR)
-        with_postcode IN BOOLEAN
+        search IN VARCHAR (STRICT|NEAR)
+        , with_postcode IN BOOLEAN
     )
 
     fr.match_element()
     _SEARCHS VARCHAR[] := ARRAY['STRICT', 'NEAR', 'NEAR_WO_POSTCODE'];
-    FOREACH _method IN ARRAY _SEARCHS
+    FOREACH _search IN ARRAY _SEARCHS
     LOOP
-        _todo := CASE _method
+        _todo := CASE _search
             WHEN 'STRICT' THEN
                 (
                     (standardized_address).municipality_code IS NOT NULL
@@ -51,22 +74,20 @@ AREA: can be factorize!
         ;
         IF _todo THEN
             _query := fr.match_element_area(
-                method => _method
-                , CASE WHEN _method = 'NEAR_WO_POSTCODE' THEN FALSE ELSE TRUE END
+                method => _search
+                , CASE WHEN _search = 'NEAR_WO_POSTCODE' THEN FALSE ELSE TRUE END
             )
             ;
             EXECUTE _query INTO matched_element.codes_address;
-            IF ARRAY_LENGTH(matched_element.codes_address, 1) = 1 THEN
-                matched_element.status := CASE _method
-                    WHEN 'STRICT' THEN 1
-                    ELSE 2
-                    END
-                ;
+
+            matched_element := (
+                SELECT fr.match_element_status(
+                    search => _search
+                    , matched_element => matched_element
+                )
+            );
+            IF matched_element.status = 1 THEN
                 EXIT;
-            ELSIF matched_element.codes_address IS NOT NULL THEN
-                matched_element.status := 22;
-            ELSE
-                matched_element.status := 21;
             END IF;
         END IF;
     END LOOP;
@@ -83,6 +104,8 @@ AS
 $func$
 DECLARE
     _similarity_threshold REAL;
+    _words TEXT[];
+    _ordered_words TEXT[];
     _found_address RECORD;
     _previous_found_address RECORD;
     _MATCH_WEIGHT_SEMANTIC SMALLINT := 4;
@@ -266,12 +289,20 @@ BEGIN
                 street.co_adr_za = matched_parent.codes_address[1]
             --LIMIT 1
             ;
-            IF ARRAY_LENGTH(matched_element.codes_address, 1) = 1 THEN
-                matched_element.status := 1;
-            ELSIF matched_element.codes_address IS NOT NULL THEN
-                matched_element.status := 22;
-            ELSE
-                matched_element.status := 21;
+            matched_element := (
+                SELECT fr.match_element_status(
+                    search => 'STRICT'
+                    , matched_element => matched_element
+                )
+            );
+            IF matched_element.status != 1 THEN
+                _words := STRING_TO_ARRAY((standardized_address).street, ' ');
+                _ordered_words := (
+                    SELECT fr.get_ordered_words_with_similarity_criteria(
+                        words => _words
+                        , municipality_code => (standardized_address).municipality_code
+                    )
+                );
             END IF;
 
             /*

@@ -2,6 +2,122 @@
  * add FR-ADDRESS facilities (similarity)
  */
 
+SELECT drop_all_functions_if_exists('fr', 'get_descriptor_factor');
+CREATE OR REPLACE FUNCTION fr.get_descriptor_factor(
+    descriptor IN VARCHAR
+    , descriptor_factor OUT REAL
+)
+AS
+$func$
+BEGIN
+    descriptor_factor := CASE descriptor
+        WHEN 'A' THEN   0.25
+        WHEN 'V' THEN   0.5
+        WHEN 'T' THEN   0.75
+        ELSE            1.25
+        END
+    ;
+END
+$func$ LANGUAGE plpgsql;
+
+-- order words according to (similarity, rarity and descriptor)
+SELECT drop_all_functions_if_exists('fr', 'get_words_ordered_by_rank');
+SELECT drop_all_functions_if_exists('fr', 'get_ordered_words_with_similarity_criteria');
+CREATE OR REPLACE FUNCTION fr.get_ordered_words_with_similarity_criteria(
+    words IN TEXT[]
+    , municipality_code IN VARCHAR
+    , raise_notice IN BOOLEAN DEFAULT FALSE
+    , similarity_threshold IN REAL DEFAULT 0.5
+    , ordered_words OUT TEXT[]
+)
+AS
+$func$
+DECLARE
+    _orders INT[];
+    _i INT;
+    _nof INT := (SELECT (current_setting('fr.address.n_uniq_streets', TRUE))::INT);
+BEGIN
+    IF municipality_code IS NULL THEN
+        CALL public.log_info('manque paramètre (code INSEE)');
+        RETURN;
+    END IF;
+
+    -- TODO take rank_0 from municipality
+
+    IF _nof IS NULL THEN
+        CALL public.log_info('manque paramètre global (fr.address.n_uniq_streets)');
+        _nof := (
+            SELECT MAX(rank_0) FROM fr.laposte_address_street_word
+        );
+    END IF;
+
+    _orders := ARRAY(
+        WITH
+        similarity_word(i, similarity, rank, descriptor_factor) AS (
+            SELECT
+                w.i
+                , get_similarity(mw.word, w.word)
+                , sw.rank_0
+                , fr.get_descriptor_factor(sw.as_default)
+            FROM
+                fr.laposte_address_municipality_word mw
+                    JOIN fr.laposte_address_street_word sw ON mw.word = sw.word
+                    JOIN LATERAL UNNEST(words) WITH ORDINALITY AS w(word, i) ON TRUE
+            WHERE
+                mw.municipality_code = get_words_ordered_by_rank.municipality_code
+        )
+        SELECT i
+        FROM similarity_word
+        WHERE similarity >= similarity_threshold
+        ORDER BY
+            -- get word w/ better similarity and rareness
+            similarity * EXP((1 - (((_nof - "rank") +1)::NUMERIC / _nof))) * descriptor_factor DESC
+    );
+
+    /*
+    FOR _i IN 1..ARRAY_LENGTH(_words, 1)
+    LOOP
+        IF fr.is_normalized_article(_words[_i]) THEN
+            _orders[_i] := NULL;
+        ELSE
+            _orders[_i] := (
+                WITH
+                similarity_word(word, similarity) AS (
+                    SELECT word, get_similarity(word, _words[_i])
+                    FROM fr.laposte_address_municipality_word mw
+                    WHERE mw.municipality_code = get_words_ordered_by_rank.municipality_code
+                )
+                SELECT similarity FROM similarity_word
+                WHERE similarity >= similarity_threshold
+                ORDER BY similarity DESC
+                LIMIT 1
+            );
+        END IF;
+    END LOOP;
+
+    ordered_words := ARRAY(
+        SELECT
+            w.word
+        FROM
+            UNNEST(_orders) WITH ORDINALITY AS r(rank, i)
+            , UNNEST(_words) WITH ORDINALITY AS w(word, i)
+        WHERE
+            r.i = w.i
+        ORDER BY
+            r.rank
+    );
+     */
+
+    FOR _i IN 1..ARRAY_LENGTH(words, 1)
+    LOOP
+        IF raise_notice THEN
+            RAISE NOTICE ' word #% : % (order=%)', _i, words[_i], _orders[_i];
+        END IF;
+        ordered_words[_i] := words[_orders[_i]];
+    END LOOP;
+END
+$func$ LANGUAGE plpgsql;
+
 SELECT drop_all_functions_if_exists('fr', 'get_similarity_street_with_rarity');
 CREATE OR REPLACE FUNCTION fr.get_similarity_street_with_rarity(
     name IN VARCHAR
