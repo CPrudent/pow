@@ -895,15 +895,16 @@ CREATE OR REPLACE FUNCTION fr.get_words_ordered_by_rank(
     , municipality_code IN VARCHAR
     --, municipality_words IN VARCHAR[] DEFAULT NULL
     , raise_notice IN BOOLEAN DEFAULT FALSE
-    , similarity_threshold IN REAL DEFAULT 0.75
+    , similarity_threshold IN REAL DEFAULT 0.5
     , ordered_words OUT TEXT[]
 )
 AS
 $func$
 DECLARE
     _words TEXT[] := STRING_TO_ARRAY(name, ' ');
-    _ranks INT[];
+    _orders INT[];
     _i INT;
+    _nof INT := (SELECT (current_setting('fr.address.n_uniq_streets', TRUE))::INT);
 BEGIN
     /*
     IF municipality_words IS NULL THEN
@@ -915,13 +916,28 @@ BEGIN
     END IF;
      */
 
-    _ranks := ARRAY(
+    -- TODO take rank_0 from municipality
+
+    IF _nof IS NULL THEN
+        CALL public.log_info('manque paramètre global (fr.address.n_uniq_streets)');
+        _nof := (
+            SELECT MAX(rank_0) FROM fr.laposte_address_street_word
+        );
+    END IF;
+
+    _orders := ARRAY(
         WITH
-        similarity_word(i, similarity, descriptor) AS (
+        similarity_word(i, similarity, rank, descriptor) AS (
             SELECT
                 w.i
                 , get_similarity(mw.word, w.word)
-                , sw.as_default
+                , sw.rank_0
+                , CASE sw.as_default
+                    WHEN 'A' THEN 0.25
+                    WHEN 'V' THEN 0.5
+                    WHEN 'T' THEN 0.75
+                    ELSE 1.25
+                    END
             FROM
                 fr.laposte_address_municipality_word mw
                     JOIN fr.laposte_address_street_word sw ON mw.word = sw.word
@@ -933,22 +949,17 @@ BEGIN
         FROM similarity_word
         WHERE similarity >= similarity_threshold
         ORDER BY
-            CASE descriptor
-                WHEN 'A' THEN  1
-                WHEN 'V' THEN  5
-                WHEN 'T' THEN  6
-                ELSE          10
-                END DESC
-            , similarity DESC
+            -- get word w/ better similarity and rareness
+            similarity * EXP((1 - (((_nof - "rank") +1)::NUMERIC / _nof))) * descriptor DESC
     );
 
     /*
     FOR _i IN 1..ARRAY_LENGTH(_words, 1)
     LOOP
         IF fr.is_normalized_article(_words[_i]) THEN
-            _ranks[_i] := NULL;
+            _orders[_i] := NULL;
         ELSE
-            _ranks[_i] := (
+            _orders[_i] := (
                 WITH
                 similarity_word(word, similarity) AS (
                     SELECT word, get_similarity(word, _words[_i])
@@ -967,7 +978,7 @@ BEGIN
         SELECT
             w.word
         FROM
-            UNNEST(_ranks) WITH ORDINALITY AS r(rank, i)
+            UNNEST(_orders) WITH ORDINALITY AS r(rank, i)
             , UNNEST(_words) WITH ORDINALITY AS w(word, i)
         WHERE
             r.i = w.i
@@ -978,7 +989,10 @@ BEGIN
 
     FOR _i IN 1..ARRAY_LENGTH(_words, 1)
     LOOP
-        ordered_words[_i] := _words[_ranks[_i]];
+        IF raise_notice THEN
+            RAISE NOTICE ' word #% : % (order=%)', _i, _words[_i], _orders[_i];
+        END IF;
+        ordered_words[_i] := _words[_orders[_i]];
     END LOOP;
 END
 $func$ LANGUAGE plpgsql;

@@ -2,6 +2,8 @@
  * FR: add LAPOSTE/RAN muncipality words
  */
 
+-- TODO add rank_0, but rank_1 more difficult
+
 -- to store words by muncipality
 CREATE TABLE IF NOT EXISTS fr.laposte_address_municipality_word (
     municipality_code VARCHAR NOT NULL
