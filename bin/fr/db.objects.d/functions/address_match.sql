@@ -16,14 +16,14 @@ $func$
 BEGIN
     IF ARRAY_LENGTH(matched_element.codes_address, 1) = 1 THEN
         matched_element.status := CASE search
-            WHEN 'STRICT' THEN 1
-            ELSE 2
+            WHEN 'STRICT' THEN (SELECT (CURRENT_SETTING('fr.address.match.strict')))
+            ELSE (SELECT (CURRENT_SETTING('fr.address.match.near')))
             END
         ;
     ELSIF matched_element.codes_address IS NOT NULL THEN
-        matched_element.status := 22;
+        matched_element.status := (SELECT (CURRENT_SETTING('fr.address.match.too_many')));
     ELSE
-        matched_element.status := 21;
+        matched_element.status := (SELECT (CURRENT_SETTING('fr.address.match.not_found')));
     END IF;
 END
 $func$ LANGUAGE plpgsql;
@@ -98,6 +98,7 @@ CREATE OR REPLACE FUNCTION fr.match_element(
     level IN VARCHAR
     , standardized_address IN fr.standardized_address
     , matched_parent IN fr.matched_element
+    , raise_notice IN BOOLEAN DEFAULT FALSE
     , matched_element OUT fr.matched_element
 )
 AS
@@ -105,13 +106,11 @@ $func$
 DECLARE
     _similarity_threshold REAL;
     _words TEXT[];
-    _ordered_words TEXT[];
+    _orders INT[];
+    _matched_words TEXT[];
+
     _found_address RECORD;
     _previous_found_address RECORD;
-    _MATCH_WEIGHT_SEMANTIC SMALLINT := 4;
-    _MATCH_WEIGHT_GEOGRAPHIC SMALLINT := 2;
-    _MATCH_WEIGHT_NUMBERS SMALLINT := 1;
-
 BEGIN
     IF level = 'AREA' THEN
         IF (
@@ -161,17 +160,16 @@ BEGIN
                 )
             ;
 
-            IF ARRAY_LENGTH(matched_element.codes_address, 1) = 1 THEN
-                matched_element.status := 1;
-            ELSIF matched_element.codes_address IS NOT NULL THEN
-                matched_element.status := 22;
-            ELSE
-                matched_element.status := 21;
-            END IF;
+            matched_element := (
+                SELECT fr.match_element_status(
+                    search => 'STRICT'
+                    , matched_element => matched_element
+                )
+            );
 
             -- near search (if not already found)
             IF (
-                matched_element.status != 1
+                matched_element.status = (SELECT (CURRENT_SETTING('fr.address.match.not_found')))
                 AND (
                     ((standardized_address).municipality_name IS NOT NULL)
                     OR
@@ -219,22 +217,28 @@ BEGIN
                     )
                 ;
 
-                IF ARRAY_LENGTH(matched_element.codes_address, 1) = 1 THEN
-                    matched_element.status := 2;
-                ELSIF matched_element.codes_address IS NOT NULL THEN
-                    matched_element.status := 22;
-                ELSE
-                    -- search w/ (municipality code | municipality name |municipality old name) AND (postcode)
-                    IF ((
-                            (standardized_address).municipality_code IS NOT NULL
-                            OR
-                            ((standardized_address).municipality_name IS NOT NULL)
-                            OR
-                            ((standardized_address).municipality_old_name IS NOT NULL)
-                        )
-                        AND
-                        ((standardized_address).postcode IS NOT NULL)
-                    ) THEN
+                matched_element := (
+                    SELECT fr.match_element_status(
+                        search => 'NEAR'
+                        , matched_element => matched_element
+                    )
+                );
+
+                -- search w/ (municipality code | municipality name | municipality old name) AND (postcode)
+                IF (
+                    (matched_element.status = (SELECT (CURRENT_SETTING('fr.address.match.not_found'))))
+                    AND (
+                            (
+                                (standardized_address).municipality_code IS NOT NULL
+                                OR
+                                ((standardized_address).municipality_name IS NOT NULL)
+                                OR
+                                ((standardized_address).municipality_old_name IS NOT NULL)
+                            )
+                            AND
+                            ((standardized_address).postcode IS NOT NULL)
+                    )
+                ) THEN
                         /* NOTE
                         postcode can be wrong! search for w/o it
                         */
@@ -266,27 +270,27 @@ BEGIN
                                 (get_similarity((standardized_address).municipality_old_name, area.lb_ligne5) >= _similarity_threshold)
                             )
                         ;
-                        IF ARRAY_LENGTH(matched_element.codes_address, 1) = 1 THEN
-                            matched_element.status := 2;
-                        ELSIF matched_element.codes_address IS NOT NULL THEN
-                            matched_element.status := 22;
-                        ELSE
-                            matched_element.status := 21;
-                        END IF;
+
+                        matched_element := (
+                            SELECT fr.match_element_status(
+                                search => 'NEAR'
+                                , matched_element => matched_element
+                            )
+                        );
                     END IF;
                 END IF;
             END IF;
         END IF;
     ELSIF level = 'STREET' THEN
         -- area found
-        IF matched_parent.status = ANY('{1,2}') THEN
-            SELECT ARRAY_AGG(street.co_adr)
+        IF LENGTH(matched_parent.status) = 1 THEN
+            SELECT ARRAY_AGG(co_adr)
             INTO matched_element.codes_address
-            FROM fr.street_view street
+            FROM fr.street_view
             WHERE
-                street.lb_voie = (standardized_address).street
+                lb_voie = (standardized_address).street
                 AND
-                street.co_adr_za = matched_parent.codes_address[1]
+                co_adr_za = matched_parent.codes_address[1]
             --LIMIT 1
             ;
             matched_element := (
@@ -295,14 +299,32 @@ BEGIN
                     , matched_element => matched_element
                 )
             );
-            IF matched_element.status != 1 THEN
+
+            -- not found: try w/ near approach
+            IF matched_element.status = (SELECT (CURRENT_SETTING('fr.address.match.not_found'))) THEN
+                /* IDEA
+                step to do when normalization ?
+                 */
                 _words := STRING_TO_ARRAY((standardized_address).street, ' ');
-                _ordered_words := (
-                    SELECT fr.get_ordered_words_with_similarity_criteria(
+                /* NOTE
+                retrieve orders of words w/ better similarity and rarity
+                as well as referential words that match them
+                 */
+                SELECT
+                    orders
+                    , matched_words
+                INTO
+                    _orders
+                    , _matched_words
+                FROM
+                    fr.get_ordered_words_with_similarity_criteria(
                         words => _words
                         , municipality_code => (standardized_address).municipality_code
                     )
                 );
+                IF orders IS NOT NULL THEN
+
+                END IF;
             END IF;
 
             /*

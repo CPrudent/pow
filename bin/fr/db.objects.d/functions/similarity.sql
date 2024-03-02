@@ -28,13 +28,16 @@ CREATE OR REPLACE FUNCTION fr.get_ordered_words_with_similarity_criteria(
     , municipality_code IN VARCHAR
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , similarity_threshold IN REAL DEFAULT 0.5
-    , ordered_words OUT TEXT[]
+    , orders OUT INT[]
+    , matched_words OUT TEXT[]
+    , similarities OUT REAL[]
+    , ranks OUT INT[]
+    , rarities OUT REAL[]
 )
 AS
 $func$
 DECLARE
-    _orders INT[];
-    _i INT;
+    _criteria RECORD;
     _nof INT := (SELECT (current_setting('fr.address.n_uniq_streets', TRUE))::INT);
 BEGIN
     IF municipality_code IS NULL THEN
@@ -51,11 +54,12 @@ BEGIN
         );
     END IF;
 
-    _orders := ARRAY(
+    FOR _criteria IN (
         WITH
-        similarity_word(i, similarity, rank, descriptor_factor) AS (
+        similarity_word(i, word, similarity, rank, descriptor_factor) AS (
             SELECT
                 w.i
+                , mw.word
                 , get_similarity(mw.word, w.word)
                 , sw.rank_0
                 , fr.get_descriptor_factor(sw.as_default)
@@ -64,15 +68,36 @@ BEGIN
                     JOIN fr.laposte_address_street_word sw ON mw.word = sw.word
                     JOIN LATERAL UNNEST(words) WITH ORDINALITY AS w(word, i) ON TRUE
             WHERE
-                mw.municipality_code = get_words_ordered_by_rank.municipality_code
+                mw.municipality_code = get_ordered_words_with_similarity_criteria.municipality_code
         )
-        SELECT i
+        SELECT
+            i
+            , word
+            , similarity
+            , "rank"
+            , (similarity * EXP((1 - (((_nof - "rank") +1)::NUMERIC / _nof))) * descriptor_factor) rarity
         FROM similarity_word
         WHERE similarity >= similarity_threshold
         ORDER BY
             -- get word w/ better similarity and rareness
-            similarity * EXP((1 - (((_nof - "rank") +1)::NUMERIC / _nof))) * descriptor_factor DESC
-    );
+            5 DESC
+    )
+    LOOP
+        orders := ARRAY_APPEND(orders, _criteria.i);
+        matched_words := ARRAY_APPEND(matched_words, _criteria.word);
+        similarities := ARRAY_APPEND(similarities, _criteria.similarity);
+        ranks := ARRAY_APPEND(ranks, _criteria.rank);
+        rarities := ARRAY_APPEND(rarities, _criteria.rarity);
+        IF raise_notice THEN
+            RAISE NOTICE ' [order=%] word(%) : (similarity=%, rank=%, rarity=%)'
+                , _criteria.i
+                , _criteria.word
+                , _criteria.similarity
+                , _criteria.rank
+                , _criteria.rarity
+            ;
+        END IF;
+    END LOOP;
 
     /*
     FOR _i IN 1..ARRAY_LENGTH(_words, 1)
@@ -107,14 +132,6 @@ BEGIN
             r.rank
     );
      */
-
-    FOR _i IN 1..ARRAY_LENGTH(words, 1)
-    LOOP
-        IF raise_notice THEN
-            RAISE NOTICE ' word #% : % (order=%)', _i, words[_i], _orders[_i];
-        END IF;
-        ordered_words[_i] := words[_orders[_i]];
-    END LOOP;
 END
 $func$ LANGUAGE plpgsql;
 

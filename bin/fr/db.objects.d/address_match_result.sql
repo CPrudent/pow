@@ -87,7 +87,7 @@ BEGIN
               codes_address CHAR(10)[]
             , level VARCHAR                     -- AREA|STREET|HOUSENUMBER|COMPLEMENT
             , elapsed_time INTERVAL
-            , status INT
+            , status VARCHAR
             , similarity NUMERIC
             , similarity_semantic NUMERIC
             , similarity_phonetic NUMERIC
