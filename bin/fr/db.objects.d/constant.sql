@@ -953,6 +953,7 @@ BEGIN
     ALTER DATABASE pow SET fr.address.match.not_near = 10;
     ALTER DATABASE pow SET fr.address.match.not_found = 21;
     ALTER DATABASE pow SET fr.address.match.too_many = 22;
+    ALTER DATABASE pow SET fr.address.match.too_similar = 23;
 END;
 $proc$ LANGUAGE plpgsql;
 
