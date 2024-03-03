@@ -113,6 +113,7 @@ BEGIN
         _similarity_phonetics := get_similarity_phonetics(str_a, str_b);
         IF _similarity_phonetics > _similarity_semantics  THEN
             similarity := (_similarity_phonetics + _similarity_semantics) / 2;
+            RETURN;
         END IF;
     END IF;
     similarity := _similarity_semantics;

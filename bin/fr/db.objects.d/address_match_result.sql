@@ -81,17 +81,17 @@ END $$;
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'matched_element')
+    OR EXISTS (
+        SELECT 1 FROM information_schema.attributes
+        WHERE udt_name = 'matched_element' AND attribute_name = 'similarity_semantic')
     THEN
-        --DROP TYPE IF EXISTS fr.matched_element CASCADE;
+        DROP TYPE IF EXISTS fr.matched_element CASCADE;
         CREATE TYPE fr.matched_element AS (
               codes_address CHAR(10)[]
             , level VARCHAR                     -- AREA|STREET|HOUSENUMBER|COMPLEMENT
             , elapsed_time INTERVAL
             , status VARCHAR
             , similarity NUMERIC
-            , similarity_semantic NUMERIC
-            , similarity_phonetic NUMERIC
-            , similarity_geometry NUMERIC
         );
     END IF;
 

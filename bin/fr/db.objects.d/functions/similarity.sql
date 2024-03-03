@@ -21,18 +21,14 @@ END
 $func$ LANGUAGE plpgsql;
 
 -- order words according to (similarity, rarity and descriptor)
-SELECT drop_all_functions_if_exists('fr', 'get_words_ordered_by_rank');
 SELECT drop_all_functions_if_exists('fr', 'get_ordered_words_with_similarity_criteria');
-CREATE OR REPLACE FUNCTION fr.get_ordered_words_with_similarity_criteria(
+SELECT drop_all_functions_if_exists('fr', 'get_better_word_with_similarity_criteria');
+CREATE OR REPLACE FUNCTION fr.get_better_word_with_similarity_criteria(
     words IN TEXT[]
     , municipality_code IN VARCHAR
     , raise_notice IN BOOLEAN DEFAULT FALSE
-    , similarity_threshold IN REAL DEFAULT 0.5
-    , orders OUT INT[]
-    , matched_words OUT TEXT[]
-    , similarities OUT REAL[]
-    , ranks OUT INT[]
-    , rarities OUT REAL[]
+    , order_word OUT INT
+    , better_word OUT TEXT
 )
 AS
 $func$
@@ -54,88 +50,127 @@ BEGIN
         );
     END IF;
 
-    FOR _criteria IN (
-        WITH
-        similarity_word(i, word, similarity, rank, descriptor_factor) AS (
-            SELECT
-                w.i
-                , mw.word
-                , get_similarity(mw.word, w.word)
-                , sw.rank_0
-                , fr.get_descriptor_factor(sw.as_default)
-            FROM
-                fr.laposte_address_municipality_word mw
-                    JOIN fr.laposte_address_street_word sw ON mw.word = sw.word
-                    JOIN LATERAL UNNEST(words) WITH ORDINALITY AS w(word, i) ON TRUE
-            WHERE
-                mw.municipality_code = get_ordered_words_with_similarity_criteria.municipality_code
-        )
+    WITH
+    similarity_word(i, word, similarity, rank, descriptor_factor) AS (
         SELECT
-            i
-            , word
-            , similarity
-            , "rank"
-            , (similarity * EXP((1 - (((_nof - "rank") +1)::NUMERIC / _nof))) * descriptor_factor) rarity
-        FROM similarity_word
-        WHERE similarity >= similarity_threshold
-        ORDER BY
-            -- get word w/ better similarity and rareness
-            5 DESC
-    )
-    LOOP
-        orders := ARRAY_APPEND(orders, _criteria.i);
-        matched_words := ARRAY_APPEND(matched_words, _criteria.word);
-        similarities := ARRAY_APPEND(similarities, _criteria.similarity);
-        ranks := ARRAY_APPEND(ranks, _criteria.rank);
-        rarities := ARRAY_APPEND(rarities, _criteria.rarity);
-        IF raise_notice THEN
-            RAISE NOTICE ' [order=%] word(%) : (similarity=%, rank=%, rarity=%)'
-                , _criteria.i
-                , _criteria.word
-                , _criteria.similarity
-                , _criteria.rank
-                , _criteria.rarity
-            ;
-        END IF;
-    END LOOP;
-
-    /*
-    FOR _i IN 1..ARRAY_LENGTH(_words, 1)
-    LOOP
-        IF fr.is_normalized_article(_words[_i]) THEN
-            _orders[_i] := NULL;
-        ELSE
-            _orders[_i] := (
-                WITH
-                similarity_word(word, similarity) AS (
-                    SELECT word, get_similarity(word, _words[_i])
-                    FROM fr.laposte_address_municipality_word mw
-                    WHERE mw.municipality_code = get_words_ordered_by_rank.municipality_code
-                )
-                SELECT similarity FROM similarity_word
-                WHERE similarity >= similarity_threshold
-                ORDER BY similarity DESC
-                LIMIT 1
-            );
-        END IF;
-    END LOOP;
-
-    ordered_words := ARRAY(
-        SELECT
-            w.word
+            w.i
+            , mw.word
+            , get_similarity(mw.word, w.word)
+            , sw.rank_0
+            , fr.get_descriptor_factor(sw.as_default)
         FROM
-            UNNEST(_orders) WITH ORDINALITY AS r(rank, i)
-            , UNNEST(_words) WITH ORDINALITY AS w(word, i)
+            fr.laposte_address_municipality_word mw
+                -- remember: w/o article
+                JOIN fr.laposte_address_street_word sw ON mw.word = sw.word
+                JOIN LATERAL UNNEST(words) WITH ORDINALITY AS w(word, i) ON TRUE
         WHERE
-            r.i = w.i
-        ORDER BY
-            r.rank
-    );
+            mw.municipality_code = get_better_word_with_similarity_criteria.municipality_code
+    )
+    SELECT
+        i
+        , word
+    INTO
+        order_word
+        , better_word
+    FROM
+        similarity_word
+    ORDER BY
+        -- get word w/ better similarity and rarity
+        (similarity * EXP((1 - (((_nof - "rank") +1)::NUMERIC / _nof))) * descriptor_factor) DESC
+    LIMIT
+        1
+    ;
+END
+$func$ LANGUAGE plpgsql;
+
+SELECT drop_all_functions_if_exists('fr', 'get_similarity_street');
+CREATE OR REPLACE FUNCTION fr.get_similarity_street(
+    words_a IN TEXT[]
+    , words_b IN TEXT[]
+    , descriptors_a IN VARCHAR
+    , descriptors_b IN VARCHAR
+    , similarity OUT NUMERIC
+)
+AS
+$func$
+BEGIN
+    /*
+    SELECT
+        SUM(similarity)
+    INTO
+        similarity
+    FROM (
+        SELECT
+            get_similarity(word1, word2) similarity
+            , RANK() OVER (PARTITION BY i1 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_1
+            , RANK() OVER (PARTITION BY i2 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_2
+        FROM (
+            SELECT
+                a.word word1
+                , a.i i1
+                , b.word word2
+                , b.i i2
+            FROM (
+                    UNNEST(words_a) WITH ORDINALITY AS w1(word, i)
+                        JOIN LATERAL UNNEST(STRING_TO_ARRAY(descriptors_a, NULL))
+                        WITH ORDINALITY AS d1(descriptor, j) ON w1.i = d1.j AND d1.descriptor != 'A'
+                ) a
+                    LEFT OUTER JOIN (
+                    UNNEST(words_b) WITH ORDINALITY AS w2(word, i)
+                        JOIN LATERAL UNNEST(STRING_TO_ARRAY(descriptors_b, NULL))
+                        WITH ORDINALITY AS d2(descriptor, j) ON w2.i = d2.j AND d2.descriptor != 'A'
+                ) b ON TRUE
+        ) t
+    ) tt
+    WHERE
+        -- better list of similarities between searched name (a) and compared one (b)
+        best_order_similarity_1 = 1
+        AND
+        best_order_similarity_2 = 1
      */
+    WITH
+    similarity_streets AS (
+        SELECT
+            word1
+            , i1
+            , word2
+            , i2
+            , get_similarity(word1, word2) similarity
+            , RANK() OVER (PARTITION BY i1 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_1
+            , RANK() OVER (PARTITION BY i2 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_2
+        FROM (
+            SELECT
+                a.word word1
+                , a.i i1
+                , b.word word2
+                , b.i i2
+            FROM
+            (
+                UNNEST(p_words_a) WITH ORDINALITY AS w1(word, i)
+                    JOIN LATERAL UNNEST(STRING_TO_ARRAY(p_descriptors_a, NULL))
+                    WITH ORDINALITY AS d1(descriptor, j) ON w1.i = d1.j AND d1.descriptor != 'A'
+            ) a
+                LEFT OUTER JOIN (
+                UNNEST(p_words_b) WITH ORDINALITY AS w2(word, i)
+                    JOIN LATERAL UNNEST(STRING_TO_ARRAY(p_descriptors_b, NULL))
+                    WITH ORDINALITY AS d2(descriptor, j) ON w2.i = d2.j AND d2.descriptor != 'A'
+            ) b ON TRUE
+        ) t
+    )
+    SELECT
+        SUM(similarity)
+    INTO
+        similarity
+    FROM
+        similarity_streets
+    WHERE
+        best_order_similarity_1 = 1 AND best_order_similarity_2 = 1
+    ;
 END
 $func$ LANGUAGE plpgsql;
 
 SELECT drop_all_functions_if_exists('fr', 'get_similarity_street_with_rarity');
+/*
 CREATE OR REPLACE FUNCTION fr.get_similarity_street_with_rarity(
     name IN VARCHAR
     , code_address_compare_to IN CHAR(10)
@@ -287,6 +322,7 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+
 SELECT drop_all_functions_if_exists('fr', 'get_similarity_street');
 CREATE OR REPLACE FUNCTION fr.get_similarity_street(
     name IN VARCHAR
@@ -306,3 +342,4 @@ BEGIN
     END IF;
 END
 $func$ LANGUAGE plpgsql;
+ */

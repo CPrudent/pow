@@ -2,8 +2,38 @@
  * add FR-ADDRESS facilities (matching address)
  */
 
--- to define global varibales
--- https://stackoverflow.com/questions/31316053/is-it-possible-to-define-global-variables-in-postgresql
+-- remove article(s) from name
+SELECT drop_all_functions_if_exists('fr', 'get_street_name_without_article');
+CREATE OR REPLACE FUNCTION fr.get_street_name_without_article(
+    words IN TEXT[]
+    , nwords IN INT
+    , descriptors IN VARCHAR DEFAULT NULL
+    , without_article OUT TEXT[]
+)
+AS
+$func$
+DECLARE
+    _i INT;
+BEGIN
+    FOR _i IN 1 .. nwords
+    LOOP
+        IF ((
+                descriptors IS NOT NULL
+                AND
+                SUBSTR(descriptors, _i, 1) = 'A'
+            )
+            OR
+            (
+                fr.is_normalized_article(words[_i])
+            )
+        ) THEN
+            CONTINUE;
+        ELSE
+            without_article := ARRAY_APPEND(without_article, words[_i]);
+        END IF;
+    END LOOP;
+END
+$func$ LANGUAGE plpgsql;
 
 -- status of match element
 SELECT drop_all_functions_if_exists('fr', 'match_element_status');
@@ -107,8 +137,8 @@ $func$
 DECLARE
     _similarity_limit REAL;
     _words TEXT[];
-    _orders INT[];
-    _matched_words TEXT[];
+    _order_word INT;
+    _better_word TEXT;
     _street RECORD;
     _previous_street RECORD;
 BEGIN
@@ -281,15 +311,16 @@ BEGIN
             END IF;
         END IF;
     ELSIF level = 'STREET' THEN
-        -- uniq area found
-        IF LENGTH(matched_parent.status) = 1 THEN
+        -- area found
+        IF LEFT(matched_parent.status, 2) = 'OK' THEN
+            -- strict search
             SELECT ARRAY_AGG(co_adr)
             INTO matched_element.codes_address
             FROM fr.street_view
             WHERE
                 lb_voie = (standardized_address).street
                 AND
-                co_adr_za = matched_parent.codes_address[1]
+                co_adr_za = ANY(matched_parent.codes_address)
             --LIMIT 1
             ;
             matched_element := (
@@ -311,21 +342,22 @@ BEGIN
                 as well as referential words that match them
                  */
                 SELECT
-                    orders
-                    , matched_words
+                    order_word
+                    , better_word
                 INTO
-                    _orders
-                    , _matched_words
+                    _order_word
+                    , _better_word
                 FROM
-                    fr.get_ordered_words_with_similarity_criteria(
+                    fr.get_better_word_with_similarity_criteria(
                         words => _words
                         , municipality_code => (standardized_address).municipality_code
+                        , raise_notice => raise_notice
                     )
                 ;
                 /* NOTE
                 https://stackoverflow.com/questions/40078047/sql-weighted-average
                  */
-                IF _orders IS NOT NULL THEN
+                IF _better_word IS NOT NULL THEN
                     _previous_street := ROW(NULL);
                     matched_element.status := NULL;
                     FOR _street IN (
@@ -335,18 +367,18 @@ BEGIN
                                 s.co_adr
                                 , s.co_adr_za
                                 , s.co_voie
-                                , s.lb_voie_desc descriptors
+                                , s.lb_voie
                             FROM
                                 fr.street_view s
                                     JOIN fr.laposte_address_street_reference sr ON s.co_adr = sr.address_id
                                     JOIN fr.laposte_address_street_membership sm ON sr.name_id = sm.name_id
                             WHERE
-                                sm.word = _matched_words[_orders[1]]
+                                sm.word = _better_word
                                 AND
                                 -- can verify area (known as ZA)
                                 s.co_insee_commune = (standardized_address).municipality_code
                         )
-                        --SELECT * FROM potential_streets
+                        /*
                         , word_similarity_streets AS (
                             SELECT
                                 co_adr
@@ -375,10 +407,27 @@ BEGIN
                                 , co_adr_za
                                 , co_voie
                         )
+                         */
+                        , similarity_streets AS (
+                            SELECT
+                                co_adr
+                                , co_adr_za
+                                , co_voie
+                                , lb_voie
+                                , fr.get_similarity_street(
+                                    words_a => _words
+                                    , words_b => su.words
+                                    , descriptors_a => (standardized_address).descriptors
+                                    , descriptors_b => su.descriptors
+                                ) similarity
+                            FROM
+                                potential_streets ps
+                                    JOIN fr.laposte_address_street_uniq su ON ps.lb_voie = su.name
+                        )
                         SELECT
                             *
                         FROM
-                            sum_similarity_streets
+                            similarity_streets
                         ORDER BY
                             similarity DESC
                         LIMIT
