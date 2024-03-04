@@ -340,15 +340,12 @@ BEGIN
                 _words := STRING_TO_ARRAY((standardized_address).street, ' ');
 
                 /* NOTE
-                retrieve orders of words w/ better similarity and rarity
-                as well as referential words that match them
+                retrieve word w/ better similarity and rarity
                  */
                 SELECT
-                    order_word
-                    , better_word
+                    better_word
                 INTO
-                    _order_word
-                    , _better_word
+                    _better_word
                 FROM
                     fr.get_better_word_with_similarity_criteria(
                         words => _words

@@ -21,13 +21,11 @@ END
 $func$ LANGUAGE plpgsql;
 
 -- order words according to (similarity, rarity and descriptor)
-SELECT drop_all_functions_if_exists('fr', 'get_ordered_words_with_similarity_criteria');
 SELECT drop_all_functions_if_exists('fr', 'get_better_word_with_similarity_criteria');
 CREATE OR REPLACE FUNCTION fr.get_better_word_with_similarity_criteria(
     words IN TEXT[]
     , municipality_code IN VARCHAR
     , raise_notice IN BOOLEAN DEFAULT FALSE
-    , order_word OUT INT
     , better_word OUT TEXT
 )
 AS
@@ -67,11 +65,9 @@ BEGIN
             mw.municipality_code = get_better_word_with_similarity_criteria.municipality_code
     )
     SELECT
-        i
-        , word
+        word
     INTO
-        order_word
-        , better_word
+        better_word
     FROM
         similarity_word
     ORDER BY
