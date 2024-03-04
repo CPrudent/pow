@@ -9,8 +9,16 @@ CREATE TABLE IF NOT EXISTS fr.laposte_address_municipality_word (
     municipality_code VARCHAR NOT NULL
     , word VARCHAR NOT NULL
     , count INT NOT NULL
+    , rank_0 INT
 )
 ;
+
+DO $$
+BEGIN
+    IF NOT column_exists('fr', 'laposte_address_municipality_word', 'rank_0') THEN
+        ALTER TABLE fr.laposte_address_municipality_word ADD COLUMN rank_0 INT;
+    END IF;
+END $$;
 
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_municipality_word_index');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_municipality_word_index()
@@ -61,6 +69,23 @@ BEGIN
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Comptage (mot): ', _nrows));
 
+    WITH
+    word_rank AS (
+        SELECT
+            municipality_code
+            , word
+            , row_number() OVER (PARTITION BY municipality_code ORDER BY count DESC) rank_0
+        FROM
+            fr.laposte_address_municipality_word
+    )
+    UPDATE fr.laposte_address_municipality_word w SET
+        rank_0 = r.rank_0
+        FROM word_rank r
+        WHERE
+            (w.municipality_code, w.word) = (r.municipality_code, r.word)
+        ;
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(CONCAT(' Rangs (mot): ', _nrows));
 
     CALL fr.set_laposte_address_municipality_word_index();
     CALL public.log_info(' Indexation');

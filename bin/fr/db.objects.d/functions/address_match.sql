@@ -142,7 +142,7 @@ DECLARE
     _better_word TEXT;
     _street RECORD;
     _previous_street RECORD;
-    __similarity_ratio NUMERIC;
+    _similarity_ratio NUMERIC;
 BEGIN
     IF level = 'AREA' THEN
         IF (
@@ -442,8 +442,8 @@ BEGIN
                             OK if second|third choice far enough (15%)
                             minimum gap between 2 results ascending when similarity decrease
                              */
-                            __similarity_ratio := (_previous_street.similarity / _street.similarity);
-                            IF NOT (__similarity_ratio > similarity_ratio) THEN
+                            _similarity_ratio := (_previous_street.similarity / _street.similarity);
+                            IF NOT (_similarity_ratio > similarity_ratio) THEN
                                 -- same street, but w/ {postcode, district, ...} difference
                                 IF _previous_street.co_voie = _street.co_voie THEN
                                     IF raise_notice THEN
@@ -457,7 +457,7 @@ BEGIN
                                         RAISE NOTICE ' deuxième choix trop proche VOIE(%) [sim=%,ratio=%]'
                                             , _street.lb_voie
                                             , ROUND(_street.similarity, 5)
-                                            , ROUND(__similarity_ratio, 2)
+                                            , ROUND(_similarity_ratio, 2)
                                         ;
                                     END IF;
                                     matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.too_similar'));
@@ -468,7 +468,7 @@ BEGIN
                                     RAISE NOTICE ' deuxième choix suffisamment éloigné VOIE(%) [sim=%,ratio=%]'
                                         , _street.lb_voie
                                         , ROUND(_street.similarity, 5)
-                                        , ROUND(__similarity_ratio, 2)
+                                        , ROUND(_similarity_ratio, 2)
                                     ;
                                 END IF;
                                 EXIT;
