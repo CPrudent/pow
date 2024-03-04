@@ -94,14 +94,12 @@ CREATE OR REPLACE FUNCTION fr.get_similarity_street(
 AS
 $func$
 BEGIN
-    /*
+    similarity := (
     SELECT
-        SUM(similarity)
-    INTO
-        similarity
+        SUM(sim)
     FROM (
         SELECT
-            get_similarity(word1, word2) similarity
+            get_similarity(word1, word2) sim
             , RANK() OVER (PARTITION BY i1 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_1
             , RANK() OVER (PARTITION BY i2 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_2
         FROM (
@@ -127,45 +125,52 @@ BEGIN
         best_order_similarity_1 = 1
         AND
         best_order_similarity_2 = 1
-     */
-    WITH
-    similarity_streets AS (
-        SELECT
-            word1
-            , i1
-            , word2
-            , i2
-            , get_similarity(word1, word2) similarity
-            , RANK() OVER (PARTITION BY i1 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_1
-            , RANK() OVER (PARTITION BY i2 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_2
-        FROM (
-            SELECT
-                a.word word1
-                , a.i i1
-                , b.word word2
-                , b.i i2
-            FROM
-            (
-                UNNEST(p_words_a) WITH ORDINALITY AS w1(word, i)
-                    JOIN LATERAL UNNEST(STRING_TO_ARRAY(p_descriptors_a, NULL))
-                    WITH ORDINALITY AS d1(descriptor, j) ON w1.i = d1.j AND d1.descriptor != 'A'
-            ) a
-                LEFT OUTER JOIN (
-                UNNEST(p_words_b) WITH ORDINALITY AS w2(word, i)
-                    JOIN LATERAL UNNEST(STRING_TO_ARRAY(p_descriptors_b, NULL))
-                    WITH ORDINALITY AS d2(descriptor, j) ON w2.i = d2.j AND d2.descriptor != 'A'
-            ) b ON TRUE
-        ) t
     )
-    SELECT
-        SUM(similarity)
-    INTO
-        similarity
-    FROM
-        similarity_streets
-    WHERE
-        best_order_similarity_1 = 1 AND best_order_similarity_2 = 1
     ;
+
+    /*
+    similarity := (
+        WITH
+        similarity_streets AS (
+            SELECT
+                /*
+                word1
+                , i1
+                , word2
+                , i2
+
+                , */
+                get_similarity(word1, word2) similarity
+                , RANK() OVER (PARTITION BY i1 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_1
+                , RANK() OVER (PARTITION BY i2 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_2
+            FROM (
+                SELECT
+                    a.word word1
+                    , a.i i1
+                    , b.word word2
+                    , b.i i2
+                FROM
+                (
+                    UNNEST(words_a) WITH ORDINALITY AS w1(word, i)
+                        JOIN LATERAL UNNEST(STRING_TO_ARRAY(descriptors_a, NULL))
+                        WITH ORDINALITY AS d1(descriptor, j) ON w1.i = d1.j AND d1.descriptor != 'A'
+                ) a
+                    LEFT OUTER JOIN (
+                    UNNEST(words_b) WITH ORDINALITY AS w2(word, i)
+                        JOIN LATERAL UNNEST(STRING_TO_ARRAY(descriptors_b, NULL))
+                        WITH ORDINALITY AS d2(descriptor, j) ON w2.i = d2.j AND d2.descriptor != 'A'
+                ) b ON TRUE
+            ) t
+        )
+        SELECT
+            SUM(similarity)
+        FROM
+            similarity_streets
+        WHERE
+            best_order_similarity_1 = 1 AND best_order_similarity_2 = 1
+    )
+    ;
+     */
 END
 $func$ LANGUAGE plpgsql;
 

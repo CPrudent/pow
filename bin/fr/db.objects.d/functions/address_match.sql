@@ -378,36 +378,6 @@ BEGIN
                                 -- can verify area (known as ZA)
                                 s.co_insee_commune = (standardized_address).municipality_code
                         )
-                        /*
-                        , word_similarity_streets AS (
-                            SELECT
-                                co_adr
-                                , co_adr_za
-                                , co_voie
-                                , get_similarity(w.word, _words[i]) similarity
-                                , fr.get_descriptor_factor(SUBSTR(descriptors, w.i::INT, 1)) descriptor_factor
-                            FROM
-                                potential_streets
-                                    JOIN LATERAL UNNEST(_words) WITH ORDINALITY AS w(word, i) ON TRUE
-                            WHERE
-                                -- not article
-                                SUBSTR(descriptors, w.i::INT, 1) != 'A'
-                        )
-                        , sum_similarity_streets AS (
-                            SELECT
-                                co_adr
-                                , co_adr_za
-                                , co_voie
-                                -- weighted average
-                                , (SUM(similarity * descriptor_factor) / SUM(descriptor_factor)) similarity
-                            FROM
-                                word_similarity_streets
-                            GROUP BY
-                                co_adr
-                                , co_adr_za
-                                , co_voie
-                        )
-                         */
                         , similarity_streets AS (
                             SELECT
                                 co_adr
@@ -439,27 +409,27 @@ BEGIN
                         IF (_previous_street IS NULL) THEN
                             IF (_street.similarity < similarity_threshold) THEN
                                 IF raise_notice THEN
-                                    RAISE NOTICE 'premier choix VOIE(%) INSEE(%) : trop faible,  CEA(%) [sim=%]'
+                                    RAISE NOTICE 'premier choix VOIE(%) INSEE(%) : trop faible,  VOIE(%) [sim=%]'
                                         , (standardized_address).street
                                         , (standardized_address).municipality_code
-                                        , _street.co_adr
+                                        , _street.lb_voie
                                         , _street.similarity
                                     ;
                                 END IF;
                                 EXIT;
                             ELSE
                                 IF raise_notice THEN
-                                    RAISE NOTICE 'premier choix VOIE(%) INSEE(%) : ok, CEA(%) [sim=%]'
+                                    RAISE NOTICE 'premier choix VOIE(%) INSEE(%) : ok VOIE(%) [sim=%]'
                                         , (standardized_address).street
                                         , (standardized_address).municipality_code
-                                        , _street.co_adr
+                                        , _street.lb_voie
                                         , _street.similarity
                                     ;
                                 END IF;
                                 matched_element.codes_address := ARRAY[_street.co_adr]::VARCHAR[];
                                 matched_element.similarity := _street.similarity;
                                 IF (_street.co_adr_za != matched_parent.codes_address[1]) THEN
-                                    RAISE NOTICE 'mais sur ZA(%) : origine ZA(%)'
+                                    RAISE NOTICE ' mais sur ZA différente (%/%)'
                                         , _street.co_adr_za
                                         , matched_parent.codes_address[1]
                                     ;
@@ -468,28 +438,26 @@ BEGIN
                             END IF;
                         ELSE
                             /* NOTE
-                            OK if second|third choice far enough
+                            OK if second|third choice far enough (15%)
                             minimum gap between 2 results ascending when similarity decrease
-                            1st match w/ score of 0.9 needs 2nd match inferior to 0.8
-                            1st match w/ score of 0.7 needs 2nd match inferior to 0.4
                              */
-                            IF NOT ((_previous_street.similarity - _street.similarity) > (1 - _previous_street.similarity)) THEN
+                            IF NOT ((_previous_street.similarity / _street.similarity)::NUMERIC > 0.15) THEN
                                 -- same street, but w/ {postcode, district, ...} difference
                                 IF _previous_street.co_voie = _street.co_voie THEN
                                     IF raise_notice THEN
-                                        RAISE NOTICE 'deuxième choix VOIE(%) INSEE(%) : même voie CEA(%) [sim=%]'
+                                        RAISE NOTICE 'deuxième choix VOIE(%) INSEE(%) : même voie CODE(%) [CEA=%]'
                                             , (standardized_address).street
                                             , (standardized_address).municipality_code
+                                            , _street.co_voie
                                             , _street.co_adr
-                                            , _street.similarity
                                         ;
                                     END IF;
                                 ELSE
                                     IF raise_notice THEN
-                                        RAISE NOTICE 'deuxième choix VOIE(%) INSEE(%) : trop proche CEA(%) [sim=%]'
+                                        RAISE NOTICE 'deuxième choix VOIE(%) INSEE(%) : trop proche VOIE(%) [sim=%]'
                                             , (standardized_address).street
                                             , (standardized_address).municipality_code
-                                            , _street.co_adr
+                                            , _street.lb_voie
                                             , _street.similarity
                                         ;
                                     END IF;
@@ -498,13 +466,14 @@ BEGIN
                                 END IF;
                             ELSE
                                 IF raise_notice THEN
-                                    RAISE NOTICE 'deuxième choix VOIE(%) INSEE(%) : ok CEA(%) [sim=%]'
+                                    RAISE NOTICE 'deuxième choix VOIE(%) INSEE(%) : éloigné VOIE(%) [sim=%]'
                                         , (standardized_address).street
                                         , (standardized_address).municipality_code
-                                        , _street.co_adr
+                                        , _street.lb_voie
                                         , _street.similarity
                                     ;
                                 END IF;
+                                EXIT;
                             END IF;
                         END IF;
 
