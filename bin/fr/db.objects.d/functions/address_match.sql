@@ -129,6 +129,7 @@ CREATE OR REPLACE FUNCTION fr.match_element(
     , standardized_address IN fr.standardized_address
     , matched_parent IN fr.matched_element
     , similarity_threshold IN REAL DEFAULT 0.7
+    , similarity_ratio IN REAL DEFAULT 0.15
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , matched_element OUT fr.matched_element
 )
@@ -141,6 +142,7 @@ DECLARE
     _better_word TEXT;
     _street RECORD;
     _previous_street RECORD;
+    __similarity_ratio NUMERIC;
 BEGIN
     IF level = 'AREA' THEN
         IF (
@@ -407,29 +409,31 @@ BEGIN
                         --RAISE NOTICE 'test(%)', _street.co_adr;
 
                         IF (_previous_street IS NULL) THEN
+                            IF raise_notice THEN
+                                RAISE NOTICE 'VOIE(%) INSEE(%)'
+                                    , (standardized_address).street
+                                    , (standardized_address).municipality_code
+                                ;
+                            END IF;
                             IF (_street.similarity < similarity_threshold) THEN
                                 IF raise_notice THEN
-                                    RAISE NOTICE 'premier choix VOIE(%) INSEE(%) : trop faible,  VOIE(%) [sim=%]'
-                                        , (standardized_address).street
-                                        , (standardized_address).municipality_code
+                                    RAISE NOTICE ' premier choix trop faible VOIE(%) [sim=%]'
                                         , _street.lb_voie
-                                        , _street.similarity
+                                        , ROUND(_street.similarity, 5)
                                     ;
                                 END IF;
                                 EXIT;
                             ELSE
                                 IF raise_notice THEN
-                                    RAISE NOTICE 'premier choix VOIE(%) INSEE(%) : ok VOIE(%) [sim=%]'
-                                        , (standardized_address).street
-                                        , (standardized_address).municipality_code
+                                    RAISE NOTICE ' premier choix ok VOIE(%) [sim=%]'
                                         , _street.lb_voie
-                                        , _street.similarity
+                                        , ROUND(_street.similarity, 5)
                                     ;
                                 END IF;
                                 matched_element.codes_address := ARRAY[_street.co_adr]::VARCHAR[];
                                 matched_element.similarity := _street.similarity;
                                 IF (_street.co_adr_za != matched_parent.codes_address[1]) THEN
-                                    RAISE NOTICE ' mais sur ZA différente (%/%)'
+                                    RAISE NOTICE '  mais sur ZA différente (%/%)'
                                         , _street.co_adr_za
                                         , matched_parent.codes_address[1]
                                     ;
@@ -441,24 +445,22 @@ BEGIN
                             OK if second|third choice far enough (15%)
                             minimum gap between 2 results ascending when similarity decrease
                              */
-                            IF NOT ((_previous_street.similarity / _street.similarity)::NUMERIC > 0.15) THEN
+                            __similarity_ratio := (_previous_street.similarity / _street.similarity);
+                            IF NOT (__similarity_ratio > similarity_ratio) THEN
                                 -- same street, but w/ {postcode, district, ...} difference
                                 IF _previous_street.co_voie = _street.co_voie THEN
                                     IF raise_notice THEN
-                                        RAISE NOTICE 'deuxième choix VOIE(%) INSEE(%) : même voie CODE(%) [CEA=%]'
-                                            , (standardized_address).street
-                                            , (standardized_address).municipality_code
+                                        RAISE NOTICE ' deuxième choix même voie CODE(%) [CEA=%]'
                                             , _street.co_voie
                                             , _street.co_adr
                                         ;
                                     END IF;
                                 ELSE
                                     IF raise_notice THEN
-                                        RAISE NOTICE 'deuxième choix VOIE(%) INSEE(%) : trop proche VOIE(%) [sim=%]'
-                                            , (standardized_address).street
-                                            , (standardized_address).municipality_code
+                                        RAISE NOTICE ' deuxième choix trop proche VOIE(%) [sim=%,ratio=%]'
                                             , _street.lb_voie
-                                            , _street.similarity
+                                            , ROUND(_street.similarity, 5)
+                                            , ROUND(__similarity_ratio, 2)
                                         ;
                                     END IF;
                                     matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.too_similar'));
@@ -466,11 +468,10 @@ BEGIN
                                 END IF;
                             ELSE
                                 IF raise_notice THEN
-                                    RAISE NOTICE 'deuxième choix VOIE(%) INSEE(%) : éloigné VOIE(%) [sim=%]'
-                                        , (standardized_address).street
-                                        , (standardized_address).municipality_code
+                                    RAISE NOTICE ' deuxième choix suffisamment éloigné VOIE(%) [sim=%,ratio=%]'
                                         , _street.lb_voie
-                                        , _street.similarity
+                                        , ROUND(_street.similarity, 5)
+                                        , ROUND(__similarity_ratio, 2)
                                     ;
                                 END IF;
                                 EXIT;
