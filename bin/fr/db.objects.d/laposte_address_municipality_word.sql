@@ -11,6 +11,10 @@ END $$;
 
 /* TODO
 
+-- rename
+fr.laposte_address_street_word => fr.laposte_address_street_word_as
+fr.laposte_address_word => fr.laposte_address_street_word
+
 -- table
 CREATE TABLE IF NOT EXISTS fr.laposte_address_word (
     nivgeo VARCHAR NOT NULL
@@ -29,7 +33,7 @@ INSERT INTO fr.laposte_address_word(
 )
 SELECT
     'ZA'
-    , co_adr_za
+    , s.co_adr_za
     , sw.word
     , COUNT(*)
 FROM fr.street_view s
@@ -44,10 +48,12 @@ CALL fr.set_territory_supra(
     table_name => 'laposte_address_word'
     , schema_name => 'fr'
     , base_level => 'ZA'
-    , supra_level_filter => 'COM'
+    --, supra_level_filter => 'COM'
     , columns_groupby => ARRAY['word']
+    , columns_agg => ARRAY['count']
 )
 
+-- remark: (nivgeo=PAYS) equal fr.laposte_address_street_word(rank_0), no ?
 WITH
 word_rank AS (
     SELECT
@@ -58,7 +64,7 @@ word_rank AS (
     FROM
         fr.laposte_address_area_word
 )
-UPDATE fr.laposte_address_area_word w SET
+UPDATE fr.laposte_address_word w SET
     rank = r.rank
     FROM word_rank r
     WHERE
