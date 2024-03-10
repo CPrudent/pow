@@ -137,7 +137,7 @@ DECLARE
 BEGIN
     SELECT EXISTS(
         SELECT 1
-        FROM fr.constant c JOIN fr.laposte_address_street_word w ON c.key = w.word
+        FROM fr.constant c JOIN fr.laposte_address_street_word_descriptor w ON c.key = w.word
         WHERE
             c.usecase = 'LAPOSTE_STREET_FIRSTNAME'
             AND
@@ -477,7 +477,7 @@ BEGIN
                     FROM
                         subsets_as_items s
                             JOIN change_and_earn ce ON s.item = ce.change
-                            LEFT OUTER JOIN fr.laposte_address_street_word w ON w.word = ce.word
+                            LEFT OUTER JOIN fr.laposte_address_street_word_descriptor w ON w.word = ce.word
                     GROUP BY
                         s.i
                 )

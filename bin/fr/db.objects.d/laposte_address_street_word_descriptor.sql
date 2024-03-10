@@ -1,26 +1,29 @@
 /***
- * FR: add LAPOSTE/RAN street words
+ * FR: add LAPOSTE/RAN street words (w/ default descriptor)
  */
+
+-- old name
+DROP TABLE IF EXISTS fr.laposte_address_street_word;
 
 DO $$
 BEGIN
     IF table_exists(
             schema_name => 'fr'
-            , table_name => 'laposte_address_street_word'
+            , table_name => 'laposte_address_street_word_descriptor'
         )
         AND
         NOT column_exists(
             schema_name => 'fr'
-            , table_name => 'laposte_address_street_word'
+            , table_name => 'laposte_address_street_word_descriptor'
             , column_name => 'as_last'
         ) THEN
-        DROP TABLE fr.laposte_address_street_word;
+        DROP TABLE fr.laposte_address_street_word_descriptor;
     END IF;
 END $$;
 
 -- to store words, counters by descriptor, default descriptor, ranks
 -- Query returned successfully in 11 secs 584 msec.
-CREATE TABLE IF NOT EXISTS fr.laposte_address_street_word (
+CREATE TABLE IF NOT EXISTS fr.laposte_address_street_word_descriptor (
     word VARCHAR NOT NULL
     , as_default CHAR(1)
     , as_article INT            -- A
@@ -36,24 +39,20 @@ CREATE TABLE IF NOT EXISTS fr.laposte_address_street_word (
 )
 ;
 
-SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_street_word_index');
-CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_word_index()
+SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_street_word_descriptor_index');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_word_descriptor_index()
 AS
 $proc$
 BEGIN
-    /*
-    CREATE UNIQUE INDEX IF NOT EXISTS ix_laposte_address_street_word_word_default ON fr.laposte_address_street_word (word, as_default);
-     */
-
     -- https://stackoverflow.com/questions/28975517/difference-between-gist-and-gin-index
-    CREATE INDEX IF NOT EXISTS ix_laposte_address_street_word_word ON fr.laposte_address_street_word USING GIN(word GIN_TRGM_OPS);
+    CREATE INDEX IF NOT EXISTS ix_laposte_address_street_word_descriptor_word ON fr.laposte_address_street_word_descriptor USING GIN(word GIN_TRGM_OPS);
 END
 $proc$ LANGUAGE plpgsql;
 
 -- build counters (by descriptor), ranks and default for each word
 -- Query returned successfully in 13 secs.
-SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_street_word');
-CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_word()
+SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_street_word_descriptor');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_word_descriptor()
 AS
 $proc$
 DECLARE
@@ -66,11 +65,11 @@ BEGIN
     CALL public.log_info('Gestion des mots dans les noms de voies');
 
     CALL public.log_info(' Purge');
-    TRUNCATE TABLE fr.laposte_address_street_word;
-    PERFORM public.drop_table_indexes('fr', 'laposte_address_street_word');
+    TRUNCATE TABLE fr.laposte_address_street_word_descriptor;
+    PERFORM public.drop_table_indexes('fr', 'laposte_address_street_word_descriptor');
 
     CALL public.log_info(' Initialisation');
-    INSERT INTO fr.laposte_address_street_word(
+    INSERT INTO fr.laposte_address_street_word_descriptor(
         word
         , as_article
         , as_number
@@ -118,14 +117,14 @@ BEGIN
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Comptage descripteurs (mot): ', _nrows));
 
-    UPDATE fr.laposte_address_street_word SET
+    UPDATE fr.laposte_address_street_word_descriptor SET
         as_default = CASE
-            WHEN as_reserved > GREATEST(as_name, as_article, as_number, as_fname, as_title, as_type) THEN 'E'
-            WHEN as_article > GREATEST(as_name, as_reserved, as_number, as_fname, as_title, as_type) THEN 'A'
-            WHEN as_number > GREATEST(as_name, as_reserved, as_article, as_fname, as_title, as_type) THEN 'C'
-            WHEN as_fname > GREATEST(as_name, as_reserved, as_article, as_number, as_title, as_type) THEN 'P'
-            WHEN as_title > GREATEST(as_name, as_reserved, as_article, as_number, as_fname, as_type) THEN 'T'
-            WHEN as_type > GREATEST(as_name, as_reserved, as_article, as_number, as_fname, as_title) THEN 'V'
+            WHEN as_reserved > GREATEST(as_name + as_last, as_article, as_number, as_fname, as_title, as_type) THEN 'E'
+            WHEN as_article > GREATEST(as_name + as_last, as_reserved, as_number, as_fname, as_title, as_type) THEN 'A'
+            WHEN as_number > GREATEST(as_name + as_last, as_reserved, as_article, as_fname, as_title, as_type) THEN 'C'
+            WHEN as_fname > GREATEST(as_name + as_last, as_reserved, as_article, as_number, as_title, as_type) THEN 'P'
+            WHEN as_title > GREATEST(as_name + as_last, as_reserved, as_article, as_number, as_fname, as_type) THEN 'T'
+            WHEN as_type > GREATEST(as_name + as_last, as_reserved, as_article, as_number, as_fname, as_title) THEN 'V'
             ELSE 'N'
             END
         ;
@@ -136,7 +135,7 @@ BEGIN
     word_rank AS (
         SELECT
             word
-            , row_number() OVER (ORDER BY (
+            , ROW_NUMBER() OVER (ORDER BY (
                 as_name
                 + as_last
                 + as_reserved
@@ -146,7 +145,7 @@ BEGIN
                 + as_title
                 + as_type
             ) DESC) rank_0
-            , row_number() OVER (PARTITION BY as_default ORDER BY (
+            , ROW_NUMBER() OVER (PARTITION BY as_default ORDER BY (
                 CASE
                 WHEN as_default = 'A' THEN as_article
                 WHEN as_default = 'C' THEN as_number
@@ -158,30 +157,39 @@ BEGIN
                 END
             ) DESC) rank_1
         FROM
-           fr.laposte_address_street_word
+           fr.laposte_address_street_word_descriptor
     )
-    UPDATE fr.laposte_address_street_word w SET
+    UPDATE fr.laposte_address_street_word_descriptor w SET
         rank_0 = r.rank_0
         , rank_1 = r.rank_1
         FROM word_rank r
         WHERE
             w.word = r.word
-        ;
+    ;
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Rangs (mot): ', _nrows));
 
-    CALL fr.set_laposte_address_street_word_index();
+    CALL fr.set_laposte_address_street_word_descriptor_index();
     CALL public.log_info(' Indexation');
 END
 $proc$ LANGUAGE plpgsql;
 
 /* TEST
+17:29:22.819 Gestion des mots dans les noms de voies
+17:29:22.819  Purge
+17:29:22.848  Initialisation
+17:29:29.873  Comptage descripteurs (mot): 371531
+17:29:30.678  Défaut (mot): 371531
+17:29:34.587  Rangs (mot): 371531
+17:29:37.155  Indexation
+
+Query returned successfully in 14 secs 632 msec.
 
 -- always name 'N' as default
 SELECT
     *
 FROM
-    fr.laposte_address_street_word
+    fr.laposte_address_street_word_descriptor
 WHERE
     GREATEST(as_reserved, as_name, as_article, as_number, as_fname, as_title, as_type) > 0
     AND (
@@ -213,7 +221,7 @@ BEGIN
     SELECT w.as_default
     INTO
         get_default_of_word.as_default
-    FROM fr.laposte_address_street_word w
+    FROM fr.laposte_address_street_word_descriptor w
     WHERE
         w.word = get_default_of_word.word
     ;

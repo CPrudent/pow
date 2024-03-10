@@ -44,7 +44,7 @@ BEGIN
     IF _nof IS NULL THEN
         CALL public.log_info('manque paramètre global (fr.address.n_uniq_streets)');
         _nof := (
-            SELECT MAX(rank_0) FROM fr.laposte_address_street_word
+            SELECT MAX(rank_0) FROM fr.laposte_address_street_word_descriptor
         );
     END IF;
 
@@ -59,7 +59,7 @@ BEGIN
         FROM
             fr.laposte_address_municipality_word mw
                 -- remember: w/o article
-                JOIN fr.laposte_address_street_word sw ON mw.word = sw.word
+                JOIN fr.laposte_address_street_word_descriptor sw ON mw.word = sw.word
                 JOIN LATERAL UNNEST(words) WITH ORDINALITY AS w(word, i) ON TRUE
         WHERE
             mw.municipality_code = get_better_word_with_similarity_criteria.municipality_code
@@ -221,7 +221,7 @@ BEGIN
                     JOIN fr.laposte_address_street_reference sr ON sr.address_id = s.co_adr
                     -- TODO: add number!
                     JOIN fr.laposte_address_street_membership sm ON sm.name_id = sr.name_id
-                    JOIN fr.laposte_address_street_word sw ON sw.word = sm.word
+                    JOIN fr.laposte_address_street_word_descriptor sw ON sw.word = sm.word
                 WHERE s.co_insee_commune = municipality_code
                 GROUP BY
                     sw.word

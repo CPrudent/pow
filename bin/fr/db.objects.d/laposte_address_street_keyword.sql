@@ -57,7 +57,7 @@ BEGIN
         -- ARC => ARCADE, GARE => GARENNE, PORT => PORTE, BAS => BASSE, CAMP => CAMPAGNE
         AND NOT EXISTS(
             SELECT 1
-            FROM fr.laposte_address_street_word
+            FROM fr.laposte_address_street_word_descriptor
             WHERE word = words[at_] AND as_default ~ 'N|T'
         )
     ) THEN

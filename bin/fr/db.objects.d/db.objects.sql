@@ -27,7 +27,8 @@
 \include_relative laposte_address_street_uniq.sql
 \include_relative laposte_address_street_reference.sql
 \include_relative laposte_address_street_membership.sql
-\include_relative laposte_address_street_word.sql
+\include_relative laposte_address_street_word_descriptor.sql
+\include_relative laposte_address_street_word_level.sql
 \include_relative laposte_address_street_keyword.sql
 \include_relative laposte_address_street_kw_exception.sql
 \include_relative laposte_address_housenumber.sql
@@ -36,7 +37,6 @@
 \include_relative laposte_address.sql
 \include_relative laposte_address_fault.sql
 \include_relative laposte_address_fault_street.sql
-\include_relative laposte_address_municipality_word.sql
 \include_relative laposte_delivery_point.sql
 \include_relative laposte_delivery_address.sql
 \include_relative laposte_organization.sql

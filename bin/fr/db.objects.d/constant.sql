@@ -1008,8 +1008,9 @@ BEGIN
         );
     END IF;
 
-    -- classify all words
-    CALL fr.set_laposte_address_street_word();
+    -- classify all words, by (descriptor, level)
+    CALL fr.set_laposte_address_street_word_descriptor();
+    CALL fr.set_laposte_address_street_word_level();
     -- define keywords (type, title, ...) and exceptions
     CALL fr.set_laposte_address_street_type();
     CALL fr.set_laposte_address_street_ext();

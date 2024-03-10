@@ -33,7 +33,7 @@ DECLARE
     _nrows INT;
 BEGIN
     IF NOT table_exists('fr', 'laposte_address_street_uniq')
-        AND NOT table_exists('fr', 'laposte_address_street_word') THEN
+        AND NOT table_exists('fr', 'laposte_address_street_word_descriptor') THEN
         RAISE 'Données LAPOSTE non suffisantes';
     END IF;
 
@@ -113,7 +113,7 @@ BEGIN
         FROM
             word_firstname o
                 JOIN fr.laposte_address_street_uniq s ON o.name = s.name
-                JOIN fr.laposte_address_street_word w ON o.word = w.word
+                JOIN fr.laposte_address_street_word_descriptor w ON o.word = w.word
         WHERE
             -- exception
             o.descriptor != w.as_default
@@ -208,7 +208,7 @@ BEGIN
         SELECT
             w.word
         FROM
-            fr.laposte_address_street_word w
+            fr.laposte_address_street_word_descriptor w
         WHERE
             as_default = 'N'
             AND
@@ -263,7 +263,7 @@ BEGIN
         FROM
             word_as_abbr_kw o
                 JOIN fr.laposte_address_street_uniq u ON o.name = u.name
-                --JOIN fr.laposte_address_street_word w ON o.word = w.word
+                --JOIN fr.laposte_address_street_word_descriptor w ON o.word = w.word
     )
     -- #4347
     SELECT DISTINCT word, 'T', 'N', followed_by FROM word_exception
