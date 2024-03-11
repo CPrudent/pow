@@ -77,9 +77,6 @@ BEGIN
         CALL fr.set_laposte_address_street_word_level_index();
         CALL public.log_info(' Indexation');
 
-        /* NOTE
-        (nivgeo=PAYS)-rank equal (fr.laposte_address_street_word_descriptor)-rank_0, no ?
-         */
         WITH
         word_rank AS (
             SELECT

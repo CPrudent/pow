@@ -10,8 +10,7 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'standardized_address')
     OR EXISTS (
         SELECT 1 FROM information_schema.attributes
-        WHERE udt_name = 'standardized_address' AND attribute_name = '_order_code_area')
-
+        WHERE udt_name = 'standardized_address' AND attribute_name = 'strong_word')
     THEN
         DROP TYPE IF EXISTS fr.standardized_address CASCADE;
         CREATE TYPE fr.standardized_address AS (
@@ -28,7 +27,7 @@ BEGIN
             , street VARCHAR                    -- full name of street (w/o abbr)
             , descriptors VARCHAR               -- LAPOSTE/RAN classified words
             , as_words INT[]                    -- array of length of each item
-            , strong_word VARCHAR               -- important word (generaly last one)
+            , words TEXT[]                      -- array of each words
             /* useful ?
             , street_normalized VARCHAR         -- normalized name of street
             , descriptors_normalized VARCHAR

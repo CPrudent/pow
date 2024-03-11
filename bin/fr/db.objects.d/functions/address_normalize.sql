@@ -1213,6 +1213,10 @@ BEGIN
         END IF;
     END IF;
 
+    IF _standardized_address.street IS NOT NULL THEN
+        _standardized_address.words := STRING_TO_ARRAY(_standardized_address.street, ' ');
+    END IF;
+
     /*
     -- calcul mot directeur, si absent
     IF _standardized_address.lb_voie_mot_directeur IS NULL AND _standardized_address.street IS NOT NULL THEN

@@ -954,6 +954,10 @@ BEGIN
     ALTER DATABASE pow SET fr.address.match.not_near = 'KO_10';
     ALTER DATABASE pow SET fr.address.match.not_found = 'KO_11';
     ALTER DATABASE pow SET fr.address.match.too_similar = 'KO_12';
+
+    ALTER DATABASE pow SET fr.similarity.area.threshold = '0.5';
+    ALTER DATABASE pow SET fr.similarity.street.threshold = '0.7';
+    ALTER DATABASE pow SET fr.similarity.street.ratio = '0.15';
 END;
 $proc$ LANGUAGE plpgsql;
 
@@ -1030,8 +1034,6 @@ BEGIN
 
     CALL fr.set_laposte_municipality_normalized_label_exception();
     CALL fr.set_territory_overseas();
-    -- words (by municipality)
-    CALL fr.set_laposte_address_municipality_word();
 
     CALL fr.set_global_variables();
     CALL fr.set_constant_index();

@@ -58,260 +58,197 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
-/* NOTE
-AREA: can be factorize!
-    fr.match_element_area(
-        search IN VARCHAR (STRICT|NEAR)
-        , with_postcode IN BOOLEAN
-    )
-
-    fr.match_element()
-    _SEARCHS VARCHAR[] := ARRAY['STRICT', 'NEAR', 'NEAR_WO_POSTCODE'];
-    FOREACH _search IN ARRAY _SEARCHS
-    LOOP
-        _todo := CASE _search
-            WHEN 'STRICT' THEN
-                (
-                    (standardized_address).municipality_code IS NOT NULL
-                    OR
-                    (standardized_address).postcode IS NOT NULL
-                    OR
-                    (standardized_address).municipality_name IS NOT NULL
-                    OR
-                    (standardized_address).municipality_old_name IS NOT NULL
-                )
-            WHEN 'NEAR' THEN
-                (
-                    matched_element.code_area IS NULL
-                    AND (
-                        ((standardized_address).municipality_name IS NOT NULL)
-                        OR
-                        ((standardized_address).municipality_old_name IS NOT NULL)
-                    )
-                )
-            WHEN 'NEAR_WO_POSTCODE' THEN
-                ((
-                        (standardized_address).municipality_code IS NOT NULL
-                        OR
-                        ((standardized_address).municipality_name IS NOT NULL)
-                        OR
-                        ((standardized_address).municipality_old_name IS NOT NULL)
-                    )
-                    AND
-                    ((standardized_address).postcode IS NOT NULL)
-                )
-            END
-        ;
-        IF _todo THEN
-            _query := fr.match_element_area(
-                method => _search
-                , CASE WHEN _search = 'NEAR_WO_POSTCODE' THEN FALSE ELSE TRUE END
+-- get query for matching area
+SELECT drop_all_functions_if_exists('fr', 'query_match_area');
+CREATE OR REPLACE FUNCTION fr.query_match_area(
+    search IN VARCHAR
+    , with_postcode IN BOOLEAN
+    , query_area OUT TEXT
+)
+AS
+$func$
+BEGIN
+    query_area := '
+        SELECT
+            ARRAY_AGG(area.co_adr)
+        FROM
+            fr.area_view area
+        WHERE
+            -- municipality code (if defined)
+            (
+                ($1 IS NULL)
+                OR
+                (area.co_insee_commune = $1)
             )
-            ;
-            EXECUTE _query INTO matched_element.codes_address;
+        '
+    ;
+    IF with_postcode THEN
+        query_area := CONCAT(
+            query_area
+            , '
+            -- postcode (if defined)
+            AND (
+                ($4 IS NULL)
+                OR
+                (area.co_postal = $4)
+            )
+            '
+        );
+    END IF;
 
-            matched_element := (
-                SELECT fr.match_element_status(
-                    search => _search
-                    , matched_element => matched_element
+    query_area := CONCAT(
+        query_area
+        , CASE UPPER(search)
+            WHEN 'STRICT' THEN
+                '
+                -- municipality name (if defined and not defined code)
+                AND (
+                    ($1 IS NOT NULL)
+                    OR
+                    ($2 IS NULL)
+                    OR
+                    (area.lb_acheminement = $2)
+                    OR
+                    (area.lb_ligne5 = $2)
                 )
-            );
-            IF matched_element.status = 1 THEN
-                EXIT;
-            END IF;
-        END IF;
-    END LOOP;
- */
+                -- municipality old name (if defined)
+                AND (
+                    ($3 IS NULL)
+                    OR
+                    (area.lb_ligne5 = $3)
+                )
+                '
+            ELSE
+                '
+                -- municipality name (if defined)
+                AND (
+                    ($2 IS NULL)
+                    OR
+                    (get_similarity($2, area.lb_acheminement) >= $5)
+                    OR
+                    (get_similarity($2, area.lb_ligne5) >= $5)
+                )
+                -- municipality old name (if defined)
+                AND (
+                    ($3 IS NULL)
+                    OR
+                    (get_similarity($3, area.lb_ligne5) >= $5)
+                )
+                '
+        END
+    );
+END
+$func$ LANGUAGE plpgsql;
+
 -- match one element
 SELECT drop_all_functions_if_exists('fr', 'match_element');
 CREATE OR REPLACE FUNCTION fr.match_element(
     level IN VARCHAR
     , standardized_address IN fr.standardized_address
-    , matched_parent IN fr.matched_element
-    , similarity_threshold IN REAL DEFAULT 0.7
-    , similarity_ratio IN REAL DEFAULT 0.15
+        /* NOTE
+        HSTORE parameter to custom properties, as:
+        '"AREA_THRESHOLD" => 0.6, "STREET_THRESHOLD" => 0.75, "STREET_RATIO" => 0.2'::HSTORE
+        defaults are defined as global variables, view constant.sql
+         */
+    , matched_parent INOUT fr.matched_element
+    , similarity IN HSTORE DEFAULT NULL
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , matched_element OUT fr.matched_element
 )
 AS
 $func$
 DECLARE
-    _similarity_limit REAL;
-    _words TEXT[];
+    _AREA_SEARCHS VARCHAR[] := ARRAY['STRICT', 'NEAR', 'NEAR_WO_POSTCODE'];
+    _STREET_LOOP_LIMIT INT := 4;
+    _similarity_threshold REAL := 0.0;
+    _similarity_ratio REAL;
+    _street_ratio REAL;
+    _search VARCHAR;
+    _todo BOOLEAN;
+    _query TEXT;
     _order_word INT;
     _better_word TEXT;
     _street RECORD;
     _previous_street RECORD;
-    _similarity_ratio NUMERIC;
 BEGIN
     IF level = 'AREA' THEN
-        IF (
-            (standardized_address).municipality_code IS NOT NULL
-            OR
-            (standardized_address).postcode IS NOT NULL
-            OR
-            (standardized_address).municipality_name IS NOT NULL
-            OR
-            (standardized_address).municipality_old_name IS NOT NULL
-        ) THEN
-            -- strict search
-            SELECT
-                ARRAY_AGG(area.co_adr)
-            INTO
-                matched_element.codes_address
-            FROM
-                fr.area_view area
-            WHERE
-                -- postcode (if defined)
-                (
-                    ((standardized_address).postcode IS NULL)
-                    OR
-                    (area.co_postal = (standardized_address).postcode)
-                )
-                -- municipality code (if defined)
-                AND (
-                    ((standardized_address).municipality_code IS NULL)
-                    OR
-                    (area.co_insee_commune = (standardized_address).municipality_code)
-                )
-                -- municipality name (if defined and not defined code)
-                AND (
-                    ((standardized_address).municipality_code IS NOT NULL)
-                    OR
-                    ((standardized_address).municipality_name IS NULL)
-                    OR
-                    (area.lb_acheminement = (standardized_address).municipality_name)
-                    OR
-                    (area.lb_ligne5 = (standardized_address).municipality_name)
-                )
-                -- municipality old name (if defined)
-                AND (
-                    ((standardized_address).municipality_old_name IS NULL)
-                    OR
-                    (area.lb_ligne5 = (standardized_address).municipality_old_name)
-                )
-            ;
-
-            matched_element := (
-                SELECT fr.match_element_status(
-                    search => 'STRICT'
-                    , matched_element => matched_element
-                )
-            );
-
-            -- near search (if not already found)
-            IF (
-                matched_element.status = (SELECT (CURRENT_SETTING('fr.address.match.not_found')))
-                AND (
-                    ((standardized_address).municipality_name IS NOT NULL)
-                    OR
-                    ((standardized_address).municipality_old_name IS NOT NULL)
-                )
-            ) THEN
-                /* NOTE
-                to match: 'ST MEDARD' ~= 'ST MEDARD EN JALLES'
-                 */
-                _similarity_limit := 0.5;
-                _similarity_limit := set_limit(_similarity_limit);
-
-                SELECT
-                    ARRAY_AGG(area.co_adr)
-                INTO
-                    matched_element.codes_address
-                FROM
-                    fr.area_view area
-                WHERE
-                    -- postcode (if defined)
+        FOREACH _search IN ARRAY _AREA_SEARCHS
+        LOOP
+            _todo := CASE _search
+                WHEN 'STRICT' THEN
                     (
-                        ((standardized_address).postcode IS NULL)
+                        (standardized_address).municipality_code IS NOT NULL
                         OR
-                        (area.co_postal = (standardized_address).postcode)
+                        (standardized_address).postcode IS NOT NULL
+                        OR
+                        (standardized_address).municipality_name IS NOT NULL
+                        OR
+                        (standardized_address).municipality_old_name IS NOT NULL
                     )
-                    -- municipality code (if defined)
-                    AND (
-                        ((standardized_address).municipality_code IS NULL)
+                /* NOTE
+                similarity w/ low value (default to 0.5) to match:
+                ('ST MEDARD', 'ST MEDARD EN JALLES')
+                 */
+                WHEN 'NEAR' THEN
+                    (
+                        ((standardized_address).municipality_name IS NOT NULL)
                         OR
-                        (area.co_insee_commune = (standardized_address).municipality_code)
+                        ((standardized_address).municipality_old_name IS NOT NULL)
                     )
-                    -- municipality name (if defined)
-                    AND (
-                        ((standardized_address).municipality_name IS NULL)
-                        OR
-                        (get_similarity((standardized_address).municipality_name, area.lb_acheminement) >= _similarity_limit)
-                        OR
-                        (get_similarity((standardized_address).municipality_name, area.lb_ligne5) >= _similarity_limit)
+                /* NOTE
+                postcode can be wrong! search for w/o it
+                 */
+                WHEN 'NEAR_WO_POSTCODE' THEN
+                    ((
+                            (standardized_address).municipality_code IS NOT NULL
+                            OR
+                            ((standardized_address).municipality_name IS NOT NULL)
+                            OR
+                            ((standardized_address).municipality_old_name IS NOT NULL)
+                        )
+                        AND
+                        ((standardized_address).postcode IS NOT NULL)
                     )
-                    -- municipality old name (if defined)
-                    AND (
-                        ((standardized_address).municipality_old_name IS NULL)
-                        OR
-                        (get_similarity((standardized_address).municipality_old_name, area.lb_ligne5) >= _similarity_limit)
-                    )
-                ;
+            END;
+
+            IF _todo THEN
+                _query := fr.query_match_area(
+                    search => _search
+                    , with_postcode => CASE _search WHEN 'NEAR_WO_POSTCODE' THEN FALSE ELSE TRUE END
+                );
+
+                IF _search != 'STRICT' AND _similarity_threshold = 0.0 THEN
+                    _similarity_threshold := fr.get_similarity_property(
+                        similarity => similarity
+                        , level => level
+                        , key => 'THRESHOLD'
+                    );
+                    SET pg_trgm.similarity_threshold = _similarity_threshold;
+                END IF;
+
+                EXECUTE _query
+                    INTO matched_element.codes_address
+                    USING
+                        (standardized_address).municipality_code
+                        , (standardized_address).municipality_name
+                        , (standardized_address).municipality_old_name
+                        , (standardized_address).postcode
+                        , _similarity_threshold
+                    ;
 
                 matched_element := (
                     SELECT fr.match_element_status(
-                        search => 'NEAR'
+                        search => _search
                         , matched_element => matched_element
                     )
                 );
-
-                -- search w/ (municipality code | municipality name | municipality old name) AND (postcode)
                 IF (
-                    (matched_element.status = (SELECT CURRENT_SETTING('fr.address.match.not_found')))
-                    AND (
-                            (
-                                (standardized_address).municipality_code IS NOT NULL
-                                OR
-                                ((standardized_address).municipality_name IS NOT NULL)
-                                OR
-                                ((standardized_address).municipality_old_name IS NOT NULL)
-                            )
-                            AND
-                            ((standardized_address).postcode IS NOT NULL)
-                    )
+                    matched_element.status != (SELECT (CURRENT_SETTING('fr.address.match.not_found')))
                 ) THEN
-                    /* NOTE
-                    postcode can be wrong! search for w/o it
-                    */
-                    SELECT
-                        ARRAY_AGG(area.co_adr)
-                    INTO
-                        matched_element.codes_address
-                    FROM
-                        fr.area_view area
-                    WHERE
-                        -- municipality code (if defined)
-                        (
-                            ((standardized_address).municipality_code IS NULL)
-                            OR
-                            (area.co_insee_commune = (standardized_address).municipality_code)
-                        )
-                        -- municipality name (if defined)
-                        AND (
-                            ((standardized_address).municipality_name IS NULL)
-                            OR
-                            (get_similarity((standardized_address).municipality_name, area.lb_acheminement) >= _similarity_limit)
-                            OR
-                            (get_similarity((standardized_address).municipality_name, area.lb_ligne5) >= _similarity_limit)
-                        )
-                        -- municipality old name (if defined)
-                        AND (
-                            ((standardized_address).municipality_old_name IS NULL)
-                            OR
-                            (get_similarity((standardized_address).municipality_old_name, area.lb_ligne5) >= _similarity_limit)
-                        )
-                    ;
-
-                    matched_element := (
-                        SELECT fr.match_element_status(
-                            search => 'NEAR'
-                            , matched_element => matched_element
-                        )
-                    );
+                    EXIT;
                 END IF;
             END IF;
-        END IF;
+        END LOOP;
     ELSIF level = 'STREET' THEN
         -- area found
         IF LEFT(matched_parent.status, 2) = 'OK' THEN
@@ -322,7 +259,7 @@ BEGIN
             WHERE
                 lb_voie = (standardized_address).street
                 AND
-                co_adr_za = ANY(matched_parent.codes_address)
+                co_adr_za = ANY((matched_parent).codes_address)
             --LIMIT 1
             ;
             matched_element := (
@@ -333,11 +270,22 @@ BEGIN
             );
 
             -- not found: try w/ near approach
-            IF matched_element.status = (SELECT CURRENT_SETTING('fr.address.match.not_found')) THEN
-                /* IDEA
-                step to do when normalization ?
-                 */
-                _words := STRING_TO_ARRAY((standardized_address).street, ' ');
+            IF (
+                matched_element.status = (SELECT CURRENT_SETTING('fr.address.match.not_found'))
+            ) THEN
+                _similarity_threshold := fr.get_similarity_property(
+                    similarity => similarity
+                    , level => level
+                    , key => 'THRESHOLD'
+                );
+                -- FIXME don't accept variable!
+                --SET pg_trgm.similarity_threshold = _similarity_threshold;
+                _similarity_threshold := set_limit(_similarity_threshold);
+                _street_ratio := fr.get_similarity_property(
+                    similarity => similarity
+                    , level => level
+                    , key => 'RATIO'
+                );
 
                 /* NOTE
                 retrieve word w/ better similarity and rarity
@@ -348,13 +296,20 @@ BEGIN
                     _better_word
                 FROM
                     fr.get_better_word_with_similarity_criteria(
-                        words => _words
-                        , municipality_code => (standardized_address).municipality_code
+                        words => (standardized_address).words
+                        , level => 'ZA'
+                        , codes => (matched_parent).codes_address
                         , raise_notice => raise_notice
                     )
                 ;
                 /* NOTE
                 https://stackoverflow.com/questions/40078047/sql-weighted-average
+                 */
+                /* NOTE
+                _STREET_LOOP_LIMIT
+                same street can be delivered by many areas (postcode, district, ...)
+                to the maximum it exists a street w/ 3 areas!
+                this loop aims to find gap between two successive streets, so 3 +1
                  */
                 IF _better_word IS NOT NULL THEN
                     _previous_street := ROW(NULL);
@@ -384,7 +339,7 @@ BEGIN
                                 , co_voie
                                 , lb_voie
                                 , fr.get_similarity_street(
-                                    words_a => _words
+                                    words_a => (standardized_address).words
                                     , words_b => su.words
                                     , descriptors_a => (standardized_address).descriptors
                                     , descriptors_b => su.descriptors
@@ -400,10 +355,12 @@ BEGIN
                         ORDER BY
                             similarity DESC
                         LIMIT
-                            3
+                            _STREET_LOOP_LIMIT
                     )
                     LOOP
-                        --RAISE NOTICE 'test(%)', _street.co_adr;
+                        IF raise_notice THEN
+                            RAISE NOTICE 'DATA(%)', _street;
+                        END IF;
 
                         IF (_previous_street IS NULL) THEN
                             IF raise_notice THEN
@@ -412,13 +369,14 @@ BEGIN
                                     , (standardized_address).municipality_code
                                 ;
                             END IF;
-                            IF (_street.similarity < similarity_threshold) THEN
+                            IF (_street.similarity < _similarity_threshold) THEN
                                 IF raise_notice THEN
                                     RAISE NOTICE ' premier choix trop faible VOIE(%) [sim=%]'
                                         , _street.lb_voie
                                         , ROUND(_street.similarity, 5)
                                     ;
                                 END IF;
+                                matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.not_near'));
                                 EXIT;
                             ELSE
                                 IF raise_notice THEN
@@ -430,11 +388,17 @@ BEGIN
                                 matched_element.codes_address := ARRAY[_street.co_adr]::VARCHAR[];
                                 matched_element.similarity := _street.similarity;
                                 IF (_street.co_adr_za != matched_parent.codes_address[1]) THEN
-                                    RAISE NOTICE '  mais sur ZA différente (%/%)'
+                                    RAISE NOTICE ' mais sur ZA différente (%/%)'
                                         , _street.co_adr_za
-                                        , matched_parent.codes_address[1]
+                                        , matched_parent.codes_address
                                     ;
                                     matched_parent.codes_address := ARRAY[_street.co_adr_za]::VARCHAR[];
+                                    matched_parent := (
+                                        SELECT fr.match_element_status(
+                                            search => 'NEAR'
+                                            , matched_element => matched_parent
+                                        )
+                                    );
                                 END IF;
                             END IF;
                         ELSE
@@ -442,8 +406,8 @@ BEGIN
                             OK if second|third choice far enough (15%)
                             minimum gap between 2 results ascending when similarity decrease
                              */
-                            _similarity_ratio := (_previous_street.similarity / _street.similarity);
-                            IF NOT (_similarity_ratio > similarity_ratio) THEN
+                            _street_ratio := (_previous_street.similarity / _street.similarity);
+                            IF NOT (_street_ratio > _similarity_ratio) THEN
                                 -- same street, but w/ {postcode, district, ...} difference
                                 IF _previous_street.co_voie = _street.co_voie THEN
                                     IF raise_notice THEN
@@ -452,12 +416,13 @@ BEGIN
                                             , _street.co_adr
                                         ;
                                     END IF;
+                                    matched_element.codes_address := ARRAY_APPEND(matched_element.codes_address, _street.co_adr);
                                 ELSE
                                     IF raise_notice THEN
                                         RAISE NOTICE ' deuxième choix trop proche VOIE(%) [sim=%,ratio=%]'
                                             , _street.lb_voie
                                             , ROUND(_street.similarity, 5)
-                                            , ROUND(_similarity_ratio, 2)
+                                            , ROUND(_street_ratio, 2)
                                         ;
                                     END IF;
                                     matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.too_similar'));
@@ -468,7 +433,7 @@ BEGIN
                                     RAISE NOTICE ' deuxième choix suffisamment éloigné VOIE(%) [sim=%,ratio=%]'
                                         , _street.lb_voie
                                         , ROUND(_street.similarity, 5)
-                                        , ROUND(_similarity_ratio, 2)
+                                        , ROUND(_street_ratio, 2)
                                     ;
                                 END IF;
                                 EXIT;

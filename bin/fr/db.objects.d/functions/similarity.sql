@@ -2,6 +2,47 @@
  * add FR-ADDRESS facilities (similarity)
  */
 
+-- get value of similarity parameters (threshold, ratio)
+SELECT drop_all_functions_if_exists('fr', 'get_similarity_property');
+CREATE OR REPLACE FUNCTION fr.get_similarity_property(
+    similarity IN HSTORE
+    , level IN VARCHAR
+    , key IN VARCHAR
+    , value OUT REAL
+)
+AS
+$func$
+DECLARE
+    _property VARCHAR;
+    _value TEXT;
+BEGIN
+    IF similarity IS NULL THEN
+        /* NOTE
+        get from global variables (defined in constant.sql)
+         */
+        _property := CONCAT_WS('.'
+            , 'fr'
+            , 'similarity'
+            , LOWER(level)
+            , LOWER(key)
+        );
+        _value := (SELECT (CURRENT_SETTING(_property)));
+        IF LENGTH(TRIM(_value)) > 0 THEN
+            value := (TRIM(_value))::REAL;
+        END IF;
+    ELSE
+        /* NOTE
+        HSTORE property as LEVEL_KEY => VALUE
+         */
+        value := (similarity -> CONCAT_WS('_'
+            , UPPER(level)
+            , UPPER(key)
+        ))::REAL;
+    END IF;
+END
+$func$ LANGUAGE plpgsql;
+
+-- weighted factor to differentiate word (as descriptor)
 SELECT drop_all_functions_if_exists('fr', 'get_descriptor_factor');
 CREATE OR REPLACE FUNCTION fr.get_descriptor_factor(
     descriptor IN VARCHAR
@@ -20,11 +61,12 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
--- order words according to (similarity, rarity and descriptor)
+-- find better word according to (similarity, rarity and descriptor)
 SELECT drop_all_functions_if_exists('fr', 'get_better_word_with_similarity_criteria');
 CREATE OR REPLACE FUNCTION fr.get_better_word_with_similarity_criteria(
     words IN TEXT[]
-    , municipality_code IN VARCHAR
+    , level IN VARCHAR
+    , codes IN VARCHAR[]
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , better_word OUT TEXT
 )
@@ -32,37 +74,34 @@ AS
 $func$
 DECLARE
     _criteria RECORD;
-    _nof INT := (SELECT (current_setting('fr.address.n_uniq_streets', TRUE))::INT);
+    _nof INT;
 BEGIN
-    IF municipality_code IS NULL THEN
-        CALL public.log_info('manque paramètre (code INSEE)');
+    IF level IS NULL OR codes IS NULL THEN
+        CALL public.log_info('manque paramètres (niveau, code)');
         RETURN;
     END IF;
 
-    -- TODO take rank_0 from municipality
-
-    IF _nof IS NULL THEN
-        CALL public.log_info('manque paramètre global (fr.address.n_uniq_streets)');
-        _nof := (
-            SELECT MAX(rank_0) FROM fr.laposte_address_street_word_descriptor
-        );
-    END IF;
+    _nof := (
+        SELECT MAX(rank)
+        FROM fr.laposte_address_street_word_level
+        WHERE nivgeo = level AND codgeo = ANY(codes)
+    );
 
     WITH
     similarity_word(i, word, similarity, rank, descriptor_factor) AS (
         SELECT
             w.i
-            , mw.word
-            , get_similarity(mw.word, w.word)
-            , sw.rank_0
-            , fr.get_descriptor_factor(sw.as_default)
+            , wl.word
+            , get_similarity(wl.word, w.word)
+            , wl.rank
+            , fr.get_descriptor_factor(wd.as_default)
         FROM
-            fr.laposte_address_municipality_word mw
+            fr.laposte_address_street_word_level wl
                 -- remember: w/o article
-                JOIN fr.laposte_address_street_word_descriptor sw ON mw.word = sw.word
+                JOIN fr.laposte_address_street_word_descriptor wd ON wl.word = wd.word
                 JOIN LATERAL UNNEST(words) WITH ORDINALITY AS w(word, i) ON TRUE
         WHERE
-            mw.municipality_code = get_better_word_with_similarity_criteria.municipality_code
+            wl.nivgeo = level AND wl.codgeo = ANY(codes)
     )
     SELECT
         word
@@ -79,6 +118,7 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+-- match street name according to sum similarity of its words
 SELECT drop_all_functions_if_exists('fr', 'get_similarity_street');
 CREATE OR REPLACE FUNCTION fr.get_similarity_street(
     words_a IN TEXT[]
@@ -170,8 +210,8 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+/* FROM BCAA
 SELECT drop_all_functions_if_exists('fr', 'get_similarity_street_with_rarity');
-/*
 CREATE OR REPLACE FUNCTION fr.get_similarity_street_with_rarity(
     name IN VARCHAR
     , code_address_compare_to IN CHAR(10)
