@@ -17,7 +17,7 @@ CREATE OR REPLACE FUNCTION fr.get_keyword_of_street(
     name IN VARCHAR
     , words IN TEXT[] DEFAULT NULL
     , at_ IN INT DEFAULT 1
-    , groups VARCHAR DEFAULT 'ALL'
+    , groups IN VARCHAR DEFAULT 'ALL'
     , with_abbreviation IN BOOLEAN DEFAULT TRUE
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , kw_group OUT VARCHAR

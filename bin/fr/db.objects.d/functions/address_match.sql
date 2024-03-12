@@ -158,8 +158,8 @@ CREATE OR REPLACE FUNCTION fr.match_element(
 AS
 $func$
 DECLARE
-    _AREA_SEARCHS VARCHAR[] := ARRAY['STRICT', 'NEAR', 'NEAR_WO_POSTCODE'];
-    _STREET_LOOP_LIMIT INT := 4;
+    _SEARCHS VARCHAR[] := ARRAY['STRICT', 'NEAR'];
+    _LOOP_LIMIT INT := 4;
     _similarity_threshold REAL := 0.0;
     _similarity_ratio REAL;
     _street_ratio REAL;
@@ -170,9 +170,13 @@ DECLARE
     _better_word TEXT;
     _street RECORD;
     _previous_street RECORD;
+    _with_near BOOLEAN := TRUE;
+    _abbr VARCHAR;
+    _ext VARCHAR;
 BEGIN
     IF level = 'AREA' THEN
-        FOREACH _search IN ARRAY _AREA_SEARCHS
+        _SEARCHS := ARRAY_APPEND(_SEARCHS, 'NEAR_WO_POSTCODE');
+        FOREACH _search IN ARRAY _SEARCHS
         LOOP
             _todo := CASE _search
                 WHEN 'STRICT' THEN
@@ -250,7 +254,7 @@ BEGIN
             END IF;
         END LOOP;
     ELSIF level = 'STREET' THEN
-        -- area found
+        -- parent found (area)
         IF LEFT(matched_parent.status, 2) = 'OK' THEN
             -- strict search
             SELECT ARRAY_AGG(co_adr)
@@ -260,7 +264,6 @@ BEGIN
                 lb_voie = (standardized_address).street
                 AND
                 co_adr_za = ANY((matched_parent).codes_address)
-            --LIMIT 1
             ;
             matched_element := (
                 SELECT fr.match_element_status(
@@ -306,7 +309,7 @@ BEGIN
                 https://stackoverflow.com/questions/40078047/sql-weighted-average
                  */
                 /* NOTE
-                _STREET_LOOP_LIMIT
+                _LOOP_LIMIT
                 same street can be delivered by many areas (postcode, district, ...)
                 to the maximum it exists a street w/ 3 areas!
                 this loop aims to find gap between two successive streets, so 3 +1
@@ -355,7 +358,7 @@ BEGIN
                         ORDER BY
                             similarity DESC
                         LIMIT
-                            _STREET_LOOP_LIMIT
+                            _LOOP_LIMIT
                     )
                     LOOP
                         IF raise_notice THEN
@@ -455,7 +458,62 @@ BEGIN
             END IF;
         END IF;
     ELSIF level = 'HOUSENUMBER' THEN
+        -- parent found (street)
+        IF LEFT(matched_parent.status, 2) = 'OK' THEN
+            IF (standardized_address).extension IS NOT NULL THEN
+                _abbr := (
+                    SELECT fr.normalize_abbreviate_keyword(
+                        name => (standardized_address).extension
+                        , groups => 'EXT'
+                    )
+                );
+            END IF;
+            _with_near := (((standardized_address).extension IS NULL) OR (_abbr IS NULL));
+            IF NOT _with_near THEN
+                _SEARCHS := ARRAY_REMOVE(_SEARCHS, 'NEAR');
+            END IF;
+
+            FOREACH _search IN ARRAY _SEARCHS
+            LOOP
+                _ext := CASE _search
+                    WHEN 'STRICT' THEN (standardized_address).extension
+                    ELSE _abbr
+                    END
+                ;
+
+                SELECT ARRAY_AGG(co_adr)
+                INTO matched_element.codes_address
+                FROM fr.address_view
+                WHERE
+                    co_adr_parent = ANY((matched_parent).codes_address)
+                    AND
+                    co_adr_l3 IS NULL
+                    AND
+                    no_numero = (standardized_address).housenumber
+                    AND (
+                        (_ext IS NULL)
+                        OR
+                        (lb_extension_numero = _ext)
+                    )
+                ;
+                matched_element := (
+                    SELECT fr.match_element_status(
+                        search => _search
+                        , matched_element => matched_element
+                    )
+                );
+
+                IF (
+                    matched_element.status != (SELECT CURRENT_SETTING('fr.address.match.not_found'))
+                ) THEN
+                    EXIT;
+                END IF;
+            END LOOP;
+        END IF;
     ELSIF level = 'COMPLEMENT' THEN
+        -- parent (street or housenumber) found
+        IF LEFT(matched_parent.status, 2) = 'OK' THEN
+        END IF;
     END IF;
 END
 $func$ LANGUAGE plpgsql;

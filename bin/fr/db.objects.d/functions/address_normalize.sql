@@ -251,61 +251,35 @@ $func$ LANGUAGE plpgsql;
 SELECT drop_all_functions_if_exists('fr', 'normalize_abbreviate_keyword');
 CREATE OR REPLACE FUNCTION fr.normalize_abbreviate_keyword(
     name IN VARCHAR
-    , iter IN INTEGER DEFAULT 1
-    , words IN TEXT[] DEFAULT NULL
+    , groups IN VARCHAR DEFAULT 'ALL'
     , name_abbreviated OUT VARCHAR
-    , one_more_time OUT BOOLEAN
 )
 AS
 $func$
 DECLARE
-    _name_abbreviated VARCHAR;
-    _one_more_time BOOLEAN := FALSE;
-    _words TEXT[];
-    _nwords INT;
-    _i INT;
+    _groups VARCHAR[];
 BEGIN
+    IF groups = 'ALL' THEN
+        _groups := '{TITLE,TYPE,EXT,NAME}'::VARCHAR[];
+    ELSE
+        _groups := STRING_TO_ARRAY(groups, ',');
+    END IF;
+
     SELECT
         k.name_abbreviated
     INTO
-        _name_abbreviated
+        normalize_abbreviate_keyword.name_abbreviated
     FROM
         fr.laposte_address_street_keyword k
     WHERE
         k.name = normalize_abbreviate_keyword.name
         AND
         k.name_abbreviated IS NOT NULL
+        -- among group(s)
+        AND (
+            ARRAY_POSITION(_groups, k.group) > 0
+        )
     ;
-    IF NOT FOUND THEN
-        IF words IS NULL THEN
-            RAISE 'renseigner les mots du mot-clé (%) via option words', name;
-        END IF;
-        _nwords := count_words(name);
-        IF iter <= _nwords THEN
-            _one_more_time := (iter < _nwords);
-            FOR _i IN 1 .. _nwords
-            LOOP
-                IF _i <= iter THEN
-                    SELECT
-                        k.name_abbreviated
-                    INTO
-                        _name_abbreviated
-                    FROM
-                        fr.laposte_address_street_keyword k
-                    WHERE
-                        k.name = words[_i]
-                    ;
-                    _words := ARRAY_APPEND(_words, COALESCE(_name_abbreviated, words[_i]));
-                ELSE
-                    _words := ARRAY_APPEND(_words, words[_i]);
-                END IF;
-            END LOOP;
-            _name_abbreviated := ARRAY_TO_STRING(_words, ' ');
-        --ELSE
-        END IF;
-    END IF;
-    one_more_time := _one_more_time;
-    name_abbreviated := _name_abbreviated;
 END
 $func$ LANGUAGE plpgsql;
 
@@ -987,10 +961,11 @@ BEGIN
                     EXECUTE CONCAT('SELECT NULLIF(TRIM(', _column_map[2], '::TEXT), '''')::INTEGER')
                         INTO _standardized_address.housenumber
                         USING address;
-                    --SELECT '33' ~ '^[0-9]*$'
-                    --A ETUDIER : ne permet plus de forcer la recherche d'un numéro si activé
-                    --_standardized_address.housenumber := NULLIF(_standardized_address.housenumber, 0);
-                    IF _standardized_address.housenumber::VARCHAR !~ '^[0-9]*$' THEN
+                    IF (
+                        (_standardized_address.housenumber::VARCHAR !~ '^[0-9]+$')
+                        OR
+                        (_standardized_address.housenumber = 0)
+                    ) THEN
                         RAISE NOTICE 'Numéro de voie ignoré car invalide : %', _standardized_address.housenumber;
                         _standardized_address.housenumber := NULL;
                     END IF;

@@ -42,7 +42,7 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
--- weighted factor to differentiate word (as descriptor)
+-- weighted factor to differentiate word (with its descriptor)
 SELECT drop_all_functions_if_exists('fr', 'get_descriptor_factor');
 CREATE OR REPLACE FUNCTION fr.get_descriptor_factor(
     descriptor IN VARCHAR
