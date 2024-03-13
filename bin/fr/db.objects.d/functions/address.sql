@@ -504,9 +504,9 @@ BEGIN
                 --WHEN _words[_i] = ANY('{D, L}') THEN 'A'
                 WHEN _words[_i] = ANY('{C, M}') THEN 'N'
                 -- exceptions: DI, LI, MI, CD, CL, ...
-                WHEN fr.get_default_of_word(_words[_i]) != 'C' THEN
+                WHEN fr.get_default_of_street_word(_words[_i]) != 'C' THEN
                     CASE
-                    WHEN _i < _words_len THEN fr.get_default_of_word(_words[_i])
+                    WHEN _i < _words_len THEN fr.get_default_of_street_word(_words[_i])
                     ELSE 'N'
                     END
                 ELSE 'C'

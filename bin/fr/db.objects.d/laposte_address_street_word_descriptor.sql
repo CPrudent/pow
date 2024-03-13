@@ -210,8 +210,9 @@ ORDER BY
  */
 
 -- get default of word
-SELECT drop_all_functions_if_exists('fr', 'get_default_of_word');
-CREATE OR REPLACE FUNCTION fr.get_default_of_word(
+SELECT drop_all_functions_if_exists('fr', 'fr.get_default_of_word');
+SELECT drop_all_functions_if_exists('fr', 'fr.get_default_of_street_word');
+CREATE OR REPLACE FUNCTION fr.get_default_of_street_word(
     word IN VARCHAR
     , as_default OUT VARCHAR
 )
@@ -220,10 +221,10 @@ $func$
 BEGIN
     SELECT w.as_default
     INTO
-        get_default_of_word.as_default
+        get_default_of_street_word.as_default
     FROM fr.laposte_address_street_word_descriptor w
     WHERE
-        w.word = get_default_of_word.word
+        w.word = get_default_of_street_word.word
     ;
 END
 $func$ LANGUAGE plpgsql;
