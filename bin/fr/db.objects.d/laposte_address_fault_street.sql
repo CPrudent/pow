@@ -414,7 +414,7 @@ BEGIN
                             MIN(wa.word)
                             , MIN(k.name)
                         FROM
-                            fr.laposte_address_street_keyword k
+                            fr.laposte_address_keyword k
                                 JOIN word_abbreviation wa ON k.name_abbreviated = wa.word
                         WHERE
                             k.group = ANY(''{TITLE,TYPE}'')

@@ -59,7 +59,7 @@ BEGIN
             INTO
                 _re
             FROM
-                fr.laposte_address_street_keyword
+                fr.laposte_address_keyword
             WHERE
                 "group" = 'EXT'
                 ;
@@ -182,7 +182,7 @@ BEGIN
 
     SELECT EXISTS(
         SELECT 1
-        FROM fr.laposte_address_street_keyword k
+        FROM fr.laposte_address_keyword k
         WHERE
             ARRAY_POSITION(_groups, k.group) > 0
             AND
@@ -270,7 +270,7 @@ BEGIN
     INTO
         normalize_abbreviate_keyword.name_abbreviated
     FROM
-        fr.laposte_address_street_keyword k
+        fr.laposte_address_keyword k
     WHERE
         k.name = normalize_abbreviate_keyword.name
         AND

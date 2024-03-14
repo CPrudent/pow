@@ -1,9 +1,16 @@
 /***
- * FR: add LAPOSTE/RAN street keywords
+ * FR: add LAPOSTE/RAN keywords management (street, complement)
  */
 
+DO $$
+BEGIN
+    IF table_exists('fr', 'laposte_address_street_keyword') THEN
+        ALTER TABLE fr.laposte_address_street_keyword RENAME TO laposte_address_keyword;
+    END IF;
+END $$;
+
 -- to store keywords
-CREATE TABLE IF NOT EXISTS fr.laposte_address_street_keyword (
+CREATE TABLE IF NOT EXISTS fr.laposte_address_keyword (
     "group" VARCHAR NOT NULL
     , name VARCHAR NOT NULL
     , name_abbreviated VARCHAR
@@ -13,7 +20,8 @@ CREATE TABLE IF NOT EXISTS fr.laposte_address_street_keyword (
 ;
 
 SELECT drop_all_functions_if_exists('fr', 'get_keyword_of_street');
-CREATE OR REPLACE FUNCTION fr.get_keyword_of_street(
+SELECT drop_all_functions_if_exists('fr', 'get_keyword_from_name');
+CREATE OR REPLACE FUNCTION fr.get_keyword_from_name(
     name IN VARCHAR
     , words IN TEXT[] DEFAULT NULL
     , at_ IN INT DEFAULT 1
@@ -30,6 +38,7 @@ AS
 $func$
 DECLARE
     _groups VARCHAR[];
+    _with_complement BOOLEAN;
     _kw RECORD;
     _is_abbreviated BOOLEAN := FALSE;
     _exists BOOLEAN := TRUE;
@@ -42,11 +51,14 @@ BEGIN
         words := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
     END IF;
 
-    IF groups = 'ALL' THEN
-        _groups := '{TITLE,TYPE,EXT,NAME}'::VARCHAR[];
-    ELSE
-        _groups := STRING_TO_ARRAY(groups, ',');
-    END IF;
+    _with_complement := (groups ~ '(ALL|COMPLEMENT|GROUP)');
+    _groups := CASE groups
+        WHEN 'ALL' THEN '{GROUP1,GROUP2,GROUP3,TITLE,TYPE,EXT,NAME}'::VARCHAR[]
+        WHEN 'COMPLEMENT' THEN '{GROUP1,GROUP2,GROUP3,TITLE,TYPE,EXT,NAME}'::VARCHAR[]
+        WHEN 'STREET' THEN '{TITLE,TYPE,EXT,NAME}'::VARCHAR[]
+        ELSE STRING_TO_ARRAY(groups, ',')
+        END
+    ;
     IF raise_notice THEN
         RAISE NOTICE ' name=% (w=%, g=%)', name, words, _groups;
     END IF;
@@ -61,20 +73,22 @@ BEGIN
             WHERE word = words[at_] AND as_default ~ 'N|T'
         )
     ) THEN
+        -- novelty w/ complement: ZONE ARTISANALE abbreviated to ZONE (as ZONE)!
         IF (SELECT COUNT(*)
-            FROM fr.laposte_address_street_keyword k
+            FROM fr.laposte_address_keyword k
             WHERE k.name_abbreviated = words[at_]
             AND LENGTH(k.name_abbreviated) > 1
-
+            AND k.name_abbreviated != k.first_word
             AND NOT fr.is_normalized_article(k.name_abbreviated)
         ) > 1 THEN
             _is_abbreviated := TRUE;
         ELSE
             SELECT *
             INTO _kw
-            FROM fr.laposte_address_street_keyword k
+            FROM fr.laposte_address_keyword k
             WHERE k.name_abbreviated = words[at_]
             AND LENGTH(k.name_abbreviated) > 1
+            AND k.name_abbreviated != k.first_word
             AND ARRAY_POSITION(_groups, k.group) > 0
             ORDER BY k.occurs DESC
             LIMIT 1;
@@ -94,7 +108,7 @@ BEGIN
 
     IF NOT _is_abbreviated THEN
         SELECT EXISTS(
-            SELECT 1 FROM fr.laposte_address_street_keyword k
+            SELECT 1 FROM fr.laposte_address_keyword k
             WHERE COALESCE(k.first_word, k.name) = words[at_]
             AND ARRAY_POSITION(_groups, k.group) > 0
         ) INTO _exists;
@@ -119,7 +133,7 @@ BEGIN
     IF _exists THEN
         IF raise_notice THEN RAISE NOTICE ' recherche "%"', words[at_]; END IF;
         FOR _kw IN (
-            SELECT * FROM fr.laposte_address_street_keyword k
+            SELECT * FROM fr.laposte_address_keyword k
             WHERE
                 -- matching word
                 (
@@ -147,6 +161,10 @@ BEGIN
             ORDER BY
                 count_words(k.name) DESC
                 , CASE
+                    WHEN _with_complement THEN
+                        CASE WHEN k.group ~ '^GROUP' THEN 3
+                        ELSE 2
+                        END
                     WHEN at_ = 1 THEN
                         CASE WHEN k.group = 'TYPE' THEN 2
                         ELSE 1
@@ -192,7 +210,11 @@ BEGIN
         counter example: (COUR, abbr COUR) return TRUE!
         because many kw w/ COUR as abbr
          */
+        IF raise_notice THEN RAISE NOTICE ' is_abbr=%', _is_abbreviated; END IF;
         kw_is_abbreviated := (
+            -- new usecase w/ GROUP3, as ZONE ARTISANALE (abbreviated to ZONE)
+            _is_abbreviated
+            AND
             (words[at_] IS NOT DISTINCT FROM _kw.name_abbreviated)
             AND
             (_kw.name != _kw.name_abbreviated)

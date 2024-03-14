@@ -216,7 +216,7 @@ BEGIN
             AND
             EXISTS(
                 SELECT 1
-                FROM fr.laposte_address_street_keyword k
+                FROM fr.laposte_address_keyword k
                 WHERE k.name_abbreviated = w.word
             )
     )

@@ -269,7 +269,7 @@ BEGIN
         , get_type_of_street.kw_abbreviated
         , get_type_of_street.kw_is_abbreviated
         , get_type_of_street.kw_nwords
-    FROM fr.get_keyword_of_street(
+    FROM fr.get_keyword_from_name(
         name => name
         , words => words
         , groups => 'TYPE'
@@ -520,7 +520,7 @@ BEGIN
                 -- keyword (title, type, extension or name)
                 SELECT kw_group, kw, kw_abbreviated, kw_is_abbreviated, kw_nwords
                 INTO _kw_group, _kw, _kw_abbreviated, _kw_is_abbreviated, _kw_nwords
-                FROM fr.get_keyword_of_street(
+                FROM fr.get_keyword_from_name(
                     name => name
                     , at_ => _i
                     , words => _words
@@ -620,7 +620,7 @@ BEGIN
                 _words_d := 'E';
                 SELECT kw_abbreviated
                 INTO _abbr_e
-                FROM fr.get_keyword_of_street(
+                FROM fr.get_keyword_from_name(
                     name => name
                     , at_ => _i
                     , words => _words
@@ -1206,7 +1206,7 @@ BEGIN
                 IF count_words(_kw) != LENGTH(_descriptor_type) THEN
                     SELECT k.name
                     INTO _kw_more
-                    FROM fr.laposte_address_street_keyword k
+                    FROM fr.laposte_address_keyword k
                     WHERE k.group = 'TYPE'
                     AND k.name_abbreviated = _words[_i]
                     AND count_words(k.name) = LENGTH(_descriptor_type)

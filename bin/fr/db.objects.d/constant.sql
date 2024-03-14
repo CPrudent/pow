@@ -44,13 +44,13 @@ BEGIN
     CALL public.log_info('Gestion des types dans le nom des voies');
 
     CALL public.log_info(' Purge');
-    DELETE FROM fr.laposte_address_street_keyword WHERE "group" = 'TYPE';
+    DELETE FROM fr.laposte_address_keyword WHERE "group" = 'TYPE';
 
     CALL public.log_info(' Initialisation');
     /* NOTE
     lb_type_abrege must be AN32 abbreviation (not NN38) !
      */
-    INSERT INTO fr.laposte_address_street_keyword("group", name, name_abbreviated)
+    INSERT INTO fr.laposte_address_keyword("group", name, name_abbreviated)
         WITH
         type_with_abbr AS (
             SELECT
@@ -160,7 +160,7 @@ BEGIN
                 , ('TRAVERSE', 'TRAV')
         ) AS x(name, name_abbreviated)
     )
-    UPDATE fr.laposte_address_street_keyword st SET
+    UPDATE fr.laposte_address_keyword st SET
         name_abbreviated = ca.name_abbreviated
         FROM
             correction_abbr ca
@@ -180,12 +180,12 @@ BEGIN
             , k2.name type_plural
             , k2.name_abbreviated type_abbr_plural
         FROM
-            fr.laposte_address_street_keyword k1
-                JOIN fr.laposte_address_street_keyword k2
+            fr.laposte_address_keyword k1
+                JOIN fr.laposte_address_keyword k2
                 ON k2.name = CONCAT(k1.name, 'S') AND k2.group = k1.group
         WHERE k1.group = 'TYPE'
     )
-    UPDATE fr.laposte_address_street_keyword k SET
+    UPDATE fr.laposte_address_keyword k SET
         name_abbreviated = sp.type_abbr_singular
         FROM type_singular_plural sp
         WHERE k.name = sp.type_plural
@@ -203,7 +203,7 @@ BEGIN
                 WHEN POSITION(' ' IN name) = 0 THEN NULL
                 ELSE SUBSTR(name, 1, POSITION(' ' IN name) -1)
                 END first_word
-        FROM fr.laposte_address_street_keyword
+        FROM fr.laposte_address_keyword
         WHERE "group" = 'TYPE'
     )
     , occurs_type AS (
@@ -214,7 +214,7 @@ BEGIN
         WHERE lb_type IS NOT NULL
         GROUP BY lb_type
     )
-    UPDATE fr.laposte_address_street_keyword st SET
+    UPDATE fr.laposte_address_keyword st SET
         first_word = fw.first_word
         , occurs = ot.occurs
         FROM
@@ -290,10 +290,10 @@ BEGIN
     CALL public.log_info('Gestion des noms (avec abbréviation) dans le nom des voies');
 
     CALL public.log_info(' Purge');
-    DELETE FROM fr.laposte_address_street_keyword WHERE "group" = 'NAME';
+    DELETE FROM fr.laposte_address_keyword WHERE "group" = 'NAME';
 
     CALL public.log_info(' Initialisation');
-    INSERT INTO fr.laposte_address_street_keyword("group", name, name_abbreviated)
+    INSERT INTO fr.laposte_address_keyword("group", name, name_abbreviated)
         SELECT *
         FROM (
             VALUES
@@ -312,7 +312,7 @@ BEGIN
             , COUNT(*) occurs
         FROM
             fr.laposte_address_street s
-            , fr.laposte_address_street_keyword k
+            , fr.laposte_address_keyword k
         WHERE
             s.fl_active
             AND
@@ -328,7 +328,7 @@ BEGIN
             k.name
     )
     --SELECT * FROM name_occurs ORDER BY 1
-    UPDATE fr.laposte_address_street_keyword k SET
+    UPDATE fr.laposte_address_keyword k SET
         occurs = o.occurs
         FROM name_occurs o
         WHERE
@@ -357,10 +357,10 @@ BEGIN
     CALL public.log_info('Gestion des extensions dans le nom des numéros');
 
     CALL public.log_info(' Purge');
-    DELETE FROM fr.laposte_address_street_keyword WHERE "group" = 'EXT';
+    DELETE FROM fr.laposte_address_keyword WHERE "group" = 'EXT';
 
     CALL public.log_info(' Initialisation');
-    INSERT INTO fr.laposte_address_street_keyword("group", name, name_abbreviated, first_word)
+    INSERT INTO fr.laposte_address_keyword("group", name, name_abbreviated, first_word)
         SELECT DISTINCT 'EXT', lb_ext, lb_abr_nn, NULL
         FROM fr.laposte_address_housenumber
         WHERE fl_active AND lb_ext IS NOT NULL
@@ -374,7 +374,7 @@ BEGIN
         WHERE fl_active AND lb_ext IS NOT NULL
         GROUP BY lb_ext
     )
-    UPDATE fr.laposte_address_street_keyword k SET
+    UPDATE fr.laposte_address_keyword k SET
         occurs = o.n
         FROM ext_occurs o
         WHERE
@@ -409,10 +409,10 @@ BEGIN
     CALL public.log_info('Gestion des titres dans le nom des voies');
 
     CALL public.log_info(' Purge');
-    DELETE FROM fr.laposte_address_street_keyword WHERE "group" = 'TITLE';
+    DELETE FROM fr.laposte_address_keyword WHERE "group" = 'TITLE';
 
     CALL public.log_info(' Initialisation');
-    INSERT INTO fr.laposte_address_street_keyword("group", name, name_abbreviated)
+    INSERT INTO fr.laposte_address_keyword("group", name, name_abbreviated)
         SELECT *
         FROM (
             VALUES
@@ -650,7 +650,7 @@ BEGIN
     CALL public.log_info(CONCAT(' Titres: ', _nrows));
 
     -- update first word
-    UPDATE fr.laposte_address_street_keyword kt SET
+    UPDATE fr.laposte_address_keyword kt SET
         first_word = (REGEXP_MATCH(kt.name, '^\S+'))[1]
         WHERE
             kt.group = 'TITLE'
@@ -671,7 +671,7 @@ BEGIN
             , COUNT(*) occurs
         FROM
             fr.laposte_address_street s
-            , fr.laposte_address_street_keyword k
+            , fr.laposte_address_keyword k
         WHERE
             s.fl_active
             AND
@@ -687,7 +687,7 @@ BEGIN
             k.name
     )
     --SELECT * FROM title_occurs ORDER BY 1
-    UPDATE fr.laposte_address_street_keyword kt SET
+    UPDATE fr.laposte_address_keyword kt SET
         occurs = sto.occurs
         FROM title_occurs sto
         WHERE
@@ -699,6 +699,112 @@ BEGIN
     CALL public.log_info(CONCAT(' Mises à jour (occurence): ', _nrows));
 END;
 $proc$ LANGUAGE plpgsql;
+
+-- build LAPOSTE complement : list of types
+SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_complement_type');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_address_complement_type()
+AS
+$proc$
+DECLARE
+    _nrows INT;
+BEGIN
+    IF NOT table_exists('fr', 'laposte_address_complement') THEN
+        RAISE 'Données LAPOSTE non présentes';
+    END IF;
+
+    CALL public.log_info('Gestion des types dans le nom des compléments (L3)');
+
+    CALL public.log_info(' Purge');
+    DELETE FROM fr.laposte_address_keyword WHERE "group" ~ 'GROUP[0-9]';
+
+    CALL public.log_info(' Initialisation');
+    INSERT INTO fr.laposte_address_keyword("group", name, name_abbreviated, occurs)
+        WITH
+        complement_keyword AS (
+            SELECT
+                  'GROUP3' "group"
+                , lb_type_groupe3_l3 name
+                , lb_abrev_g3_nn abbr
+                , COUNT(*) nb
+            FROM
+                fr.laposte_address_complement
+            WHERE
+                fl_active
+                AND
+                lb_type_groupe3_l3 IS NOT NULL
+            GROUP BY
+                  lb_type_groupe3_l3
+                , lb_abrev_g3_nn
+            UNION
+            SELECT
+                  'GROUP2' "group"
+                , lb_type_groupe2_l3
+                , lb_abrev_g2_nn
+                , COUNT(*)
+            FROM
+                fr.laposte_address_complement
+            WHERE
+                fl_active
+                AND
+                lb_type_groupe2_l3 IS NOT NULL
+            GROUP BY
+                  lb_type_groupe2_l3
+                , lb_abrev_g2_nn
+            UNION
+            SELECT
+                  'GROUP1' "group"
+                , lb_type_groupe1_l3
+                , lb_abrev_g1_nn
+                , COUNT(*)
+            FROM
+                fr.laposte_address_complement
+            WHERE
+                fl_active
+                AND
+                lb_type_groupe1_l3 IS NOT NULL
+            GROUP BY
+                  lb_type_groupe1_l3
+                , lb_abrev_g1_nn
+        )
+        SELECT "group", name, abbr, nb FROM complement_keyword
+        ;
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(CONCAT(' Types: ', _nrows));
+
+    WITH
+    first_word_of_type AS (
+        SELECT
+            name
+            , CASE
+                WHEN POSITION(' ' IN name) = 0 THEN NULL
+                ELSE SUBSTR(name, 1, POSITION(' ' IN name) -1)
+                END first_word
+        FROM fr.laposte_address_keyword
+        WHERE "group" ~ 'GROUP[0-9]'
+    )
+    UPDATE fr.laposte_address_keyword k SET
+        first_word = fw.first_word
+        FROM
+            first_word_of_type fw
+        WHERE
+            k.group ~ 'GROUP[0-9]'
+            AND
+            k.name = fw.name
+        ;
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(CONCAT(' Mises à jour (premier mot): ', _nrows));
+END;
+$proc$ LANGUAGE plpgsql;
+
+/* TEST
+14:54:58.588 Gestion des types dans le nom des compléments (L3)
+14:54:58.588  Purge
+14:54:58.589  Initialisation
+14:54:59.369  Types: 31
+14:54:59.375  Mises à jour (premier mot): 31
+
+Query returned successfully in 824 msec.
+ */
 
 -- build LAPOSTE municipality : list of normalized label exceptions
 SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_municipality_normalized_label_exception');
@@ -971,6 +1077,8 @@ BEGIN
     SELECT public.drop_table_indexes('fr', 'constant');
     CALL fr.set_laposte_address_fault_list();
 
+    -- STREET
+
     -- build street-dictionary
     CALL fr.set_laposte_address_street_uniq(
         set_case => 'DICTIONARY'
@@ -1031,6 +1139,31 @@ BEGIN
     CALL fr.fix_laposte_address_fault_street(
         fault => 'DESCRIPTORS,TYPE'
     );
+
+    -- COMPLEMENT
+
+    -- build complement-dictionary
+    CALL fr.set_laposte_address_complement_uniq(
+        set_case => 'DICTIONARY'
+    );
+    -- and links dictionary w/ referential
+    CALL fr.set_laposte_address_complement_reference();
+    -- and membership of words
+    CALL fr.set_laposte_address_complement_membership(
+        set_case => 'CREATION'
+    );
+
+    -- TODO faults ...
+
+    -- classify all words, by (descriptor, level)
+    CALL fr.set_laposte_address_complement_word_descriptor();
+    CALL fr.set_laposte_address_complement_word_level();
+    -- define keywords (type)
+    CALL fr.set_laposte_address_complement_type();
+
+    -- TODO attributs, fix descriptors
+
+    -- OTHER
 
     CALL fr.set_laposte_municipality_normalized_label_exception();
     CALL fr.set_territory_overseas();
