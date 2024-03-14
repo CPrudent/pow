@@ -3,16 +3,15 @@
  */
 
 -- to store words, counters by descriptor, default descriptor, ranks
--- Query returned successfully in 11 secs 584 msec.
 CREATE TABLE IF NOT EXISTS fr.laposte_address_complement_word_descriptor (
     word VARCHAR NOT NULL
     , as_default CHAR(1)
     , as_article INT            -- A
     , as_number INT             -- C
     , as_reserved INT           -- E
-    , as_group1 INT             -- G
-    , as_group2 INT             -- H
-    , as_group3 INT             -- I
+    , as_group_1 INT            -- G
+    , as_group_2 INT            -- H
+    , as_group_3 INT            -- I
     , as_name INT               -- N
     , as_fname INT              -- P
     , as_title INT              -- T
@@ -21,6 +20,19 @@ CREATE TABLE IF NOT EXISTS fr.laposte_address_complement_word_descriptor (
     , rank_1 INT                -- partition by descriptor
 )
 ;
+
+DO $$
+BEGIN
+    IF column_exists('fr', 'laposte_address_complement_word_descriptor', 'as_group1') THEN
+        ALTER TABLE fr.laposte_address_complement_word_descriptor RENAME COLUMN as_group1 TO as_group_1;
+    END IF;
+    IF column_exists('fr', 'laposte_address_complement_word_descriptor', 'as_group2') THEN
+        ALTER TABLE fr.laposte_address_complement_word_descriptor RENAME COLUMN as_group2 TO as_group_2;
+    END IF;
+    IF column_exists('fr', 'laposte_address_complement_word_descriptor', 'as_group3') THEN
+        ALTER TABLE fr.laposte_address_complement_word_descriptor RENAME COLUMN as_group3 TO as_group_3;
+    END IF;
+END $$;
 
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_complement_word_descriptor_index');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_complement_word_descriptor_index()
@@ -56,9 +68,9 @@ BEGIN
         , as_article
         , as_number
         , as_reserved
-        , as_group1
-        , as_group2
-        , as_group3
+        , as_group_1
+        , as_group_2
+        , as_group_3
         , as_name
         , as_fname
         , as_title
@@ -82,9 +94,9 @@ BEGIN
             , SUM(CASE WHEN descriptor = 'A' THEN 1 ELSE 0 END) as_article
             , SUM(CASE WHEN descriptor = 'C' THEN 1 ELSE 0 END) as_number
             , SUM(CASE WHEN descriptor = 'E' THEN 1 ELSE 0 END) as_reserved
-            , SUM(CASE WHEN descriptor = 'G' THEN 1 ELSE 0 END) as_group1
-            , SUM(CASE WHEN descriptor = 'H' THEN 1 ELSE 0 END) as_group2
-            , SUM(CASE WHEN descriptor = 'I' THEN 1 ELSE 0 END) as_group3
+            , SUM(CASE WHEN descriptor = 'G' THEN 1 ELSE 0 END) as_group_1
+            , SUM(CASE WHEN descriptor = 'H' THEN 1 ELSE 0 END) as_group_2
+            , SUM(CASE WHEN descriptor = 'I' THEN 1 ELSE 0 END) as_group_3
             , SUM(CASE WHEN descriptor = 'N' THEN 1 ELSE 0 END) as_name
             , SUM(CASE WHEN descriptor = 'P' THEN 1 ELSE 0 END) as_fname
             , SUM(CASE WHEN descriptor = 'T' THEN 1 ELSE 0 END) as_title
@@ -104,15 +116,15 @@ BEGIN
 
     UPDATE fr.laposte_address_complement_word_descriptor SET
         as_default = CASE
-            WHEN as_article > GREATEST(as_number, as_reserved, as_group1, as_group2, as_group3, as_name, as_fname, as_title, as_type) THEN 'A'
-            WHEN as_number > GREATEST(as_article, as_reserved, as_group1, as_group2, as_group3, as_name, as_fname, as_title, as_type) THEN 'C'
-            WHEN as_reserved > GREATEST(as_article, as_number, as_group1, as_group2, as_group3, as_name, as_fname, as_title, as_type) THEN 'E'
-            WHEN as_group1 > GREATEST(as_article, as_number, as_reserved, as_group2, as_group3, as_name, as_fname, as_title, as_type) THEN 'G'
-            WHEN as_group2 > GREATEST(as_article, as_number, as_reserved, as_group1, as_group3, as_name, as_fname, as_title, as_type) THEN 'H'
-            WHEN as_group3 > GREATEST(as_article, as_number, as_reserved, as_group1, as_group2, as_name, as_fname, as_title, as_type) THEN 'I'
-            WHEN as_fname > GREATEST(as_article, as_number, as_reserved, as_group1, as_group2, as_group3, as_name, as_title, as_type) THEN 'P'
-            WHEN as_title > GREATEST(as_article, as_number, as_reserved, as_group1, as_group2, as_group3, as_name, as_fname, as_type) THEN 'T'
-            WHEN as_type > GREATEST(as_article, as_number, as_reserved, as_group1, as_group2, as_group3, as_name, as_fname, as_title) THEN 'V'
+            WHEN as_article > GREATEST(as_number, as_reserved, as_group_1, as_group_2, as_group_3, as_name, as_fname, as_title, as_type) THEN 'A'
+            WHEN as_number > GREATEST(as_article, as_reserved, as_group_1, as_group_2, as_group_3, as_name, as_fname, as_title, as_type) THEN 'C'
+            WHEN as_reserved > GREATEST(as_article, as_number, as_group_1, as_group_2, as_group_3, as_name, as_fname, as_title, as_type) THEN 'E'
+            WHEN as_group_1 > GREATEST(as_article, as_number, as_reserved, as_group_2, as_group_3, as_name, as_fname, as_title, as_type) THEN 'G'
+            WHEN as_group_2 > GREATEST(as_article, as_number, as_reserved, as_group_1, as_group_3, as_name, as_fname, as_title, as_type) THEN 'H'
+            WHEN as_group_3 > GREATEST(as_article, as_number, as_reserved, as_group_1, as_group_2, as_name, as_fname, as_title, as_type) THEN 'I'
+            WHEN as_fname > GREATEST(as_article, as_number, as_reserved, as_group_1, as_group_2, as_group_3, as_name, as_title, as_type) THEN 'P'
+            WHEN as_title > GREATEST(as_article, as_number, as_reserved, as_group_1, as_group_2, as_group_3, as_name, as_fname, as_type) THEN 'T'
+            WHEN as_type > GREATEST(as_article, as_number, as_reserved, as_group_1, as_group_2, as_group_3, as_name, as_fname, as_title) THEN 'V'
             ELSE 'N'
             END
         ;
@@ -127,9 +139,9 @@ BEGIN
                   as_article
                 + as_number
                 + as_reserved
-                + as_group1
-                + as_group2
-                + as_group3
+                + as_group_1
+                + as_group_2
+                + as_group_3
                 + as_name
                 + as_fname
                 + as_title
@@ -140,9 +152,9 @@ BEGIN
                 WHEN as_default = 'A' THEN as_article
                 WHEN as_default = 'C' THEN as_number
                 WHEN as_default = 'E' THEN as_reserved
-                WHEN as_default = 'G' THEN as_group1
-                WHEN as_default = 'H' THEN as_group2
-                WHEN as_default = 'I' THEN as_group3
+                WHEN as_default = 'G' THEN as_group_1
+                WHEN as_default = 'H' THEN as_group_2
+                WHEN as_default = 'I' THEN as_group_3
                 WHEN as_default = 'N' THEN as_name
                 WHEN as_default = 'P' THEN as_fname
                 WHEN as_default = 'T' THEN as_title
