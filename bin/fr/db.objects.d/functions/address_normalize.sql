@@ -984,7 +984,7 @@ BEGIN
                         , ARRAY_TO_STRING(COALESCE(descriptors_normalized_as_words, descriptors_as_words), '')
                         , CASE
                             WHEN name_normalized_as_words IS NULL THEN as_words
-                            ELSE fr.get_as_words_from_splitted_value(
+                            ELSE fr.get_as_words_from_splited_value(
                                 property_as_words => descriptors_normalized_as_words
                             )
                             END

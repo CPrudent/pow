@@ -120,7 +120,7 @@ $func$ LANGUAGE plpgsql;
 
 -- split descriptors as array
 /* NOTE
-words here must be the result of fr.get_descriptors_of_street(), splitted w/ descriptors
+words here must be the result of fr.get_descriptors_of_street(), splited w/ descriptors
  */
 SELECT drop_all_functions_if_exists('fr', 'split_descriptors_as_array');
 CREATE OR REPLACE FUNCTION fr.split_descriptors_as_array(
@@ -229,7 +229,8 @@ $func$ LANGUAGE plpgsql;
 
 -- define as_words array from splitted value (name or descriptors)
 SELECT drop_all_functions_if_exists('fr', 'get_as_words_from_splitted_value');
-CREATE OR REPLACE FUNCTION fr.get_as_words_from_splitted_value(
+SELECT drop_all_functions_if_exists('fr', 'get_as_words_from_splited_value');
+CREATE OR REPLACE FUNCTION fr.get_as_words_from_splited_value(
     property_as_words IN TEXT[]
     , as_words OUT INT[]
 )

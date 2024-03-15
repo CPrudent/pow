@@ -63,20 +63,33 @@ BEGIN
         RAISE NOTICE ' name=% (w=%, g=%)', name, words, _groups;
     END IF;
 
+    -- input name w/ abbreviation ?
     IF (with_abbreviation
         -- not article: EN abbreviation of ENCEINTE !
         AND NOT fr.is_normalized_article(words[at_])
-        -- ARC => ARCADE, GARE => GARENNE, PORT => PORTE, BAS => BASSE, CAMP => CAMPAGNE
+        /* NOTE
+        exception if word default is (name or title)
+            ARC => ARCADE, GARE => GARENNE, PORT => PORTE, BAS => BASSE, CAMP => CAMPAGNE
+        except ZA*, ZI
+         */
         AND NOT EXISTS(
             SELECT 1
             FROM fr.laposte_address_street_word_descriptor
             WHERE word = words[at_] AND as_default ~ 'N|T'
+            -- except ZA*, ZI
+            AND words[at_] !~ '^Z[AI]'
         )
     ) THEN
-        -- novelty w/ complement: ZONE ARTISANALE abbreviated to ZONE (as ZONE)!
+        /* NOTE
+        1/ if many cases, choice better later (w/ loop), just remember is abbreviated
+        2/ novelty w/ complement: ZONE ARTISANALE abbreviated to ZONE (as ZONE)!
+           add filter: name_abbreviated != first_word
+        3/ name_abbreviated can be composed by many words!
+         */
         IF (SELECT COUNT(*)
             FROM fr.laposte_address_keyword k
-            WHERE k.name_abbreviated = words[at_]
+            WHERE --k.name_abbreviated = words[at_]
+            k.name_abbreviated ~ CONCAT('^', words[at_])
             AND LENGTH(k.name_abbreviated) > 1
             AND k.name_abbreviated != k.first_word
             AND NOT fr.is_normalized_article(k.name_abbreviated)
@@ -86,7 +99,12 @@ BEGIN
             SELECT *
             INTO _kw
             FROM fr.laposte_address_keyword k
-            WHERE k.name_abbreviated = words[at_]
+            WHERE --k.name_abbreviated = words[at_]
+            k.name_abbreviated = items_of_array_to_string(
+                elements => words
+                , from_ => at_
+                , to_ => (at_ + count_words(k.name_abbreviated))
+            )
             AND LENGTH(k.name_abbreviated) > 1
             AND k.name_abbreviated != k.first_word
             AND ARRAY_POSITION(_groups, k.group) > 0
@@ -210,7 +228,6 @@ BEGIN
         counter example: (COUR, abbr COUR) return TRUE!
         because many kw w/ COUR as abbr
          */
-        IF raise_notice THEN RAISE NOTICE ' is_abbr=%', _is_abbreviated; END IF;
         kw_is_abbreviated := (
             -- new usecase w/ GROUP3, as ZONE ARTISANALE (abbreviated to ZONE)
             _is_abbreviated

@@ -121,7 +121,7 @@ BEGIN
                 , nn.as_words
                 , CASE
                     WHEN nn.name_normalized_as_words IS NOT NULL THEN
-                        fr.get_as_words_from_splitted_value(
+                        fr.get_as_words_from_splited_value(
                             property_as_words => nn.name_normalized_as_words
                         )
                     END as_words_normalized

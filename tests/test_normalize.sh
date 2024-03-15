@@ -18,7 +18,7 @@ echo_number_line() {
 
 bash_args \
     --args_p '
-        test:Lister les communes même si elles possèdent déjà des altitudes;
+        test:Préciser le test à réaliser;
         number_line:Ajouter le numéro de chaque test;
         limit:Limiter la requête
     ' \
@@ -55,7 +55,7 @@ _ko=0
             _is_normalized=0
         }
         execute_query \
-        --name NORMALIZE_STREET_NAME \
+        --name SPLIT \
         --query "
             SELECT words, descriptors FROM fr.split_name_of_street_as_descriptor(
                 name => '$_name'
@@ -65,7 +65,7 @@ _ko=0
         " \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _normalize || {
-            cat $POW_DIR_ARCHIVE/NORMALIZE_STREET_NAME.error.log
+            cat $POW_DIR_ARCHIVE/SPLIT.error.log
             exit $ERROR_CODE
         }
 
