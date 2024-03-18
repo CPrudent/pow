@@ -70,14 +70,14 @@ BEGIN
         /* NOTE
         exception if word default is (name or title)
             ARC => ARCADE, GARE => GARENNE, PORT => PORTE, BAS => BASSE, CAMP => CAMPAGNE
-        except ZA*, ZI
+        except ZA* or ZI, and PETI (typo error to right)
          */
         AND NOT EXISTS(
             SELECT 1
             FROM fr.laposte_address_street_word_descriptor
             WHERE word = words[at_] AND as_default ~ 'N|T'
-            -- except ZA*, ZI
-            AND words[at_] !~ '^Z[AI]'
+            -- except ZA, ZI, PETI
+            AND words[at_] !~ '^(Z[AI]|PETI)$'
         )
     ) THEN
         /* NOTE
@@ -85,6 +85,7 @@ BEGIN
         2/ novelty w/ complement: ZONE ARTISANALE abbreviated to ZONE (as ZONE)!
            add filter: name_abbreviated != first_word
         3/ name_abbreviated can be composed by many words!
+           starts w/ word (not equality) : case of abbreviated 'PETI ROUTE'
          */
         IF (SELECT COUNT(*)
             FROM fr.laposte_address_keyword k
@@ -94,6 +95,7 @@ BEGIN
             AND k.name_abbreviated != k.first_word
             AND NOT fr.is_normalized_article(k.name_abbreviated)
         ) > 1 THEN
+            IF raise_notice THEN RAISE NOTICE ' abbr, too many %', words[at_]; END IF;
             _is_abbreviated := TRUE;
         ELSE
             SELECT *
@@ -224,15 +226,16 @@ BEGIN
         kw := _kw.name;
         kw_abbreviated := _kw.name_abbreviated;
         /* NOTE
-        event if is_abbreviated is TRUE, eval kw to verify if distinct
-        counter example: (COUR, abbr COUR) return TRUE!
-        because many kw w/ COUR as abbr
+        1/ event if is_abbreviated is TRUE, eval kw to verify if distinct
+           counter example: (COUR, abbr COUR) return TRUE!
+           because many kw w/ COUR as abbr
+        2/ name_abbreviated can be composed by many words: no test on a single word!
          */
         kw_is_abbreviated := (
             -- new usecase w/ GROUP3, as ZONE ARTISANALE (abbreviated to ZONE)
             _is_abbreviated
-            AND
-            (words[at_] IS NOT DISTINCT FROM _kw.name_abbreviated)
+            --AND
+            --(words[at_] IS NOT DISTINCT FROM _kw.name_abbreviated)
             AND
             (_kw.name != _kw.name_abbreviated)
         );

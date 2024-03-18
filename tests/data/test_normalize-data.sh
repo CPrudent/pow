@@ -67,22 +67,22 @@ declare -a TEST_A4S_NAME_NORMALIZED=(
     'RUE DU LTDV D ESTIENNE D ORVES'                                        #  2
     'R DR P LAFLOTTE L ANCIEN HOPITAL'                                      #  3
     'ZA ET COMMERCIALE DU HAUT TAPPES'                                      #  4
-    'CHE NOTRE DAME CHAMPS DES VIGNES'                                      #  5
+    'CHEM ND DES CHAMPS ET DES VIGNES'                                      #  5
     'PLACE ND DE LA LEGION D HONNEUR'                                       #  6
     'PARC A NURIEUX CRX CHALON'                                             #  7
     'AV ANC COMB FRANCAIS D INDOCHINE'                                      #  8
-    'CHE RURAL 21 GRAVIERS CRX MARAIS'                                      #  9
+    'CHEMIN R 21 GRAVIERS CRX MARAIS'                                       #  9
     'ZA CENTRE COMMERCIAL BEAUGE'                                           # 10
-    'CHE LA DEBOISSET CLOS SAINT ANNE'                                      # 11
+    'CHEMIN DEBOISSET CLOS SAINT ANNE'                                      # 11
     'ANCI ROUTE CHATEAU SAINT LEONARD'                                      # 12
     'AV LA 9E DIV INFANT DE CAVALERIE'                                      # 13
     'LD GRAND BOIS DE LA DURANDIERE'                                        # 14
-    'CHE EXPLOITATION MAS SAINT PAUL'                                       # 15
+    'CHEM EXPLOITATION MAS SAINT PAUL'                                      # 15
     'LD MAIS FORESTIERE LA NOE BADON'                                       # 16
     'LD LA MAIS FORESTIERE DU VIRLET'                                       # 17
-    'CHE R 55 ANCI CHEMIN MONTPELLIER'                                      # 18
+    'CHEMIN R 55 ANCI CHEMIN M'                                             # 18
     'CHEMIN R D ANCI ROUTE S ANNECY'                                        # 19
-    'CHE R D ANCI CHEMIN BRISON THUET'                                      # 20
+    'CHEMIN R D ANCI CHEMIN B THUET'                                        # 20
     'RUE TRT NOTRE DAME DE LA SALETTE'                                      # 21
     'R L ADJ BESNAULT GENDARME LEFORT'                                      # 22
 )
@@ -92,13 +92,13 @@ declare -a TEST_A4S_DESCRIPTORS_NORMALIZED=(
     VATANAN                                                                 #  2
     VTPNATN                                                                 #  3
     VANATN                                                                  #  4
-    VTTNAN                                                                  #  5
+    VTANAAN                                                                 #  5
     VTAANAN                                                                 #  6
     VNNTN                                                                   #  7
     VNNTAN                                                                  #  8
     VNCNTN                                                                  #  9
     VTTN                                                                    # 10
-    VANTTN                                                                  # 11
+    VNTTN                                                                   # 11
     VVTTN                                                                   # 12
     VACTTAN                                                                 # 13
     VTTAAN                                                                  # 14

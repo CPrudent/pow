@@ -525,6 +525,7 @@ BEGIN
                     name => name
                     , at_ => _i
                     , words => _words
+                    , groups => 'STREET'
                     , with_abbreviation => with_abbreviation
                 );
                 IF _kw IS NOT NULL THEN
