@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS fr.laposte_address_keyword (
 )
 ;
 
+-- find keyword (at given position) into a name
 SELECT drop_all_functions_if_exists('fr', 'get_keyword_of_street');
 SELECT drop_all_functions_if_exists('fr', 'get_keyword_from_name');
 CREATE OR REPLACE FUNCTION fr.get_keyword_from_name(

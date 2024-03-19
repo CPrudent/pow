@@ -3,7 +3,8 @@
  */
 
 /* NOTE
-LAPOSTE descriptor items
+LAPOSTE
+street descriptor items
  A article
  C number
  E reserved word
@@ -11,13 +12,18 @@ LAPOSTE descriptor items
  P firstname
  T title
  V type
++
+complement descriptor items
+ G group 3
+ H group 2
+ I group 1
  */
 
 -- is number (date, roman, arabic)
 SELECT public.drop_all_functions_if_exists('fr', 'is_normalized_number');
 CREATE OR REPLACE FUNCTION fr.is_normalized_number(
     word VARCHAR
-    , only_digit VARCHAR DEFAULT 'ALL'   -- ARABIC|DATE|HOUSENUMBER|ROAD_NETWORK|ROMAN
+    , only_digit VARCHAR DEFAULT 'ALL'   -- ARABIC|COMPLEMENT|DATE|HOUSENUMBER|ROAD_NETWORK|ROMAN
 )
 RETURNS BOOLEAN AS
 $func$
@@ -30,7 +36,7 @@ BEGIN
     IF LENGTH(word) = 0 THEN RETURN FALSE; END IF;
 
     IF only_digit = 'ALL' THEN
-        _only := '{ARABIC,DATE,HOUSENUMBER,ROAD_NETWORK,ROMAN}'::VARCHAR[];
+        _only := '{ARABIC,COMPLEMENT,DATE,HOUSENUMBER,ROAD_NETWORK,ROMAN}'::VARCHAR[];
     ELSE
         _only := STRING_TO_ARRAY(only_digit, ',');
     END IF;
@@ -67,6 +73,7 @@ BEGIN
 
         _is_number := CASE
             WHEN UPPER(_only[_i]) = 'ARABIC' THEN (word ~ '^[0-9]+$')
+            WHEN UPPER(_only[_i]) = 'COMPLEMENT' THEN (word ~ '^[A-Z]{1,2}[0-9]+([A-Z])?$')
             WHEN UPPER(_only[_i]) = 'DATE' THEN
                 (
                     -- UK dates

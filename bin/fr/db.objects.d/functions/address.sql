@@ -748,6 +748,316 @@ WHERE
     ;
  */
 
+SELECT drop_all_functions_if_exists('fr', 'get_descriptors_from_name');
+CREATE OR REPLACE FUNCTION fr.get_descriptors_from_name(
+    name IN VARCHAR
+    , element IN VARCHAR                        -- STREET | COMPLEMENT
+    , with_abbreviation IN BOOLEAN DEFAULT FALSE
+    , raise_notice IN BOOLEAN DEFAULT FALSE
+    , descriptors OUT VARCHAR
+    , words_by_descriptor OUT TEXT[]
+    , words_abbreviated_by_descriptor OUT TEXT[]
+    , words_todo_by_descriptor OUT TEXT[]
+    , as_words OUT INT[]
+)
+AS
+$func$
+DECLARE
+    _kw_group VARCHAR;
+    _kw VARCHAR;
+    _kw_abbreviated VARCHAR;
+    _kw_is_abbreviated BOOLEAN;
+    _kw_nwords INT;
+    _descriptors_tmp VARCHAR;
+    _descriptors_c VARCHAR;
+    _descriptors_t VARCHAR;
+    _descriptors_v VARCHAR;
+    _words TEXT[];
+    _words_len INT;
+    _words_d VARCHAR;
+    _words_skip INT := 0;
+    _i INT;
+    _len_c INT;
+    _last_t INT;
+    _with_exception BOOLEAN;
+    _is_exception BOOLEAN;
+    _exception VARCHAR;
+    _init_by_descriptor BOOLEAN;
+    _abbr VARCHAR;
+BEGIN
+    IF raise_notice THEN RAISE NOTICE 'name="%"', name; END IF;
+
+    IF name ~ '^ +' OR name ~ ' +$' THEN
+        RAISE NOTICE 'libellé corrigé (%) avec espace(s) superflus!', name;
+        name := TRIM(name);
+    END IF;
+
+    _words := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
+    _words_len := ARRAY_LENGTH(_words, 1);
+
+    FOR _i IN 1 .. _words_len
+    LOOP
+        _kw_nwords := 1;
+        _init_by_descriptor := FALSE;
+        IF _i < _words_skip THEN
+            CONTINUE;
+        END IF;
+
+        IF raise_notice THEN RAISE NOTICE ' word=%, i=%', _words[_i], _i; END IF;
+
+        -- number
+        IF fr.is_normalized_number(_words[_i])
+            AND NOT fr.is_normalized_article(_words[_i]) THEN
+            _words_d := CASE
+                --WHEN _words[_i] = ANY('{D, L}') THEN 'A'
+                WHEN _words[_i] = ANY('{C, M}') THEN 'N'
+                -- exceptions: DI, LI, MI, CD, CL, ...
+                WHEN fr.get_default_of_street_word(_words[_i]) != 'C' THEN
+                    CASE
+                    WHEN (element = 'COMPLEMENT') OR (_i < _words_len) THEN
+                        fr.get_default_of_street_word(_words[_i])
+                    ELSE 'N'
+                    END
+                ELSE 'C'
+                END
+                ;
+        ELSE
+            _words_d := 'N';
+            IF _i < _words_len THEN
+                _with_exception := FALSE;
+
+                -- keyword (title, type, extension or name)
+                SELECT kw_group, kw, kw_abbreviated, kw_is_abbreviated, kw_nwords
+                INTO _kw_group, _kw, _kw_abbreviated, _kw_is_abbreviated, _kw_nwords
+                FROM fr.get_keyword_from_name(
+                    name => name
+                    , at_ => _i
+                    , words => _words
+                    , groups => element
+                    , with_abbreviation => with_abbreviation
+                );
+                IF _kw IS NOT NULL THEN
+                    _words_d := REPEAT(
+                        CASE element
+                        WHEN 'STREET' THEN
+                            CASE
+                            -- up to last word, as name or name (w/ abbreviation)
+                            WHEN ((_i + _kw_nwords -1) = _words_len) OR (_kw_group = 'NAME') THEN 'N'
+                            -- type
+                            WHEN _i = 1 AND _kw_group = 'TYPE' THEN 'V'
+                            -- title
+                            ELSE 'T'
+                            END
+                        WHEN 'COMPLEMENT' THEN
+                            CASE
+                            WHEN _kw_group = 'GROUP3' THEN 'G'
+                            WHEN _kw_group = 'GROUP2' THEN 'H'
+                            WHEN _kw_group = 'GROUP1' THEN 'I'
+                            WHEN _kw_group = 'NAME' THEN 'N'
+                            WHEN _kw_group = 'TYPE' THEN 'V'
+                            ELSE 'T'
+                        END
+                        , _kw_nwords
+                    );
+                    words_by_descriptor := ARRAY_APPEND(words_by_descriptor, _kw);
+                    words_abbreviated_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] := _kw_abbreviated;
+                    words_todo_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] := CASE
+                        WHEN _kw_is_abbreviated THEN '+'
+                        ELSE '-'
+                        END
+                    ;
+                    as_words := ARRAY_APPEND(as_words, _kw_nwords);
+                    _init_by_descriptor := TRUE;
+                ELSE
+                    -- firstname
+                    IF fr.is_normalized_firstname(_words[_i]) THEN
+                        _words_d := 'P';
+                        IF _i > 1
+                            AND fr.is_normalized_article(_words[_i -1])
+                            AND NOT (
+                                (_words[_i -1] = ANY('{DE, ET}'))
+                                OR
+                                (_words[_i -1] = 'D' AND _words[_i] ~ '^[AEIOUY]')
+                            ) THEN
+                            _words_d := 'N';
+                        END IF;
+                    -- article
+                    ELSIF fr.is_normalized_article(_words[_i]) THEN
+                        /* RULE
+                        exception for road as (A|D|N)# : highway, departmental, national
+                        at end of name only, else counter examples
+                            LA ROCHE A 7 HEURES
+                            LA PLANCHE A 4 PIEDS
+                        */
+                        IF _words[_i] ~ '^A|D|N$' AND fr.is_normalized_number(
+                            word => _words[_i +1]
+                            , only_digit => 'ARABIC'
+                        ) AND _words_len = (_i +1) THEN
+                            _words_d := 'N';
+                        ELSE
+                            _words_d := 'A';
+                            _with_exception := TRUE;
+                        END IF;
+                    END IF;
+                END IF;
+
+                /* RULE
+                (firstname|title) followed by a number only (at the end) is a name
+                */
+                IF _words_d ~ 'P|T' THEN
+                    IF _words_d ~ 'P'
+                        AND _words_len = (_i +1)
+                        AND fr.is_normalized_number(_words[_i +1]) THEN
+                        _words_d := REPEAT('N', LENGTH(_words_d));
+                    ELSE
+                        _with_exception := TRUE;
+                    END IF;
+                END IF;
+
+                -- apply exception(s) if exist
+                IF _with_exception AND LENGTH(_words_d) = 1 THEN
+                    SELECT is_exception, descriptor
+                    INTO _is_exception, _exception
+                    FROM fr.get_descriptor_from_exception(
+                        words => _words
+                        , nwords => _words_len
+                        , at_ => _i
+                        , as_descriptor => SUBSTR(_words_d, 1, 1)
+                    );
+                    IF _is_exception THEN
+                        IF ((_words_d ~ 'T')
+                            AND
+                            (words_todo_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] = '+')
+                        ) THEN
+                            -- reset
+                            words_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] := words_abbreviated_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)];
+                            words_abbreviated_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] := NULL;
+                            words_todo_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] := NULL;
+                        END IF;
+                        _words_d := REPEAT(_exception, LENGTH(_words_d));
+                    END IF;
+                END IF;
+            ELSE
+                _words_d := CASE
+                    WHEN fr.is_normalized_reserved_word(_words[_i]) THEN 'E'
+                    WHEN (element = 'COMPLEMENT') AND fr.is_normalized_title(
+                        word => _words[_i]
+                        , groups => 'TYPE'
+                    ) THEN 'V'
+                    ELSE 'N'
+                    END
+                ;
+
+                IF _words_d != 'N' THEN
+                    SELECT kw_abbreviated
+                    INTO _abbr
+                    FROM fr.get_keyword_from_name(
+                        name => name
+                        , at_ => _i
+                        , words => _words
+                        , with_abbreviation => FALSE
+                    );
+                END IF;
+            END IF;
+        END IF;
+
+        IF NOT _init_by_descriptor THEN
+            words_by_descriptor := ARRAY_APPEND(words_by_descriptor, _words[_i]);
+            as_words := ARRAY_APPEND(as_words, 1);
+        END IF;
+        IF (_words_d ~ '[EV]' AND _abbr IS NOT NULL) THEN
+            words_abbreviated_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] := _abbr;
+            words_todo_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] := '+';
+        END IF;
+        descriptors := CONCAT(descriptors, _words_d);
+        _words_skip := _i;
+        IF _kw_nwords > 1 THEN
+            _words_skip := _words_skip + _kw_nwords;
+        END IF;
+    END LOOP;
+
+    -- fix bad uses
+    IF (element = 'STREET') THEN
+        -- name of street (so descriptor) is ended by: number, reserved or name (CEN)
+        IF descriptors !~ '[CEN]$' THEN
+            descriptors := REGEXP_REPLACE(descriptors, '.$', 'N');
+
+        /*
+        -- nothing else than CN before last E (specially not title)
+        ELSIF descriptors ~ '[^CN]E$' THEN
+            descriptors := REGEXP_REPLACE(descriptors, '.E$', 'NE');
+        */
+
+        -- not title only (eventually followed by number), but name
+        -- IMPASSE DU PASSAGE A NIVEAU 7, VANNNC
+        -- and also successive V+ and T+
+        -- PASSAGE A NIVEAU PASSAGE A NIVEAU 67, VVVNNNC
+        ELSIF descriptors ~ 'T+C*$' THEN
+            _descriptors_t := (REGEXP_MATCHES(descriptors, '(T+)(C*)$'))[1];
+            _descriptors_c := (REGEXP_MATCHES(descriptors, '(T+)(C*)$'))[2];
+            -- last title is one|many word(s)
+            _len_c := LENGTH(COALESCE(_descriptors_c, ''));
+            _last_t := ARRAY_LENGTH(words_by_descriptor, 1) - _len_c;
+            IF raise_notice THEN
+                RAISE NOTICE ' dt=%, dc=% #c=%', _descriptors_t, _descriptors_c, _len_c;
+                RAISE NOTICE ' wbd=%, lt=%', words_by_descriptor, _last_t;
+                RAISE NOTICE ' descriptors=%', descriptors;
+            END IF;
+            -- replace all T
+            IF count_words(words_by_descriptor[_last_t]) = LENGTH(_descriptors_t) THEN
+                IF raise_notice THEN RAISE NOTICE ' replace all'; END IF;
+                descriptors := REGEXP_REPLACE(descriptors
+                    , 'T+(C*)$'
+                    , CONCAT(
+                        REPEAT('N', LENGTH(_descriptors_t))
+                        , '\1'
+                    )
+                );
+            -- replace only last T
+            ELSE
+                _last_t := LENGTH(descriptors) - _len_c;
+                IF raise_notice THEN RAISE NOTICE ' replace last only, lt=%', _last_t; END IF;
+                IF _last_t > 1 THEN
+                    descriptors := SUBSTR(descriptors, 1, _last_t -1);
+                ELSE
+                    descriptors := NULL;
+                END IF;
+                descriptors := CONCAT(descriptors, 'N');
+                IF _len_c > 0 THEN
+                    descriptors := CONCAT(descriptors, _descriptors_c);
+                END IF;
+            END IF;
+        -- not type only (eventually followed by number, reserved), but name
+        -- PASSAGE A NIVEAU 7, NNNC
+        -- GRANDE RUE PROLONGEE
+        ELSIF descriptors ~ 'V+[CE]*$' THEN
+            _descriptors_v := (REGEXP_MATCHES(descriptors, '(V+)[CE]*$'))[1];
+            descriptors := REGEXP_REPLACE(descriptors
+                , 'V+([CE]*)$'
+                , CONCAT(
+                    REPEAT('N', LENGTH(_descriptors_v))
+                    , '\1'
+                )
+            );
+        /* neither firstname nor title
+        VNC, AVENUE ALBERT 1ER
+        VNCE, RUE ALBERT 1ER PROLONGEE
+        VPCAN, AVENUE ALBERT 1ER DE BELGIQUE
+        */
+        ELSIF descriptors ~ '^V[PT]CE?$' THEN
+            descriptors := REGEXP_REPLACE(descriptors, '(^V[PT]C)(E?)$', 'VNC\2');
+        END IF;
+    ELSE
+        -- name of complement (so descriptor) is ended by: number, reserved, name or type (CENV)
+        IF descriptors !~ '[CENV]$' THEN
+            descriptors := REGEXP_REPLACE(descriptors, '.$', 'N');
+        END IF;
+    END IF;
+
+    IF raise_notice THEN RAISE NOTICE ' descriptors=%', descriptors; END IF;
+END
+$func$ LANGUAGE plpgsql;
+
 -- analyze differences of descriptors
 SELECT drop_all_functions_if_exists('fr', 'get_differences_between_descriptors');
 CREATE OR REPLACE FUNCTION fr.get_differences_between_descriptors(
