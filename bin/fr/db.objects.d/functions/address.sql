@@ -725,14 +725,14 @@ $func$ LANGUAGE plpgsql;
 
 -- difference from RAN !
 SELECT
-    descriptor_pow
-    , descriptor_laposte
+    descriptors_pow
+    , descriptors_laposte
     , code
     , name
 FROM (
     SELECT
-        ds.descriptors descriptor_pow
-        , lb_desc descriptor_laposte
+        ds.descriptors descriptors_pow
+        , lb_desc descriptors_laposte
         , co_cea code
         , lb_voie name
     FROM
@@ -744,9 +744,59 @@ FROM (
         1000
     ) t
 WHERE
-    descriptor_pow IS DISTINCT FROM descriptor_laposte
+    descriptors_pow IS DISTINCT FROM descriptors_laposte
     ;
  */
+
+SELECT drop_all_functions_if_exists('fr', 'get_descriptor_subscript_of_group');
+CREATE OR REPLACE FUNCTION fr.get_descriptor_subscript_of_group(
+    descriptor IN VARCHAR
+    , subscript OUT INT
+)
+AS
+$func$
+BEGIN
+    -- I=>1, H=>2, G=>3
+    subscript := ABS(ASCII(descriptor) - ASCII('I')) +1;
+END
+$func$ LANGUAGE plpgsql;
+
+SELECT drop_all_functions_if_exists('fr', 'get_descriptor_of_group');
+CREATE OR REPLACE FUNCTION fr.get_descriptor_of_group(
+    group_ IN VARCHAR
+    , descriptors IN VARCHAR[]
+    , descriptor OUT VARCHAR
+)
+AS
+$func$
+DECLARE
+    _descriptor VARCHAR := CASE group_
+        WHEN 'GROUP3' THEN 'G'
+        WHEN 'GROUP2' THEN 'H'
+        WHEN 'GROUP1' THEN 'I'
+        END
+    ;
+    _i INT;
+    _higher INT;
+BEGIN
+    FOR _i IN REVERSE 3 .. 1
+    LOOP
+        IF descriptors[_i] IS NOT NULL THEN
+            _higher := _i;
+            EXIT;
+        END IF;
+    END LOOP;
+
+    -- as type (V) if already defined
+    descriptor := CASE
+        WHEN fr.get_descriptor_subscript_of_group(
+            descriptor => _descriptor
+        ) > COALESCE(_higher, 0) THEN _descriptor
+        ELSE 'V'
+        END
+    ;
+END
+$func$ LANGUAGE plpgsql;
 
 SELECT drop_all_functions_if_exists('fr', 'get_descriptors_from_name');
 CREATE OR REPLACE FUNCTION fr.get_descriptors_from_name(
@@ -772,6 +822,8 @@ DECLARE
     _descriptors_c VARCHAR;
     _descriptors_t VARCHAR;
     _descriptors_v VARCHAR;
+    _descriptors_g VARCHAR[];
+    _descriptors_i INT;
     _words TEXT[];
     _words_len INT;
     _words_d VARCHAR;
@@ -850,12 +902,16 @@ BEGIN
                             END
                         WHEN 'COMPLEMENT' THEN
                             CASE
-                            WHEN _kw_group = 'GROUP3' THEN 'G'
-                            WHEN _kw_group = 'GROUP2' THEN 'H'
-                            WHEN _kw_group = 'GROUP1' THEN 'I'
-                            WHEN _kw_group = 'NAME' THEN 'N'
+                            WHEN _kw_group ~ '^GROUP' THEN
+                                fr.get_descriptor_of_group(
+                                    group_ => _kw_group
+                                    , descriptors => _descriptors_g
+                                )
+                            -- extension as name
+                            WHEN _kw_group = ANY('{NAME,EXT}') THEN 'N'
                             WHEN _kw_group = 'TYPE' THEN 'V'
                             ELSE 'T'
+                            END
                         END
                         , _kw_nwords
                     );
@@ -884,7 +940,8 @@ BEGIN
                     -- article
                     ELSIF fr.is_normalized_article(_words[_i]) THEN
                         /* RULE
-                        exception for road as (A|D|N)# : highway, departmental, national
+                        exception for road
+                        (A|D|N)# : highway, departmental, national
                         at end of name only, else counter examples
                             LA ROCHE A 7 HEURES
                             LA PLANCHE A 4 PIEDS
@@ -893,6 +950,16 @@ BEGIN
                             word => _words[_i +1]
                             , only_digit => 'ARABIC'
                         ) AND _words_len = (_i +1) THEN
+                            _words_d := 'N';
+                        /* RULE
+                        exception for complement
+                        ENTREE A BATIMENT BLEU
+                        BATIMENT A RESIDENCE LE VOLTAIRE
+                         */
+                        ELSIF element = 'COMPLEMENT' AND _i < _words_len AND descriptors ~ '[GHI]$' AND fr.is_normalized_title(
+                            word => _words[_i +1]
+                            , groups => 'GROUP1,GROUP2,GROUP3'
+                        ) THEN
                             _words_d := 'N';
                         ELSE
                             _words_d := 'A';
@@ -970,6 +1037,25 @@ BEGIN
             words_todo_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] := '+';
         END IF;
         descriptors := CONCAT(descriptors, _words_d);
+        IF element = 'COMPLEMENT' THEN
+            IF _words_d ~ '[GHI]' THEN
+                _descriptors_i := (
+                    SELECT fr.get_descriptor_subscript_of_group(
+                        descriptor => _words_d
+                    )
+                );
+            END IF;
+            _descriptors_g[COALESCE(_descriptors_i, 1)] := CONCAT(
+                _descriptors_g[COALESCE(_descriptors_i, 1)]
+                , _words_d
+            );
+            IF raise_notice THEN
+                RAISE NOTICE ' group=%, descriptors=%'
+                    , COALESCE(_descriptors_i, 1)
+                    , _descriptors_g[COALESCE(_descriptors_i, 1)]
+                ;
+            END IF;
+        END IF;
         _words_skip := _i;
         IF _kw_nwords > 1 THEN
             _words_skip := _words_skip + _kw_nwords;

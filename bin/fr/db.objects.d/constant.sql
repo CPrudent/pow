@@ -715,7 +715,7 @@ BEGIN
     CALL public.log_info('Gestion des types dans le nom des compléments (L3)');
 
     CALL public.log_info(' Purge');
-    DELETE FROM fr.laposte_address_keyword WHERE "group" ~ 'GROUP[0-9]';
+    DELETE FROM fr.laposte_address_keyword WHERE "group" ~ 'GROUP[1-3]';
 
     CALL public.log_info(' Initialisation');
     INSERT INTO fr.laposte_address_keyword("group", name, name_abbreviated, occurs)
@@ -732,6 +732,12 @@ BEGIN
                 fl_active
                 AND
                 lb_type_groupe3_l3 IS NOT NULL
+                /* NOTE
+                exceptions due to referential-faults
+                so occurs count is not complete for these 2 kw
+                 */
+                AND
+                NOT lb_type_groupe3_l3 = ANY('{TOUR,VILLA}')
             GROUP BY
                   lb_type_groupe3_l3
                 , lb_abrev_g3_nn
@@ -780,14 +786,14 @@ BEGIN
                 ELSE SUBSTR(name, 1, POSITION(' ' IN name) -1)
                 END first_word
         FROM fr.laposte_address_keyword
-        WHERE "group" ~ 'GROUP[0-9]'
+        WHERE "group" ~ 'GROUP[1-3]'
     )
     UPDATE fr.laposte_address_keyword k SET
         first_word = fw.first_word
         FROM
             first_word_of_type fw
         WHERE
-            k.group ~ 'GROUP[0-9]'
+            k.group ~ 'GROUP[1-3]'
             AND
             k.name = fw.name
         ;
@@ -797,13 +803,13 @@ END;
 $proc$ LANGUAGE plpgsql;
 
 /* TEST
-14:54:58.588 Gestion des types dans le nom des compléments (L3)
-14:54:58.588  Purge
-14:54:58.589  Initialisation
-14:54:59.369  Types: 31
-14:54:59.375  Mises à jour (premier mot): 31
+08:59:46.360 Gestion des types dans le nom des compléments (L3)
+08:59:46.361  Purge
+08:59:46.361  Initialisation
+08:59:47.136  Types: 29
+08:59:47.142  Mises à jour (premier mot): 29
 
-Query returned successfully in 824 msec.
+Query returned successfully in 801 msec.
  */
 
 -- build LAPOSTE municipality : list of normalized label exceptions
