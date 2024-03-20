@@ -182,18 +182,17 @@ BEGIN
             ORDER BY
                 count_words(k.name) DESC
                 , CASE
-                    WHEN _with_complement THEN
-                        CASE WHEN k.group ~ '^GROUP' THEN 3
-                        ELSE 2
-                        END
+                    WHEN _with_complement AND k.group ~ '^GROUP' THEN 3
                     WHEN at_ = 1 THEN
                         CASE WHEN k.group = 'TYPE' THEN 2
                         ELSE 1
                         END
                     ELSE
-                        CASE WHEN k.group = 'TITLE' THEN 1
-                        ELSE 0
-                        END
+                        CASE
+                            WHEN _with_complement AND k.group ~ 'TYPE' THEN 2
+                            WHEN k.group = 'TITLE' THEN 1
+                            ELSE 0
+                            END
                     END DESC
                 , k.occurs DESC
         )

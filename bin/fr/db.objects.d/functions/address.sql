@@ -749,7 +749,8 @@ WHERE
  */
 
 SELECT drop_all_functions_if_exists('fr', 'get_descriptor_subscript_of_group');
-CREATE OR REPLACE FUNCTION fr.get_descriptor_subscript_of_group(
+SELECT drop_all_functions_if_exists('fr', 'get_subscript_of_descriptor');
+CREATE OR REPLACE FUNCTION fr.get_subscript_of_descriptor(
     descriptor IN VARCHAR
     , subscript OUT INT
 )
@@ -758,6 +759,24 @@ $func$
 BEGIN
     -- I=>1, H=>2, G=>3
     subscript := ABS(ASCII(descriptor) - ASCII('I')) +1;
+END
+$func$ LANGUAGE plpgsql;
+
+SELECT drop_all_functions_if_exists('fr', 'get_group_of_descriptor');
+CREATE OR REPLACE FUNCTION fr.get_group_of_descriptor(
+    descriptor IN VARCHAR
+    , group_ OUT VARCHAR
+)
+AS
+$func$
+BEGIN
+    -- I=>GROUP1, H=>GROUP2, G=>GROUP3
+    group_ := CASE descriptor
+        WHEN 'G' THEN 'GROUP3'
+        WHEN 'H' THEN 'GROUP2'
+        WHEN 'I' THEN 'GROUP1'
+        END
+    ;
 END
 $func$ LANGUAGE plpgsql;
 
@@ -789,7 +808,7 @@ BEGIN
 
     -- as type (V) if already defined
     descriptor := CASE
-        WHEN fr.get_descriptor_subscript_of_group(
+        WHEN fr.get_subscript_of_descriptor(
             descriptor => _descriptor
         ) > COALESCE(_higher, 0) THEN _descriptor
         ELSE 'V'
@@ -907,8 +926,8 @@ BEGIN
                                     group_ => _kw_group
                                     , descriptors => _descriptors_g
                                 )
-                            -- extension as name
-                            WHEN _kw_group = ANY('{NAME,EXT}') THEN 'N'
+                            -- up to last word, extension as name
+                            WHEN ((_i + _kw_nwords -1) = _words_len) OR _kw_group = ANY('{NAME,EXT}') THEN 'N'
                             WHEN _kw_group = 'TYPE' THEN 'V'
                             ELSE 'T'
                             END
@@ -946,19 +965,42 @@ BEGIN
                             LA ROCHE A 7 HEURES
                             LA PLANCHE A 4 PIEDS
                         */
-                        IF _words[_i] ~ '^A|D|N$' AND fr.is_normalized_number(
-                            word => _words[_i +1]
-                            , only_digit => 'ARABIC'
-                        ) AND _words_len = (_i +1) THEN
+                        IF (
+                            _words[_i] ~ '^(A|D|N)$'
+                            AND
+                            fr.is_normalized_number(
+                                word => _words[_i +1]
+                                , only_digit => 'ARABIC'
+                            )
+                            AND
+                            _words_len = (_i +1)
+                        ) THEN
                             _words_d := 'N';
                         /* RULE
-                        exception for complement
+                        exception for complement, if between 2 groups
                         ENTREE A BATIMENT BLEU
                         BATIMENT A RESIDENCE LE VOLTAIRE
                          */
-                        ELSIF element = 'COMPLEMENT' AND _i < _words_len AND descriptors ~ '[GHI]$' AND fr.is_normalized_title(
-                            word => _words[_i +1]
-                            , groups => 'GROUP1,GROUP2,GROUP3'
+                        ELSIF (
+                            element = 'COMPLEMENT'
+                            AND
+                            _i < _words_len
+                            AND
+                            descriptors ~ '[GHI]$'
+                            AND
+                            fr.get_descriptor_of_group(
+                                group_ => (
+                                    SELECT kw_group
+                                    FROM fr.get_keyword_from_name(
+                                        name => name
+                                        , at_ => _i +1
+                                        , words => _words
+                                        , groups => element
+                                        , with_abbreviation => with_abbreviation
+                                    )
+                                )
+                                , descriptors => _descriptors_g
+                            ) ~ '[GHI]'
                         ) THEN
                             _words_d := 'N';
                         ELSE
@@ -1040,7 +1082,7 @@ BEGIN
         IF element = 'COMPLEMENT' THEN
             IF _words_d ~ '[GHI]' THEN
                 _descriptors_i := (
-                    SELECT fr.get_descriptor_subscript_of_group(
+                    SELECT fr.get_subscript_of_descriptor(
                         descriptor => _words_d
                     )
                 );
