@@ -748,6 +748,35 @@ WHERE
     ;
  */
 
+SELECT drop_all_functions_if_exists('fr', 'get_table_name');
+CREATE OR REPLACE FUNCTION fr.get_table_name(
+    element IN VARCHAR
+    , usecase IN VARCHAR
+    , table_name OUT VARCHAR
+)
+AS
+$func$
+BEGIN
+    table_name := CASE
+        WHEN UPPER(usecase) ~ 'UNIQ|MEMBERSHIP|REFERENCE' THEN
+            FORMAT('laposte_address_%s_%s'
+                , LOWER(element)
+                , LOWER(usecase)
+            )
+        WHEN UPPER(usecase) ~ 'FAULT' THEN
+            FORMAT('laposte_address_fault_%s'
+                , LOWER(element)
+            )
+        WHEN UPPER(usecase) ~ 'ADDRESS' THEN
+            FORMAT('laposte_address_%s'
+                , LOWER(element)
+            )
+        END
+    ;
+END
+$func$ LANGUAGE plpgsql;
+
+-- complement-descriptors subscript of group : [G1, G2, G3]
 SELECT drop_all_functions_if_exists('fr', 'get_descriptor_subscript_of_group');
 SELECT drop_all_functions_if_exists('fr', 'get_subscript_of_descriptor');
 CREATE OR REPLACE FUNCTION fr.get_subscript_of_descriptor(
@@ -762,6 +791,7 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+-- complement-group (keyword) from associated descriptor
 SELECT drop_all_functions_if_exists('fr', 'get_group_of_descriptor');
 CREATE OR REPLACE FUNCTION fr.get_group_of_descriptor(
     descriptor IN VARCHAR
@@ -780,6 +810,7 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+-- complement-descriptor for group (of a word)
 SELECT drop_all_functions_if_exists('fr', 'get_descriptor_of_group');
 CREATE OR REPLACE FUNCTION fr.get_descriptor_of_group(
     group_ IN VARCHAR
@@ -800,6 +831,12 @@ DECLARE
 BEGIN
     FOR _i IN REVERSE 3 .. 1
     LOOP
+        /* NOTE
+        descriptors array contain in progess building descriptors
+        of each group, in ascending order [G1, G2, G3]
+        only first keyword (in each group) is affected by its descriptor,
+        else other(s) are type-descriptor
+         */
         IF descriptors[_i] IS NOT NULL THEN
             _higher := _i;
             EXIT;
@@ -817,10 +854,11 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+-- get descriptors from name (street, complement)
 SELECT drop_all_functions_if_exists('fr', 'get_descriptors_from_name');
 CREATE OR REPLACE FUNCTION fr.get_descriptors_from_name(
     name IN VARCHAR
-    , element IN VARCHAR                        -- STREET | COMPLEMENT
+    , element IN VARCHAR                  -- STREET | COMPLEMENT
     , with_abbreviation IN BOOLEAN DEFAULT FALSE
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , descriptors OUT VARCHAR
@@ -881,7 +919,7 @@ BEGIN
             AND NOT fr.is_normalized_article(_words[_i]) THEN
             _words_d := CASE
                 --WHEN _words[_i] = ANY('{D, L}') THEN 'A'
-                WHEN _words[_i] = ANY('{C, M}') THEN 'N'
+                WHEN _words[_i] ~ 'C+|M+') THEN 'N'
                 -- exceptions: DI, LI, MI, CD, CL, ...
                 WHEN fr.get_default_of_street_word(_words[_i]) != 'C' THEN
                     CASE

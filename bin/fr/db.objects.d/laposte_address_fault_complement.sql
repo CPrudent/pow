@@ -1,48 +1,31 @@
 /***
- * FR: add LAPOSTE/RAN street faults
+ * FR: add LAPOSTE/RAN complement-faults
  */
 
 /* NOTE
 initialization will be done w/ constant
  */
 
-DO $$
-BEGIN
-    IF table_exists(
-            schema_name => 'fr'
-            , table_name => 'laposte_address_fault_street'
-        )
-        AND (
-            column_exists(
-                schema_name => 'fr'
-                , table_name => 'laposte_address_fault_street'
-                , column_name => 'name_before'
-            )
-        ) THEN
-        ALTER TABLE fr.laposte_address_fault_street DROP COLUMN name_before;
-    END IF;
-END $$;
-
 -- to store fault
-CREATE TABLE IF NOT EXISTS fr.laposte_address_fault_street (
+CREATE TABLE IF NOT EXISTS fr.laposte_address_fault_complement (
     name_id INT NOT NULL
     , fault_id INT NOT NULL
     , help_to_fix VARCHAR
 )
 ;
 
-SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_fault_street_index');
-CREATE OR REPLACE PROCEDURE fr.set_laposte_address_fault_street_index()
+SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_fault_complement_index');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_address_fault_complement_index()
 AS
 $proc$
 BEGIN
-    CREATE UNIQUE INDEX IF NOT EXISTS iux_laposte_address_fault_street_id ON fr.laposte_address_fault_street (name_id, fault_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS iux_laposte_address_fault_complement_id ON fr.laposte_address_fault_complement (name_id, fault_id);
 END
 $proc$ LANGUAGE plpgsql;
 
--- identify street faults
-SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_fault_street');
-CREATE OR REPLACE PROCEDURE fr.set_laposte_address_fault_street(
+-- identify complement faults
+SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_fault_complement');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_address_fault_complement(
     fault IN VARCHAR DEFAULT 'ALL'
     , simulation IN BOOLEAN DEFAULT FALSE
 )
@@ -59,18 +42,18 @@ DECLARE
     _fault_i INT;
     _nrows INT;
 BEGIN
-    IF NOT table_exists('fr', 'laposte_address_street_uniq')
-        AND NOT table_exists('fr', 'laposte_address_street_membership') THEN
+    IF NOT table_exists('fr', 'laposte_address_complement_uniq')
+        AND NOT table_exists('fr', 'laposte_address_complement_membership') THEN
         RAISE 'Données LAPOSTE non suffisantes';
     END IF;
 
     CALL public.log_info('Identification des anomalies dans les libellés de voie');
 
      _keys := ARRAY(
-        SELECT key FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_FAULT_STREET' ORDER BY value
+        SELECT key FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_FAULT_COMPLEMENT' ORDER BY value
     );
      _values := ARRAY(
-        SELECT value FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_FAULT_STREET' ORDER BY value
+        SELECT value FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_FAULT_COMPLEMENT' ORDER BY value
     );
     _faults := CASE
         WHEN fault = 'ALL' THEN _keys
@@ -79,8 +62,8 @@ BEGIN
 
     IF fault = 'ALL' AND NOT simulation THEN
         CALL public.log_info(' Purge');
-        TRUNCATE TABLE fr.laposte_address_fault_street;
-        PERFORM public.drop_table_indexes('fr', 'laposte_address_fault_street');
+        TRUNCATE TABLE fr.laposte_address_fault_complement;
+        PERFORM public.drop_table_indexes('fr', 'laposte_address_fault_complement');
         _delete := TRUE;
     END IF;
 
@@ -94,7 +77,7 @@ BEGIN
             ;
         IF (_fault_i > 0) THEN
             IF NOT _delete AND NOT simulation THEN
-                DELETE FROM fr.laposte_address_fault_street
+                DELETE FROM fr.laposte_address_fault_complement
                 WHERE
                     fault_id = _values[_fault_i]::INT
                 ;
@@ -111,7 +94,7 @@ BEGIN
                             SELECT
                                 u.id
                             FROM
-                                fr.laposte_address_street_uniq u
+                                fr.laposte_address_complement_uniq u
                                 , bad_space_in_name(
                                     name => u.name
                                     , test_only => TRUE
@@ -124,7 +107,7 @@ BEGIN
                             , ', _values[_fault_i]::INT, '
                             , fix.name
                         FROM
-                            fr.laposte_address_street_uniq u
+                            fr.laposte_address_complement_uniq u
                                 JOIN bad_space bs ON u.id = bs.id
                             , bad_space_in_name(
                                 name => u.name
@@ -174,6 +157,7 @@ BEGIN
                                 , (''TCHAT'')
                                 , (''TECS'')
                                 , (''TRIN'')
+                                , (''TUIS'')
                                 , (''TUIT'')
                                 , (''TUITS'')
                                 , (''VALA'')
@@ -185,14 +169,14 @@ BEGIN
                                 id
                                 , REGEXP_MATCHES(name, ''\m([ A-Z]+)\s+\1\M'') dup
                             FROM
-                                fr.laposte_address_street_uniq
+                                fr.laposte_address_complement_uniq
                         )
                         SELECT
                             u.id
                             , ', _values[_fault_i]::INT, '
                             , d.dup[1]
                         FROM
-                            fr.laposte_address_street_uniq u
+                            fr.laposte_address_complement_uniq u
                                 JOIN dup_words d ON u.id = d.id
                         WHERE
                             d.dup IS NOT NULL
@@ -221,7 +205,7 @@ BEGIN
                             , ', _values[_fault_i]::INT, '
                             , wa.abbr
                         FROM
-                            fr.laposte_address_street_uniq u
+                            fr.laposte_address_complement_uniq u
                             , word_abbreviation wa
                         WHERE
                             u.words @> ARRAY[wa.abbr]::TEXT[]
@@ -236,8 +220,8 @@ BEGIN
                             , ', _values[_fault_i]::INT, '
                             , m.word
                         FROM
-                            fr.laposte_address_street_membership m
-                                JOIN fr.laposte_address_street_uniq u ON m.name_id = u.id
+                            fr.laposte_address_complement_membership m
+                                JOIN fr.laposte_address_complement_uniq u ON m.name_id = u.id
                         WHERE
                             m.word ~ ''[0-9]+''
                             -- even if not necessary (membership exclude is_number)
@@ -252,7 +236,7 @@ BEGIN
             IF _set_dictionary THEN
                 _query := CONCAT(
                     '
-                    INSERT INTO fr.laposte_address_fault_street
+                    INSERT INTO fr.laposte_address_fault_complement
                     '
                     , _query
                 );
@@ -270,18 +254,18 @@ BEGIN
     END LOOP;
 
     IF NOT simulation THEN
-        CALL fr.set_laposte_address_fault_street_index();
+        CALL fr.set_laposte_address_fault_complement_index();
         CALL public.log_info(' Indexation');
     END IF;
 END
 $proc$ LANGUAGE plpgsql;
 
 /* TEST
-CALL fr.set_laposte_address_fault_street();
+CALL fr.set_laposte_address_fault_complement();
 
 13:09:59.573 Identification des anomalies dans les libellés de voie
 13:09:59.574  Purge
-DROP INDEX IF EXISTS fr.iux_laposte_address_fault_street_id
+DROP INDEX IF EXISTS fr.iux_laposte_address_fault_complement_id
 13:09:59.665  Identification
 13:10:02.911  Ajout anomalies (BAD_SPACE): 33
 13:10:14.620  Ajout anomalies (DUPLICATE_WORD): 134
@@ -290,9 +274,9 @@ DROP INDEX IF EXISTS fr.iux_laposte_address_fault_street_id
 13:10:16.066  Indexation
  */
 
--- fix street-faults from list (manual corrections)
-SELECT drop_all_functions_if_exists('fr', 'fix_laposte_address_fault_street_from_list');
-CREATE OR REPLACE FUNCTION fr.fix_laposte_address_fault_street_from_list(
+-- fix complement-faults from list (manual corrections)
+SELECT drop_all_functions_if_exists('fr', 'fix_laposte_address_fault_complement_from_list');
+CREATE OR REPLACE FUNCTION fr.fix_laposte_address_fault_complement_from_list(
     fault IN VARCHAR
     , query_fix OUT TEXT
     , simulation IN BOOLEAN DEFAULT FALSE
@@ -305,11 +289,11 @@ DECLARE
 BEGIN
     _exists := table_exists(
         schema_name => 'fr'
-        , table_name => 'laposte_address_fault_street_correction'
+        , table_name => 'laposte_address_fault_complement_correction'
     );
     IF _exists THEN
         _nrows := (
-            SELECT COUNT(*) FROM fr.laposte_address_fault_street_correction
+            SELECT COUNT(*) FROM fr.laposte_address_fault_complement_correction
             WHERE fault_key = fault
         );
     END IF;
@@ -318,18 +302,18 @@ BEGIN
     END IF;
 
     query_fix := CONCAT('
-        UPDATE fr.laposte_address_street_uniq u SET
+        UPDATE fr.laposte_address_complement_uniq u SET
             name = mc.name_fixed
-            FROM fr.laposte_address_fault_street_correction mc
+            FROM fr.laposte_address_fault_complement_correction mc
             WHERE u.name = mc.name
             AND mc.fault_key = ', quote_literal(fault)
     );
 END
 $func$ LANGUAGE plpgsql;
 
--- fix street faults
-SELECT drop_all_functions_if_exists('fr', 'fix_laposte_address_fault_street');
-CREATE OR REPLACE PROCEDURE fr.fix_laposte_address_fault_street(
+-- fix complement faults
+SELECT drop_all_functions_if_exists('fr', 'fix_laposte_address_fault_complement');
+CREATE OR REPLACE PROCEDURE fr.fix_laposte_address_fault_complement(
     fault IN VARCHAR DEFAULT 'ALL'
     , fix IN VARCHAR DEFAULT 'ALL'
     , simulation IN BOOLEAN DEFAULT FALSE
@@ -354,17 +338,17 @@ DECLARE
     _address_update_column VARCHAR;
     _column_with_new_value VARCHAR;
 BEGIN
-    IF NOT table_exists('fr', 'laposte_address_street_uniq') THEN
+    IF NOT table_exists('fr', 'laposte_address_complement_uniq') THEN
         RAISE 'Données LAPOSTE non suffisantes';
     END IF;
 
     CALL public.log_info('Correction des anomalies dans les libellés de voie');
 
      _keys := ARRAY(
-        SELECT key FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_FAULT_STREET' ORDER BY value
+        SELECT key FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_FAULT_COMPLEMENT' ORDER BY value
     );
      _values := ARRAY(
-        SELECT value FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_FAULT_STREET' ORDER BY value
+        SELECT value FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_FAULT_COMPLEMENT' ORDER BY value
     );
     _faults := CASE
         WHEN fault = 'ALL' THEN _keys
@@ -388,9 +372,9 @@ BEGIN
             _fault_id := _values[_fault_i]::INT;
             IF _keys[_fault_i] = 'BAD_SPACE' THEN
                 _query := CONCAT('
-                    UPDATE fr.laposte_address_street_uniq u SET
+                    UPDATE fr.laposte_address_complement_uniq u SET
                         name = fs.help_to_fix
-                        FROM fr.laposte_address_fault_street fs
+                        FROM fr.laposte_address_fault_complement fs
                         WHERE
                             fs.fault_id = ', _fault_id, '
                             AND
@@ -398,7 +382,7 @@ BEGIN
                     '
                 );
             ELSIF _keys[_fault_i] = 'DUPLICATE_WORD' THEN
-                _query := fr.fix_laposte_address_fault_street_from_list(
+                _query := fr.fix_laposte_address_fault_complement_from_list(
                     fault => _keys[_fault_i]
                 );
             ELSIF _keys[_fault_i] = 'WITH_ABBREVIATION' THEN
@@ -408,7 +392,7 @@ BEGIN
                         SELECT DISTINCT
                             help_to_fix
                         FROM
-                            fr.laposte_address_fault_street
+                            fr.laposte_address_fault_complement
                         WHERE
                             fault_id = ', _fault_id, '
                     )
@@ -430,7 +414,7 @@ BEGIN
                             (''STE'', ''SAINTE'')
                         */
                     )
-                    UPDATE fr.laposte_address_street_uniq u SET
+                    UPDATE fr.laposte_address_complement_uniq u SET
                         name = REGEXP_REPLACE(
                             u.name
                             , CONCAT(''\m'', fs.help_to_fix, ''\M'')
@@ -438,7 +422,7 @@ BEGIN
                             , ''g''
                         )
                         FROM
-                            fr.laposte_address_fault_street fs
+                            fr.laposte_address_fault_complement fs
                             , not_abbreviated na
                         WHERE
                             fs.fault_id = ', _values[_fault_i]::INT, '
@@ -449,7 +433,7 @@ BEGIN
                     '
                 );
             ELSIF _keys[_fault_i] = 'TYPO_ERROR' THEN
-                _query := fr.fix_laposte_address_fault_street_from_list(
+                _query := fr.fix_laposte_address_fault_complement_from_list(
                     fault => _keys[_fault_i]
                 );
             ELSE
@@ -530,7 +514,7 @@ $proc$ LANGUAGE plpgsql;
 -- BAD_SPACE
 DO $$
 BEGIN
-    CALL fr.fix_laposte_address_fault_street(
+    CALL fr.fix_laposte_address_fault_complement(
         fault => 'BAD_SPACE,TYPO_ERROR'
         --, simulation => TRUE
     );
@@ -559,7 +543,7 @@ Query returned successfully in 1 secs 668 msec.
 -- DUPLICATE_WORD
 DO $$
 BEGIN
-    CALL fr.fix_laposte_address_fault_street(
+    CALL fr.fix_laposte_address_fault_complement(
         fault => 'DUPLICATE_WORD'
     );
 END $$;
@@ -575,7 +559,7 @@ Query returned successfully in 38 secs 523 msec.
 -- WITH_ABBREVIATION
 DO $$
 BEGIN
-    CALL fr.fix_laposte_address_fault_street(
+    CALL fr.fix_laposte_address_fault_complement(
         fault => 'WITH_ABBREVIATION'
     );
 END $$;
@@ -607,9 +591,9 @@ Query returned successfully in 1 min 41 secs.
 Query returned successfully in 37 secs 436 msec.
  */
 
--- undo fix street faults
-SELECT drop_all_functions_if_exists('fr', 'undo_laposte_address_fault_street');
-CREATE OR REPLACE PROCEDURE fr.undo_laposte_address_fault_street(
+-- undo fix complement faults
+SELECT drop_all_functions_if_exists('fr', 'undo_laposte_address_fault_complement');
+CREATE OR REPLACE PROCEDURE fr.undo_laposte_address_fault_complement(
     fault IN VARCHAR DEFAULT 'ALL'
     , simulation IN BOOLEAN DEFAULT FALSE
     , raise_notice IN BOOLEAN DEFAULT FALSE
@@ -629,17 +613,17 @@ DECLARE
     _total_uniq INT;
     _total_referential INT;
 BEGIN
-    IF NOT table_exists('fr', 'laposte_address_street_uniq') THEN
+    IF NOT table_exists('fr', 'laposte_address_complement_uniq') THEN
         RAISE 'Données LAPOSTE non suffisantes';
     END IF;
 
     CALL public.log_info('Annulation des corrections des anomalies dans les libellés de voie');
 
      _keys := ARRAY(
-        SELECT key FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_FAULT_STREET' ORDER BY value
+        SELECT key FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_FAULT_COMPLEMENT' ORDER BY value
     );
      _values := ARRAY(
-        SELECT value FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_FAULT_STREET' ORDER BY value
+        SELECT value FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_FAULT_COMPLEMENT' ORDER BY value
     );
     _faults := CASE
         WHEN fault = 'ALL' THEN _keys
@@ -667,7 +651,7 @@ BEGIN
                 SELECT
                     name_before name
                 FROM
-                    fr.laposte_address_fault_street
+                    fr.laposte_address_fault_complement
                 WHERE
                     fault_id = _values[_fault_i]::INT
             )
@@ -678,8 +662,8 @@ BEGIN
                 UPDATE fr.laposte_address_street s SET
                     lb_voie = fs.name_before
                     FROM
-                        fr.laposte_address_fault_street fs
-                            JOIN fr.laposte_address_street_uniq u ON u.id = fs.name_id
+                        fr.laposte_address_fault_complement fs
+                            JOIN fr.laposte_address_complement_uniq u ON u.id = fs.name_id
                             JOIN fr.laposte_address_history h ON h.values->>'lb_voie' = _set.name
                     WHERE
                         s.lb_voie = u.name
@@ -700,10 +684,10 @@ BEGIN
                 END IF;
 
                 -- uniq
-                UPDATE fr.laposte_address_street_uniq u SET
+                UPDATE fr.laposte_address_complement_uniq u SET
                     name = fs.name_before
                     FROM
-                        fr.laposte_address_fault_street fs
+                        fr.laposte_address_fault_complement fs
                     WHERE
                         u.id = fs.name_id
                         AND

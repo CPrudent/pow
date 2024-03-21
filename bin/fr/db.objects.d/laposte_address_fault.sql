@@ -6,6 +6,268 @@
 initialization will be done w/ constant
  */
 
+-- identify element-faults
+SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_fault_street');
+SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_fault');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_address_fault(
+    element IN VARCHAR                  -- STREET | COMPLEMENT
+    , fault IN VARCHAR DEFAULT 'ALL'
+    , simulation IN BOOLEAN DEFAULT FALSE
+)
+AS
+$proc$
+DECLARE
+    _table_uniq VARCHAR := fr.get_table_name(element, 'UNIQ');
+    _table_membership VARCHAR := fr.get_table_name(element, 'MEMBERSHIP');
+    _table_fault VARCHAR := fr.get_table_name(element, 'FAULT');
+    _usecase_fault VARCHAR :=
+        CONCAT('LAPOSTE_ADDRESS_FAULT_', UPPER(element));
+    _faults VARCHAR[];
+    _keys VARCHAR[];
+    _values VARCHAR[];
+    _delete BOOLEAN := FALSE;
+    _set_dictionary BOOLEAN;
+    _query TEXT;
+    _i INT;
+    _fault_i INT;
+    _nrows INT;
+BEGIN
+    IF (
+        NOT table_exists('fr', _table_uniq)
+        AND
+        NOT table_exists('fr', _table_membership)
+    ) THEN
+        RAISE 'Données LAPOSTE non suffisantes';
+    END IF;
+
+    CALL public.log_info(
+        CONCAT('Identification des anomalies dans les libellés de '
+            , CASE element
+                WHEN 'STREET' THEN 'voie'
+                ELSE 'complément (L3)'
+                END
+        )
+    );
+
+     _keys := ARRAY(
+        SELECT key FROM fr.constant WHERE usecase = _usecase_fault ORDER BY value
+    );
+     _values := ARRAY(
+        SELECT value FROM fr.constant WHERE usecase = _usecase_fault ORDER BY value
+    );
+    _faults := CASE
+        WHEN fault = 'ALL' THEN _keys
+        ELSE STRING_TO_ARRAY(fault, ',')
+        END;
+
+    IF fault = 'ALL' AND NOT simulation THEN
+        CALL public.log_info(' Purge');
+        EXECUTE FORMAT('TRUNCATE TABLE %s', _table_fault);
+        PERFORM public.drop_table_indexes('fr', _table_fault);
+        _delete := TRUE;
+    END IF;
+
+    CALL public.log_info(' Identification');
+    FOR _i IN 1 .. ARRAY_LENGTH(_faults, 1)
+    LOOP
+        _fault_i := CASE
+            WHEN _faults[_i] ~ '^[0-9]+$' THEN ARRAY_POSITION(_values, _faults[_i])
+            ELSE ARRAY_POSITION(_keys, _faults[_i])
+            END
+            ;
+        IF (_fault_i > 0) THEN
+            IF NOT _delete AND NOT simulation THEN
+                _query := CONCAT(
+                    '
+                    DELETE FROM fr.', _table_fault
+                    , '
+                    WHERE
+                        fault_id = $1::INT
+                    '
+                );
+                EXECUTE _query USING _values[_fault_i];
+                GET DIAGNOSTICS _nrows = ROW_COUNT;
+                CALL public.log_info(CONCAT(' Purge anomalies (', _keys[_fault_i], '): ', _nrows));
+            END IF;
+
+            _set_dictionary := TRUE;
+            IF _keys[_fault_i] = 'BAD_SPACE' THEN
+                _query := CONCAT(
+                    '
+                    WITH
+                    bad_space AS (
+                        SELECT
+                            u.id
+                        FROM
+                            fr.', _table_uniq, ' u
+                            , bad_space_in_name(
+                                name => u.name
+                                , test_only => TRUE
+                            ) bs
+                        WHERE
+                            bs.to_fix
+                    )
+                    SELECT
+                        u.id
+                        , $1::INT
+                        , fix.name
+                    FROM
+                        fr.', _table_uniq, ' u
+                            JOIN bad_space bs ON u.id = bs.id
+                        , bad_space_in_name(
+                            name => u.name
+                        ) fix
+                    '
+                );
+            ELSIF _keys[_fault_i] = 'DUPLICATE_WORD' THEN
+                _query := CONCAT(
+                    '
+                    WITH
+                    -- true double words!
+                    except_dup_words(word) AS (
+                        VALUES
+                              (''AH'')
+                            , (''BADEN'')
+                            , (''BIN'')
+                            , (''BLIN'')
+                            , (''BORA'')
+                            , (''BOUTSI'')
+                            , (''CACHE'')
+                            , (''CASSE'')
+                            , (''COLLES'')
+                            , (''COTTE'')
+                            , (''CRI'')
+                            , (''CUIS'')
+                            , (''FOU'')
+                            , (''FROUS'')
+                            , (''GABA'')
+                            , (''HA'')
+                            , (''JEAN'')
+                            , (''HOURA'')
+                            , (''MOUCOU'')
+                            , (''MOUKOUS'')
+                            , (''NOEL'')
+                            , (''PAUL'')
+                            , (''PEUT'')
+                            , (''PILI'')
+                            , (''PITE'')
+                            , (''PIOU'')
+                            , (''POC'')
+                            , (''POUSSE'')
+                            , (''PRIS'')
+                            , (''RENE'')
+                            , (''SOEURS'')
+                            , (''QUIN'')
+                            , (''TCHA'')
+                            , (''TCHAT'')
+                            , (''TECS'')
+                            , (''TRIN'')
+                            , (''TUIT'')
+                            , (''TUITS'')
+                            , (''VALA'')
+                            , (''YLANG'')
+                            , (''YLANGS'')
+                    )
+                    , dup_words AS (
+                        SELECT
+                            id
+                            , REGEXP_MATCHES(name, ''\m([ A-Z]+)\s+\1\M'') dup
+                        FROM
+                            fr.', _table_uniq, '
+                    )
+                    SELECT
+                        u.id
+                        , $1::INT
+                        , d.dup[1]
+                    FROM
+                        fr.', _table_uniq, ' u
+                            JOIN dup_words d ON u.id = d.id
+                    WHERE
+                        d.dup IS NOT NULL
+                        AND
+                        LENGTH(d.dup[1]) > 1
+                        AND
+                        NOT EXISTS(
+                            SELECT 1 FROM except_dup_words x
+                            WHERE d.dup[1] = x.word
+                        )
+                    '
+                );
+            ELSIF _keys[_fault_i] = 'WITH_ABBREVIATION' THEN
+                -- others than ST|STE have too counter examples
+                --  DU|EN not classified as article, ALL (ALL blacks), COR (chasse)
+                _query := CONCAT(
+                    '
+                    WITH
+                    word_abbreviation(abbr) AS (
+                        VALUES
+                            (''ST'')
+                            , (''STE'')
+                    )
+                    SELECT
+                        u.id
+                        , $1::INT
+                        , wa.abbr
+                    FROM
+                        fr.', _table_uniq, ' u
+                        , word_abbreviation wa
+                    WHERE
+                        u.words @> ARRAY[wa.abbr]::TEXT[]
+                    '
+                );
+            ELSIF _keys[_fault_i] = 'TYPO_ERROR' THEN
+                -- word containing digit, but not classified as number
+                _query := CONCAT(
+                    '
+                    SELECT DISTINCT
+                        m.name_id
+                        , $1::INT
+                        , m.word
+                    FROM
+                        fr.', _table_membership, ' m
+                            JOIN fr.', _table_uniq, ' u ON m.name_id = u.id
+                    WHERE
+                        m.word ~ ''[0-9]+''
+                        AND
+                        NOT fr.is_normalized_number(m.word)
+                    '
+                );
+            ELSE
+                _set_dictionary := FALSE;
+            END IF;
+
+            IF _set_dictionary THEN
+                _query := CONCAT(
+                    '
+                    INSERT INTO fr.', _table_fault, '
+                    '
+                    , _query
+                );
+                IF simulation THEN
+                    RAISE NOTICE ' requête=%', _query;
+                ELSE
+                    EXECUTE _query USING _values[_fault_i];
+                    GET DIAGNOSTICS _nrows = ROW_COUNT;
+                    CALL public.log_info(CONCAT(' Ajout anomalies (', _keys[_fault_i], '): ', _nrows));
+                END IF;
+            END IF;
+        ELSE
+            RAISE NOTICE ' Anomalie % non valide!', _faults[_i];
+        END IF;
+    END LOOP;
+
+    IF NOT simulation THEN
+        CALL fr.set_laposte_address_fault_street_index();
+        CALL public.log_info(' Indexation');
+    END IF;
+END
+$proc$ LANGUAGE plpgsql;
+
+/* TEST
+CALL fr.set_laposte_address_fault(element => 'STREET');
+
+ */
+
 -- fix fault of address (referential)
 SELECT drop_all_functions_if_exists('fr', 'fix_laposte_address_fault');
 CREATE OR REPLACE FUNCTION fr.fix_laposte_address_fault(
@@ -48,10 +310,10 @@ BEGIN
         RAISE 'élément adresse (%) non valide!', address_element;
     END IF;
 
-    _address_table := CONCAT('fr.laposte_address_', LOWER(address_element));
-    _fault_table := CONCAT('fr.laposte_address_fault_', LOWER(address_element));
-    _uniq_table := CONCAT(_address_table, '_uniq');
-    _reference_table := CONCAT(_address_table, '_reference');
+    _address_table := fr.get_table_name(element, 'ADDRESS');
+    _fault_table := fr.get_table_name(element, 'FAULT');
+    _uniq_table := fr.get_table_name(element, 'UNIQ');
+    _reference_table := fr.get_table_name(element, 'REFERENCE');
 
     /*
     UPDATE fr.laposte_address_street s SET

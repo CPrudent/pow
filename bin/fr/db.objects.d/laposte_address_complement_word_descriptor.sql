@@ -76,7 +76,6 @@ BEGIN
         , as_title
         , as_type
     )
-    -- #
     WITH
     split_as_word AS (
         SELECT
