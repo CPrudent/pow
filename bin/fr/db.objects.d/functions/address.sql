@@ -748,6 +748,50 @@ WHERE
     ;
  */
 
+-- fix address faults from list (manual corrections)
+SELECT drop_all_functions_if_exists('fr', 'get_query_to_fix_from_manual_correction');
+CREATE OR REPLACE FUNCTION fr.get_query_to_fix_from_manual_correction(
+    element IN VARCHAR
+    , fault IN VARCHAR
+    , query_fix OUT TEXT
+)
+AS
+$func$
+DECLARE
+    _exists BOOLEAN;
+    _nrows INT;
+BEGIN
+    _exists := table_exists(
+        schema_name => 'fr'
+        , table_name => 'laposte_address_fault_correction'
+    );
+    IF _exists THEN
+        _nrows := (
+            SELECT COUNT(*) FROM fr.laposte_address_fault_correction mc
+            WHERE
+                mc.element = get_query_to_fix_from_manual_correction.element
+                AND
+                mc.fault_key = fault
+        );
+    END IF;
+    IF NOT _exists OR _nrows = 0 THEN
+        RAISE 'Données de corrections manquantes (%)', fault;
+    END IF;
+
+    query_fix := CONCAT('
+        UPDATE fr.', fr.get_table_name(element, 'UNIQ') , 'u SET
+            name = mc.name_fixed
+            FROM fr.laposte_address_fault_correction mc
+            WHERE
+                mc.element = ', quote_literal(element), '
+                AND
+                u.name = mc.name
+                AND
+                mc.fault_key = ', quote_literal(fault)
+    );
+END
+$func$ LANGUAGE plpgsql;
+
 SELECT drop_all_functions_if_exists('fr', 'get_table_name');
 CREATE OR REPLACE FUNCTION fr.get_table_name(
     element IN VARCHAR
@@ -762,10 +806,6 @@ BEGIN
             FORMAT('laposte_address_%s_%s'
                 , LOWER(element)
                 , LOWER(usecase)
-            )
-        WHEN UPPER(usecase) ~ 'FAULT' THEN
-            FORMAT('laposte_address_fault_%s'
-                , LOWER(element)
             )
         WHEN UPPER(usecase) ~ 'ADDRESS' THEN
             FORMAT('laposte_address_%s'

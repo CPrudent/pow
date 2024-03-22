@@ -28,4 +28,6 @@ BEGIN
         --RAISE NOTICE '%', _query;
         EXECUTE _query;
     END LOOP;
+
+    DROP TABLE IF EXISTS fr.laposte_address_fault_street_correction;
 END $PURGE$;

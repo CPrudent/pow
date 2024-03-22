@@ -732,11 +732,11 @@ BEGIN
                 fl_active
                 AND
                 lb_type_groupe3_l3 IS NOT NULL
+                AND
                 /* NOTE
                 exceptions due to referential-faults
                 so occurs count is not complete for these 2 kw
                  */
-                AND
                 NOT lb_type_groupe3_l3 = ANY('{TOUR,VILLA}')
             GROUP BY
                   lb_type_groupe3_l3
@@ -1060,6 +1060,64 @@ BEGIN
 END;
 $proc$ LANGUAGE plpgsql;
 
+SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_fault_exception');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_address_fault_exception()
+AS
+$proc$
+BEGIN
+    IF NOT table_exists('fr', 'laposte_address') THEN
+        RAISE 'Données LAPOSTE non présentes';
+    END IF;
+
+    DELETE FROM fr.constant
+        WHERE usecase = 'LAPOSTE_ADDRESS_FAULT_EXCEPTION';
+    INSERT INTO fr.constant (usecase, key, value) VALUES
+        -- true double words!
+          ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'AH')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'BADEN')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'BIN')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'BLIN')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'BORA')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'BOUTSI')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'CACHE')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'CASSE')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'COLLES')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'COTTE')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'CRI')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'CUIS')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'FOU')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'FROUS')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'GABA')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'HA')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'JEAN')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'HOURA')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'MOUCOU')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'MOUKOUS')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'NOEL')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PAUL')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PEUT')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PILI')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PITE')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PIOU')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'POC')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'POUSSE')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PRIS')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'RENE')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'SOEURS')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'QUIN')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TCHA')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TCHAT')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TECS')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TRIN')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TUIT')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TUITS')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'VALA')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'YLANG')
+        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'YLANGS')
+    ;
+END;
+$proc$ LANGUAGE plpgsql;
+
 SELECT public.drop_all_functions_if_exists('fr', 'set_global_variables');
 CREATE OR REPLACE PROCEDURE fr.set_global_variables()
 AS
@@ -1087,6 +1145,7 @@ DECLARE
 BEGIN
     SELECT public.drop_table_indexes('fr', 'constant');
     CALL fr.set_laposte_address_fault_list();
+    CALL fr.set_laposte_address_fault_exception();
 
     -- STREET
 
