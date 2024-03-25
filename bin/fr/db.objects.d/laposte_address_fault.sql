@@ -24,12 +24,12 @@ END
 $proc$ LANGUAGE plpgsql;
 
 -- identify element-faults
-SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_fault_street');
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_fault');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_fault(
     element IN VARCHAR
     , fault IN VARCHAR DEFAULT 'ALL'
     , simulation IN BOOLEAN DEFAULT FALSE
+    , raise_notice IN BOOLEAN DEFAULT FALSE
 )
 AS
 $proc$
@@ -75,6 +75,9 @@ BEGIN
         WHEN fault = 'ALL' THEN _keys
         ELSE STRING_TO_ARRAY(fault, ',')
         END;
+    IF raise_notice THEN
+        RAISE NOTICE ' Anomalies k=% v=%', _keys, _values;
+    END IF;
 
     IF fault = 'ALL' AND NOT simulation THEN
         CALL public.log_info(' Purge');
@@ -203,20 +206,25 @@ BEGIN
                 );
             ELSIF _keys[_fault_i] = 'TYPO_ERROR' THEN
                 -- word containing digit, but not classified as number
+                /* NOTE
+                have to unify row of element (w/ 2 faults: 1A3, 18A21)
+                VILLA 1A3 18A21 LOTISSEMENT HAMEAU DE LA CROIX
+                 */
                 _query := CONCAT(
                     '
-                    SELECT DISTINCT
+                    SELECT
                         $1
                         , m.name_id
                         , $2::INT
-                        , m.word
+                        , FIRST(m.word) word
                     FROM
                         fr.', _table_membership, ' m
-                            JOIN fr.', _table_uniq, ' u ON m.name_id = u.id
                     WHERE
                         m.word ~ ''[0-9]+''
                         AND
                         NOT fr.is_normalized_number(m.word)
+                    GROUP BY
+                        m.name_id
                     '
                 );
             ELSE
@@ -253,15 +261,28 @@ $proc$ LANGUAGE plpgsql;
 /* TEST
 CALL fr.set_laposte_address_fault(element => 'STREET');
 
+CALL fr.set_laposte_address_fault(element => 'COMPLEMENT');
+
+11:40:49.420 Identification des anomalies dans les libellés de complément (L3)
+Anomalies k={BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION,TYPO_ERROR,DESCRIPTORS} v={400,401,402,403,404}
+11:40:49.421  Purge
+11:40:49.422  Identification
+11:40:50.675  Ajout anomalies (BAD_SPACE): 0
+11:40:57.494  Ajout anomalies (DUPLICATE_WORD): 180
+11:40:57.747  Ajout anomalies (WITH_ABBREVIATION): 749
+11:40:58.553  Ajout anomalies (TYPO_ERROR): 174
+11:40:58.959  Indexation
+
+Query returned successfully in 9 secs 574 msec.
  */
 
--- fix fault of address (referential)
+-- fix element-faults (in referential)
 SELECT drop_all_functions_if_exists('fr', 'fix_laposte_address_fault_referential');
 CREATE OR REPLACE FUNCTION fr.fix_laposte_address_fault_referential(
     element IN VARCHAR                          -- AREA|STREET|HOUSENUMBER|COMPLEMENT
     , column_join IN VARCHAR                    -- join ADDRESS to REFERENCE
     , column_update IN VARCHAR                  -- column to change
-    , fault_id IN INT                           -- fault ID (or -1 if NONE)
+    , fault_id IN INT                           -- fault ID
     , column_with_new_value IN VARCHAR DEFAULT 'name'
     , alias_address IN VARCHAR DEFAULT 'a'
     , alias_fault IN VARCHAR DEFAULT 'f'
@@ -300,21 +321,6 @@ BEGIN
     _table_uniq := CONCAT('fr', fr.get_table_name(element, 'UNIQ'));
     _table_reference := CONCAT('fr', fr.get_table_name(element, 'REFERENCE'));
 
-    /*
-    UPDATE fr.laposte_address_street s SET
-        lb_voie = u.name
-        FROM
-            fr.laposte_address_fault_street fs
-                JOIN fr.laposte_address_street_uniq u ON u.id = fs.name_id
-        WHERE
-            fs.fault_id = _values[_fault_i]::INT
-            AND
-            s.lb_voie = fs.name_before
-            AND
-            s.lb_voie IS DISTINCT FROM u.name
-    ;
-     */
-
     _query := CONCAT('UPDATE ', _table_address, ' ', alias_address, ' SET
         ', column_update, ' = ', _column_with_new_value, '
         , dt_reference = TIMEOFDAY()::DATE
@@ -322,6 +328,7 @@ BEGIN
         '
     );
     IF fault_id >= 0 THEN
+        -- correction from element-fault
         _query := CONCAT(_query
             , _table_fault, ' ', alias_fault, '
                 JOIN ', _table_uniq, ' ', alias_uniq, ' ON ', _join_uniq_fault, '
@@ -332,6 +339,7 @@ BEGIN
             '
         );
     ELSE
+        -- correction from element-dictionary
         _query := CONCAT(_query
             , _table_uniq, ' ', alias_uniq, '
                 JOIN ', _table_reference, ' ', alias_reference, ' ON ', _join_uniq_reference, '
@@ -355,7 +363,17 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
--- fix fault of address
+-- fix element-faults (dictionary and/or referential)
+/* NOTE
+fix dictionary (uniq)
+fix referential (address) : no!
+    . POW's updates not uploaded in RAN, so will be detected as changes w/
+      a more recent RAN archive!
+    . hard to do w/ COMPLEMENT (divided in 3 groups, many sub-values)
+    . moreover, no rule to choice group (w/o group keyword)
+
+=> at last dictionary becomes new referential, except AREA
+ */
 SELECT drop_all_functions_if_exists('fr', 'fix_laposte_address_fault');
 CREATE OR REPLACE PROCEDURE fr.fix_laposte_address_fault(
     element IN VARCHAR
@@ -432,7 +450,11 @@ BEGIN
             _fix_dictionary := TRUE;
             _manual_correction := FALSE;
             _column_join := 'co_cea';
-            _column_update := 'lb_voie';
+            _column_update := CASE element
+                WHEN 'STREET' THEN 'lb_voie'
+                WHEN 'COMPLEMENT' THEN 'lb_complement'
+                END
+            ;
             _column_with_new_value := 'name';
             _fault_id := _values[_fault_i]::INT;
             IF _keys[_fault_i] = 'BAD_SPACE' THEN
@@ -543,8 +565,8 @@ BEGIN
                 END IF;
             END IF;
 
-            IF fix = ANY('{ALL,REFERENTIAL}') THEN
-                -- history (before updating referential)
+            IF fix = ANY('{ALL,HISTORY,REFERENTIAL}') THEN
+                -- history
                 SELECT nrows
                 INTO _nrows_history
                 FROM fr.add_history_address_fault(
@@ -555,26 +577,30 @@ BEGIN
                     , column_with_new_value => _column_with_new_value
                     , simulation => simulation
                 );
-                CALL public.log_info(CONCAT(' Insertion Historique (', _keys[_fault_i], '): ', _nrows_history));
+                CALL public.log_info(CONCAT(' Insertion HISTORIQUE (', _keys[_fault_i], '): ', _nrows_history));
 
-                -- referential
-                SELECT nrows
-                INTO _nrows_referential
-                FROM fr.fix_laposte_address_fault_referential(
-                    element => element
-                    , column_join => _column_join
-                    , column_update => _column_update
-                    , fault_id => _fault_id
-                    , column_with_new_value => _column_with_new_value
-                    , simulation => simulation
-                );
-                CALL public.log_info(CONCAT(' Mise à jour Référentiel (', _keys[_fault_i], '): ', _nrows_referential));
+                IF 1=0 THEN
+                    -- referential
+                    SELECT nrows
+                    INTO _nrows_referential
+                    FROM fr.fix_laposte_address_fault_referential(
+                        element => element
+                        , column_join => _column_join
+                        , column_update => _column_update
+                        , fault_id => _fault_id
+                        , column_with_new_value => _column_with_new_value
+                        , simulation => simulation
+                    );
+                    CALL public.log_info(CONCAT(' Mise à jour REFERENTIEL (', _keys[_fault_i], '): ', _nrows_referential));
 
-                IF NOT simulation THEN
-                    IF _nrows_history IS DISTINCT FROM _nrows_referential THEN
-                        RAISE ' Ecart (%): hist=%, ref=%', _keys[_fault_i], _nrows_history, _nrows_referential;
+                    IF NOT simulation THEN
+                        IF _nrows_history IS DISTINCT FROM _nrows_referential THEN
+                            RAISE ' Ecart (%): hist=%, ref=%', _keys[_fault_i], _nrows_history, _nrows_referential;
+                        END IF;
+                        COMMIT;
                     END IF;
-                    COMMIT;
+                ELSE
+                    RAISE NOTICE ' Mise à jour REFERENTIEL dévalidée (élément=%)', element;
                 END IF;
             END IF;
         ELSE
@@ -584,6 +610,263 @@ BEGIN
 END
 $proc$ LANGUAGE plpgsql;
 
+-- undo fix element-faults
+SELECT drop_all_functions_if_exists('fr', 'undo_laposte_address_fault_street');
+SELECT drop_all_functions_if_exists('fr', 'undo_laposte_address_fault');
+CREATE OR REPLACE PROCEDURE fr.undo_laposte_address_fault(
+    element IN VARCHAR
+    , fault IN VARCHAR DEFAULT 'ALL'
+    , simulation IN BOOLEAN DEFAULT FALSE
+    , raise_notice IN BOOLEAN DEFAULT FALSE
+)
+AS
+$proc$
+DECLARE
+    _table_uniq VARCHAR;
+    _table_reference VARCHAR;
+    _usecase_fault VARCHAR :=
+        CONCAT('LAPOSTE_ADDRESS_FAULT_', UPPER(element));
+    _faults VARCHAR[];
+    _keys VARCHAR[];
+    _values VARCHAR[];
+    _query TEXT;
+    _i INT;
+    _fault_i INT;
+    _column_value VARCHAR;
+    _column_update VARCHAR;
+    _nrows INT;
+    _nrows_history INT;
+    _nrows_uniq INT;
+BEGIN
+    CALL public.log_info(
+        CONCAT('Annulation des corrections des anomalies dans les libellés de '
+            , CASE element
+                WHEN 'STREET' THEN 'voie'
+                ELSE 'complément (L3)'
+                END
+        )
+    );
+
+    _table_uniq := CONCAT('fr', fr.get_table_name(element, 'UNIQ'));
+    _table_reference := CONCAT('fr', fr.get_table_name(element, 'REFERENCE'));
+
+     _keys := ARRAY(
+        SELECT key FROM fr.constant WHERE usecase = _usecase_fault ORDER BY value
+    );
+     _values := ARRAY(
+        SELECT value FROM fr.constant WHERE usecase = _usecase_fault ORDER BY value
+    );
+    _faults := CASE
+        WHEN fault = 'ALL' THEN _keys
+        ELSE STRING_TO_ARRAY(fault, ',')
+        END;
+
+    IF NOT simulation THEN
+        DROP TABLE IF EXISTS fr.tmp_address_fault_undo;
+        CREATE UNLOGGED TABLE fr.tmp_address_fault_undo (
+            code_address CHAR(10) NOT NULL
+            , id INT
+            , date_change DATE
+            , value_before VARCHAR
+        );
+    END IF;
+
+    CALL public.log_info(' Annulation');
+    FOR _i IN 1 .. ARRAY_LENGTH(_faults, 1)
+    LOOP
+        _fault_i := CASE
+            WHEN _faults[_i] ~ '^[0-9]+$' THEN ARRAY_POSITION(_values, _faults[_i])
+            ELSE ARRAY_POSITION(_keys, _faults[_i])
+            END
+            ;
+
+        IF (_fault_i > 0) THEN
+            IF simulation THEN
+                RAISE NOTICE ' Anomalie (%)', _keys[_fault_i];
+                CONTINUE;
+            END IF;
+
+            _column_value := CASE element
+                WHEN 'STREET' THEN
+                    CASE _keys[_fault_i]
+                        WHEN 'DESCRIPTORS' THEN
+                            CONCAT('h.values->>', quote_literal('lb_desc'))
+                        WHEN 'TYPE' THEN
+                            CONCAT('h.values->>', quote_literal('lb_type'))
+                        ELSE
+                            CONCAT('h.values->>', quote_literal('lb_voie'))
+                        END
+                WHEN 'COMPLEMENT' THEN
+                    CASE _keys[_fault_i]
+                        WHEN 'DESCRIPTORS' THEN
+                            CONCAT(
+                                CONCAT(
+                                    'h.values->>', quote_literal('lb_descr_nn_groupe1')
+                                )
+                                , CONCAT(
+                                    'h.values->>', quote_literal('lb_descr_nn_groupe2')
+                                )
+                                , CONCAT(
+                                    'h.values->>', quote_literal('lb_descr_nn_groupe3')
+                                )
+                            )
+                        WHEN 'TYPE' THEN
+                            NULL
+                        ELSE
+                            CONCAT_WS(' '
+                                , CONCAT(
+                                    'h.values->>', quote_literal('lb_type_groupe1_l3')
+                                )
+                                , CONCAT(
+                                    'h.values->>', quote_literal('lb_groupe1')
+                                )
+                                , CONCAT(
+                                    'h.values->>', quote_literal('lb_type_groupe2_l3')
+                                )
+                                , CONCAT(
+                                    'h.values->>', quote_literal('lb_groupe2')
+                                )
+                                , CONCAT(
+                                    'h.values->>', quote_literal('lb_type_groupe3_l3')
+                                )
+                                , CONCAT(
+                                    'h.values->>', quote_literal('lb_groupe3')
+                                )
+                            )
+                        END
+                END
+            ;
+            _column_update := CASE element
+                WHEN 'STREET' THEN
+                    CASE _keys[_fault_i]
+                        WHEN 'DESCRIPTORS' THEN
+                            'descriptors'
+                        WHEN 'TYPE' THEN
+                            NULL
+                        ELSE
+                            'name'
+                        END
+                WHEN 'COMPLEMENT' THEN
+                    CASE _keys[_fault_i]
+                        WHEN 'DESCRIPTORS' THEN
+                            'descriptors'
+                        WHEN 'TYPE' THEN
+                            NULL
+                        ELSE
+                            'name'
+                        END
+                END
+            ;
+
+            IF _column_value IS NULL THEN
+                CONTINUE;
+            END IF;
+
+            IF NOT simulation THEN
+                TRUNCATE TABLE fr.tmp_address_fault_undo;
+            END IF;
+
+            _query := CONCAT(
+                '
+                INSERT INTO fr.tmp_address_fault_undo
+                WITH
+                last_change AS (
+                    SELECT
+                        h.code_address
+                        , MAX(h.date_change) date_change
+                        , FIRST(r.name_id) id
+                    FROM
+                        fr.laposte_address_history h
+                            JOIN ', _table_reference, ' r ON h.code_address = r.address_id
+                    WHERE
+                        h.kind = $1
+                        AND
+                        h.change = $2
+                    GROUP BY
+                        h.code_address
+                )
+                , last_change_with_value AS (
+                    SELECT
+                        h.code_address
+                        , lc.id
+                        , lc.date_change
+                        , ', _column_value, ' value_before
+                    FROM
+                        fr.laposte_address_history h
+                            JOIN last_change lc ON h.code_address = lc.code_address
+                    WHERE
+                        h.date_change = lc.date_change
+                        AND
+                        h.kind = $1
+                        AND
+                        h.change = $2
+                )
+                SELECT * FROM last_change_with_value
+                '
+            );
+
+            IF simulation THEN
+                RAISE NOTICE ' requête=%', _query;
+            ELSE
+                EXECUTE _query USING element, _keys[_fault_i];
+                GET DIAGNOSTICS _nrows = ROW_COUNT;
+                CALL public.log_info(CONCAT(' Préparation (', _keys[_fault_i], '): ', _nrows));
+            END IF;
+
+            -- uniq
+            IF _column_update IS NOT NULL THEN
+                _query := CONCAT(
+                    '
+                    UPDATE ', _table_uniq, ' u SET
+                        ', _column_update, ' = fu.value_before
+                        FROM
+                            fr.tmp_address_fault_undo fu
+                        WHERE
+                            u.id = fu.id
+                    '
+                );
+                IF simulation THEN
+                    RAISE NOTICE ' requête=%', _query;
+                ELSE
+                    EXECUTE _query;
+                    GET DIAGNOSTICS _nrows_uniq = ROW_COUNT;
+                    IF raise_notice THEN
+                        RAISE NOTICE ' Mise à jour DICTIONARY (%): %', _keys[_fault_i], _nrows_uniq;
+                    END IF;
+                END IF;
+            END IF;
+
+            -- history
+            _query :=
+                '
+                DELETE FROM fr.laposte_address_history h
+                USING fr.tmp_address_fault_undo fu
+                WHERE
+                    h.code_address = fu.code_address
+                    AND
+                    h.change = $2
+                    AND
+                    h.kind = $1
+                '
+            ;
+            IF simulation THEN
+                RAISE NOTICE ' requête=%', _query;
+            ELSE
+                EXECUTE _query USING element, _keys[_fault_i];
+                GET DIAGNOSTICS _nrows_history = ROW_COUNT;
+                IF raise_notice THEN
+                    RAISE NOTICE ' Effacement HISTORIQUE (%): %', _keys[_fault_i],
+                    _nrows_history;
+                END IF;
+            END IF;
+        ELSE
+            RAISE NOTICE ' Anomalie % non valide!', fault_id;
+        END IF;
+    END LOOP;
+END
+$proc$ LANGUAGE plpgsql;
+
+-- fix link-faults
 SELECT public.drop_all_functions_if_exists('fr', 'fix_laposte_address_fault_links');
 CREATE OR REPLACE PROCEDURE fr.fix_laposte_address_fault_links(
     simulation BOOLEAN DEFAULT FALSE

@@ -959,7 +959,7 @@ BEGIN
             AND NOT fr.is_normalized_article(_words[_i]) THEN
             _words_d := CASE
                 --WHEN _words[_i] = ANY('{D, L}') THEN 'A'
-                WHEN _words[_i] ~ 'C+|M+') THEN 'N'
+                WHEN _words[_i] ~ 'C+|M+' THEN 'N'
                 -- exceptions: DI, LI, MI, CD, CL, ...
                 WHEN fr.get_default_of_street_word(_words[_i]) != 'C' THEN
                     CASE

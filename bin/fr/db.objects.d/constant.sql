@@ -1164,9 +1164,10 @@ BEGIN
     CALL fr.fix_laposte_address_fault_links();
 
     -- street-faults (part/1)
-    CALL fr.set_laposte_address_fault_street();
+    CALL fr.set_laposte_address_fault(element => 'STREET');
     CALL fr.fix_laposte_address_fault_street(
-        fault => 'BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION,TYPO_ERROR'
+        element => 'STREET'
+        , fault => 'BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION,TYPO_ERROR'
     );
 
     -- following street-faults fixes, have to fix membership too!
@@ -1174,7 +1175,7 @@ BEGIN
         SELECT
             name_id
         FROM
-            fr.laposte_address_fault_street fs
+            fr.laposte_address_fault fs
             , fr.constant c
         WHERE
             c.usecase = 'LAPOSTE_ADDRESS_FAULT_STREET'
@@ -1206,8 +1207,9 @@ BEGIN
         set_case => 'ATTRIBUTS'
     );
     -- street-faults (part/2)
-    CALL fr.fix_laposte_address_fault_street(
-        fault => 'DESCRIPTORS,TYPE'
+    CALL fr.fix_laposte_address_fault(
+        element => 'STREET'
+        , fault => 'DESCRIPTORS,TYPE'
     );
 
     -- COMPLEMENT
@@ -1223,7 +1225,33 @@ BEGIN
         set_case => 'CREATION'
     );
 
-    -- TODO faults ...
+    -- complement-faults (part/1)
+    CALL fr.set_laposte_address_fault(element => 'COMPLEMENT');
+    CALL fr.fix_laposte_address_fault_street(
+        element => 'COMPLEMENT'
+        , fault => 'BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION,TYPO_ERROR'
+    );
+
+    -- following street-faults fixes, have to fix membership too!
+    _listof := ARRAY(
+        SELECT
+            name_id
+        FROM
+            fr.laposte_address_fault fs
+            , fr.constant c
+        WHERE
+            c.usecase = 'LAPOSTE_ADDRESS_FAULT_COMPLEMENT'
+            AND
+            c.key = 'DUPLICATE_WORD'
+            AND
+            fs.fault_id = c.value::INT
+    );
+    IF _listof IS NOT NULL THEN
+        CALL fr.set_laposte_address_complement_membership(
+            set_case => 'CORRECTION'
+            , listof => _listof
+        );
+    END IF;
 
     -- classify all words, by (descriptor, level)
     CALL fr.set_laposte_address_complement_word_descriptor();
@@ -1231,7 +1259,16 @@ BEGIN
     -- define keywords (type)
     CALL fr.set_laposte_address_complement_type();
 
-    -- TODO attributs, fix descriptors
+    -- once all fixed complement-faults:
+    -- set attributs in dictionary
+    CALL fr.set_laposte_address_complement_uniq(
+        set_case => 'ATTRIBUTS'
+    );
+    -- street-faults (part/2)
+    CALL fr.fix_laposte_address_fault(
+        element => 'COMPLEMENT'
+        , fault => 'DESCRIPTORS'
+    );
 
     -- OTHER
 
