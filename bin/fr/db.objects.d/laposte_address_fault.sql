@@ -223,6 +223,9 @@ BEGIN
                         m.word ~ ''[0-9]+''
                         AND
                         NOT fr.is_normalized_number(m.word)
+                        AND
+                        -- exception! true name
+                        NOT m.word = ANY(''{5LYS}'')
                     GROUP BY
                         m.name_id
                     '
@@ -328,7 +331,7 @@ BEGIN
         '
     );
     IF fault_id >= 0 THEN
-        -- correction from element-fault
+        -- correction from element-fault (only address w/ fault)
         _query := CONCAT(_query
             , _table_fault, ' ', alias_fault, '
                 JOIN ', _table_uniq, ' ', alias_uniq, ' ON ', _join_uniq_fault, '
@@ -339,7 +342,7 @@ BEGIN
             '
         );
     ELSE
-        -- correction from element-dictionary
+        -- correction from element-dictionary (all address w/ difference)
         _query := CONCAT(_query
             , _table_uniq, ' ', alias_uniq, '
                 JOIN ', _table_reference, ' ', alias_reference, ' ON ', _join_uniq_reference, '
@@ -560,7 +563,7 @@ BEGIN
                                 USING element, _fault_id;
                         END IF;
                         GET DIAGNOSTICS _nrows = ROW_COUNT;
-                        CALL public.log_info(CONCAT(' Mise à jour anomalies (', _keys[_fault_i], '): ', _nrows));
+                        CALL public.log_info(CONCAT(' Mise à jour DICTIONNAIRE (', _keys[_fault_i], '): ', _nrows));
                     END IF;
                 END IF;
             END IF;
@@ -570,9 +573,9 @@ BEGIN
                 SELECT nrows
                 INTO _nrows_history
                 FROM fr.add_history_address_fault(
-                    address_change => _keys[_fault_i]
-                    , element => element
+                    element => element
                     , column_update => _column_update
+                    , fault_name => _keys[_fault_i]
                     , fault_id => _fault_id
                     , column_with_new_value => _column_with_new_value
                     , simulation => simulation
@@ -831,7 +834,7 @@ BEGIN
                     EXECUTE _query;
                     GET DIAGNOSTICS _nrows_uniq = ROW_COUNT;
                     IF raise_notice THEN
-                        RAISE NOTICE ' Mise à jour DICTIONARY (%): %', _keys[_fault_i], _nrows_uniq;
+                        RAISE NOTICE ' Mise à jour DICTIONNAIRE (%): %', _keys[_fault_i], _nrows_uniq;
                     END IF;
                 END IF;
             END IF;

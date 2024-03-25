@@ -23,16 +23,16 @@ $proc$ LANGUAGE plpgsql;
 -- add history for address faults
 SELECT drop_all_functions_if_exists('fr', 'add_history_address_fault');
 CREATE OR REPLACE FUNCTION fr.add_history_address_fault(
-    address_change IN VARCHAR                           -- fault name
-    , address_element IN VARCHAR                        -- AREA|STREET|HOUSENUMBER|COMPLEMENT
-    , address_update_column IN VARCHAR                  -- column to change
-    , fault_id IN INT                                   -- fault ID (or 0 if NONE)
+    element IN VARCHAR                        -- AREA|STREET|HOUSENUMBER|COMPLEMENT
+    , column_update IN VARCHAR                -- column to change
+    , fault_name IN VARCHAR                   -- fault name
+    , fault_id IN INT                         -- fault ID
     , column_with_new_value IN VARCHAR DEFAULT 'name'
-    , address_key IN VARCHAR DEFAULT 'co_cea'
-    , address_alias IN VARCHAR DEFAULT 'a'
-    , fault_alias IN VARCHAR DEFAULT 'f'
-    , uniq_alias IN VARCHAR DEFAULT 'u'
-    , reference_alias IN VARCHAR DEFAULT 'r'
+    , key_address IN VARCHAR DEFAULT 'co_cea'
+    , alias_address IN VARCHAR DEFAULT 'a'
+    , alias_fault IN VARCHAR DEFAULT 'f'
+    , alias_uniq IN VARCHAR DEFAULT 'u'
+    , alias_reference IN VARCHAR DEFAULT 'r'
     , simulation IN BOOLEAN DEFAULT FALSE
     , nrows OUT INT
 )
@@ -40,68 +40,31 @@ AS
 $func$
 DECLARE
     _query TEXT;
-    _address_table VARCHAR;
-    _fault_table VARCHAR;
-    _uniq_table VARCHAR;
-    _reference_table VARCHAR;
-    _address_key VARCHAR := CONCAT(address_alias, '.', address_key);
-    _fault_key VARCHAR := CONCAT(fault_alias, '.name_id');
-    _uniq_key VARCHAR := CONCAT(uniq_alias, '.id');
-    _reference_key VARCHAR := CONCAT(reference_alias, '.address_id');
-    _join_uniq_fault VARCHAR := CONCAT(_fault_key, ' = ', _uniq_key);
-    _join_uniq_reference VARCHAR := CONCAT(reference_alias, '.name_id = ', _uniq_key);
-    _address_update_column VARCHAR := CONCAT(address_alias, '.', address_update_column);
+    _table_address VARCHAR;
+    _table_uniq VARCHAR;
+    _table_reference VARCHAR;
+    _key_address VARCHAR := CONCAT(alias_address, '.', key_address);
+    _key_fault VARCHAR := CONCAT(alias_fault, '.name_id');
+    _key_uniq VARCHAR := CONCAT(alias_uniq, '.id');
+    _key_reference VARCHAR := CONCAT(alias_reference, '.address_id');
+    _join_uniq_fault VARCHAR := CONCAT(_key_fault, ' = ', _key_uniq);
+    _join_uniq_reference VARCHAR := CONCAT(alias_reference, '.name_id = ', _key_uniq);
+    _column_update VARCHAR := CONCAT(alias_address, '.', column_update);
     _column_with_new_value VARCHAR := CASE
         WHEN count_words(column_with_new_value) = 1 THEN
-            CONCAT(uniq_alias, '.', column_with_new_value)
+            CONCAT(alias_uniq, '.', column_with_new_value)
         ELSE
             column_with_new_value
         END
         ;
 BEGIN
-    IF NOT address_element = ANY('{AREA,STREET,HOUSENUMBER,COMPLEMENT}') THEN
-        RAISE 'élément adresse (%) non valide!', address_element;
+    IF NOT element = ANY('{AREA,STREET,HOUSENUMBER,COMPLEMENT}') THEN
+        RAISE 'élément ADRESSE (%) non valide!', element;
     END IF;
 
-    _address_table := CONCAT('fr.laposte_address_', LOWER(address_element));
-    _fault_table := CONCAT('fr.laposte_address_fault_', LOWER(address_element));
-    _uniq_table := CONCAT(_address_table, '_uniq');
-    _reference_table := CONCAT(_address_table, '_reference');
-
-    /*
-    INSERT INTO fr.laposte_address_history (
-            code_address
-            , date_change
-            , change
-            , kind
-            , values
-        )
-        SELECT
-            s.co_cea
-            , TIMEOFDAY()::DATE
-            , _keys[_fault_i]
-            , 'STREET'
-            , ROW_TO_JSON(s.*)::JSONB
-        FROM
-            fr.laposte_address_street s
-                JOIN fr.laposte_address_fault_street fs ON s.lb_voie = fs.name_before
-                JOIN fr.laposte_address_street_uniq u ON fs.name_id = u.id
-        WHERE
-            fs.fault_id = _values[_fault_i]::INT
-            AND
-            s.lb_voie IS DISTINCT FROM u.name
-            AND
-            NOT EXISTS(
-                SELECT 1 FROM fr.laposte_address_history h
-                WHERE
-                    h.code_address = s.co_cea
-                    AND
-                    h.change = _keys[_fault_i]
-                    AND
-                    h.values->>'lb_voie' = fs.name_before
-            )
-    ;
-     */
+    _table_uniq := CONCAT('fr', fr.get_table_name(element, 'UNIQ'));
+    _table_reference := CONCAT('fr', fr.get_table_name(element, 'REFERENCE'));
+    _table_address := CONCAT('fr', fr.get_table_name(element, 'ADDRESS'));
 
     _query := CONCAT('
         INSERT INTO fr.laposte_address_history (
@@ -112,20 +75,20 @@ BEGIN
                 , values
             )
             SELECT
-            ', _address_key, '
+            ', _key_address, '
                 , TIMEOFDAY()::DATE
-                , ', quote_literal(address_change), '
-                , ', quote_literal(address_element), '
-                , ROW_TO_JSON(', address_alias, '.*)::JSONB
+                , ', quote_literal(fault_name), '
+                , ', quote_literal(element), '
+                , ROW_TO_JSON(', alias_address, '.*)::JSONB
             FROM
-            ', _address_table, ' ', address_alias, '
-                    JOIN ', _reference_table, ' ', reference_alias, ' ON ', _address_key, ' = ', _reference_key, '
-                    JOIN ', _uniq_table, ' ', uniq_alias, ' ON ', _join_uniq_reference
+            ', _table_address, ' ', alias_address, '
+                JOIN ', _table_reference, ' ', alias_reference, ' ON ', _key_address, ' = ', _key_reference, '
+                JOIN ', _table_uniq, ' ', alias_uniq, ' ON ', _join_uniq_reference
     );
-    IF fault_id > 0 THEN
+    IF fault_id >= 0 THEN
         _query := CONCAT(_query
             , '
-                    JOIN ', _fault_table, ' ', fault_alias, ' ON ', _join_uniq_fault
+                JOIN fr.laposte_address_fault ', alias_fault, ' ON ', _join_uniq_fault
         );
     END IF;
     _query := CONCAT(_query
@@ -133,26 +96,29 @@ BEGIN
             WHERE
             '
     );
-    IF fault_id > 0 THEN
+    IF fault_id >= 0 THEN
         _query := CONCAT(_query
-            , fault_alias, '.fault_id = ', fault_id, '
+            , alias_fault, '.element = ', quote_literal(element), '
+                AND
+                '
+            , alias_fault, '.fault_id = ', fault_id, '
                 AND
                 '
         );
     END IF;
     _query := CONCAT(_query
-                , _address_update_column, ' IS DISTINCT FROM ', _column_with_new_value, '
-                AND
-                -- not already exists
-                NOT EXISTS(
-                    SELECT 1 FROM fr.laposte_address_history h
-                    WHERE
-                        h.code_address = ', _address_key, '
-                        AND
-                        h.change = ', quote_literal(address_change), '
-                        AND
-                        h.values->>', quote_literal(address_update_column), ' = ', _address_update_column, '
-                )
+            , _column_update, ' IS DISTINCT FROM ', _column_with_new_value, '
+            AND
+            -- not already exists
+            NOT EXISTS(
+                SELECT 1 FROM fr.laposte_address_history h
+                WHERE
+                    h.code_address = ', _key_address, '
+                    AND
+                    h.change = ', quote_literal(fault_name), '
+                    AND
+                    h.values->>', quote_literal(column_update), ' = ', _column_update, '
+            )
         '
     );
 
@@ -160,7 +126,7 @@ BEGIN
         EXECUTE _query;
         GET DIAGNOSTICS nrows = ROW_COUNT;
     ELSE
-        RAISE NOTICE 'requête=%', _query;
+        RAISE NOTICE ' requête=%', _query;
         nrows := 0;
     END IF;
 END
