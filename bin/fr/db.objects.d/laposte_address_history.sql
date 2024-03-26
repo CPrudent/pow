@@ -49,7 +49,13 @@ DECLARE
     _key_reference VARCHAR := CONCAT(alias_reference, '.address_id');
     _join_uniq_fault VARCHAR := CONCAT(_key_fault, ' = ', _key_uniq);
     _join_uniq_reference VARCHAR := CONCAT(alias_reference, '.name_id = ', _key_uniq);
-    _column_update VARCHAR := CONCAT(alias_address, '.', column_update);
+    _column_update VARCHAR := CASE
+        WHEN count_words(column_update) = 1 THEN
+            CONCAT(alias_address, '.', column_update)
+        ELSE
+            column_update
+        END
+        ;
     _column_with_new_value VARCHAR := CASE
         WHEN count_words(column_with_new_value) = 1 THEN
             CONCAT(alias_uniq, '.', column_with_new_value)
@@ -62,9 +68,9 @@ BEGIN
         RAISE 'élément ADRESSE (%) non valide!', element;
     END IF;
 
-    _table_uniq := CONCAT('fr', fr.get_table_name(element, 'UNIQ'));
-    _table_reference := CONCAT('fr', fr.get_table_name(element, 'REFERENCE'));
-    _table_address := CONCAT('fr', fr.get_table_name(element, 'ADDRESS'));
+    _table_uniq := CONCAT('fr.', fr.get_table_name(element, 'UNIQ'));
+    _table_reference := CONCAT('fr.', fr.get_table_name(element, 'REFERENCE'));
+    _table_address := CONCAT('fr.', fr.get_table_name(element, 'ADDRESS'));
 
     _query := CONCAT('
         INSERT INTO fr.laposte_address_history (

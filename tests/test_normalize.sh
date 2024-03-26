@@ -4,10 +4,13 @@
     # synopsis
     #--
     # tests normalize
+
     #   SPLIT: fr.split_name_of_street_as_descriptor()
-    #   DESCRIPTORS_DIFF: fr.get_descriptors_of_street(), for ALL
-    #   DESCRIPTORS_LIST: fr.get_descriptors_of_street(), for LIST
-    #   DESCRIPTORS_CASE: fr.get_descriptors_of_street(), for USECASE
+    #   STREET_DESCRIPTORS_DIFF: fr.get_descriptors_from_name(), for ALL
+    #   STREET_DESCRIPTORS_LIST: fr.get_descriptors_from_name(), for LIST
+    #   STREET_DESCRIPTORS_CASE: fr.get_descriptors_from_name(), for USECASE
+
+    #   COMPLEMENT_DESCRIPTORS_DIFF: fr.get_descriptors_from_name(), for ALL
 
 source $POW_DIR_ROOT/tests/data/test_normalize-data.sh || exit $ERROR_CODE
 
@@ -26,7 +29,7 @@ bash_args \
         test
     ' \
     --args_v '
-        test:SPLIT|DESCRIPTORS_DIFF|DESCRIPTORS_LIST|DESCRIPTORS_CASE|NAME_DIFF|NAME_LIST|NAME_CASE;
+        test:SPLIT|STREET_DESCRIPTORS_DIFF|STREET_DESCRIPTORS_LIST|STREET_DESCRIPTORS_CASE|STREET_NAME_DIFF|COMPLEMENT_DESCRIPTORS_DIFF|STREET_NAME_LIST|STREET_NAME_CASE;
         number_line:no|yes
     ' \
     --args_d '
@@ -97,70 +100,74 @@ _ko=0
     exit $_rc
 }
 
-[ "$get_arg_test" = DESCRIPTORS_DIFF ] && {
+[ "$get_arg_test" = STREET_DESCRIPTORS_DIFF ] && {
     execute_query \
-        --name DESCRIPTORS_DIFF \
+        --name STREET_DESCRIPTORS_DIFF \
         --query "
             COPY (
                 WITH
                 descriptors AS (
                     SELECT
-                        ds.descriptors descriptor_pow
-                        , u.descriptors descriptor_laposte
+                        d.descriptors descriptors_pow
+                        , u.descriptors descriptors_laposte
                         , u.name
                     FROM
                         fr.laposte_address_street_uniq u
-                            CROSS JOIN fr.get_descriptors_of_street(u.name) ds
+                            CROSS JOIN fr.get_descriptors_from_name(
+                                name => u.name
+                                , element => 'STREET'
+                            ) d
                     $([ -n "$get_arg_limit" ] && echo ' LIMIT '$get_arg_limit)
                 )
                 SELECT
                     UNNEST(
                         fr.get_differences_between_descriptors(
-                            reference => descriptor_laposte
-                            , other => descriptor_pow
+                            reference => descriptors_laposte
+                            , other => descriptors_pow
                         )
-                    ) descriptor_diff
-                    , descriptor_laposte
-                    , descriptor_pow
+                    ) descriptors_diff
+                    , descriptors_laposte
+                    , descriptors_pow
                     , name
                 FROM
                     descriptors
                 WHERE
-                    descriptor_pow IS DISTINCT FROM descriptor_laposte
+                    descriptors_pow IS DISTINCT FROM descriptors_laposte
                 ORDER BY
                     1
             ) TO STDOUT WITH (DELIMITER E',', FORMAT CSV, HEADER TRUE, ENCODING UTF8)
             " \
-        --output $POW_DIR_TMP/descriptors_diff.txt || exit $ERROR_CODE
+        --output $POW_DIR_TMP/street_descriptors_diff.txt || exit $ERROR_CODE
 
     exit $SUCCESS_CODE
 }
 
-[ "$get_arg_test" = DESCRIPTORS_LIST ] && {
+[ "$get_arg_test" = STREET_DESCRIPTORS_LIST ] && {
     set_log_echo no
     for ((_i=0; _i < ${#TEST_A4S_NAME[*]}; _i++)); do
         execute_query \
-        --name DESCRIPTORS_LIST \
+        --name STREET_DESCRIPTORS_LIST \
         --query "
-            SELECT descriptors FROM fr.get_descriptors_of_street(
+            SELECT descriptors FROM fr.get_descriptors_from_name(
                 name => '${TEST_A4S_NAME[$_i]}'
+                , element => 'STREET'
             )
         " \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _normalize || {
-            cat $POW_DIR_ARCHIVE/DESCRIPTORS_LIST.error.log
+            cat $POW_DIR_ARCHIVE/STREET_DESCRIPTORS_LIST.error.log
             exit $ERROR_CODE
         }
 
         [ "$get_arg_number_line" = yes ] && { echo_number_line $TEST_A4S_SZ $((_i +1)); }
-        echo -n "nom='${TEST_A4S_NAME[$_i]}' descripteur='${TEST_A4S_DESCRIPTORS[$_i]}' : "
+        echo -n "nom='${TEST_A4S_NAME[$_i]}' descripteurs='${TEST_A4S_DESCRIPTORS[$_i]}' : "
         [ "$_normalize" = "${TEST_A4S_DESCRIPTORS[$_i]}" ] && {
             echo 'OK'
             _ok=$((_ok +1))
         } || {
             echo 'KO'
             _ko=$((_ko +1))
-            echo " descripteur $_normalize : ${TEST_A4S_DESCRIPTORS[$_i]}"
+            echo " descripteurs $_normalize : ${TEST_A4S_DESCRIPTORS[$_i]}"
         }
     done
 
@@ -172,7 +179,7 @@ _ko=0
     exit $_rc
 }
 
-[ "$get_arg_test" = DESCRIPTORS_CASE ] && {
+[ "$get_arg_test" = STREET_DESCRIPTORS_CASE ] && {
     declare -a _TEST_A4S_NAME=(
         # successive titles (two of one word, one of two words)
         'LE PETIT HAUT CHEMIN'                                                  #  1
@@ -242,20 +249,21 @@ _ko=0
     set_log_echo no
     for ((_i=0; _i < ${#_TEST_A4S_NAME[*]}; _i++)); do
         execute_query \
-        --name DESCRIPTORS_CASE \
+        --name STREET_DESCRIPTORS_CASE \
         --query "
-            SELECT descriptors FROM fr.get_descriptors_of_street(
+            SELECT descriptors FROM fr.get_descriptors_from_name(
                 name => '${_TEST_A4S_NAME[$_i]}'
+                , element => 'STREET'
             )
         " \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _normalize || {
-            cat $POW_DIR_ARCHIVE/DESCRIPTORS_CASE.error.log
+            cat $POW_DIR_ARCHIVE/STREET_DESCRIPTORS_CASE.error.log
             exit $ERROR_CODE
         }
 
         [ "$get_arg_number_line" = yes ] && { echo_number_line ${#_TEST_A4S_NAME[*]} $((_i +1)); }
-        echo -n "nom='${_TEST_A4S_NAME[$_i]}' descripteur='${_TEST_A4S_DESCRIPTORS[$_i]}' : "
+        echo -n "nom='${_TEST_A4S_NAME[$_i]}' descripteurs='${_TEST_A4S_DESCRIPTORS[$_i]}' : "
         [ "$_normalize" = "${_TEST_A4S_DESCRIPTORS[$_i]}" ] && {
             echo 'OK'
             _ok=$((_ok +1))
@@ -273,9 +281,51 @@ _ko=0
     exit $_rc
 }
 
-[ "$get_arg_test" = NAME_DIFF ] && {
+[ "$get_arg_test" = COMPLEMENT_DESCRIPTORS_DIFF ] && {
     execute_query \
-        --name NAME_DIFF \
+        --name COMPLEMENT_DESCRIPTORS_DIFF \
+        --query "
+            COPY (
+                WITH
+                descriptors AS (
+                    SELECT
+                        d.descriptors descriptors_pow
+                        , u.descriptors descriptors_laposte
+                        , u.name
+                    FROM
+                        fr.laposte_address_complement_uniq u
+                            CROSS JOIN fr.get_descriptors_from_name(
+                                name => u.name
+                                , element => 'COMPLEMENT'
+                            ) d
+                    $([ -n "$get_arg_limit" ] && echo ' LIMIT '$get_arg_limit)
+                )
+                SELECT
+                    UNNEST(
+                        fr.get_differences_between_descriptors(
+                            reference => descriptors_laposte
+                            , other => descriptors_pow
+                        )
+                    ) descriptors_diff
+                    , descriptors_laposte
+                    , descriptors_pow
+                    , name
+                FROM
+                    descriptors
+                WHERE
+                    descriptors_pow IS DISTINCT FROM descriptors_laposte
+                ORDER BY
+                    1
+            ) TO STDOUT WITH (DELIMITER E',', FORMAT CSV, HEADER TRUE, ENCODING UTF8)
+            " \
+        --output $POW_DIR_TMP/complement_descriptors_diff.txt || exit $ERROR_CODE
+
+    exit $SUCCESS_CODE
+}
+
+[ "$get_arg_test" = STREET_NAME_DIFF ] && {
+    execute_query \
+        --name STREET_NAME_DIFF \
         --query "
             COPY (
                 WITH
@@ -330,11 +380,11 @@ _ko=0
     exit $SUCCESS_CODE
 }
 
-[ "$get_arg_test" = NAME_LIST ] && {
+[ "$get_arg_test" = STREET_NAME_LIST ] && {
     set_log_echo no
     for ((_i=0; _i < ${#TEST_A4S_NAME[*]}; _i++)); do
         execute_query \
-        --name NAME_LIST \
+        --name STREET_NAME_LIST \
         --query "
             SELECT ARRAY_TO_STRING(name_normalized_as_words, ' '), ARRAY_TO_STRING(descriptors_normalized_as_words, '')
             FROM fr.normalize_street_name(
@@ -343,7 +393,7 @@ _ko=0
         " \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _normalize || {
-            cat $POW_DIR_ARCHIVE/NAME_LIST.error.log
+            cat $POW_DIR_ARCHIVE/STREET_NAME_LIST.error.log
             exit $ERROR_CODE
         }
 
@@ -374,7 +424,7 @@ _ko=0
     exit $_rc
 }
 
-[ "$get_arg_test" = NAME_CASE ] && {
+[ "$get_arg_test" = STREET_NAME_CASE ] && {
     declare -a _TEST_A4S_NAME=(
         # abbr at the end (N|P)
         'CHEMIN VICINAL 5 DE BRATEAU A LA GARE DE BOURAY'                       #  1
@@ -509,7 +559,7 @@ _ko=0
     set_log_echo no
     for ((_i=0; _i < ${#_TEST_A4S_NAME[*]}; _i++)); do
         execute_query \
-        --name NAME_CASE \
+        --name STREET_NAME_CASE \
         --query "
             SELECT ARRAY_TO_STRING(name_normalized_as_words, ' '), ARRAY_TO_STRING(descriptors_normalized_as_words, '')
             FROM fr.normalize_street_name(
@@ -518,7 +568,7 @@ _ko=0
         " \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _normalize || {
-            cat $POW_DIR_ARCHIVE/NAME_CASE.error.log
+            cat $POW_DIR_ARCHIVE/STREET_NAME_CASE.error.log
             exit $ERROR_CODE
         }
 

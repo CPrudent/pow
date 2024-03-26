@@ -779,7 +779,7 @@ BEGIN
     END IF;
 
     query_fix := CONCAT('
-        UPDATE fr.', fr.get_table_name(element, 'UNIQ') , 'u SET
+        UPDATE fr.', fr.get_table_name(element, 'UNIQ') , ' u SET
             name = mc.name_fixed
             FROM fr.laposte_address_fault_correction mc
             WHERE
@@ -906,6 +906,7 @@ CREATE OR REPLACE FUNCTION fr.get_descriptors_from_name(
     , words_abbreviated_by_descriptor OUT TEXT[]
     , words_todo_by_descriptor OUT TEXT[]
     , as_words OUT INT[]
+    , as_groups OUT TEXT[]
 )
 AS
 $func$
@@ -919,8 +920,7 @@ DECLARE
     _descriptors_c VARCHAR;
     _descriptors_t VARCHAR;
     _descriptors_v VARCHAR;
-    _descriptors_g VARCHAR[];
-    _descriptors_i INT;
+    _groups_i INT;
     _words TEXT[];
     _words_len INT;
     _words_d VARCHAR;
@@ -943,6 +943,7 @@ BEGIN
 
     _words := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
     _words_len := ARRAY_LENGTH(_words, 1);
+    --as_groups := '{NULL,NULL,NULL}'::TEXT[];
 
     FOR _i IN 1 .. _words_len
     LOOP
@@ -959,14 +960,16 @@ BEGIN
             AND NOT fr.is_normalized_article(_words[_i]) THEN
             _words_d := CASE
                 --WHEN _words[_i] = ANY('{D, L}') THEN 'A'
-                WHEN _words[_i] ~ 'C+|M+' THEN 'N'
+                --WHEN _words[_i] ~ 'C+|M+' THEN 'N'
                 -- exceptions: DI, LI, MI, CD, CL, ...
-                WHEN fr.get_default_of_street_word(_words[_i]) != 'C' THEN
+                WHEN element = 'STREET' AND fr.get_default_of_street_word(_words[_i]) != 'C' THEN
                     CASE
-                    WHEN (element = 'COMPLEMENT') OR (_i < _words_len) THEN
+                    WHEN _i < _words_len THEN
                         fr.get_default_of_street_word(_words[_i])
                     ELSE 'N'
                     END
+                WHEN element = 'COMPLEMENT' AND fr.get_default_of_complement_word(_words[_i]) != 'C' THEN
+                    fr.get_default_of_complement_word(_words[_i])
                 ELSE 'C'
                 END
                 ;
@@ -999,10 +1002,12 @@ BEGIN
                             END
                         WHEN 'COMPLEMENT' THEN
                             CASE
+                            -- as-type if group is preceded by an article
+                            WHEN _kw_group ~ '^GROUP' AND descriptors IS NOT NULL AND RIGHT(descriptors, 1) = 'A' THEN 'V'
                             WHEN _kw_group ~ '^GROUP' THEN
                                 fr.get_descriptor_of_group(
                                     group_ => _kw_group
-                                    , descriptors => _descriptors_g
+                                    , descriptors => as_groups
                                 )
                             -- up to last word, extension as name
                             WHEN ((_i + _kw_nwords -1) = _words_len) OR _kw_group = ANY('{NAME,EXT}') THEN 'N'
@@ -1034,8 +1039,7 @@ BEGIN
                             ) THEN
                             _words_d := 'N';
                         END IF;
-                    -- article
-                    ELSIF fr.is_normalized_article(_words[_i]) THEN
+                    ELSIF (
                         /* RULE
                         exception for road
                         (A|D|N)# : highway, departmental, national
@@ -1043,7 +1047,6 @@ BEGIN
                             LA ROCHE A 7 HEURES
                             LA PLANCHE A 4 PIEDS
                         */
-                        IF (
                             _words[_i] ~ '^(A|D|N)$'
                             AND
                             fr.is_normalized_number(
@@ -1054,13 +1057,21 @@ BEGIN
                             _words_len = (_i +1)
                         ) THEN
                             _words_d := 'N';
-                        /* RULE
-                        exception for complement, if between 2 groups
-                        ENTREE A BATIMENT BLEU
-                        BATIMENT A RESIDENCE LE VOLTAIRE
-                         */
-                        ELSIF (
+                    -- article
+                    ELSIF fr.is_normalized_article(_words[_i]) THEN
+                        /* NOTE
+                        see below, at the end of loop
+                        if groups ended by article, replace it by a name
+
+                        IF (
+                            /* RULE
+                            exception for complement, if between 2 groups
+                            ENTREE A BATIMENT BLEU
+                            BATIMENT A RESIDENCE LE VOLTAIRE
+                            */
                             element = 'COMPLEMENT'
+                            AND
+                            LENGTH(_words[_i]) = 1
                             AND
                             _i < _words_len
                             AND
@@ -1077,8 +1088,25 @@ BEGIN
                                         , with_abbreviation => with_abbreviation
                                     )
                                 )
-                                , descriptors => _descriptors_g
+                                , descriptors => as_groups
                             ) ~ '[GHI]'
+                        )
+                        OR (
+                         */
+                        IF (
+                            /* RULE
+                            exception for complement, as building "number"
+                            BATIMENT A 02
+                            IMMEUBLE A 1
+                            */
+                            element = 'COMPLEMENT'
+                            AND
+                            _i < _words_len
+                            AND
+                            fr.is_normalized_number(
+                                word => _words[_i +1]
+                                , only_digit => 'ARABIC'
+                            )
                         ) THEN
                             _words_d := 'N';
                         ELSE
@@ -1159,20 +1187,20 @@ BEGIN
         descriptors := CONCAT(descriptors, _words_d);
         IF element = 'COMPLEMENT' THEN
             IF _words_d ~ '[GHI]' THEN
-                _descriptors_i := (
+                _groups_i := (
                     SELECT fr.get_subscript_of_descriptor(
                         descriptor => _words_d
                     )
                 );
             END IF;
-            _descriptors_g[COALESCE(_descriptors_i, 1)] := CONCAT(
-                _descriptors_g[COALESCE(_descriptors_i, 1)]
+            as_groups[COALESCE(_groups_i, 1)] := CONCAT(
+                as_groups[COALESCE(_groups_i, 1)]
                 , _words_d
             );
             IF raise_notice THEN
                 RAISE NOTICE ' group=%, descriptors=%'
-                    , COALESCE(_descriptors_i, 1)
-                    , _descriptors_g[COALESCE(_descriptors_i, 1)]
+                    , COALESCE(_groups_i, 1)
+                    , as_groups[COALESCE(_groups_i, 1)]
                 ;
             END IF;
         END IF;
@@ -1184,7 +1212,7 @@ BEGIN
 
     -- fix bad uses
     IF (element = 'STREET') THEN
-        -- name of street (so descriptor) is ended by: number, reserved or name (CEN)
+        -- name of street (so descriptors) is ended by: number, reserved or name (CEN)
         IF descriptors !~ '[CEN]$' THEN
             descriptors := REGEXP_REPLACE(descriptors, '.$', 'N');
 
@@ -1254,7 +1282,24 @@ BEGIN
             descriptors := REGEXP_REPLACE(descriptors, '(^V[PT]C)(E?)$', 'VNC\2');
         END IF;
     ELSE
-        -- name of complement (so descriptor) is ended by: number, reserved, name or type (CENV)
+        FOR _i IN ARRAY_LOWER(as_groups, 1) .. (ARRAY_UPPER(as_groups, 1) -1)
+        LOOP
+            IF RIGHT(as_groups[_i], 1) = 'A' THEN
+                as_groups[_i] := REGEXP_REPLACE(as_groups[_i], '.$', 'N');
+            END IF;
+        END LOOP;
+
+        -- put descriptors in order (if needed)
+        _descriptors_tmp := items_of_array_to_string(
+            elements => as_groups
+            , separator => ''
+        );
+        IF descriptors != _descriptors_tmp THEN
+            IF raise_notice THEN RAISE NOTICE ' descriptors %/%', descriptors, _descriptors_tmp; END IF;
+            descriptors := _descriptors_tmp;
+        END IF;
+
+        -- name of complement (so descriptors) is ended by: number, reserved, name or type (CENV)
         IF descriptors !~ '[CENV]$' THEN
             descriptors := REGEXP_REPLACE(descriptors, '.$', 'N');
         END IF;

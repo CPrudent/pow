@@ -224,8 +224,8 @@ BEGIN
                         AND
                         NOT fr.is_normalized_number(m.word)
                         AND
-                        -- exception! true name
-                        NOT m.word = ANY(''{5LYS}'')
+                        -- exception! true names
+                        NOT m.word = ANY(''{5LYS,PARC2CE,H2HOME}'')
                     GROUP BY
                         m.name_id
                     '
@@ -320,9 +320,9 @@ BEGIN
         RAISE 'élément adresse (%) non valide!', element;
     END IF;
 
-    _table_address := CONCAT('fr', fr.get_table_name(element, 'ADDRESS'));
-    _table_uniq := CONCAT('fr', fr.get_table_name(element, 'UNIQ'));
-    _table_reference := CONCAT('fr', fr.get_table_name(element, 'REFERENCE'));
+    _table_address := CONCAT('fr.', fr.get_table_name(element, 'ADDRESS'));
+    _table_uniq := CONCAT('fr.', fr.get_table_name(element, 'UNIQ'));
+    _table_reference := CONCAT('fr.', fr.get_table_name(element, 'REFERENCE'));
 
     _query := CONCAT('UPDATE ', _table_address, ' ', alias_address, ' SET
         ', column_update, ' = ', _column_with_new_value, '
@@ -455,14 +455,24 @@ BEGIN
             _column_join := 'co_cea';
             _column_update := CASE element
                 WHEN 'STREET' THEN 'lb_voie'
-                WHEN 'COMPLEMENT' THEN 'lb_complement'
+                WHEN 'COMPLEMENT' THEN
+                    '
+                    CONCAT_WS('' ''
+                        , lb_type_groupe1_l3
+                        , lb_groupe1
+                        , lb_type_groupe2_l3
+                        , lb_groupe2
+                        , lb_type_groupe3_l3
+                        , lb_groupe3
+                    )
+                    '
                 END
             ;
             _column_with_new_value := 'name';
             _fault_id := _values[_fault_i]::INT;
             IF _keys[_fault_i] = 'BAD_SPACE' THEN
                 _query := CONCAT('
-                    UPDATE fr.', _table_uniq, 'u SET
+                    UPDATE fr.', _table_uniq, ' u SET
                         name = f.help_to_fix
                         FROM fr.laposte_address_fault f
                         WHERE
@@ -505,10 +515,10 @@ BEGIN
                             k.name_abbreviated
                         HAVING COUNT(*) = 1
                     )
-                    UPDATE fr.', _table_uniq, 'u SET
+                    UPDATE fr.', _table_uniq, ' u SET
                         name = REGEXP_REPLACE(
                             u.name
-                            , CONCAT(''\m'', fs.help_to_fix, ''\M'')
+                            , CONCAT(''\m'', f.help_to_fix, ''\M'')
                             , na.name
                             , ''g''
                         )
@@ -535,7 +545,18 @@ BEGIN
                 _fix_dictionary := FALSE;
                 _fault_id := -1;
                 IF _keys[_fault_i] = 'DESCRIPTORS' THEN
-                    _column_update := 'lb_desc';
+                    _column_update := CASE element
+                        WHEN 'STREET' THEN 'lb_desc'
+                        WHEN 'COMPLEMENT' THEN
+                            '
+                            CONCAT(
+                                lb_descr_nn_groupe1
+                                , lb_descr_nn_groupe2
+                                , lb_descr_nn_groupe3
+                            )
+                            '
+                        END
+                    ;
                     _column_with_new_value := 'descriptors';
                 ELSIF _keys[_fault_i] = 'TYPE' THEN
                     _column_update := 'lb_type';
@@ -603,7 +624,7 @@ BEGIN
                         COMMIT;
                     END IF;
                 ELSE
-                    RAISE NOTICE ' Mise à jour REFERENTIEL dévalidée (élément=%)', element;
+                    CALL public.log_info(CONCAT(' Mise à jour REFERENTIEL dévalidée (élément=', element, ')'));
                 END IF;
             END IF;
         ELSE
@@ -612,6 +633,47 @@ BEGIN
     END LOOP;
 END
 $proc$ LANGUAGE plpgsql;
+
+/* TEST
+CALL fr.fix_laposte_address_fault(
+    element => 'COMPLEMENT'
+    , fault => 'DUPLICATE_WORD'
+);
+
+10:44:53.244 Correction des anomalies dans les libellés de complément (L3)
+10:44:53.245  Chargement des anomalies de niveau Complément (L3)
+10:44:56.986  Mise à jour DICTIONNAIRE (DUPLICATE_WORD): 56
+10:44:58.986  Insertion HISTORIQUE (DUPLICATE_WORD): 81
+              Mise à jour REFERENTIEL dévalidée (élément=COMPLEMENT)
+
+Query returned successfully in 5 secs 772 msec.
+
+CALL fr.fix_laposte_address_fault(
+    element => 'COMPLEMENT'
+    , fault => 'WITH_ABBREVIATION'
+);
+
+10:54:05.439 Correction des anomalies dans les libellés de complément (L3)
+10:54:05.440  Chargement des anomalies de niveau Complément (L3)
+10:54:06.902  Mise à jour DICTIONNAIRE (WITH_ABBREVIATION): 749
+10:54:14.042  Insertion HISTORIQUE (WITH_ABBREVIATION): 1126
+10:54:14.042  Mise à jour REFERENTIEL dévalidée (élément=COMPLEMENT)
+
+Query returned successfully in 8 secs 622 msec.
+
+CALL fr.fix_laposte_address_fault(
+    element => 'COMPLEMENT'
+    , fault => 'TYPO_ERROR'
+);
+
+10:55:15.333 Correction des anomalies dans les libellés de complément (L3)
+10:55:15.333  Chargement des anomalies de niveau Complément (L3)
+10:55:20.008  Mise à jour DICTIONNAIRE (TYPO_ERROR): 110
+10:55:21.536  Insertion HISTORIQUE (TYPO_ERROR): 142
+10:55:21.537  Mise à jour REFERENTIEL dévalidée (élément=COMPLEMENT)
+
+Query returned successfully in 6 secs 219 msec.
+ */
 
 -- undo fix element-faults
 SELECT drop_all_functions_if_exists('fr', 'undo_laposte_address_fault_street');
@@ -650,8 +712,8 @@ BEGIN
         )
     );
 
-    _table_uniq := CONCAT('fr', fr.get_table_name(element, 'UNIQ'));
-    _table_reference := CONCAT('fr', fr.get_table_name(element, 'REFERENCE'));
+    _table_uniq := CONCAT('fr.', fr.get_table_name(element, 'UNIQ'));
+    _table_reference := CONCAT('fr.', fr.get_table_name(element, 'REFERENCE'));
 
      _keys := ARRAY(
         SELECT key FROM fr.constant WHERE usecase = _usecase_fault ORDER BY value
@@ -888,7 +950,7 @@ DECLARE
     _kind VARCHAR := 'LINK';
 BEGIN
     FOR _set IN (
-        SELECT key FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_FAULT_LINKS'
+        SELECT key FROM fr.constant WHERE usecase = 'LAPOSTE_ADDRESS_FAULT_LINK'
     )
     LOOP
         DROP TABLE IF EXISTS fr.tmp_address_fault_links;

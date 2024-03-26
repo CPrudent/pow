@@ -179,7 +179,15 @@ END
 $proc$ LANGUAGE plpgsql;
 
 /* TEST
+11:07:37.136 Gestion des mots dans les noms de compléments (L3)
+11:07:37.136  Purge
+11:07:37.169  Initialisation
+11:07:39.968  Comptage descripteurs (mot): 83997
+11:07:40.168  Défaut (mot): 83997
+11:07:41.136  Rangs (mot): 83997
+11:07:41.676  Indexation
 
+Query returned successfully in 4 secs 595 msec.
  */
 
 -- get default of complement word

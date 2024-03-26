@@ -208,22 +208,24 @@ SELECT drop_all_functions_if_exists('public', 'items_of_array_to_string');
 CREATE OR REPLACE FUNCTION public.items_of_array_to_string(
     elements ANYARRAY
     , separator VARCHAR DEFAULT ' '
-    , from_ INT DEFAULT 1
+    , from_ INT DEFAULT NULL
     , to_ INT DEFAULT NULL
 )
 RETURNS VARCHAR AS
 $func$
 DECLARE
-    _items INT := COALESCE(to_, ARRAY_LENGTH(elements, 1));
+    _items INT := COALESCE(to_, ARRAY_UPPER(elements, 1));
     _i INT;
     _string VARCHAR;
 BEGIN
-    FOR _i IN from_ .. _items
+    FOR _i IN COALESCE(from_, ARRAY_LOWER(elements, 1)) .. _items
     LOOP
-        IF _string IS NOT NULL THEN
-            _string := CONCAT(_string, separator, elements[_i]);
-        ELSE
-            _string := elements[_i];
+        IF elements[_i] IS NOT NULL THEN
+            IF _string IS NOT NULL THEN
+                _string := CONCAT(_string, separator, elements[_i]);
+            ELSE
+                _string := elements[_i];
+            END IF;
         END IF;
     END LOOP;
 

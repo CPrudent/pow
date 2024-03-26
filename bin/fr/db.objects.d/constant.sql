@@ -1036,7 +1036,7 @@ BEGIN
 
     DELETE FROM fr.constant WHERE usecase ~ '^LAPOSTE_ADDRESS_FAULT_';
     INSERT INTO fr.constant (usecase, key, value) VALUES
-        ('LAPOSTE_ADDRESS_FAULT_LINKS', 'COMPLEMENT_WITH_STREET_ERROR', '0')
+        ('LAPOSTE_ADDRESS_FAULT_LINK', 'COMPLEMENT_WITH_STREET_ERROR', '0')
 
         , ('LAPOSTE_ADDRESS_FAULT_AREA', 'BAD_SPACE', '100')
 
@@ -1177,17 +1177,19 @@ BEGIN
 
     -- following street-faults fixes, have to fix membership too!
     _listof := ARRAY(
-        SELECT
-            name_id
+        SELECT DISTINCT
+            f.name_id
         FROM
-            fr.laposte_address_fault fs
+            fr.laposte_address_fault f
             , fr.constant c
         WHERE
             c.usecase = 'LAPOSTE_ADDRESS_FAULT_STREET'
             AND
-            c.key = 'DUPLICATE_WORD'
+            c.key = ANY('{DUPLICATE_WORD,TYPO_ERROR}')
             AND
-            fs.fault_id = c.value::INT
+            f.element = 'STREET'
+            AND
+            f.fault_id = c.value::INT
     );
     IF _listof IS NOT NULL THEN
         CALL fr.set_laposte_address_street_membership(
@@ -1237,19 +1239,21 @@ BEGIN
         , fault => 'BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION,TYPO_ERROR'
     );
 
-    -- following street-faults fixes, have to fix membership too!
+    -- following complement-faults fixes, have to fix membership too!
     _listof := ARRAY(
-        SELECT
-            name_id
+        SELECT DISTINCT
+            f.name_id
         FROM
-            fr.laposte_address_fault fs
+            fr.laposte_address_fault f
             , fr.constant c
         WHERE
             c.usecase = 'LAPOSTE_ADDRESS_FAULT_COMPLEMENT'
             AND
-            c.key = 'DUPLICATE_WORD'
+            c.key = ANY('{DUPLICATE_WORD,TYPO_ERROR}')
             AND
-            fs.fault_id = c.value::INT
+            f.element = 'COMPLEMENT'
+            AND
+            f.fault_id = c.value::INT
     );
     IF _listof IS NOT NULL THEN
         CALL fr.set_laposte_address_complement_membership(

@@ -6,12 +6,20 @@
 initialization will be done w/ constant
  */
 
+DO $$
+BEGIN
+    IF NOT column_exists('fr', 'laposte_address_complement_uniq', 'as_groups') THEN
+        ALTER TABLE fr.laposte_address_complement_uniq ADD COLUMN as_groups VARCHAR[];
+    END IF;
+END $$;
+
 -- to store uniq name (as dictionary of complement)
 CREATE TABLE IF NOT EXISTS fr.laposte_address_complement_uniq (
     id SERIAL NOT NULL
     , name VARCHAR NOT NULL
     , descriptors VARCHAR
     , as_words INT[]
+    , as_groups VARCHAR[]
     , name_normalized VARCHAR
     , descriptors_normalized VARCHAR
     , as_words_normalized INT[]

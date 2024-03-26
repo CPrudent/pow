@@ -73,7 +73,11 @@ BEGIN
 
         _is_number := CASE
             WHEN UPPER(_only[_i]) = 'ARABIC' THEN (word ~ '^[0-9]+$')
-            WHEN UPPER(_only[_i]) = 'COMPLEMENT' THEN (word ~ '^[A-Z]{1,2}[0-9]+([A-Z])?$')
+            /* NOTE
+            building number: as B10, B10E
+            from-to: 1A10
+             */
+            WHEN UPPER(_only[_i]) = 'COMPLEMENT' THEN (word ~ '^([A-Z]{1,2}[0-9]+([A-Z])?|[0-9]+A[0-9]+)$')
             WHEN UPPER(_only[_i]) = 'DATE' THEN
                 (
                     -- UK dates
