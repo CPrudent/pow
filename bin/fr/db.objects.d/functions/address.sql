@@ -855,6 +855,7 @@ SELECT drop_all_functions_if_exists('fr', 'get_descriptor_of_group');
 CREATE OR REPLACE FUNCTION fr.get_descriptor_of_group(
     group_ IN VARCHAR
     , descriptors IN VARCHAR[]
+    , raise_notice IN BOOLEAN DEFAULT FALSE
     , descriptor OUT VARCHAR
 )
 AS
@@ -882,6 +883,9 @@ BEGIN
             EXIT;
         END IF;
     END LOOP;
+    IF raise_notice THEN
+        RAISE NOTICE ' DG: group=% descriptors=% higher=%', group_, descriptors, _higher;
+    END IF;
 
     -- as type (V) if already defined
     descriptor := CASE
@@ -891,6 +895,9 @@ BEGIN
         ELSE 'V'
         END
     ;
+    IF raise_notice THEN
+        RAISE NOTICE ' DG: descriptor=%', descriptor;
+    END IF;
 END
 $func$ LANGUAGE plpgsql;
 
@@ -1008,6 +1015,7 @@ BEGIN
                                 fr.get_descriptor_of_group(
                                     group_ => _kw_group
                                     , descriptors => as_groups
+                                    , raise_notice => raise_notice
                                 )
                             -- up to last word, extension as name
                             WHEN ((_i + _kw_nwords -1) = _words_len) OR _kw_group = ANY('{NAME,EXT}') THEN 'N'
@@ -1059,53 +1067,51 @@ BEGIN
                             _words_d := 'N';
                     -- article
                     ELSIF fr.is_normalized_article(_words[_i]) THEN
-                        /* NOTE
-                        see below, at the end of loop
-                        if groups ended by article, replace it by a name
-
                         IF (
                             /* RULE
-                            exception for complement, if between 2 groups
+                            exception for complement
+                            - building "number"
+                            BATIMENT A 02
+                            IMMEUBLE A 1
+                            and special, w/ ET
+                            BATIMENT A ET B
+                            - between 2 groups
                             ENTREE A BATIMENT BLEU
                             BATIMENT A RESIDENCE LE VOLTAIRE
-                            */
+                             */
                             element = 'COMPLEMENT'
-                            AND
-                            LENGTH(_words[_i]) = 1
                             AND
                             _i < _words_len
                             AND
                             descriptors ~ '[GHI]$'
-                            AND
-                            fr.get_descriptor_of_group(
-                                group_ => (
-                                    SELECT kw_group
-                                    FROM fr.get_keyword_from_name(
-                                        name => name
-                                        , at_ => _i +1
-                                        , words => _words
-                                        , groups => element
-                                        , with_abbreviation => with_abbreviation
+                            AND (
+                                    fr.is_normalized_number(
+                                        word => _words[_i +1]
+                                        , only_digit => 'ARABIC'
                                     )
+                                OR (
+                                    fr.get_descriptor_of_group(
+                                        group_ => (
+                                            SELECT kw_group
+                                            FROM fr.get_keyword_from_name(
+                                                name => name
+                                                , at_ => _i +1
+                                                , words => _words
+                                                , groups => element
+                                                , with_abbreviation => with_abbreviation
+                                            )
+                                        )
+                                        , descriptors => as_groups
+                                        , raise_notice => raise_notice
+                                    ) ~ '[GHI]'
                                 )
-                                , descriptors => as_groups
-                            ) ~ '[GHI]'
-                        )
-                        OR (
-                         */
-                        IF (
-                            /* RULE
-                            exception for complement, as building "number"
-                            BATIMENT A 02
-                            IMMEUBLE A 1
-                            */
-                            element = 'COMPLEMENT'
-                            AND
-                            _i < _words_len
-                            AND
-                            fr.is_normalized_number(
-                                word => _words[_i +1]
-                                , only_digit => 'ARABIC'
+                                OR (
+                                    _i < (_words_len -1)
+                                    AND
+                                    _words[_i +1] = 'ET'
+                                    AND
+                                    fr.get_default_of_complement_word(_words[_i +2]) = 'N'
+                                )
                             )
                         ) THEN
                             _words_d := 'N';
@@ -1282,6 +1288,7 @@ BEGIN
             descriptors := REGEXP_REPLACE(descriptors, '(^V[PT]C)(E?)$', 'VNC\2');
         END IF;
     ELSE
+        /* name of complement is not reordered!
         FOR _i IN ARRAY_LOWER(as_groups, 1) .. (ARRAY_UPPER(as_groups, 1) -1)
         LOOP
             IF RIGHT(as_groups[_i], 1) = 'A' THEN
@@ -1298,6 +1305,7 @@ BEGIN
             IF raise_notice THEN RAISE NOTICE ' descriptors %/%', descriptors, _descriptors_tmp; END IF;
             descriptors := _descriptors_tmp;
         END IF;
+         */
 
         -- name of complement (so descriptors) is ended by: number, reserved, name or type (CENV)
         IF descriptors !~ '[CENV]$' THEN
