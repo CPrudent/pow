@@ -596,7 +596,7 @@ $func$
 DECLARE
     _name VARCHAR;
     _len_normalized INT;
-    _words_todo TEXT[];
+    --_words_todo TEXT[];
     _descriptors VARCHAR;
     _descriptor VARCHAR;
     _i INT;
@@ -628,13 +628,13 @@ BEGIN
         ds.descriptors
         , ds.words_by_descriptor
         , ds.words_abbreviated_by_descriptor
-        , ds.words_todo_by_descriptor
+        --, ds.words_todo_by_descriptor
         , ds.as_words
     INTO
         _descriptors
         , name_as_words
         , name_abbreviated_as_words
-        , _words_todo
+        --, _words_todo
         , normalize_street_name.as_words
     FROM
         fr.get_descriptors_of_street(
@@ -874,6 +874,7 @@ CREATE OR REPLACE FUNCTION fr.normalize_name(
     , heuristic_method IN VARCHAR DEFAULT 'MEmCMN'
     , nwords OUT INT
     , as_words OUT INT[]
+    , as_groups OUT TEXT[]
     , name_as_words OUT TEXT[]
     , name_abbreviated_as_words OUT TEXT[]
     , descriptors_as_words OUT TEXT[]
@@ -926,12 +927,14 @@ BEGIN
         , ds.words_abbreviated_by_descriptor
         , ds.words_todo_by_descriptor
         , ds.as_words
+        , CASE element WHEN 'COMPLEMENT' THEN ds.as_groups END
     INTO
         _descriptors
         , name_as_words
         , name_abbreviated_as_words
         , _words_todo
         , normalize_name.as_words
+        , normalize_name.as_groups
     FROM
         fr.get_descriptors_from_name(
             element => element

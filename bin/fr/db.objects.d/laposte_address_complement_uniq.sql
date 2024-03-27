@@ -124,6 +124,7 @@ BEGIN
                 , nn.name_normalized_as_words
                 , nn.descriptors_normalized_as_words
                 , nn.as_words
+                , nn.as_groups
                 , CASE
                     WHEN nn.name_normalized_as_words IS NOT NULL THEN
                         fr.get_as_words_from_splited_value(
@@ -132,11 +133,15 @@ BEGIN
                     END as_words_normalized
             FROM
                 fr.laposte_address_complement_uniq u
-                    CROSS JOIN fr.normalize_street_name(u.name) nn
+                    CROSS JOIN fr.normalize_name(
+                        element => 'COMPLEMENT'
+                        , name => u.name
+                    ) nn
         )
         UPDATE fr.laposte_address_complement_uniq u SET
             descriptors = ARRAY_TO_STRING(na.descriptors_as_words, '')
             , as_words = na.as_words
+            , as_groups = na.as_groups
             , name_normalized = CASE
                 WHEN na.name_normalized_as_words IS NOT NULL THEN
                     ARRAY_TO_STRING(na.name_normalized_as_words, ' ')
@@ -170,6 +175,15 @@ CALL fr.set_laposte_address_complement_uniq(set_case => 'DICTIONARY');
 18:49:57.809  Indexation
 
 Query returned successfully in 6 secs 866 msec.
+
+CALL fr.set_laposte_address_complement_uniq(set_case => 'ATTRIBUTS');
+
+17:09:48.338 Dictionnaire des compléments (L3)
+17:09:48.339  Mise à jour (Attributs)
+17:52:02.996  Attributs: 375771
+17:52:05.082  Indexation
+
+Exécution avec succès de COMPLEMENT_SET_ATTRIBUTS en 0h:42m:17s
  */
 
 SELECT drop_all_functions_if_exists('fr', 'laposte_address_complement_uniq_fill_columns');
