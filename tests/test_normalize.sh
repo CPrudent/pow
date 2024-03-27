@@ -114,8 +114,8 @@ _ko=0
                     FROM
                         fr.laposte_address_street_uniq u
                             CROSS JOIN fr.get_descriptors_from_name(
-                                name => u.name
-                                , element => 'STREET'
+                                element => 'STREET'
+                                , name => u.name
                             ) d
                     $([ -n "$get_arg_limit" ] && echo ' LIMIT '$get_arg_limit)
                 )
@@ -149,8 +149,8 @@ _ko=0
         --name STREET_DESCRIPTORS_LIST \
         --query "
             SELECT descriptors FROM fr.get_descriptors_from_name(
-                name => '${TEST_A4S_NAME[$_i]}'
-                , element => 'STREET'
+                element => 'STREET'
+                , name => '${TEST_A4S_NAME[$_i]}'
             )
         " \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
@@ -252,8 +252,8 @@ _ko=0
         --name STREET_DESCRIPTORS_CASE \
         --query "
             SELECT descriptors FROM fr.get_descriptors_from_name(
-                name => '${_TEST_A4S_NAME[$_i]}'
-                , element => 'STREET'
+                element => 'STREET'
+                , name => '${_TEST_A4S_NAME[$_i]}'
             )
         " \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
@@ -295,8 +295,8 @@ _ko=0
                     FROM
                         fr.laposte_address_complement_uniq u
                             CROSS JOIN fr.get_descriptors_from_name(
-                                name => u.name
-                                , element => 'COMPLEMENT'
+                                element => 'COMPLEMENT'
+                                , name => u.name
                             ) d
                     $([ -n "$get_arg_limit" ] && echo ' LIMIT '$get_arg_limit)
                 )

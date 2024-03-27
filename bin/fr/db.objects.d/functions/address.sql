@@ -904,8 +904,8 @@ $func$ LANGUAGE plpgsql;
 -- get descriptors from name (street, complement)
 SELECT drop_all_functions_if_exists('fr', 'get_descriptors_from_name');
 CREATE OR REPLACE FUNCTION fr.get_descriptors_from_name(
-    name IN VARCHAR
-    , element IN VARCHAR                  -- STREET | COMPLEMENT
+    element IN VARCHAR                  -- STREET | COMPLEMENT
+    , name IN VARCHAR
     , with_abbreviation IN BOOLEAN DEFAULT FALSE
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , descriptors OUT VARCHAR
@@ -950,7 +950,6 @@ BEGIN
 
     _words := REGEXP_SPLIT_TO_ARRAY(name, '\s+');
     _words_len := ARRAY_LENGTH(_words, 1);
-    --as_groups := '{NULL,NULL,NULL}'::TEXT[];
 
     FOR _i IN 1 .. _words_len
     LOOP
@@ -966,9 +965,6 @@ BEGIN
         IF fr.is_normalized_number(_words[_i])
             AND NOT fr.is_normalized_article(_words[_i]) THEN
             _words_d := CASE
-                --WHEN _words[_i] = ANY('{D, L}') THEN 'A'
-                --WHEN _words[_i] ~ 'C+|M+' THEN 'N'
-                -- exceptions: DI, LI, MI, CD, CL, ...
                 WHEN element = 'STREET' AND fr.get_default_of_street_word(_words[_i]) != 'C' THEN
                     CASE
                     WHEN _i < _words_len THEN
@@ -1069,7 +1065,7 @@ BEGIN
                     ELSIF fr.is_normalized_article(_words[_i]) THEN
                         IF (
                             /* RULE
-                            exception for complement
+                            exception for complement, article as name
                             - building "number"
                             BATIMENT A 02
                             IMMEUBLE A 1
@@ -1226,12 +1222,13 @@ BEGIN
         -- nothing else than CN before last E (specially not title)
         ELSIF descriptors ~ '[^CN]E$' THEN
             descriptors := REGEXP_REPLACE(descriptors, '.E$', 'NE');
-        */
+         */
 
-        -- not title only (eventually followed by number), but name
-        -- IMPASSE DU PASSAGE A NIVEAU 7, VANNNC
-        -- and also successive V+ and T+
-        -- PASSAGE A NIVEAU PASSAGE A NIVEAU 67, VVVNNNC
+        /* not title only (eventually followed by number), but name
+        IMPASSE DU PASSAGE A NIVEAU 7, VANNNC
+        and also successive V+ and T+
+        PASSAGE A NIVEAU PASSAGE A NIVEAU 67, VVVNNNC
+         */
         ELSIF descriptors ~ 'T+C*$' THEN
             _descriptors_t := (REGEXP_MATCHES(descriptors, '(T+)(C*)$'))[1];
             _descriptors_c := (REGEXP_MATCHES(descriptors, '(T+)(C*)$'))[2];
@@ -1267,9 +1264,10 @@ BEGIN
                     descriptors := CONCAT(descriptors, _descriptors_c);
                 END IF;
             END IF;
-        -- not type only (eventually followed by number, reserved), but name
-        -- PASSAGE A NIVEAU 7, NNNC
-        -- GRANDE RUE PROLONGEE
+        /* not type only (eventually followed by number, reserved), but name
+        PASSAGE A NIVEAU 7, NNNC
+        GRANDE RUE PROLONGEE
+         */
         ELSIF descriptors ~ 'V+[CE]*$' THEN
             _descriptors_v := (REGEXP_MATCHES(descriptors, '(V+)[CE]*$'))[1];
             descriptors := REGEXP_REPLACE(descriptors
@@ -1283,30 +1281,11 @@ BEGIN
         VNC, AVENUE ALBERT 1ER
         VNCE, RUE ALBERT 1ER PROLONGEE
         VPCAN, AVENUE ALBERT 1ER DE BELGIQUE
-        */
+         */
         ELSIF descriptors ~ '^V[PT]CE?$' THEN
             descriptors := REGEXP_REPLACE(descriptors, '(^V[PT]C)(E?)$', 'VNC\2');
         END IF;
     ELSE
-        /* name of complement is not reordered!
-        FOR _i IN ARRAY_LOWER(as_groups, 1) .. (ARRAY_UPPER(as_groups, 1) -1)
-        LOOP
-            IF RIGHT(as_groups[_i], 1) = 'A' THEN
-                as_groups[_i] := REGEXP_REPLACE(as_groups[_i], '.$', 'N');
-            END IF;
-        END LOOP;
-
-        -- put descriptors in order (if needed)
-        _descriptors_tmp := items_of_array_to_string(
-            elements => as_groups
-            , separator => ''
-        );
-        IF descriptors != _descriptors_tmp THEN
-            IF raise_notice THEN RAISE NOTICE ' descriptors %/%', descriptors, _descriptors_tmp; END IF;
-            descriptors := _descriptors_tmp;
-        END IF;
-         */
-
         -- name of complement (so descriptors) is ended by: number, reserved, name or type (CENV)
         IF descriptors !~ '[CENV]$' THEN
             descriptors := REGEXP_REPLACE(descriptors, '.$', 'N');

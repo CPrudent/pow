@@ -354,7 +354,8 @@ ORDER BY
 SELECT public.drop_all_functions_if_exists('fr', 'order_changes');
 SELECT public.drop_all_functions_if_exists('fr', 'normalize_order_changes');
 CREATE OR REPLACE FUNCTION fr.normalize_order_changes(
-    len IN INT
+    element IN VARCHAR
+    , len IN INT
     , nchanges IN INT
     , changes IN VARCHAR[]
     , earns IN INT[]
@@ -462,7 +463,7 @@ BEGIN
                     FROM
                         subsets_as_items s
                             JOIN change_and_earn ce ON s.item = ce.change
-                            LEFT OUTER JOIN fr.laposte_address_street_word_descriptor w ON w.word = ce.word
+                            LEFT OUTER JOIN fr.laposte_address_', LOWER(element), '_word_descriptor w ON w.word = ce.word
                     GROUP BY
                         s.i
                 )
@@ -723,7 +724,8 @@ BEGIN
         -- search for better solution (subset) of all change(s)
         _ordered_changes := (
             SELECT fr.normalize_order_changes(
-                len => _len_normalized
+                element => 'STREET'
+                , len => _len_normalized
                 , nchanges => _nchanges
                 , changes => _changes
                 , earns => _earn_changes
@@ -862,6 +864,302 @@ $func$ LANGUAGE plpgsql;
 view test_normalize.sh : option NAME_DIFF, NAME_LIST, NAME_CASE
  */
 
+-- normalize name of street
+SELECT public.drop_all_functions_if_exists('fr', 'normalize_name');
+CREATE OR REPLACE FUNCTION fr.normalize_name(
+    element IN VARCHAR
+    , name IN VARCHAR
+    , raise_notice IN BOOLEAN DEFAULT FALSE
+    , simulation IN BOOLEAN DEFAULT FALSE
+    , heuristic_method IN VARCHAR DEFAULT 'MEmCMN'
+    , nwords OUT INT
+    , as_words OUT INT[]
+    , name_as_words OUT TEXT[]
+    , name_abbreviated_as_words OUT TEXT[]
+    , descriptors_as_words OUT TEXT[]
+    , name_normalized_as_words OUT TEXT[]
+    , descriptors_normalized_as_words OUT TEXT[]
+)
+AS
+$func$
+DECLARE
+    _name VARCHAR;
+    _len_normalized INT;
+    _max_normalized INT := CASE element
+        WHEN 'STREET' THEN 32
+        WHEN 'COMPLEMENT' THEN 38
+        END;
+    _words_todo TEXT[];
+    _descriptors VARCHAR;
+    _descriptor VARCHAR;
+    _i INT;
+    _j INT;
+    _changes VARCHAR[];
+    _nchanges INT := 0;
+    _earn_changes INT[];
+    _position_changes INT[];
+    _ordered_changes VARCHAR[];
+    _nordered_changes INT;
+    _positions INT[];
+    _ITEMS_DESCRIPTOR INT := 9;
+    _POSITION_DESCRIPTOR_A INT := 1;
+    _POSITION_DESCRIPTOR_E INT := 2;
+    _POSITION_DESCRIPTOR_G INT := 3;
+    _POSITION_DESCRIPTOR_H INT := 4;
+    _POSITION_DESCRIPTOR_I INT := 5;
+    _POSITION_DESCRIPTOR_N INT := 6;
+    _POSITION_DESCRIPTOR_P INT := 7;
+    _POSITION_DESCRIPTOR_T INT := 8;
+    _POSITION_DESCRIPTOR_V INT := 9;
+    _position INT;
+    _word INT;
+    _abbr_t_to_1 BOOLEAN;
+BEGIN
+    -- only upper and not special characters
+    _name := clean_address_label(name);
+    IF raise_notice THEN RAISE NOTICE 'N=% #=%', _name, LENGTH(_name); END IF;
+
+    -- descriptors, words (by descriptor)
+    SELECT
+        ds.descriptors
+        , ds.words_by_descriptor
+        , ds.words_abbreviated_by_descriptor
+        , ds.words_todo_by_descriptor
+        , ds.as_words
+    INTO
+        _descriptors
+        , name_as_words
+        , name_abbreviated_as_words
+        , _words_todo
+        , normalize_name.as_words
+    FROM
+        fr.get_descriptors_from_name(
+            element => element
+            , name => _name
+            , with_abbreviation => TRUE
+        ) ds;
+    nwords := ARRAY_LENGTH(name_as_words, 1);
+    -- descriptors_as_words as array
+    SELECT
+        as_array
+    INTO
+        descriptors_as_words
+    FROM
+        fr.split_descriptors_as_array(
+            descriptors => _descriptors
+            , words => name_as_words
+            , nwords => nwords
+        ) da;
+
+    _len_normalized := (
+        SELECT SUM(LENGTH(w)) FROM UNNEST(name_as_words) w
+    ) + (nwords -1);
+    IF raise_notice THEN RAISE NOTICE 'NN=% #=%', name_as_words, _len_normalized; END IF;
+    -- already OK ?
+    IF _len_normalized <= _max_normalized THEN
+        RETURN;
+    END IF;
+    name_normalized_as_words := name_as_words;
+    descriptors_normalized_as_words := descriptors_as_words;
+
+    -- eval changes and their earning size
+    _positions := ARRAY_FILL(0, ARRAY[_ITEMS_DESCRIPTOR]);
+    FOR _i IN 1 .. nwords
+    LOOP
+        _position := CASE
+            WHEN descriptors_as_words[_i] ~ 'A' THEN _POSITION_DESCRIPTOR_A
+            WHEN descriptors_as_words[_i] ~ 'V' THEN _POSITION_DESCRIPTOR_V
+            WHEN descriptors_as_words[_i] ~ 'P' THEN
+                CASE
+                -- exception if
+                --  previous word is holy
+                WHEN _i > 1 AND name_as_words[_i -1] ~ '^(ST|STE|SAINT|SAINTE)$' THEN 0
+                --  next is number
+                WHEN _i < nwords AND descriptors_as_words[_i +1] ~ 'C' THEN 0
+                ELSE _POSITION_DESCRIPTOR_P
+                END
+            ELSE
+                CASE
+                -- only if abbreviatable
+                WHEN name_abbreviated_as_words[_i] IS NULL THEN 0
+                ELSE
+                    CASE
+                    /* NOTE
+                    example: ANCIENNE CARRAIRE DES TROUPEAUX D ARLES PROLONGEE
+                    w/o E-abbreviation : {ANCIENNE,C,NULL,T,NULL,ARLES,PROLONGEE}
+                     */
+                    WHEN descriptors_as_words[_i] ~ 'E' THEN _POSITION_DESCRIPTOR_E
+                    WHEN descriptors_as_words[_i] ~ 'G' THEN _POSITION_DESCRIPTOR_G
+                    WHEN descriptors_as_words[_i] ~ 'H' THEN _POSITION_DESCRIPTOR_H
+                    WHEN descriptors_as_words[_i] ~ 'I' THEN _POSITION_DESCRIPTOR_I
+                    WHEN descriptors_as_words[_i] ~ 'N' THEN _POSITION_DESCRIPTOR_N
+                    WHEN descriptors_as_words[_i] ~ 'T' THEN _POSITION_DESCRIPTOR_T
+                    ELSE 0
+                    END
+                END
+            END
+        ;
+        IF _position > 0 THEN
+            _positions[_position] := _positions[_position] +1;
+            _changes := ARRAY_APPEND(_changes, CONCAT(descriptors_as_words[_i], _positions[_position]));
+            _nchanges := _nchanges +1;
+
+            -- earn of change
+            _earn_changes[_nchanges] := CASE
+                -- delete article (count space separator, +1)
+                WHEN descriptors_as_words[_i] ~ 'A' THEN LENGTH(name_as_words[_i]) +1
+                -- remain 1st letter only
+                WHEN descriptors_as_words[_i] ~ 'P' THEN LENGTH(name_as_words[_i]) -1
+                -- replace w/ abbreviation (if defined)
+                ELSE LENGTH(name_as_words[_i]) - LENGTH(COALESCE(name_abbreviated_as_words[_i], name_as_words[_i]))
+                END
+            ;
+            -- position of change (i-th word)
+            _position_changes[_nchanges] := _i;
+        END IF;
+    END LOOP;
+
+    -- at least 1 change
+    IF _nchanges > 0 THEN
+        -- search for better solution (subset) of all change(s)
+        _ordered_changes := (
+            SELECT fr.normalize_order_changes(
+                element => element
+                , len => _len_normalized
+                , nchanges => _nchanges
+                , changes => _changes
+                , earns => _earn_changes
+                , positions => _position_changes
+                , words => name_normalized_as_words
+                , raise_notice => raise_notice
+                , simulation => simulation
+                , heuristic_method => heuristic_method
+            )
+        );
+
+        IF raise_notice THEN RAISE NOTICE 'C=%, P=%, G=%, O=%', _changes, _position_changes, _earn_changes, _ordered_changes; END IF;
+        IF simulation THEN RETURN; END IF;
+
+        -- apply solution
+        _nordered_changes := ARRAY_LENGTH(_ordered_changes, 1);
+        FOR _i IN 1 .. _nordered_changes
+        LOOP
+            _position := ARRAY_POSITION(_changes, _ordered_changes[_i]);
+            _word := _position_changes[_position];
+            _descriptor := SUBSTR(_ordered_changes[_i], 1, 1);
+
+            IF _descriptor IS NULL THEN
+                RAISE 'changement %/% non trouvé!', _i, _nordered_changes;
+            END IF;
+            IF raise_notice THEN RAISE NOTICE 'changement %/% : % (w=%)', _i, _nordered_changes, _descriptor, _word; END IF;
+
+            IF _descriptor = 'A' THEN
+                name_normalized_as_words[_word] := NULL;
+                descriptors_normalized_as_words[_word] := NULL;
+                _len_normalized := _len_normalized - _earn_changes[_position];
+            ELSIF _descriptor = 'P' THEN
+                name_normalized_as_words[_word] := SUBSTR(name_normalized_as_words[_word], 1, 1);
+                _len_normalized := _len_normalized - _earn_changes[_position];
+            ELSE
+                name_normalized_as_words[_word] := name_abbreviated_as_words[_word];
+                descriptors_normalized_as_words[_word] := REPEAT(_descriptor, count_words(name_abbreviated_as_words[_word]));
+                _len_normalized := _len_normalized - _earn_changes[_position];
+            END IF;
+
+            IF _len_normalized <= _max_normalized THEN
+                EXIT;
+            END IF;
+        END LOOP;
+    END IF;
+
+    -- not normalized ? try to abbreviate name(s) to just initials (1-letter)
+    IF _len_normalized > _max_normalized THEN
+        -- exists ST|STE w/ firstname as following word (so not abbreviated) ?
+        _j := COALESCE(ARRAY_POSITION(name_as_words, 'SAINT'), ARRAY_POSITION(name_as_words, 'SAINTE'));
+        IF (_j IS NOT NULL
+            AND
+            _j < nwords
+            AND
+            descriptors_as_words[_j +1] ~ 'P'
+            AND
+            (_len_normalized - (LENGTH(name_as_words[_j +1]) - 1)) <= _max_normalized
+        ) THEN
+            _j := _j +1;
+        ELSE
+            -- exists ROAD NETWORK words
+            _j := COALESCE(
+                ARRAY_POSITION(name_as_words, 'NATIONALE')
+                , ARRAY_POSITION(name_as_words, 'DEPARTEMENTALE')
+                , ARRAY_POSITION(name_as_words, 'COMMUNALE')
+                , ARRAY_POSITION(name_as_words, 'RURALE')
+            );
+            IF NOT (_j IS NOT NULL
+                AND
+                (_len_normalized - (LENGTH(name_as_words[_j]) - 1)) <= _max_normalized
+            ) THEN
+                _abbr_t_to_1 := FALSE;
+                -- all article(s) deleted and all words already abbreviated
+                IF ((CARDINALITY(ARRAY_POSITIONS(name_normalized_as_words, NULL)) = CARDINALITY(ARRAY_POSITIONS(descriptors_as_words, 'A')))
+                    AND
+                    (name_normalized_as_words @> ARRAY_REMOVE(name_abbreviated_as_words, NULL))
+                ) THEN
+                    /* NOTE
+                    example: CHEMIN VICINAL VOIE COMMUNALE 5 LESIGNY A BRIE COMTE ROBERT
+                     */
+                    -- abbreviate title to 1-letter ...
+                    _abbr_t_to_1 := TRUE;
+                    -- ... starting at 2nd word (if type) else 1st
+                    _j := CASE
+                        WHEN descriptors_as_words[1] ~ 'V' THEN 2
+                        ELSE 1
+                        END
+                    ;
+                ELSE
+                    -- abbreviate (asc order) either name or fname (except 1st)
+                    _j := CASE
+                        WHEN descriptors_as_words[1] = 'N' THEN 2
+                        ELSE 1
+                        END
+                    ;
+                END IF;
+            END IF;
+        END IF;
+        FOR _i IN _j .. nwords
+        LOOP
+            _descriptor := CASE
+                WHEN _i = _j OR _i = (nwords -1) THEN 'N|P'
+                ELSE 'N'
+                END
+            ;
+            IF ((descriptors_as_words[_i] ~ _descriptor)
+                OR
+                ((descriptors_as_words[_i] ~ 'T') AND _abbr_t_to_1)
+                AND
+                (name_normalized_as_words[_i] IS NOT NULL)
+            ) THEN
+                _len_normalized := _len_normalized - (LENGTH(name_normalized_as_words[_i]) -1);
+                name_normalized_as_words[_i] := SUBSTR(name_normalized_as_words[_i], 1, 1);
+                IF _len_normalized <= _max_normalized THEN
+                    EXIT;
+                END IF;
+            END IF;
+        END LOOP;
+    END IF;
+
+    IF _len_normalized <= _max_normalized THEN
+        -- try to restore type (if abbreviated and NN is possible w/o)
+        IF (descriptors_as_words[1] ~ 'V|T'
+            AND
+            (_len_normalized + (LENGTH(name_as_words[1]) - LENGTH(name_abbreviated_as_words[1]))) <= _max_normalized
+        ) THEN
+            name_normalized_as_words[1] := name_as_words[1];
+        END IF;
+    ELSE
+        RAISE NOTICE 'pas de normalisation (%) : NN=% #=%', name, name_normalized_as_words, _len_normalized;
+    END IF;
+END
+$func$ LANGUAGE plpgsql;
+
 -- get normalized (name, descriptors) as words from normalized name w/ (name, descriptors) as words (of complete name)
 SELECT drop_all_functions_if_exists('fr', 'normalize_name_get_as_words');
 CREATE OR REPLACE FUNCTION fr.normalize_name_get_as_words(
@@ -885,7 +1183,13 @@ BEGIN
     -- through complete name
     FOR _i IN 1 .. nwords
     LOOP
+        IF raise_notice THEN
+            RAISE NOTICE 'i=% j=%', _i, _j;
+        END IF;
         _nwords := count_words(name_as_words[_i]);
+        IF raise_notice THEN
+            RAISE NOTICE ' nwords=% word=%', _nwords, name_as_words[_i];
+        END IF;
         IF extract_words(
             str => name_normalized
             , n => _nwords
@@ -895,14 +1199,17 @@ BEGIN
             descriptors_normalized_as_words[_i] := descriptors_as_words[_i];
         ELSE
             _name_abbreviated := CASE
-                WHEN descriptors_as_words[_i] ~ 'V|T' THEN
+                WHEN descriptors_as_words[_i] ~ '[GHITV]' THEN
                     name_abbreviated_as_words[_i]
-                WHEN descriptors_as_words[_i] ~ 'N|P' THEN
+                WHEN descriptors_as_words[_i] ~ '[NP]' THEN
                     SUBSTR(name_as_words[_i], 1, 1)
                 ELSE NULL
                 END
             ;
             _nwords := count_words(_name_abbreviated);
+            IF raise_notice THEN
+                RAISE NOTICE ' nwords=% abbr=%', _nwords, _name_abbreviated;
+            END IF;
             /* NOTE
             use similarity because of abbreviation error!
              */
@@ -921,6 +1228,9 @@ BEGIN
                 _nwords := 0;
                 name_normalized_as_words[_i] := NULL;
                 descriptors_normalized_as_words[_i] := NULL;
+            END IF;
+            IF raise_notice THEN
+                RAISE NOTICE ' nn=% dn=%', name_normalized_as_words[_i], descriptors_normalized_as_words[_i];
             END IF;
         END IF;
         _j := _j + _nwords;
