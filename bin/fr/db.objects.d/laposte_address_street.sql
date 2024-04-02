@@ -80,6 +80,12 @@ BEGIN
     -- manage indexes
     CALL fr.set_laposte_address_street_index();
 
+    /* NOTE
+    add columns into laposte_address_street_reference to avoid laposte_address_street
+    - co_voie
+    - dt_reference
+    - fl_active (fl_active & fl_diffusable)
+     */
     -- create views
     _query := '
         SELECT
@@ -93,12 +99,11 @@ BEGIN
             , street.fl_active
 
             -- ADDRESS
-            --, street.co_cea_za AS co_adr_za
             , area.co_cea AS co_adr_za
             , area.co_postal
             , area.lb_l5_nn AS lb_ligne5
             , area.lb_ach_nn AS lb_acheminement
-            , street.co_insee_commune
+            , area.co_insee_commune
             , area.co_insee_commune_precedente
             , area.co_insee_departement
             , area.fl_active AS fl_active_za

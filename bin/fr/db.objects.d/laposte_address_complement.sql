@@ -49,7 +49,6 @@ ALTER TABLE fr.laposte_address_complement SET (
     AUTOVACUUM_ENABLED = FALSE
 );
 
-SELECT drop_all_functions_if_exists('fr', 'set_laposte_complement_index');
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_complement_index');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_complement_index()
 AS
@@ -76,8 +75,59 @@ END
 $proc$ LANGUAGE plpgsql;
 
 DO $$
+DECLARE
+    _query TEXT;
 BEGIN
     -- manage indexes
     CALL fr.set_laposte_address_complement_index();
+
+    /* NOTE
+    add columns into laposte_address_complement_reference to avoid laposte_address_complement
+    - dt_reference
+    - fl_active (fl_active & fl_diffusable)
+     */
+
+    -- create views
+    _query := '
+        SELECT
+            -- COMPLEMENT
+              complement.co_cea AS co_adr
+            , complement.dt_reference AS dt_reference_adr
+            , dict.name lb_ligne3
+            , dict.name_normalized lb_l3_normalise
+            , dict.descriptors lb_l3_desc
+            , complement.fl_active
+
+            -- ADDRESS
+            , address.co_cea_za AS co_adr_za
+            , address.co_cea_voie AS co_adr_voie
+            , address.co_cea_numero AS co_adr_numero
+
+            -- AREA
+            , area.co_postal
+            , area.lb_l5_nn AS lb_ligne5
+            , area.lb_ach_nn AS lb_acheminement
+            , area.co_insee_commune
+        FROM
+            fr.laposte_address_complement complement
+                JOIN fr.laposte_address address ON address.co_cea_determinant = complement.co_cea
+                JOIN fr.laposte_address_area area ON area.co_cea = address.co_cea_za
+                JOIN fr.laposte_address_complement_reference ref ON complement.co_cea = ref.address_id
+                JOIN fr.laposte_address_complement_uniq dict ON ref.name_id = dict.id
+    ';
+
+    DROP VIEW IF EXISTS fr.complement_all_view CASCADE;
+    EXECUTE CONCAT_WS(
+        ' '
+        , 'CREATE VIEW fr.complement_all_view AS'
+        , _query
+    );
+    DROP VIEW IF EXISTS fr.complement_view CASCADE;
+    EXECUTE CONCAT_WS(
+        ' '
+        , 'CREATE VIEW fr.complement_view AS'
+        , _query
+        , 'WHERE complement.fl_active AND complement.fl_diffusable'
+    );
 END
 $$;
