@@ -190,6 +190,7 @@ $proc$ LANGUAGE plpgsql;
 Query returned successfully in 4 secs 595 msec.
  */
 
+/*
 -- get default of complement word
 SELECT drop_all_functions_if_exists('fr', 'get_default_of_complement_word');
 CREATE OR REPLACE FUNCTION fr.get_default_of_complement_word(
@@ -208,3 +209,4 @@ BEGIN
     ;
 END
 $func$ LANGUAGE plpgsql;
+ */

@@ -83,29 +83,24 @@ BEGIN
     -- create views
     _query := '
         SELECT
-            -- ADDRESS
+            -- STREET
               street.co_cea AS co_adr
             , street.dt_reference AS dt_reference_adr
-            --, street.co_cea AS co_adr_voie
-            --On prend le CEA ZA dénormalisé dans ran.street pour permettre l''utilisation d''un index combiné (exemple : exploité sur rapprochement)
-            --, address.co_cea_za AS co_adr_za
-            , street.co_cea_za AS co_adr_za
             , street.co_voie
-            , street.lb_type AS lb_type_voie
-            , street.lb_type_abrege AS lb_type_voie_abrege
-            , street.lb_voie
-            , street.lb_voie_normalise
-            , street.lb_md AS lb_voie_mot_directeur
-            , street.lb_desc AS lb_voie_desc
+            , dict.name lb_voie
+            , dict.name_normalized lb_voie_normalise
+            , dict.descriptors lb_voie_desc
+            , street.fl_active
+
+            -- ADDRESS
+            --, street.co_cea_za AS co_adr_za
+            , area.co_cea AS co_adr_za
             , area.co_postal
             , area.lb_l5_nn AS lb_ligne5
-            --, area.lb_in_ext_loc AS lb_localite
-            --, area.lb_nn AS lb_localite_normalise
             , area.lb_ach_nn AS lb_acheminement
             , street.co_insee_commune
             , area.co_insee_commune_precedente
             , area.co_insee_departement
-            , street.fl_active
             , area.fl_active AS fl_active_za
 
             -- XY
@@ -131,6 +126,8 @@ BEGIN
             fr.laposte_address_street street
                 JOIN fr.laposte_address address ON address.co_cea_determinant = street.co_cea
                 JOIN fr.laposte_address_area area ON area.co_cea = address.co_cea_za
+                JOIN fr.laposte_address_street_reference ref ON street.co_cea = ref.address_id
+                JOIN fr.laposte_address_street_uniq dict ON ref.name_id = dict.id
                 LEFT OUTER JOIN fr.laposte_address_xy xy ON xy.co_cea = street.co_cea
                 LEFT OUTER JOIN fr.laposte_delivery_address delivery ON delivery.co_adr = street.co_cea
                 LEFT OUTER JOIN fr.laposte_organization org ON org.code = delivery.co_roc_site::VARCHAR

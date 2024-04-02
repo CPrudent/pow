@@ -209,6 +209,7 @@ ORDER BY
     1
  */
 
+/*
 -- get default of word
 SELECT drop_all_functions_if_exists('fr', 'fr.get_default_of_word');
 SELECT drop_all_functions_if_exists('fr', 'fr.get_default_of_street_word');
@@ -228,3 +229,4 @@ BEGIN
     ;
 END
 $func$ LANGUAGE plpgsql;
+ */

@@ -228,7 +228,6 @@ END
 $func$ LANGUAGE plpgsql;
 
 -- define as_words array from splitted value (name or descriptors)
-SELECT drop_all_functions_if_exists('fr', 'get_as_words_from_splitted_value');
 SELECT drop_all_functions_if_exists('fr', 'get_as_words_from_splited_value');
 CREATE OR REPLACE FUNCTION fr.get_as_words_from_splited_value(
     property_as_words IN TEXT[]
@@ -442,6 +441,7 @@ and sometimes N & E for same
 => always E
  */
 
+/*
 SELECT drop_all_functions_if_exists('fr', 'get_descriptors_of_street');
 CREATE OR REPLACE FUNCTION fr.get_descriptors_of_street(
     name IN VARCHAR                   -- name of street
@@ -720,6 +720,7 @@ BEGIN
     IF raise_notice THEN RAISE NOTICE ' descriptors=%', descriptors; END IF;
 END
 $func$ LANGUAGE plpgsql;
+ */
 
 /* TEST
 
@@ -817,7 +818,6 @@ END
 $func$ LANGUAGE plpgsql;
 
 -- complement-descriptors subscript of group : [G1, G2, G3]
-SELECT drop_all_functions_if_exists('fr', 'get_descriptor_subscript_of_group');
 SELECT drop_all_functions_if_exists('fr', 'get_subscript_of_descriptor');
 CREATE OR REPLACE FUNCTION fr.get_subscript_of_descriptor(
     descriptor IN VARCHAR
@@ -901,6 +901,30 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+-- get default of word
+SELECT drop_all_functions_if_exists('fr', 'fr.get_default_of_word');
+CREATE OR REPLACE FUNCTION fr.get_default_of_word(
+    element IN VARCHAR                  -- STREET | COMPLEMENT
+    , word IN VARCHAR
+    , as_default OUT VARCHAR
+)
+AS
+$func$
+BEGIN
+    get_default_of_word.as_default := CASE element
+        WHEN 'STREET' THEN
+            (SELECT as_default
+            FROM fr.laposte_address_street_word_descriptor w
+            WHERE w.word = get_default_of_word.word)
+        WHEN 'COMPLEMENT' THEN
+            (SELECT as_default
+            FROM fr.laposte_address_complement_word_descriptor w
+            WHERE w.word = get_default_of_word.word)
+        END
+    ;
+END
+$func$ LANGUAGE plpgsql;
+
 -- get descriptors from name (street, complement)
 SELECT drop_all_functions_if_exists('fr', 'get_descriptors_from_name');
 CREATE OR REPLACE FUNCTION fr.get_descriptors_from_name(
@@ -940,6 +964,7 @@ DECLARE
     _exception VARCHAR;
     _init_by_descriptor BOOLEAN;
     _abbr VARCHAR;
+    _word_default VARCHAR;
 BEGIN
     IF raise_notice THEN RAISE NOTICE 'name="%"', name; END IF;
 
@@ -964,15 +989,18 @@ BEGIN
         -- number
         IF fr.is_normalized_number(_words[_i])
             AND NOT fr.is_normalized_article(_words[_i]) THEN
+            _word_default := fr.get_default_of_word(
+                element = element
+                , word => _words[_i]
+            );
             _words_d := CASE
-                WHEN element = 'STREET' AND fr.get_default_of_street_word(_words[_i]) != 'C' THEN
+                WHEN element = 'STREET' AND _word_default != 'C' THEN
                     CASE
-                    WHEN _i < _words_len THEN
-                        fr.get_default_of_street_word(_words[_i])
+                    WHEN _i < _words_len THEN _word_default
                     ELSE 'N'
                     END
-                WHEN element = 'COMPLEMENT' AND fr.get_default_of_complement_word(_words[_i]) != 'C' THEN
-                    fr.get_default_of_complement_word(_words[_i])
+                WHEN element = 'COMPLEMENT' AND _word_default != 'C' THEN
+                    _word_default
                 ELSE 'C'
                 END
                 ;
@@ -1106,7 +1134,10 @@ BEGIN
                                     AND
                                     _words[_i +1] = 'ET'
                                     AND
-                                    fr.get_default_of_complement_word(_words[_i +2]) = 'N'
+                                    fr.get_default_of_word(
+                                        element => element
+                                        , word => _words[_i +2]
+                                    ) = 'N'
                                 )
                             )
                         ) THEN

@@ -41,7 +41,7 @@ BEGIN
                 , (standardized_address).postcode
                 , (standardized_address).municipality_code
                 , (standardized_address).municipality_name
-                , (standardized_address).street
+                , (standardized_address).street_name
             )
         WHEN 'HOUSENUMBER' THEN
             CONCAT(
@@ -49,7 +49,7 @@ BEGIN
                 , (standardized_address).postcode
                 , (standardized_address).municipality_code
                 , (standardized_address).municipality_name
-                , (standardized_address).street
+                , (standardized_address).street_name
                 , (standardized_address).housenumber
                 , (standardized_address).extension
             )
@@ -59,10 +59,10 @@ BEGIN
                 , (standardized_address).postcode
                 , (standardized_address).municipality_code
                 , (standardized_address).municipality_name
-                , (standardized_address).street
+                , (standardized_address).street_name
                 , (standardized_address).housenumber
                 , (standardized_address).extension
-                , (standardized_address).complement
+                , (standardized_address).complement_name
             )
         END
     );
@@ -141,7 +141,7 @@ BEGIN
                 WHERE
                     id_request = $1
                     AND
-                    (standardized_address).complement IS NOT NULL
+                    (standardized_address).complement_name IS NOT NULL
                     AND
                     (standardized_address).housenumber IS NOT NULL
                 UNION
@@ -154,7 +154,7 @@ BEGIN
                 WHERE
                     id_request = $1
                     AND
-                    (standardized_address).complement IS NOT NULL
+                    (standardized_address).complement_name IS NOT NULL
                     AND
                     (standardized_address).housenumber IS NULL
             )

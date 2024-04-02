@@ -10,7 +10,7 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'standardized_address')
     OR EXISTS (
         SELECT 1 FROM information_schema.attributes
-        WHERE udt_name = 'standardized_address' AND attribute_name = 'strong_word')
+        WHERE udt_name = 'standardized_address' AND attribute_name = 'street')
     THEN
         DROP TYPE IF EXISTS fr.standardized_address CASCADE;
         CREATE TYPE fr.standardized_address AS (
@@ -21,17 +21,20 @@ BEGIN
             , match_code_street VARCHAR
             , match_code_housenumber VARCHAR
             , match_code_complement VARCHAR
-            , complement VARCHAR                -- address complement (known as L3)
+            , complement_name VARCHAR           -- address complement (known as L3)
+            , complement_descriptors VARCHAR    -- LAPOSTE/RAN classified words
+            , complement_as_words INT[]         -- array of length of each item
+            , complement_words TEXT[]           -- array of each words
             , housenumber INTEGER
             , extension VARCHAR                 -- housenumber extension (BIS, ...)
-            , street VARCHAR                    -- full name of street (w/o abbr)
-            , descriptors VARCHAR               -- LAPOSTE/RAN classified words
-            , as_words INT[]                    -- array of length of each item
-            , words TEXT[]                      -- array of each words
+            , street_name VARCHAR               -- full name of street (w/o abbr)
+            , street_descriptors VARCHAR        -- LAPOSTE/RAN classified words
+            , street_as_words INT[]             -- array of length of each item
+            , street_words TEXT[]               -- array of each words
             /* useful ?
             , street_normalized VARCHAR         -- normalized name of street
-            , descriptors_normalized VARCHAR
-            , as_words_normalized INT[]
+            , street_descriptors_normalized VARCHAR
+            , street_as_words_normalized INT[]
              */
             , postcode VARCHAR                  -- postal code
             , municipality_code VARCHAR         -- INSEE code (municipality)

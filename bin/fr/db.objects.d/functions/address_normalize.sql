@@ -4,7 +4,7 @@
 
 /* NOTE
 LAPOSTE
-street descriptor items
+street/complement descriptor items
  A article
  C number
  E reserved word
@@ -351,7 +351,6 @@ ORDER BY
  */
 
 -- order changes by heuristic method
-SELECT public.drop_all_functions_if_exists('fr', 'order_changes');
 SELECT public.drop_all_functions_if_exists('fr', 'normalize_order_changes');
 CREATE OR REPLACE FUNCTION fr.normalize_order_changes(
     element IN VARCHAR
@@ -576,6 +575,7 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+/*
 -- normalize name of street
 SELECT public.drop_all_functions_if_exists('fr', 'normalize_street_name');
 CREATE OR REPLACE FUNCTION fr.normalize_street_name(
@@ -859,12 +859,13 @@ BEGIN
     END IF;
 END
 $func$ LANGUAGE plpgsql;
+ */
 
 /* TEST
 view test_normalize.sh : option NAME_DIFF, NAME_LIST, NAME_CASE
  */
 
--- normalize name of street
+-- normalize name of street/complement
 SELECT public.drop_all_functions_if_exists('fr', 'normalize_name');
 CREATE OR REPLACE FUNCTION fr.normalize_name(
     element IN VARCHAR
@@ -1278,9 +1279,33 @@ BEGIN
                         USING address;
                 WHEN 'complement' THEN
                     EXECUTE CONCAT('SELECT ', _column_map[2])
-                        INTO _standardized_address.complement
+                        INTO _standardized_address.complement_name
                         USING address;
-                    _standardized_address.complement := NULLIF(TRIM(public.clean_address_label(_standardized_address.complement)), '');
+
+                    SELECT
+                        /*
+                        ARRAY_TO_STRING(COALESCE(name_normalized_as_words, name_as_words), ' ')
+                        , ARRAY_TO_STRING(COALESCE(descriptors_normalized_as_words, descriptors_as_words), '')
+                        , CASE
+                            WHEN name_normalized_as_words IS NULL THEN as_words
+                            ELSE fr.get_as_words_from_splited_value(
+                                property_as_words => descriptors_normalized_as_words
+                            )
+                            END
+                         */
+                        ARRAY_TO_STRING(nn.name_as_words, ' ')
+                        , ARRAY_TO_STRING(nn.descriptors_as_words, '')
+                        , nn.as_words
+                    INTO
+                        _standardized_address.complement_name
+                        , _standardized_address.complement_descriptors
+                        , _standardized_address.complement_as_words
+                    FROM
+                        fr.normalize_name(
+                            element => 'COMPLEMENT'
+                            , name => _standardized_address.complement_name
+                        ) nn
+                    ;
                 WHEN 'housenumber' THEN
                     EXECUTE CONCAT('SELECT NULLIF(TRIM(', _column_map[2], '::TEXT), '''')::INTEGER')
                         INTO _standardized_address.housenumber
@@ -1300,10 +1325,11 @@ BEGIN
                     _standardized_address.extension := NULLIF(TRIM(public.clean_address_label(_standardized_address.extension)), '');
                 WHEN 'street' THEN
                     EXECUTE CONCAT('SELECT ', _column_map[2])
-                        INTO _standardized_address.street
+                        INTO _standardized_address.street_name
                         USING address;
 
                     SELECT
+                        /*
                         ARRAY_TO_STRING(COALESCE(name_normalized_as_words, name_as_words), ' ')
                         , ARRAY_TO_STRING(COALESCE(descriptors_normalized_as_words, descriptors_as_words), '')
                         , CASE
@@ -1312,14 +1338,19 @@ BEGIN
                                 property_as_words => descriptors_normalized_as_words
                             )
                             END
+                         */
+                        ARRAY_TO_STRING(nn.name_as_words, ' ')
+                        , ARRAY_TO_STRING(nn.descriptors_as_words, '')
+                        , nn.as_words
                     INTO
-                        _standardized_address.street
-                        , _standardized_address.descriptors
-                        , _standardized_address.as_words
+                        _standardized_address.street_name
+                        , _standardized_address.street_descriptors
+                        , _standardized_address.street_as_words
                     FROM
-                        fr.normalize_street_name(
-                            name => _standardized_address.street
-                        )
+                        fr.normalize_name(
+                            element => 'STREET'
+                            , name => _standardized_address.street_name
+                        ) nn
                     ;
                 WHEN 'municipality_code' THEN
                     EXECUTE CONCAT('SELECT ', _column_map[2])
@@ -1477,9 +1508,9 @@ BEGIN
 
     _standardized_address.level :=
     CASE
-        WHEN _standardized_address.complement IS NOT NULL THEN 'COMPLEMENT'
+        WHEN _standardized_address.complement_name IS NOT NULL THEN 'COMPLEMENT'
         WHEN _standardized_address.housenumber IS NOT NULL THEN 'HOUSENUMBER'
-        WHEN _standardized_address.street IS NOT NULL THEN 'STREET'
+        WHEN _standardized_address.street_name IS NOT NULL THEN 'STREET'
         WHEN _standardized_address.municipality_code IS NOT NULL THEN 'AREA'
     END;
 
@@ -1492,7 +1523,7 @@ BEGIN
             level => 'AREA'
             , standardized_address => _standardized_address
         );
-        IF _standardized_address.street IS NOT NULL THEN
+        IF _standardized_address.street_name IS NOT NULL THEN
             _standardized_address.match_code_street := fr.get_match_code(
                 level => 'STREET'
                 , standardized_address => _standardized_address
@@ -1503,7 +1534,7 @@ BEGIN
                     , standardized_address => _standardized_address
                 );
             END IF;
-            IF _standardized_address.complement IS NOT NULL THEN
+            IF _standardized_address.complement_name IS NOT NULL THEN
                 _standardized_address.match_code_complement := fr.get_match_code(
                     level => 'COMPLEMENT'
                     , standardized_address => _standardized_address
@@ -1512,14 +1543,17 @@ BEGIN
         END IF;
     END IF;
 
-    IF _standardized_address.street IS NOT NULL THEN
-        _standardized_address.words := STRING_TO_ARRAY(_standardized_address.street, ' ');
+    IF _standardized_address.street_name IS NOT NULL THEN
+        _standardized_address.street_words := STRING_TO_ARRAY(_standardized_address.street_name, ' ');
+    END IF;
+    IF _standardized_address.complement_name IS NOT NULL THEN
+        _standardized_address.complement_words := STRING_TO_ARRAY(_standardized_address.complement_name, ' ');
     END IF;
 
     /*
     -- calcul mot directeur, si absent
-    IF _standardized_address.lb_voie_mot_directeur IS NULL AND _standardized_address.street IS NOT NULL THEN
-        _standardized_address.lb_voie_mot_directeur := getVoieMotDirecteur(_standardized_address.street);
+    IF _standardized_address.lb_voie_mot_directeur IS NULL AND _standardized_address.street_name IS NOT NULL THEN
+        _standardized_address.lb_voie_mot_directeur := getVoieMotDirecteur(_standardized_address.street_name);
     END IF;
      */
 
