@@ -46,6 +46,11 @@ $proc$
 BEGIN
     -- https://stackoverflow.com/questions/28975517/difference-between-gist-and-gin-index
     CREATE INDEX IF NOT EXISTS ix_laposte_address_street_word_descriptor_word ON fr.laposte_address_street_word_descriptor USING GIN(word GIN_TRGM_OPS);
+
+    /* TEST
+    CREATE INDEX IF NOT EXISTS ix_laposte_address_street_word_descriptor_name ON fr.laposte_address_street_word_descriptor (as_default, as_name, as_last)
+    WHERE as_default = 'N';
+     */
 END
 $proc$ LANGUAGE plpgsql;
 

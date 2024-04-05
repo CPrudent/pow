@@ -160,7 +160,7 @@ $func$
 DECLARE
     _SEARCHS VARCHAR[] := ARRAY['STRICT', 'NEAR'];
     _LOOP_LIMIT INT := 4;
-    _similarity_threshold REAL := 0.0;
+    _similarity_threshold REAL;
     _similarity_ratio REAL;
     _street_ratio REAL;
     _search VARCHAR;
@@ -221,13 +221,14 @@ BEGIN
                     , with_postcode => CASE _search WHEN 'NEAR_WO_POSTCODE' THEN FALSE ELSE TRUE END
                 );
 
-                IF _search != 'STRICT' AND _similarity_threshold = 0.0 THEN
+                IF _search != 'STRICT' AND _similarity_threshold IS NULL THEN
                     _similarity_threshold := fr.get_similarity_property(
                         similarity => similarity
                         , level => level
                         , key => 'THRESHOLD'
                     );
-                    SET pg_trgm.similarity_threshold = _similarity_threshold;
+                    --SET pg_trgm.similarity_threshold = _similarity_threshold;
+                    _similarity_threshold := set_limit(_similarity_threshold);
                 END IF;
 
                 EXECUTE _query
@@ -281,8 +282,10 @@ BEGIN
                     , level => level
                     , key => 'THRESHOLD'
                 );
-                -- FIXME don't accept variable!
-                --SET pg_trgm.similarity_threshold = _similarity_threshold;
+                /* FIXME don't accept variable!
+                SET pg_trgm.similarity_threshold = _similarity_threshold;
+                set_limit() obsolete!
+                 */
                 _similarity_threshold := set_limit(_similarity_threshold);
                 _street_ratio := fr.get_similarity_property(
                     similarity => similarity
@@ -341,7 +344,7 @@ BEGIN
                                 , co_adr_za
                                 , co_voie
                                 , lb_voie
-                                , fr.get_similarity_street(
+                                , fr.get_similarity_words(
                                     words_a => (standardized_address).words
                                     , words_b => su.words
                                     , descriptors_a => (standardized_address).descriptors

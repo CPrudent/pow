@@ -118,9 +118,10 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
--- match street name according to sum similarity of its words
+-- match name according to sum similarity of its words
 SELECT drop_all_functions_if_exists('fr', 'get_similarity_street');
-CREATE OR REPLACE FUNCTION fr.get_similarity_street(
+SELECT drop_all_functions_if_exists('fr', 'get_similarity_words');
+CREATE OR REPLACE FUNCTION fr.get_similarity_words(
     words_a IN TEXT[]
     , words_b IN TEXT[]
     , descriptors_a IN VARCHAR
@@ -135,6 +136,7 @@ BEGIN
         SUM(sim)
     FROM (
         SELECT
+            -- rename other than similarity (else error?)
             get_similarity(word1, word2) sim
             , RANK() OVER (PARTITION BY i1 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_1
             , RANK() OVER (PARTITION BY i2 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_2

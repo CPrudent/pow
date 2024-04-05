@@ -73,6 +73,11 @@ BEGIN
 
     CALL public.log_info('Dictionnaire des voies');
 
+    /* NOTE
+    1st section to initiate street-dictionary
+    TODO: COUNT(DISTINCT co_voie) instead of COUNT(*) ?
+    TODO: use street_view, to set fl_active AND fl_diffusable ?
+     */
     IF set_case = ANY('{ALL,DICTIONARY}') THEN
         CALL public.log_info(' Purge');
         TRUNCATE TABLE fr.laposte_address_street_uniq;

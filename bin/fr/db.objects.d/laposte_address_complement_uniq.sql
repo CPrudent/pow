@@ -65,6 +65,10 @@ BEGIN
 
     CALL public.log_info('Dictionnaire des compléments (L3)');
 
+    /* NOTE
+    1st section to initiate complement-dictionary
+    TODO: use complement_view, to set fl_active AND fl_diffusable ?
+     */
     IF set_case = ANY('{ALL,DICTIONARY}') THEN
         CALL public.log_info(' Purge');
         TRUNCATE TABLE fr.laposte_address_complement_uniq;
