@@ -1138,6 +1138,9 @@ BEGIN
     ALTER DATABASE pow SET fr.similarity.area.threshold = '0.5';
     ALTER DATABASE pow SET fr.similarity.street.threshold = '0.7';
     ALTER DATABASE pow SET fr.similarity.street.ratio = '0.15';
+    ALTER DATABASE pow SET fr.max.street.occurs = '10';
+    ALTER DATABASE pow SET fr.max.housenumber.occurs = '10';
+    ALTER DATABASE pow SET fr.max.complement.occurs = '10';
 END;
 $proc$ LANGUAGE plpgsql;
 

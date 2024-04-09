@@ -79,11 +79,11 @@ $proc$ LANGUAGE plpgsql;
 /* TEST
 CALL fr.set_laposte_address_housenumber_uniq();
 
-17:00:22.122 Dictionnaire des voies
-17:00:22.122  Purge
-17:00:22.146  Initialisation
-17:01:01.256  Création: 1120726
-17:01:06.927  Indexation
+16:28:44.475 Dictionnaire des numéros
+16:28:44.475  Purge
+16:28:44.508  Initialisation
+16:28:53.534  Création: 23484
+16:28:53.638  Indexation
 
-Query returned successfully in 45 secs 662 msec.
+Query returned successfully in 9 secs 197 msec.
  */

@@ -2,15 +2,12 @@
  * FR-ADDRESS matching address (result)
  */
 
--- old name
-DROP TYPE IF EXISTS fr.address_normalized CASCADE;
-
 DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'standardized_address')
-    OR EXISTS (
+    OR NOT EXISTS (
         SELECT 1 FROM information_schema.attributes
-        WHERE udt_name = 'standardized_address' AND attribute_name = 'street')
+        WHERE udt_name = 'standardized_address' AND attribute_name = 'housenumber_uncommon_id')
     THEN
         DROP TYPE IF EXISTS fr.standardized_address CASCADE;
         CREATE TYPE fr.standardized_address AS (
@@ -25,12 +22,18 @@ BEGIN
             , complement_descriptors VARCHAR    -- LAPOSTE/RAN classified words
             , complement_as_words INT[]         -- array of length of each item
             , complement_words TEXT[]           -- array of each words
+            , complement_uncommon_value VARCHAR
+            , complement_uncommon_occur INT
             , housenumber INTEGER
             , extension VARCHAR                 -- housenumber extension (BIS, ...)
+            , housenumber_uncommon_id INT
+            , housenumber_uncommon_occur INT
             , street_name VARCHAR               -- full name of street (w/o abbr)
             , street_descriptors VARCHAR        -- LAPOSTE/RAN classified words
             , street_as_words INT[]             -- array of length of each item
             , street_words TEXT[]               -- array of each words
+            , street_uncommon_value VARCHAR
+            , street_uncommon_occur INT
             /* useful ?
             , street_normalized VARCHAR         -- normalized name of street
             , street_descriptors_normalized VARCHAR

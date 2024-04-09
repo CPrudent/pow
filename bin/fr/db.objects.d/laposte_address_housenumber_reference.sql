@@ -62,3 +62,15 @@ BEGIN
     CALL public.log_info(' Indexation');
 END
 $proc$ LANGUAGE plpgsql;
+
+/* TEST
+CALL fr.set_laposte_address_housenumber_reference();
+
+16:30:21.039 Référence des numéros (Dictionnaire/Référentiel)
+16:30:21.039  Purge
+16:30:21.040  Initialisation
+16:31:28.064  Création: 23866995
+16:33:23.120  Indexation
+
+Query returned successfully in 3 min 3 secs.
+ */

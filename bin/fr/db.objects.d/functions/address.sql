@@ -902,7 +902,7 @@ END
 $func$ LANGUAGE plpgsql;
 
 -- get default of word
-SELECT drop_all_functions_if_exists('fr', 'fr.get_default_of_word');
+SELECT drop_all_functions_if_exists('fr', 'get_default_of_word');
 CREATE OR REPLACE FUNCTION fr.get_default_of_word(
     element IN VARCHAR                  -- STREET | COMPLEMENT
     , word IN VARCHAR

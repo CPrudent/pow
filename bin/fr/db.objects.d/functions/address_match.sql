@@ -2,6 +2,60 @@
  * add FR-ADDRESS facilities (matching address)
  */
 
+-- get value of parameters (threshold, ratio, ...)
+SELECT drop_all_functions_if_exists('fr', 'get_parameter_value');
+CREATE OR REPLACE FUNCTION fr.get_parameter_value(
+        /* NOTE
+        HSTORE parameter to custom properties, as:
+        '"STREET_OCCURS" => 3'::HSTORE
+        defaults are defined as global variables, view constant.sql
+         */
+    parameters IN HSTORE
+    , category IN VARCHAR
+    , level IN VARCHAR
+    , key IN VARCHAR
+    , value OUT REAL
+)
+AS
+$func$
+DECLARE
+    _property VARCHAR;
+    _value TEXT;
+BEGIN
+    IF parameters IS NULL THEN
+        /* NOTE
+        get from global variables (defined in constant.sql)
+         */
+        _property := CONCAT_WS('.'
+            , 'fr'
+            , LOWER(category)
+            , LOWER(level)
+            , LOWER(key)
+        );
+        _value := (SELECT (CURRENT_SETTING(_property)));
+        IF _value IS NULL THEN
+            RAISE NOTICE ' global % NULL?', _property;
+        END IF;
+        IF LENGTH(TRIM(_value)) > 0 THEN
+            value := (TRIM(_value))::REAL;
+        END IF;
+    ELSE
+        /* NOTE
+        HSTORE property as LEVEL_KEY => VALUE
+         */
+        _property := CONCAT_WS('_'
+            , UPPER(level)
+            , UPPER(key)
+        );
+        IF parameters ? _property THEN
+            value := (parameters -> _property)::REAL;
+        ELSE
+            RAISE NOTICE ' pas de propriété % ?', _property;
+        END IF;
+    END IF;
+END
+$func$ LANGUAGE plpgsql;
+
 -- remove article(s) from name
 SELECT drop_all_functions_if_exists('fr', 'get_street_name_without_article');
 CREATE OR REPLACE FUNCTION fr.get_street_name_without_article(
@@ -140,19 +194,142 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+-- find if level contains uncommon item (word, number)
+SELECT drop_all_functions_if_exists('fr', 'contains_uncommon_value');
+CREATE OR REPLACE FUNCTION fr.contains_uncommon_value(
+    level IN VARCHAR
+    , standardized_address INOUT fr.standardized_address
+    , parameters IN HSTORE DEFAULT NULL
+    , simulation IN BOOLEAN DEFAULT FALSE
+    , raise_notice IN BOOLEAN DEFAULT FALSE
+    , with_uncommon OUT BOOLEAN
+)
+AS
+$func$
+DECLARE
+    _query TEXT;
+    _level_up VARCHAR := UPPER(level);
+    _level_low VARCHAR := LOWER(level);
+    _column_uncommon VARCHAR := CASE _level_up
+        WHEN 'HOUSENUMBER' THEN 'u.id'
+        ELSE 'wd.word'
+        END
+        ;
+    _from VARCHAR := CASE _level_up
+        WHEN 'HOUSENUMBER' THEN 'fr.laposte_address_housenumber_uniq u'
+        ELSE CONCAT('UNNEST($2::TEXT[]) AS w(word)
+                JOIN fr.laposte_address_', _level_low, '_word_descriptor wd ON w.word = wd.word
+                JOIN fr.laposte_address_', _level_low, '_membership m ON wd.word = m.word
+                JOIN fr.laposte_address_', _level_low, '_uniq u ON m.name_id = u.id')
+        END
+        ;
+    _where VARCHAR := CASE _level_up
+        WHEN 'HOUSENUMBER' THEN
+            '
+            u.number = (standardized_address).housenumber
+            AND
+            COALESCE(u.extension, '''') = COALESCE((standardized_address).extension, '''')
+            AND
+            u.occurs <= $1
+            '
+        ELSE
+            CONCAT('
+                as_default = ''N''
+                AND
+            ', CASE _level_up
+                WHEN 'STREET' THEN '(as_name + as_last)'
+                ELSE 'as_name'
+                END
+            , ' <= $1
+            '
+            )
+        END
+        ;
+    _nrows INT;
+    _uncommon BOOLEAN := FALSE;
+    _occur INT;
+    _max_occurs INT;
+    _value VARCHAR;
+BEGIN
+    _query := CONCAT(
+        '
+        SELECT
+              u.occurs
+            , ', _column_uncommon, '
+        FROM ', _from, '
+        WHERE ', _where, '
+        ORDER BY
+            1
+        LIMIT
+            1
+        '
+    );
+
+    IF NOT simulation THEN
+        _max_occurs := CAST(fr.get_parameter_value(
+            parameters => parameters
+            , category => 'max'
+            , level => level
+            , key => 'occurs'
+        ) AS INTEGER);
+        IF raise_notice THEN
+            RAISE NOTICE ' max occurs=%', _max_occurs;
+        END IF;
+        IF _level_up = 'HOUSENUMBER' THEN
+            EXECUTE _query
+                INTO _occur, _value
+                USING _max_occurs
+                ;
+        ELSE
+            IF raise_notice THEN
+                RAISE NOTICE ' words=%', CASE _level_up
+                        WHEN 'STREET' THEN standardized_address.street_words
+                        ELSE standardized_address.complement_words
+                        END;
+            END IF;
+            EXECUTE _query
+                INTO _occur, _value
+                USING _max_occurs
+                    , CASE _level_up
+                        WHEN 'STREET' THEN standardized_address.street_words
+                        ELSE standardized_address.complement_words
+                        END
+                ;
+        END IF;
+        GET DIAGNOSTICS _nrows = ROW_COUNT;
+        IF _nrows = 1 THEN
+            _uncommon := TRUE;
+            IF UPPER(level) = 'STREET' THEN
+                standardized_address.street_uncommon_value := _value;
+                standardized_address.street_uncommon_occur := _occur;
+            ELSIF UPPER(level) = 'COMPLEMENT' THEN
+                standardized_address.complement_uncommon_value := _value;
+                standardized_address.complement_uncommon_occur := _occur;
+            ELSE
+                standardized_address.housenumber_uncommon_id := _value::INT;
+                standardized_address.housenumber_uncommon_occur := _occur;
+            END IF;
+        END IF;
+    ELSE
+        RAISE NOTICE ' requête=%', _query;
+    END IF;
+    with_uncommon := _uncommon;
+END
+$func$ LANGUAGE plpgsql;
+
 -- match element (of address) w/ referential
 SELECT drop_all_functions_if_exists('fr', 'match_element');
 CREATE OR REPLACE FUNCTION fr.match_element(
     level IN VARCHAR
+    , matched_parent INOUT fr.matched_element
     , standardized_address IN fr.standardized_address
         /* NOTE
         HSTORE parameter to custom properties, as:
         '"AREA_THRESHOLD" => 0.6, "STREET_THRESHOLD" => 0.75, "STREET_RATIO" => 0.2'::HSTORE
         defaults are defined as global variables, view constant.sql
          */
-    , similarity IN HSTORE DEFAULT NULL
+    , parameters IN HSTORE DEFAULT NULL
     , raise_notice IN BOOLEAN DEFAULT FALSE
-    , matched_parent INOUT fr.matched_element
     , matched_element OUT fr.matched_element
 )
 AS
@@ -222,7 +399,7 @@ BEGIN
 
                 IF _search != 'STRICT' AND _similarity_threshold IS NULL THEN
                     _similarity_threshold := fr.get_similarity_property(
-                        similarity => similarity
+                        similarity => parameters
                         , level => level
                         , key => 'THRESHOLD'
                     );
@@ -277,7 +454,7 @@ BEGIN
                 matched_element.status = (SELECT CURRENT_SETTING('fr.address.match.not_found'))
             ) THEN
                 _similarity_threshold := fr.get_similarity_property(
-                    similarity => similarity
+                    similarity => parameters
                     , level => level
                     , key => 'THRESHOLD'
                 );
@@ -287,7 +464,7 @@ BEGIN
                  */
                 _similarity_threshold := set_limit(_similarity_threshold);
                 _street_ratio := fr.get_similarity_property(
-                    similarity => similarity
+                    similarity => parameters
                     , level => level
                     , key => 'RATIO'
                 );
