@@ -105,7 +105,7 @@ BEGIN
             match_codes AS (
                 SELECT DISTINCT
                       ''AREA'' level
-                    ,(standardized_address).match_code_area match_code_element
+                    , (standardized_address).match_code_area match_code_element
                     , NULL match_code_parent
                 FROM
                     fr.address_match_result
@@ -114,8 +114,8 @@ BEGIN
                 UNION
                 SELECT DISTINCT
                       ''STREET'' level
-                    ,(standardized_address).match_code_street match_code_element
-                    ,(standardized_address).match_code_area match_code_parent
+                    , (standardized_address).match_code_street match_code_element
+                    , (standardized_address).match_code_area match_code_parent
                 FROM
                     fr.address_match_result
                 WHERE
@@ -123,8 +123,8 @@ BEGIN
                 UNION
                 SELECT DISTINCT
                       ''HOUSENUMBER'' level
-                    ,(standardized_address).match_code_housenumber match_code_element
-                    ,(standardized_address).match_code_street match_code_parent
+                    , (standardized_address).match_code_housenumber match_code_element
+                    , (standardized_address).match_code_street match_code_parent
                 FROM
                     fr.address_match_result
                 WHERE
@@ -134,8 +134,8 @@ BEGIN
                 UNION
                 SELECT DISTINCT
                       ''COMPLEMENT'' level
-                    ,(standardized_address).match_code_complement match_code_element
-                    ,(standardized_address).match_code_housenumber match_code_parent
+                    , (standardized_address).match_code_complement match_code_element
+                    , (standardized_address).match_code_housenumber match_code_parent
                 FROM
                     fr.address_match_result
                 WHERE
@@ -147,8 +147,8 @@ BEGIN
                 UNION
                 SELECT DISTINCT
                       ''COMPLEMENT'' level
-                    ,(standardized_address).match_code_complement match_code_element
-                    ,(standardized_address).match_code_street match_code_parent
+                    , (standardized_address).match_code_complement match_code_element
+                    , (standardized_address).match_code_street match_code_parent
                 FROM
                     fr.address_match_result
                 WHERE
@@ -159,14 +159,14 @@ BEGIN
                     (standardized_address).housenumber IS NULL
             )
             INSERT INTO fr.address_match_code(
-                id_request
+                  id_request
                 , level
                 , match_code_element
                 , match_code_parent
             )
             (
                 SELECT
-                    $1
+                      $1
                     , level
                     , match_code_element
                     , match_code_parent

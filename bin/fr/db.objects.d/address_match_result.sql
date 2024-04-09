@@ -80,29 +80,6 @@ BEGIN
 END $$;
  */
 
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'matched_element')
-    OR EXISTS (
-        SELECT 1 FROM information_schema.attributes
-        WHERE udt_name = 'matched_element' AND attribute_name = 'similarity_semantic')
-    THEN
-        DROP TYPE IF EXISTS fr.matched_element CASCADE;
-        CREATE TYPE fr.matched_element AS (
-              codes_address CHAR(10)[]
-            , level VARCHAR                     -- AREA|STREET|HOUSENUMBER|COMPLEMENT
-            , elapsed_time INTERVAL
-            , status VARCHAR
-            , similarity NUMERIC
-        );
-    END IF;
-
-    IF NOT column_exists('fr', 'address_match_result', 'id_matched_area') THEN
-        -- has to be rebuild!
-        DROP TABLE IF EXISTS fr.address_match_result;
-    END IF;
-END $$;
-
 CREATE TABLE IF NOT EXISTS fr.address_match_result (
     id SERIAL NOT NULL
     , id_request INTEGER NOT NULL
@@ -114,13 +91,14 @@ CREATE TABLE IF NOT EXISTS fr.address_match_result (
 CREATE UNIQUE INDEX IF NOT EXISTS iux_address_match_normalize_id ON fr.address_match_result(id);
 CREATE UNIQUE INDEX IF NOT EXISTS ix_address_match_result_ids ON fr.address_match_result(id_request, id_address);
 
--- normalize (standardize) addresses
 /* NOTE
+standardize addresses
 here goal is to standardize address (upcase, w/o abbr, ...) before matching step
 not really obtain normalized name, by example, for street
  */
 SELECT drop_all_functions_if_exists('fr', 'set_normalize');
-CREATE OR REPLACE PROCEDURE fr.set_normalize(
+SELECT drop_all_functions_if_exists('fr', 'set_match_standardize');
+CREATE OR REPLACE PROCEDURE fr.set_match_standardize(
     file_path IN VARCHAR
     , mapping IN HSTORE
     , force IN BOOLEAN DEFAULT FALSE
@@ -139,7 +117,7 @@ BEGIN
     SELECT id, suffix, is_normalized
     INTO _id_request, _suffix, _is_normalized
     FROM fr.address_match_request mr
-    WHERE mr.file_path = set_normalize.file_path
+    WHERE mr.file_path = set_match_standardize.file_path
     ;
 
     IF _id_request IS NULL THEN
@@ -166,14 +144,14 @@ BEGIN
                 SELECT
                     $1
                     , d.rowid
-                    , ROW(na.*)::standardized_address
+                    , ROW(sa.*)::standardized_address
                 FROM fr.
                 '
                 , _table, ' d
                     LEFT OUTER JOIN fr.standardize_address(
                         address =>  d
                         , columns_map => $2
-                    ) AS na ON TRUE
+                    ) sa ON TRUE
             )
             '
         );
@@ -223,29 +201,29 @@ BEGIN
             WITH
             ordered_addresses AS (
                 SELECT
-                    na.id_request
-                    , na.id_address
+                    mr.id_request
+                    , mr.id_address
                     , ROW(ma.*)::fr.address_matched address_matched
                 FROM
-                    fr.address_match_result na
+                    fr.address_match_result mr
                         CROSS JOIN fr.match_address(
-                                standardized_address => na.standardized_address
+                                standardized_address => mr.standardized_address
                             ) ma
                 WHERE
-                    na.id_request = $1
+                    mr.id_request = $1
                 ORDER BY
-                    (na.standardized_address)._order_code_area
-                    , (na.standardized_address)._order_code_street
-                    , (na.standardized_address)._order_code_housenumber
-                    , (na.standardized_address)._order_code_complement
+                      (mr.standardized_address)._order_code_area
+                    , (mr.standardized_address)._order_code_street
+                    , (mr.standardized_address)._order_code_housenumber
+                    , (mr.standardized_address)._order_code_complement
 
             )
-            UPDATE fr.address_match_result r SET
+            UPDATE fr.address_match_result mr SET
                 address_matched = oa.address_matched
                 FROM
                     ordered_addresses oa
                 WHERE
-                    (r.id_request, r.id_address) = (oa.id_request, oa.id_address)
+                    (mr.id_request, mr.id_address) = (oa.id_request, oa.id_address)
             '
         );
         EXECUTE _query USING _id_request;

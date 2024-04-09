@@ -140,7 +140,7 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
--- match one element
+-- match element (of address) w/ referential
 SELECT drop_all_functions_if_exists('fr', 'match_element');
 CREATE OR REPLACE FUNCTION fr.match_element(
     level IN VARCHAR
@@ -150,9 +150,9 @@ CREATE OR REPLACE FUNCTION fr.match_element(
         '"AREA_THRESHOLD" => 0.6, "STREET_THRESHOLD" => 0.75, "STREET_RATIO" => 0.2'::HSTORE
         defaults are defined as global variables, view constant.sql
          */
-    , matched_parent INOUT fr.matched_element
     , similarity IN HSTORE DEFAULT NULL
     , raise_notice IN BOOLEAN DEFAULT FALSE
+    , matched_parent INOUT fr.matched_element
     , matched_element OUT fr.matched_element
 )
 AS
@@ -166,7 +166,6 @@ DECLARE
     _search VARCHAR;
     _todo BOOLEAN;
     _query TEXT;
-    _order_word INT;
     _better_word TEXT;
     _street RECORD;
     _previous_street RECORD;

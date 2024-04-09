@@ -62,13 +62,13 @@ MATCH_REQUEST_NEW=$((_k++))
 MATCH_REQUEST_ITEMS=$_k
 declare -a match_request
 
-MATCH_STEPS=IMPORT,NORMALIZE,MATCH_CODE,MATCH_ELEMENT,MATCH_ADDRESS,REPORT,STATS
+MATCH_STEPS=IMPORT,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT,MATCH_ADDRESS,REPORT,STATS
 declare -a match_steps
 [ "${match_var[STEPS]}" = ALL ] && match_var[STEPS]=$MATCH_STEPS
 match_steps=( ${match_var[STEPS]//,/ } )
 declare -a match_steps_info=(
     [0]=Chargement
-    [1]=Normalisation
+    [1]=Standardisation
     [2]=Calcul MATCH CODE
     [3]=Rapprochement ELEMENT
     [4]=Rapprochement ADRESSE
@@ -109,7 +109,7 @@ match_var[FORMAT_PATH]="${POW_DIR_BIN}/${match_var[FORMAT]}_format.sql"
     } || true
 } &&
 {
-    in_array match_steps NORMALIZE _steps_id && {
+    in_array match_steps STANDARDIZE _steps_id && {
         [ -f "${match_var[FORMAT_PATH]}" ] &&
         match_var[FORMAT_SQL]=$(cat "${match_var[FORMAT_PATH]}") || {
             [ -f "${match_var[FORMAT]}" ] &&
@@ -120,8 +120,8 @@ match_var[FORMAT_PATH]="${POW_DIR_BIN}/${match_var[FORMAT]}_format.sql"
         } &&
         match_info --steps_info match_steps_info --steps_id _steps_id &&
         execute_query \
-            --name NORMALIZE_REQUEST \
-            --query "CALL fr.set_normalize(
+            --name STANDARDIZE_REQUEST \
+            --query "CALL set_match_standardize(
                 file_path => '${match_var[FILE_PATH]}'
                 , mapping => '${match_var[FORMAT_SQL]}'::HSTORE
                 , force => ('${match_var[FORCE]}' = 'yes')

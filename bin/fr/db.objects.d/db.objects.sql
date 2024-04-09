@@ -31,6 +31,8 @@
 \include_relative laposte_address_street_word_level.sql
 \include_relative laposte_address_street_kw_exception.sql
 \include_relative laposte_address_housenumber.sql
+\include_relative laposte_address_housenumber_uniq.sql
+\include_relative laposte_address_housenumber_reference.sql
 \include_relative laposte_address_complement.sql
 \include_relative laposte_address_complement_uniq.sql
 \include_relative laposte_address_complement_reference.sql

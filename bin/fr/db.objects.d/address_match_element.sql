@@ -2,6 +2,32 @@
  * FR-ADDRESS matching address (element)
  */
 
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'matched_element')
+    OR EXISTS (
+        SELECT 1 FROM information_schema.attributes
+        WHERE udt_name = 'matched_element' AND attribute_name = 'similarity_semantic')
+    THEN
+        DROP TYPE IF EXISTS fr.matched_element CASCADE;
+        CREATE TYPE fr.matched_element AS (
+              codes_address CHAR(10)[]
+            , level VARCHAR                     -- AREA|STREET|HOUSENUMBER|COMPLEMENT
+            , elapsed_time INTERVAL
+            , status VARCHAR
+            , similarity NUMERIC
+        );
+    END IF;
+END $$;
+
+DO $$
+BEGIN
+    IF NOT column_exists('fr', 'address_match_element', 'matched_element') THEN
+        -- has to be rebuild!
+        DROP TABLE IF EXISTS fr.address_match_element;
+    END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS fr.address_match_element (
       id SERIAL NOT NULL
     , level VARCHAR
@@ -56,9 +82,10 @@ BEGIN
                     , (SELECT standardized_address
                         FROM fr.address_match_result
                         WHERE id_request = $1
-                        AND (standardized_address).'
-                , FORMAT('%I', 'match_code_' || LOWER(_level))
-                , ' = mc.match_code_element LIMIT 1) standardized_address
+                        AND
+                        (standardized_address).match_code_', LOWER(_level), ' =
+                        mc.match_code_element LIMIT 1
+                    ) standardized_address
                 FROM
                     fr.address_match_code mc
                 '

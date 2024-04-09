@@ -1246,7 +1246,7 @@ $func$ LANGUAGE plpgsql;
 view test_normalize.sh : option NAME_DIFF
  */
 
--- normalize one address
+-- standardize one address
 SELECT drop_all_functions_if_exists('fr', 'standardize_address');
 CREATE OR REPLACE FUNCTION fr.standardize_address(
     address IN RECORD                   -- address to standardize

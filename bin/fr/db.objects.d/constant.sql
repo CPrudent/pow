@@ -1219,6 +1219,13 @@ BEGIN
         , fault => 'DESCRIPTORS,TYPE'
     );
 
+    -- HOUSENUMBER
+
+    -- build housenumber-dictionary
+    CALL fr.set_laposte_address_housenumber_uniq();
+    -- and links dictionary w/ referential
+    CALL fr.set_laposte_address_housenumber_reference();
+
     -- COMPLEMENT
 
     -- build complement-dictionary
