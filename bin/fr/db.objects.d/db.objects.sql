@@ -3,6 +3,7 @@
  */
 
 -- POW
+\include_relative ./functions/tools.sql
 \include_relative ./functions/geometry.sql
 \include_relative ./functions/address.sql
 
@@ -24,32 +25,33 @@
 
 \include_relative laposte_address_area.sql
 \include_relative laposte_address_street.sql
+\include_relative laposte_address_housenumber.sql
+\include_relative laposte_address_complement.sql
+\include_relative laposte_address_xy.sql
+\include_relative laposte_address.sql
+\include_relative laposte_delivery_point.sql
+\include_relative laposte_delivery_address.sql
+\include_relative laposte_organization.sql
+
+-- POW
+
+\include_relative laposte_address_redirect.sql
+\include_relative laposte_address_history.sql
 \include_relative laposte_address_street_uniq.sql
 \include_relative laposte_address_street_reference.sql
 \include_relative laposte_address_street_membership.sql
 \include_relative laposte_address_street_word_descriptor.sql
 \include_relative laposte_address_street_word_level.sql
 \include_relative laposte_address_street_kw_exception.sql
-\include_relative laposte_address_housenumber.sql
 \include_relative laposte_address_housenumber_uniq.sql
 \include_relative laposte_address_housenumber_reference.sql
-\include_relative laposte_address_complement.sql
 \include_relative laposte_address_complement_uniq.sql
 \include_relative laposte_address_complement_reference.sql
 \include_relative laposte_address_complement_membership.sql
 \include_relative laposte_address_complement_word_descriptor.sql
 \include_relative laposte_address_complement_word_level.sql
-\include_relative laposte_address_xy.sql
-\include_relative laposte_address.sql
 \include_relative laposte_address_fault.sql
 \include_relative laposte_address_keyword.sql
-\include_relative laposte_delivery_point.sql
-\include_relative laposte_delivery_address.sql
-\include_relative laposte_organization.sql
-\include_relative laposte_address_redirect.sql
-\include_relative laposte_address_history.sql
-
--- POW
 \include_relative constant.sql
 \include_relative territory_level.sql
 \include_relative territory_laposte.sql
@@ -65,4 +67,3 @@
 \include_relative ./functions/similarity.sql
 \include_relative ./functions/address_normalize.sql
 \include_relative ./functions/address_match.sql
-

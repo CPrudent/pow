@@ -2,60 +2,6 @@
  * add FR-ADDRESS facilities (matching address)
  */
 
--- get value of parameters (threshold, ratio, ...)
-SELECT drop_all_functions_if_exists('fr', 'get_parameter_value');
-CREATE OR REPLACE FUNCTION fr.get_parameter_value(
-        /* NOTE
-        HSTORE parameter to custom properties, as:
-        '"STREET_OCCURS" => 3'::HSTORE
-        defaults are defined as global variables, view constant.sql
-         */
-    parameters IN HSTORE
-    , category IN VARCHAR
-    , level IN VARCHAR
-    , key IN VARCHAR
-    , value OUT REAL
-)
-AS
-$func$
-DECLARE
-    _property VARCHAR;
-    _value TEXT;
-BEGIN
-    IF parameters IS NULL THEN
-        /* NOTE
-        get from global variables (defined in constant.sql)
-         */
-        _property := CONCAT_WS('.'
-            , 'fr'
-            , LOWER(category)
-            , LOWER(level)
-            , LOWER(key)
-        );
-        _value := (SELECT (CURRENT_SETTING(_property)));
-        IF _value IS NULL THEN
-            RAISE NOTICE ' global % NULL?', _property;
-        END IF;
-        IF LENGTH(TRIM(_value)) > 0 THEN
-            value := (TRIM(_value))::REAL;
-        END IF;
-    ELSE
-        /* NOTE
-        HSTORE property as LEVEL_KEY => VALUE
-         */
-        _property := CONCAT_WS('_'
-            , UPPER(level)
-            , UPPER(key)
-        );
-        IF parameters ? _property THEN
-            value := (parameters -> _property)::REAL;
-        ELSE
-            RAISE NOTICE ' pas de propriété % ?', _property;
-        END IF;
-    END IF;
-END
-$func$ LANGUAGE plpgsql;
-
 -- remove article(s) from name
 SELECT drop_all_functions_if_exists('fr', 'get_street_name_without_article');
 CREATE OR REPLACE FUNCTION fr.get_street_name_without_article(
@@ -215,6 +161,7 @@ DECLARE
         ELSE 'wd.word'
         END
         ;
+    -- has to cast array as TEXT[], else error!
     _from VARCHAR := CASE _level_up
         WHEN 'HOUSENUMBER' THEN 'fr.laposte_address_housenumber_uniq u'
         ELSE CONCAT('UNNEST($2::TEXT[]) AS w(word)
@@ -226,9 +173,9 @@ DECLARE
     _where VARCHAR := CASE _level_up
         WHEN 'HOUSENUMBER' THEN
             '
-            u.number = (standardized_address).housenumber
+            u.number = $2
             AND
-            COALESCE(u.extension, '''') = COALESCE((standardized_address).extension, '''')
+            COALESCE(u.extension, '''') = COALESCE($3, '''')
             AND
             u.occurs <= $1
             '
@@ -279,6 +226,8 @@ BEGIN
             EXECUTE _query
                 INTO _occur, _value
                 USING _max_occurs
+                    , standardized_address.housenumber
+                    , standardized_address.extension
                 ;
         ELSE
             IF raise_notice THEN
