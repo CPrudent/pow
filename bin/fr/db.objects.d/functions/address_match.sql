@@ -179,6 +179,7 @@ BEGIN
         '
     );
 
+    --RAISE NOTICE 'parameters=%', parameters;
     IF NOT simulation THEN
         _max_occurs := CAST(fr.get_parameter_value(
             parameters => parameters
@@ -199,9 +200,9 @@ BEGIN
         ELSE
             IF raise_notice THEN
                 RAISE NOTICE ' words=%', CASE _level_up
-                        WHEN 'STREET' THEN standardized_address.street_words
-                        ELSE standardized_address.complement_words
-                        END;
+                    WHEN 'STREET' THEN standardized_address.street_words
+                    ELSE standardized_address.complement_words
+                    END;
             END IF;
             EXECUTE _query
                 INTO _occur, _value

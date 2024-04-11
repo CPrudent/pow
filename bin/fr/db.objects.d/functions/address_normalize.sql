@@ -1269,6 +1269,10 @@ DECLARE
     _street_type_is_abbreviated BOOLEAN;
     _housenumber VARCHAR;
     _exists BOOLEAN;
+    _levels VARCHAR[] := ARRAY['COMPLEMENT', 'HOUSENUMBER', 'STREET'];
+    _level VARCHAR;
+    _uncommon BOOLEAN;
+    _record RECORD;
     _timestamp TIMESTAMP := clock_timestamp();
     _cadastre_parcel_number VARCHAR;
     _cadastre_parcel_section VARCHAR;
@@ -1346,34 +1350,36 @@ BEGIN
                         USING address;
                     _standardized_address.extension := NULLIF(TRIM(public.clean_address_label(_standardized_address.extension)), '');
                 WHEN 'street' THEN
-                    EXECUTE CONCAT('SELECT ', _mapping[2])
+                    EXECUTE CONCAT('SELECT NULLIF(TRIM(', _mapping[2], '::TEXT), '''')')
                         INTO _standardized_address.street_name
                         USING address;
 
-                    SELECT
-                        /*
-                        ARRAY_TO_STRING(COALESCE(name_normalized_as_words, name_as_words), ' ')
-                        , ARRAY_TO_STRING(COALESCE(descriptors_normalized_as_words, descriptors_as_words), '')
-                        , CASE
-                            WHEN name_normalized_as_words IS NULL THEN as_words
-                            ELSE fr.get_as_words_from_splited_value(
-                                property_as_words => descriptors_normalized_as_words
-                            )
-                            END
-                         */
-                        ARRAY_TO_STRING(nn.name_as_words, ' ')
-                        , ARRAY_TO_STRING(nn.descriptors_as_words, '')
-                        , nn.as_words
-                    INTO
-                        _standardized_address.street_name
-                        , _standardized_address.street_descriptors
-                        , _standardized_address.street_as_words
-                    FROM
-                        fr.normalize_name(
-                            element => 'STREET'
-                            , name => _standardized_address.street_name
-                        ) nn
-                    ;
+                    IF _standardized_address.street_name IS NOT NULL THEN
+                        SELECT
+                            /*
+                            ARRAY_TO_STRING(COALESCE(name_normalized_as_words, name_as_words), ' ')
+                            , ARRAY_TO_STRING(COALESCE(descriptors_normalized_as_words, descriptors_as_words), '')
+                            , CASE
+                                WHEN name_normalized_as_words IS NULL THEN as_words
+                                ELSE fr.get_as_words_from_splited_value(
+                                    property_as_words => descriptors_normalized_as_words
+                                )
+                                END
+                            */
+                            ARRAY_TO_STRING(nn.name_as_words, ' ')
+                            , ARRAY_TO_STRING(nn.descriptors_as_words, '')
+                            , nn.as_words
+                        INTO
+                            _standardized_address.street_name
+                            , _standardized_address.street_descriptors
+                            , _standardized_address.street_as_words
+                        FROM
+                            fr.normalize_name(
+                                element => 'STREET'
+                                , name => _standardized_address.street_name
+                            ) nn
+                        ;
+                    END IF;
                 WHEN 'municipality_code' THEN
                     EXECUTE CONCAT('SELECT ', _mapping[2])
                         INTO _standardized_address.municipality_code
@@ -1398,7 +1404,7 @@ BEGIN
                         AND fl_active)
                     INTO _exists;
                     IF NOT _exists THEN
-                        RAISE NOTICE 'Code Postal ignoré car invalide : "%"', _standardized_address.postcode;
+                        RAISE NOTICE 'Code postal ignoré car invalide : "%"', _standardized_address.postcode;
                         _standardized_address.postcode := NULL;
                     END IF;
                 WHEN 'municipality_name' THEN
@@ -1409,7 +1415,7 @@ BEGIN
                 -- mention CEDEX OU libellé Ancienne Commune OU les 2 accollées
                 -- RE=^((BP|CS|CE|CP) *[0-9]+)? *([A-Z ]+)?$
                 WHEN 'municipality_old_name' THEN
-                    EXECUTE CONCAT('SELECT ', _mapping[2])
+                    EXECUTE CONCAT('SELECT NULLIF(TRIM(', _mapping[2], '::TEXT), '''')')
                         INTO _standardized_address.municipality_old_name
                         USING address;
 
@@ -1497,7 +1503,7 @@ BEGIN
             FROM fr.laposte_address_area
             WHERE lb_ach_nn = _standardized_address.municipality_name AND fl_active;
         EXCEPTION WHEN OTHERS THEN
-            RAISE NOTICE 'Déduction code Commune à partir du nom % provoquant une erreur : %', _standardized_address.municipality_name,  SQLERRM;
+            RAISE NOTICE 'Déduction code INSEE à partir du nom "%" provoquant une erreur : %', _standardized_address.municipality_name,  SQLERRM;
         END;
     END IF;
     IF _standardized_address.municipality_name IS NULL AND _standardized_address.municipality_code IS NOT NULL THEN
@@ -1507,7 +1513,7 @@ BEGIN
             FROM fr.laposte_address_area
             WHERE co_insee_commune = _standardized_address.municipality_code AND fl_active;
         EXCEPTION WHEN OTHERS THEN
-            RAISE NOTICE 'Déduction libellé Commune à partir du code % provoquant une erreur : %', _standardized_address.municipality_code,  SQLERRM;
+            RAISE NOTICE 'Déduction libellé Commune à partir du code "%" provoquant une erreur : %', _standardized_address.municipality_code,  SQLERRM;
         END;
     END IF;
 
@@ -1578,6 +1584,50 @@ BEGIN
         _standardized_address.lb_voie_mot_directeur := getVoieMotDirecteur(_standardized_address.street_name);
     END IF;
      */
+
+    -- search for uncommon value, among first of {complement, housenumber, street}
+    FOREACH _level IN ARRAY _levels
+    LOOP
+        IF (
+            (_level = 'COMPLEMENT' AND _standardized_address.complement_name IS NOT NULL)
+            OR
+            (_level = 'HOUSENUMBER' AND _standardized_address.housenumber IS NOT NULL)
+            OR
+            (_level = 'STREET' AND _standardized_address.street_name IS NOT NULL)
+        ) THEN
+            /* NOTE
+            has to pass by a record!
+            https://stackoverflow.com/questions/12201738/postgresql-error-name-is-not-a-scalar-variable
+             */
+            _record := fr.contains_uncommon_value(
+                level => _level
+                , standardized_address => _standardized_address
+                , parameters => matching
+            );
+            _uncommon := _record.with_uncommon;
+            _standardized_address := _record.standardized_address;
+
+            -- break once one uniq element found
+            IF (
+                _uncommon
+                AND (
+                    (_level = 'COMPLEMENT' AND _standardized_address.complement_uncommon_occur = 1)
+                    OR
+                    (_level = 'HOUSENUMBER' AND _standardized_address.housenumber_uncommon_occur = 1)
+                )
+            ) THEN
+                RAISE NOTICE 'élément %(%) unique trouvé!'
+                    , _level
+                    , CASE _level
+                        WHEN 'COMPLEMENT' THEN _standardized_address.complement_uncommon_value
+                        WHEN 'HOUSENUMBER' THEN _standardized_address.housenumber::VARCHAR
+                        WHEN 'STREET' THEN _standardized_address.street_uncommon_value
+                        END
+                    ;
+                EXIT;
+            END IF;
+        END IF;
+    END LOOP;
 
     _standardized_address.elapsed_time := clock_timestamp() - _timestamp;
     RETURN _standardized_address;

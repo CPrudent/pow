@@ -24,7 +24,16 @@ DECLARE
     _property VARCHAR;
     _value TEXT;
 BEGIN
-    IF parameters IS NULL THEN
+    /* NOTE
+    HSTORE property as LEVEL_KEY => VALUE
+     */
+    _property := CONCAT_WS('_'
+        , UPPER(level)
+        , UPPER(key)
+    );
+    IF parameters IS NOT NULL AND parameters ? _property THEN
+        value := (parameters -> _property)::REAL;
+    ELSE
         /* NOTE
         get from global variables (defined in constant.sql)
          */
@@ -40,19 +49,6 @@ BEGIN
         END IF;
         IF LENGTH(TRIM(_value)) > 0 THEN
             value := (TRIM(_value))::REAL;
-        END IF;
-    ELSE
-        /* NOTE
-        HSTORE property as LEVEL_KEY => VALUE
-         */
-        _property := CONCAT_WS('_'
-            , UPPER(level)
-            , UPPER(key)
-        );
-        IF parameters ? _property THEN
-            value := (parameters -> _property)::REAL;
-        ELSE
-            RAISE NOTICE ' pas de propriété % ?', _property;
         END IF;
     END IF;
 END

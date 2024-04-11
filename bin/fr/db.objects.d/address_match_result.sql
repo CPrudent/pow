@@ -147,7 +147,7 @@ BEGIN
                 SELECT
                       $1
                     , d.rowid
-                    , ROW(sa.*)::standardized_address
+                    , ROW(sa.*)::fr.standardized_address
                 FROM fr.
                 '
                 , _table, ' d
