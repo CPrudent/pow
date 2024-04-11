@@ -88,7 +88,7 @@ BEGIN
                     -- FR dates
                     word ~ '^(1(ERE?)?|([2-9][0-9]*|1[0-9]+)*I?(E|EME)?)$'
                 )
-            WHEN UPPER(_only[_i]) = 'HOUSENUMBER' THEN (word ~ CONCAT('^[0-9]+(', _re, ')$'))
+            WHEN UPPER(_only[_i]) = 'HOUSENUMBER' THEN (word ~ CONCAT('^[0-9]+[ ]*(', _re, ')?$'))
             WHEN UPPER(_only[_i]) = 'ROMAN' THEN (word ~ '^M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$')
             WHEN UPPER(_only[_i]) = 'ROAD_NETWORK' THEN (word ~ '^(A|B|CD?|CR|D|E?V|GR?|N|R|RD|RN|S|T|VC)?([0-9]+(E[0-9]*)?|E[0-9]*)$')
         END IF;
@@ -1264,6 +1264,7 @@ DECLARE
     _geom_srid SMALLINT;
     _geom_srid_default SMALLINT := 2154;
     _street_type_is_abbreviated BOOLEAN;
+    _housenumber VARCHAR;
     _exists BOOLEAN;
     _timestamp TIMESTAMP := clock_timestamp();
     _cadastre_parcel_number VARCHAR;
@@ -1283,41 +1284,58 @@ BEGIN
                         INTO _standardized_address.complement_name
                         USING address;
 
-                    SELECT
-                        /*
-                        ARRAY_TO_STRING(COALESCE(name_normalized_as_words, name_as_words), ' ')
-                        , ARRAY_TO_STRING(COALESCE(descriptors_normalized_as_words, descriptors_as_words), '')
-                        , CASE
-                            WHEN name_normalized_as_words IS NULL THEN as_words
-                            ELSE fr.get_as_words_from_splited_value(
-                                property_as_words => descriptors_normalized_as_words
-                            )
-                            END
-                         */
-                        ARRAY_TO_STRING(nn.name_as_words, ' ')
-                        , ARRAY_TO_STRING(nn.descriptors_as_words, '')
-                        , nn.as_words
-                    INTO
-                        _standardized_address.complement_name
-                        , _standardized_address.complement_descriptors
-                        , _standardized_address.complement_as_words
-                    FROM
-                        fr.normalize_name(
-                            element => 'COMPLEMENT'
-                            , name => _standardized_address.complement_name
-                        ) nn
-                    ;
+                    IF LENGTH(_standardized_address.complement_name) > 0 THEN
+                        SELECT
+                            /*
+                            ARRAY_TO_STRING(COALESCE(name_normalized_as_words, name_as_words), ' ')
+                            , ARRAY_TO_STRING(COALESCE(descriptors_normalized_as_words, descriptors_as_words), '')
+                            , CASE
+                                WHEN name_normalized_as_words IS NULL THEN as_words
+                                ELSE fr.get_as_words_from_splited_value(
+                                    property_as_words => descriptors_normalized_as_words
+                                )
+                                END
+                            */
+                            ARRAY_TO_STRING(nn.name_as_words, ' ')
+                            , ARRAY_TO_STRING(nn.descriptors_as_words, '')
+                            , nn.as_words
+                        INTO
+                            _standardized_address.complement_name
+                            , _standardized_address.complement_descriptors
+                            , _standardized_address.complement_as_words
+                        FROM
+                            fr.normalize_name(
+                                element => 'COMPLEMENT'
+                                , name => _standardized_address.complement_name
+                            ) nn
+                        ;
+                    END IF;
                 WHEN 'housenumber' THEN
-                    EXECUTE CONCAT('SELECT NULLIF(TRIM(', _mapping[2], '::TEXT), '''')::INTEGER')
-                        INTO _standardized_address.housenumber
+                    EXECUTE CONCAT('SELECT NULLIF(TRIM(', _mapping[2], '::TEXT), '''')')
+                        INTO _housenumber
                         USING address;
                     IF (
-                        (_standardized_address.housenumber::VARCHAR !~ '^[0-9]+$')
-                        OR
-                        (_standardized_address.housenumber = 0)
+                        (_housenumber IS NOT NULL)
+                        AND (
+                            (NOT fr.is_normalized_number(
+                                word => _housenumber
+                                , only_digit => 'HOUSENUMBER'
+                            ))
+                            OR
+                            (_housenumber = '0')
+                        )
                     ) THEN
-                        RAISE NOTICE 'Numéro de voie ignoré car invalide : %', _standardized_address.housenumber;
-                        _standardized_address.housenumber := NULL;
+                        RAISE NOTICE 'Numéro de voie ignoré car invalide : "%"', _housenumber;
+                    ELSE
+                        IF _housenumber ~ '[^0-9]' THEN
+                            SELECT
+                                (REGEXP_MATCHES(_housenumber, '^([0-9]+)([ ]*([^0-9]+))?'))[1]
+                                , (REGEXP_MATCHES(_housenumber, '^([0-9]+)([ ]*([^0-9]+))?'))[2]
+                            INTO
+                                _standardized_address.housenumber
+                                , _standardized_address.extension
+                            ;
+                        END IF;
                     END IF;
                 WHEN 'extension' THEN
                     EXECUTE CONCAT('SELECT ', _mapping[2])
@@ -1364,7 +1382,7 @@ BEGIN
                         AND fl_active)
                     INTO _exists;
                     IF NOT _exists THEN
-                        RAISE NOTICE 'Code INSEE commune ignoré car invalide : %', _standardized_address.municipality_code;
+                        RAISE NOTICE 'Code INSEE (commune) ignoré car invalide : "%"', _standardized_address.municipality_code;
                         _standardized_address.municipality_code := NULL;
                     END IF;
                 WHEN 'postcode' THEN
@@ -1377,7 +1395,7 @@ BEGIN
                         AND fl_active)
                     INTO _exists;
                     IF NOT _exists THEN
-                        RAISE NOTICE 'Code Postal commune ignoré car invalide : %', _standardized_address.postcode;
+                        RAISE NOTICE 'Code Postal ignoré car invalide : "%"', _standardized_address.postcode;
                         _standardized_address.postcode := NULL;
                     END IF;
                 WHEN 'municipality_name' THEN
@@ -1452,7 +1470,7 @@ BEGIN
                 RAISE NOTICE 'Attribut % ignoré car inconnu', _mapping[1];
             END CASE;
         EXCEPTION WHEN OTHERS THEN
-            RAISE NOTICE 'Attribut % ignoré car provoquant une erreur à l''évaluation de % : %', _mapping[1], _mapping[2], SQLERRM;
+            RAISE NOTICE 'Attribut % ignoré car provoquant une erreur à l''évaluation de % : "%"', _mapping[1], _mapping[2], SQLERRM;
         END;
     END LOOP;
 

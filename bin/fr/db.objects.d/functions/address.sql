@@ -946,11 +946,11 @@ $func$
 BEGIN
     get_default_of_word.as_default := CASE element
         WHEN 'STREET' THEN
-            (SELECT as_default
+            (SELECT w.as_default
             FROM fr.laposte_address_street_word_descriptor w
             WHERE w.word = get_default_of_word.word)
         WHEN 'COMPLEMENT' THEN
-            (SELECT as_default
+            (SELECT w.as_default
             FROM fr.laposte_address_complement_word_descriptor w
             WHERE w.word = get_default_of_word.word)
         END
@@ -1023,7 +1023,7 @@ BEGIN
         IF fr.is_normalized_number(_words[_i])
             AND NOT fr.is_normalized_article(_words[_i]) THEN
             _word_default := fr.get_default_of_word(
-                element = element
+                element => element
                 , word => _words[_i]
             );
             _words_d := CASE
