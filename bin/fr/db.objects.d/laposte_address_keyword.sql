@@ -95,7 +95,11 @@ BEGIN
         IF (SELECT COUNT(*)
             FROM fr.laposte_address_keyword k
             WHERE --k.name_abbreviated = words[at_]
-            k.name_abbreviated ~ CONCAT('^', words[at_])
+            (
+                (count_words(k.name) = 1 AND k.name_abbreviated = words[at_])
+                OR
+                (count_words(k.name) > 1 AND k.name_abbreviated ~ CONCAT('^', words[at_]))
+            )
             AND LENGTH(k.name_abbreviated) > 1
             AND k.name_abbreviated != COALESCE(k.first_word, k.name)
             AND NOT fr.is_normalized_article(k.name_abbreviated)
