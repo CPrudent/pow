@@ -71,6 +71,9 @@ BEGIN
         exception if word default is (name or title)
             ARC => ARCADE, GARE => GARENNE, PORT => PORTE, BAS => BASSE, CAMP => CAMPAGNE
         except ZA* or ZI, and PETI (typo error to right)
+        but not BAT, RES (else word will be unabbreviated!)
+            RUE DE BAT L EAU, CHEMIN BAT PRIBETTE, RUE BAT DE L ORGE, ...
+            RUE DES RES DE DURSAT, BONNE RES, LE RES
          */
         AND NOT EXISTS(
             SELECT 1
@@ -78,6 +81,8 @@ BEGIN
             WHERE word = words[at_] AND as_default ~ 'N|T'
             -- except ZA, ZI, PETI
             AND words[at_] !~ '^(Z[AI]|PETI)$'
+            -- trick because exists BAT, RES as name|title !
+            AND NOT _with_complement
         )
     ) THEN
         /* NOTE
@@ -92,7 +97,7 @@ BEGIN
             WHERE --k.name_abbreviated = words[at_]
             k.name_abbreviated ~ CONCAT('^', words[at_])
             AND LENGTH(k.name_abbreviated) > 1
-            AND k.name_abbreviated != k.first_word
+            AND k.name_abbreviated != COALESCE(k.first_word, k.name)
             AND NOT fr.is_normalized_article(k.name_abbreviated)
         ) > 1 THEN
             IF raise_notice THEN RAISE NOTICE ' abbr, too many %', words[at_]; END IF;
@@ -105,10 +110,10 @@ BEGIN
             k.name_abbreviated = items_of_array_to_string(
                 elements => words
                 , from_ => at_
-                , to_ => (at_ + count_words(k.name_abbreviated))
+                , to_ => (at_ + count_words(k.name_abbreviated) -1)
             )
             AND LENGTH(k.name_abbreviated) > 1
-            AND k.name_abbreviated != k.first_word
+            AND k.name_abbreviated != COALESCE(k.first_word, k.name)
             AND ARRAY_POSITION(_groups, k.group) > 0
             ORDER BY k.occurs DESC
             LIMIT 1;

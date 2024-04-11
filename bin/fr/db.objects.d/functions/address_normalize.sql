@@ -88,6 +88,9 @@ BEGIN
                     -- FR dates
                     word ~ '^(1(ERE?)?|([2-9][0-9]*|1[0-9]+)*I?(E|EME)?)$'
                 )
+            /* NOTE
+            number in street: number [space]* [extension {A..Z,BIS,TER, ..}]
+             */
             WHEN UPPER(_only[_i]) = 'HOUSENUMBER' THEN (word ~ CONCAT('^[0-9]+[ ]*(', _re, ')?$'))
             WHEN UPPER(_only[_i]) = 'ROMAN' THEN (word ~ '^M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$')
             WHEN UPPER(_only[_i]) = 'ROAD_NETWORK' THEN (word ~ '^(A|B|CD?|CR|D|E?V|GR?|N|R|RD|RN|S|T|VC)?([0-9]+(E[0-9]*)?|E[0-9]*)$')
@@ -1280,11 +1283,11 @@ BEGIN
                         INTO _standardized_address.id
                         USING address;
                 WHEN 'complement' THEN
-                    EXECUTE CONCAT('SELECT ', _mapping[2])
+                    EXECUTE CONCAT('SELECT NULLIF(TRIM(', _mapping[2], '::TEXT), '''')')
                         INTO _standardized_address.complement_name
                         USING address;
 
-                    IF LENGTH(_standardized_address.complement_name) > 0 THEN
+                    IF _standardized_address.complement_name IS NOT NULL THEN
                         SELECT
                             /*
                             ARRAY_TO_STRING(COALESCE(name_normalized_as_words, name_as_words), ' ')
