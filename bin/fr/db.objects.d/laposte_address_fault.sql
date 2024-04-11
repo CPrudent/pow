@@ -242,7 +242,7 @@ BEGIN
                     , _query
                 );
                 IF simulation THEN
-                    RAISE NOTICE ' requête=%', _query;
+                    RAISE NOTICE ' query=%', _query;
                 ELSE
                     EXECUTE _query USING element, _values[_fault_i];
                     GET DIAGNOSTICS _nrows = ROW_COUNT;
@@ -360,7 +360,7 @@ BEGIN
         EXECUTE _query;
         GET DIAGNOSTICS nrows = ROW_COUNT;
     ELSE
-        RAISE NOTICE ' requête=%', _query;
+        RAISE NOTICE ' query=%', _query;
         nrows := 0;
     END IF;
 END
@@ -575,7 +575,7 @@ BEGIN
             IF fix = ANY('{ALL,DICTIONARY}') THEN
                 IF _fix_dictionary THEN
                     IF simulation THEN
-                        RAISE NOTICE ' requête=%', _query;
+                        RAISE NOTICE ' query=%', _query;
                     ELSE
                         IF _manual_correction THEN
                             EXECUTE _query;
@@ -871,7 +871,7 @@ BEGIN
             );
 
             IF simulation THEN
-                RAISE NOTICE ' requête=%', _query;
+                RAISE NOTICE ' query=%', _query;
             ELSE
                 EXECUTE _query USING element, _keys[_fault_i];
                 GET DIAGNOSTICS _nrows = ROW_COUNT;
@@ -891,7 +891,7 @@ BEGIN
                     '
                 );
                 IF simulation THEN
-                    RAISE NOTICE ' requête=%', _query;
+                    RAISE NOTICE ' query=%', _query;
                 ELSE
                     EXECUTE _query;
                     GET DIAGNOSTICS _nrows_uniq = ROW_COUNT;
@@ -915,7 +915,7 @@ BEGIN
                 '
             ;
             IF simulation THEN
-                RAISE NOTICE ' requête=%', _query;
+                RAISE NOTICE ' query=%', _query;
             ELSE
                 EXECUTE _query USING element, _keys[_fault_i];
                 GET DIAGNOSTICS _nrows_history = ROW_COUNT;
@@ -998,7 +998,7 @@ BEGIN
             EXECUTE _query;
             GET DIAGNOSTICS _nrows_found = ROW_COUNT;
         ELSE
-            RAISE NOTICE ' requête=%', _query;
+            RAISE NOTICE ' query=%', _query;
         END IF;
 
         _query := CONCAT('INSERT INTO fr.laposte_address_history (
@@ -1022,7 +1022,7 @@ BEGIN
             EXECUTE _query;
             GET DIAGNOSTICS _nrows_history = ROW_COUNT;
         ELSE
-            RAISE NOTICE ' requête=%', _query;
+            RAISE NOTICE ' query=%', _query;
         END IF;
 
         _query := CONCAT('UPDATE ', _table_from, ' a SET
@@ -1043,7 +1043,7 @@ BEGIN
                 CALL public.log_info(CONCAT('%: error (found,history,fixed)=(%,%,%)', _set.key, _nrows_found, _nrows_history, _nrows_fixed));
             END IF;
         ELSE
-            RAISE NOTICE ' requête=%', _query;
+            RAISE NOTICE ' query=%', _query;
         END IF;
     END LOOP;
 END;

@@ -2,39 +2,6 @@
  * add FR-ADDRESS facilities (matching address)
  */
 
--- remove article(s) from name
-SELECT drop_all_functions_if_exists('fr', 'get_street_name_without_article');
-CREATE OR REPLACE FUNCTION fr.get_street_name_without_article(
-    words IN TEXT[]
-    , nwords IN INT
-    , descriptors IN VARCHAR DEFAULT NULL
-    , without_article OUT TEXT[]
-)
-AS
-$func$
-DECLARE
-    _i INT;
-BEGIN
-    FOR _i IN 1 .. nwords
-    LOOP
-        IF ((
-                descriptors IS NOT NULL
-                AND
-                SUBSTR(descriptors, _i, 1) = 'A'
-            )
-            OR
-            (
-                fr.is_normalized_article(words[_i])
-            )
-        ) THEN
-            CONTINUE;
-        ELSE
-            without_article := ARRAY_APPEND(without_article, words[_i]);
-        END IF;
-    END LOOP;
-END
-$func$ LANGUAGE plpgsql;
-
 -- status of match element
 SELECT drop_all_functions_if_exists('fr', 'match_element_status');
 CREATE OR REPLACE FUNCTION fr.match_element_status(
@@ -260,7 +227,7 @@ BEGIN
             END IF;
         END IF;
     ELSE
-        RAISE NOTICE ' requête=%', _query;
+        RAISE NOTICE ' query=%', _query;
     END IF;
     with_uncommon := _uncommon;
 END

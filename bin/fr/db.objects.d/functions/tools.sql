@@ -2,14 +2,16 @@
  * add FR-TOOLS facilities
  */
 
--- get value of parameters (threshold, ratio, ...)
+/* NOTE
+get value of parameters (threshold, ratio, ...) as real
+w/o parameters, take value from db
+    defaults are defined as global variables (fr.<category>.<level>.<key>)
+else
+    HSTORE parameters to custom properties (<level>_<key>)
+    '"STREET_OCCURS" => 3'::HSTORE
+ */
 SELECT drop_all_functions_if_exists('fr', 'get_parameter_value');
 CREATE OR REPLACE FUNCTION fr.get_parameter_value(
-        /* NOTE
-        HSTORE parameter to custom properties, as:
-        '"STREET_OCCURS" => 3'::HSTORE
-        defaults are defined as global variables, view constant.sql
-         */
     parameters IN HSTORE
     , category IN VARCHAR
     , level IN VARCHAR

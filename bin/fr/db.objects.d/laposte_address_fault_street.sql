@@ -257,7 +257,7 @@ BEGIN
                     , _query
                 );
                 IF simulation THEN
-                    RAISE NOTICE ' requête=%', _query;
+                    RAISE NOTICE ' query=%', _query;
                 ELSE
                     EXECUTE _query;
                     GET DIAGNOSTICS _nrows = ROW_COUNT;
@@ -475,7 +475,7 @@ BEGIN
             IF fix = ANY('{ALL,DICTIONARY}') THEN
                 IF _fix_dictionary THEN
                     IF simulation THEN
-                        RAISE NOTICE ' requête=%', _query;
+                        RAISE NOTICE ' query=%', _query;
                     ELSE
                         EXECUTE _query;
                         GET DIAGNOSTICS _nrows = ROW_COUNT;

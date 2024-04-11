@@ -99,7 +99,6 @@ standardize addresses
 here goal is to standardize address (upcase, w/o abbr, ...) before matching step
 not really obtain normalized name, by example, for street
  */
-SELECT drop_all_functions_if_exists('fr', 'set_normalize');
 SELECT drop_all_functions_if_exists('fr', 'set_match_standardize');
 CREATE OR REPLACE PROCEDURE fr.set_match_standardize(
     file_path IN VARCHAR
@@ -112,13 +111,14 @@ DECLARE
     _id_request INTEGER;
     _suffix VARCHAR;
     _is_normalized BOOLEAN;
+    _matching HSTORE;
     _query TEXT;
     _table VARCHAR;
     _nrows INTEGER;
     _info VARCHAR;
 BEGIN
-    SELECT id, suffix, is_normalized
-    INTO _id_request, _suffix, _is_normalized
+    SELECT id, suffix, is_normalized, parameters
+    INTO _id_request, _suffix, _is_normalized, _matching
     FROM fr.address_match_request mr
     WHERE mr.file_path = set_match_standardize.file_path
     ;
@@ -139,13 +139,13 @@ BEGIN
         _query := CONCAT(
             '
             INSERT INTO fr.address_match_result(
-                id_request
+                  id_request
                 , id_address
                 , standardized_address
             )
             (
                 SELECT
-                    $1
+                      $1
                     , d.rowid
                     , ROW(sa.*)::standardized_address
                 FROM fr.
@@ -153,12 +153,13 @@ BEGIN
                 , _table, ' d
                     LEFT OUTER JOIN fr.standardize_address(
                         address =>  d
-                        , columns_map => $2
+                        , mapping => $2
+                        , matching => $3
                     ) sa ON TRUE
             )
             '
         );
-        EXECUTE _query USING _id_request, mapping;
+        EXECUTE _query USING _id_request, mapping, _matching;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
         CALL public.log_info(CONCAT(_info, ' : #', _nrows));
 

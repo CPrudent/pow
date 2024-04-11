@@ -75,10 +75,12 @@ BEGIN
                 SELECT
                     mc.level
                     , mc.match_code_element
-                    , CASE $2
-                        WHEN ''AREA'' THEN NULL::fr.matched_element
-                        ELSE me.matched_element
-                        END matched_parent
+                    , '
+                , CASE _level
+                    WHEN 'AREA' THEN 'NULL::fr.matched_element'
+                    ELSE 'me.matched_element'
+                    END
+                , ' matched_parent
                     , (SELECT standardized_address
                         FROM fr.address_match_result
                         WHERE id_request = $1

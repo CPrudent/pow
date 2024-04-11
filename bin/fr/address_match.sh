@@ -23,11 +23,50 @@ match_info() {
     return $SUCCESS_CODE
 }
 
+# set defintion (SQL) of property (format or parameters) w/ OS file
+get_definition() {
+    bash_args \
+        --args_p "
+            property:Propriété à définir;
+            vars:Entité des variables globales
+        " \
+        --args_o '
+            property;
+            vars
+        ' \
+        --args_v '
+            property:format|parameters
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local -n _vars_ref=$get_arg_vars
+    local _property=${get_arg_property^^}
+
+    # defined property ?
+    [ -n "${_vars_ref[${_property}]}" ] && {
+        # default path
+        _vars_ref[${_property}_PATH]="${POW_DIR_BIN}/${_vars_ref[${_property}]}_${get_arg_property}.sql"
+        [ -f "${_vars_ref[${_property}_PATH]}" ] &&
+        _vars_ref[${_property}_SQL]=$(cat "${_vars_ref[${_property}_PATH]}") || {
+            # specific path
+            [ -f "${_vars_ref[${_property}]}" ] &&
+            _vars_ref[${_property}_SQL]=$(cat "${_vars_ref[${_property}]}") || {
+                log_error "Le fichier ${get_arg_property^} ${_vars_ref[${_property}]} n'existe pas"
+                return $ERROR_CODE
+            }
+        }
+    }
+
+    return $SUCCESS_CODE
+}
+
 bash_args \
     --args_p "
         file_path:Fichier Adresses à rapprocher;
         force:Forcer le traitement même si celui-ci a déjà été fait;
-        format:Dépôt du fichier de format (ou chemin absolu);
+        format:Fichier Format des données (ou chemin absolu);
+        suffix:Entité SQL des Données avec ce suffixe particulier;
+        parameters:Fichier Paramètres du Rapprochement (ou chemin absolu);
         import_options:Options import (du fichier) spécifiques à son type;
         import_limit:Limiter à n enregistrements;
         steps:Ensemble des étapes à réaliser (séparées par une virgule, si plusieurs)
@@ -44,15 +83,19 @@ bash_args \
     ' \
     "$@" || exit $ERROR_CODE
 
-declare -A match_var=(
+declare -A match_vars=(
     [FORCE]=$get_arg_force
     [FILE_PATH]="$get_arg_file_path"
+    [SUFFIX]="$get_arg_suffix"
     [FORMAT]="$get_arg_format"
+    [PARAMETERS]="$get_arg_parameters"
     [IMPORT_OPTIONS]="$get_arg_import_options"
     [IMPORT_LIMIT]=$get_arg_import_limit
     [TABLE_NAME]=''
     [FORMAT_PATH]=''
     [FORMAT_SQL]=''
+    [PARAMETERS_PATH]=''
+    [PARAMETERS_SQL]=''
     [STEPS]=${get_arg_steps// /}
 )
 _k=0
@@ -64,8 +107,8 @@ declare -a match_request
 
 MATCH_STEPS=IMPORT,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT,MATCH_ADDRESS,REPORT,STATS
 declare -a match_steps
-[ "${match_var[STEPS]}" = ALL ] && match_var[STEPS]=$MATCH_STEPS
-match_steps=( ${match_var[STEPS]//,/ } )
+[ "${match_vars[STEPS]}" = ALL ] && match_vars[STEPS]=$MATCH_STEPS
+match_steps=( ${match_vars[STEPS]//,/ } )
 declare -a match_steps_info=(
     [0]=Chargement
     [1]=Standardisation
@@ -75,56 +118,55 @@ declare -a match_steps_info=(
     [5]=Rapport
     [6]=Statistiques
 )
-expect file "${match_var[FILE_PATH]}" &&
+
+expect file "${match_vars[FILE_PATH]}" &&
+get_definition --property parameters --vars match_vars &&
 set_env --schema_name fr &&
+
 execute_query \
-    --name ADD_MATCH_REQUEST \
+    --name MATCH_REQUEST \
     --query "
         SELECT CONCAT_WS(' ', id, suffix, new_request)
-        FROM fr.add_address_match(file_path => '${match_var[FILE_PATH]}')
+        FROM fr.add_match_request(
+            file_path => '${match_vars[FILE_PATH]}'
+            $([ -n "${match_vars[SUFFIX]}" ] && echo ", suffix => '${match_vars[SUFFIX]}'")
+            $([ -n "${match_vars[PARAMETERS_SQL]}" ] && echo ", parameters => '${match_vars[PARAMETERS_SQL]}'::HSTORE")
+        )
     " \
     --psql_arguments 'tuples-only:pset=format=unaligned' \
     --return _request &&
 match_request=($_request) &&
 [ ${#match_request[*]} -eq $MATCH_REQUEST_ITEMS ] || {
-    log_error "demande Rapprochement fichier '${match_var[FILE_PATH]}' en erreur"
+    log_error "demande Rapprochement fichier '${match_vars[FILE_PATH]}' en erreur"
     exit $ERROR_CODE
-}
+} &&
 
-match_var[TABLE_NAME]=address_match_${match_request[$MATCH_REQUEST_SUFFIX]}
-match_var[FORMAT_PATH]="${POW_DIR_BIN}/${match_var[FORMAT]}_format.sql"
+match_vars[TABLE_NAME]=address_match_${match_request[$MATCH_REQUEST_SUFFIX]} &&
 
 {
     in_array match_steps IMPORT _steps_id && {
-        ([ match_var[FORCE] = no ] && table_exists --schema_name fr --table_name ${match_var[TABLE_NAME]}) || {
+        ([ match_vars[FORCE] = no ] && table_exists --schema_name fr --table_name ${match_vars[TABLE_NAME]}) || {
             match_info --steps_info match_steps_info --steps_id _steps_id &&
             import_file \
-                --file_path "${match_var[FILE_PATH]}" \
+                --file_path "${match_vars[FILE_PATH]}" \
                 --schema_name fr \
-                --table_name ${match_var[TABLE_NAME]} \
+                --table_name ${match_vars[TABLE_NAME]} \
                 --load_mode OVERWRITE_TABLE \
-                --limit "${match_var[IMPORT_LIMIT]}" \
-                --import_options "${match_var[IMPORT_OPTIONS]}"
+                --limit "${match_vars[IMPORT_LIMIT]}" \
+                --import_options "${match_vars[IMPORT_OPTIONS]}"
         }
     } || true
 } &&
 {
     in_array match_steps STANDARDIZE _steps_id && {
-        [ -f "${match_var[FORMAT_PATH]}" ] &&
-        match_var[FORMAT_SQL]=$(cat "${match_var[FORMAT_PATH]}") || {
-            [ -f "${match_var[FORMAT]}" ] &&
-            match_var[FORMAT_SQL]=$(cat "${match_var[FORMAT]}") || {
-                log_error "Le format ${match_var[FORMAT]} n'existe pas"
-                false
-            }
-        } &&
+        get_definition --property format --vars match_vars &&
         match_info --steps_info match_steps_info --steps_id _steps_id &&
         execute_query \
             --name STANDARDIZE_REQUEST \
             --query "CALL set_match_standardize(
-                file_path => '${match_var[FILE_PATH]}'
-                , mapping => '${match_var[FORMAT_SQL]}'::HSTORE
-                , force => ('${match_var[FORCE]}' = 'yes')
+                file_path => '${match_vars[FILE_PATH]}'
+                , mapping => '${match_vars[FORMAT_SQL]}'::HSTORE
+                , force => ('${match_vars[FORCE]}' = 'yes')
             )"
     } || true
 } &&
@@ -135,7 +177,7 @@ match_var[FORMAT_PATH]="${POW_DIR_BIN}/${match_var[FORMAT]}_format.sql"
             --name MATCH_CODE_REQUEST \
             --query "CALL fr.set_match_code(
                 id => ${match_request[$MATCH_REQUEST_ID]}
-                , force => ('${match_var[FORCE]}' = 'yes')
+                , force => ('${match_vars[FORCE]}' = 'yes')
             )"
     } || true
 } || exit $ERROR_CODE

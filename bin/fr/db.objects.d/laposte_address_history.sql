@@ -132,7 +132,7 @@ BEGIN
         EXECUTE _query;
         GET DIAGNOSTICS nrows = ROW_COUNT;
     ELSE
-        RAISE NOTICE ' requête=%', _query;
+        RAISE NOTICE ' query=%', _query;
         nrows := 0;
     END IF;
 END

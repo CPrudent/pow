@@ -1250,35 +1250,36 @@ view test_normalize.sh : option NAME_DIFF
 SELECT drop_all_functions_if_exists('fr', 'standardize_address');
 CREATE OR REPLACE FUNCTION fr.standardize_address(
     address IN RECORD                   -- address to standardize
-    , columns_map IN HSTORE             -- mapping address(client)/address(reference)
+    , mapping IN HSTORE                 -- mapping address(client)/address(reference)
+    , matching IN HSTORE DEFAULT NULL   -- matching parameters
 )
 RETURNS fr.standardized_address AS
 $func$
 DECLARE
     _standardized_address fr.standardized_address;
-    _column_map VARCHAR[];
+    _mapping VARCHAR[];
     _geom GEOMETRY;
     _geom_x DOUBLE PRECISION;
     _geom_y DOUBLE PRECISION;
     _geom_srid SMALLINT;
     _geom_srid_default SMALLINT := 2154;
-    _cadastre_parcel_number VARCHAR;
-    _cadastre_parcel_section VARCHAR;
-    _cadastre_parcel_prefix CHAR(3);
     _street_type_is_abbreviated BOOLEAN;
     _exists BOOLEAN;
     _timestamp TIMESTAMP := clock_timestamp();
+    _cadastre_parcel_number VARCHAR;
+    _cadastre_parcel_section VARCHAR;
+    _cadastre_parcel_prefix CHAR(3);
 BEGIN
-    FOREACH _column_map SLICE 1 IN ARRAY %# columns_map LOOP
-        _column_map[2] := CONCAT('$1.', _column_map[2]);
+    FOREACH _mapping SLICE 1 IN ARRAY %# mapping LOOP
+        _mapping[2] := CONCAT('$1.', _mapping[2]);
         BEGIN
-            CASE _column_map[1]
+            CASE _mapping[1]
                 WHEN 'id' THEN
-                    EXECUTE CONCAT('SELECT ', _column_map[2])
+                    EXECUTE CONCAT('SELECT ', _mapping[2])
                         INTO _standardized_address.id
                         USING address;
                 WHEN 'complement' THEN
-                    EXECUTE CONCAT('SELECT ', _column_map[2])
+                    EXECUTE CONCAT('SELECT ', _mapping[2])
                         INTO _standardized_address.complement_name
                         USING address;
 
@@ -1307,7 +1308,7 @@ BEGIN
                         ) nn
                     ;
                 WHEN 'housenumber' THEN
-                    EXECUTE CONCAT('SELECT NULLIF(TRIM(', _column_map[2], '::TEXT), '''')::INTEGER')
+                    EXECUTE CONCAT('SELECT NULLIF(TRIM(', _mapping[2], '::TEXT), '''')::INTEGER')
                         INTO _standardized_address.housenumber
                         USING address;
                     IF (
@@ -1319,12 +1320,12 @@ BEGIN
                         _standardized_address.housenumber := NULL;
                     END IF;
                 WHEN 'extension' THEN
-                    EXECUTE CONCAT('SELECT ', _column_map[2])
+                    EXECUTE CONCAT('SELECT ', _mapping[2])
                         INTO _standardized_address.extension
                         USING address;
                     _standardized_address.extension := NULLIF(TRIM(public.clean_address_label(_standardized_address.extension)), '');
                 WHEN 'street' THEN
-                    EXECUTE CONCAT('SELECT ', _column_map[2])
+                    EXECUTE CONCAT('SELECT ', _mapping[2])
                         INTO _standardized_address.street_name
                         USING address;
 
@@ -1353,7 +1354,7 @@ BEGIN
                         ) nn
                     ;
                 WHEN 'municipality_code' THEN
-                    EXECUTE CONCAT('SELECT ', _column_map[2])
+                    EXECUTE CONCAT('SELECT ', _mapping[2])
                         INTO _standardized_address.municipality_code
                         USING address;
 
@@ -1367,7 +1368,7 @@ BEGIN
                         _standardized_address.municipality_code := NULL;
                     END IF;
                 WHEN 'postcode' THEN
-                    EXECUTE CONCAT('SELECT ', _column_map[2])
+                    EXECUTE CONCAT('SELECT ', _mapping[2])
                         INTO _standardized_address.postcode
                         USING address;
                     SELECT EXISTS(
@@ -1380,78 +1381,78 @@ BEGIN
                         _standardized_address.postcode := NULL;
                     END IF;
                 WHEN 'municipality_name' THEN
-                    EXECUTE CONCAT('SELECT ', _column_map[2])
+                    EXECUTE CONCAT('SELECT ', _mapping[2])
                         INTO _standardized_address.municipality_name
                         USING address;
                 -- TODO à intégrer dans lb_ligneX
                 -- mention CEDEX OU libellé Ancienne Commune OU les 2 accollées
                 -- RE=^((BP|CS|CE|CP) *[0-9]+)? *([A-Z ]+)?$
                 WHEN 'municipality_old_name' THEN
-                    EXECUTE CONCAT('SELECT ', _column_map[2])
+                    EXECUTE CONCAT('SELECT ', _mapping[2])
                         INTO _standardized_address.municipality_old_name
                         USING address;
 
                 WHEN 'geo_xy' THEN
-                    EXECUTE CONCAT('SELECT REPLACE(SPLIT_PART(', _column_map[2], ','','',1)::VARCHAR, '','', ''.'')::DOUBLE PRECISION')
+                    EXECUTE CONCAT('SELECT REPLACE(SPLIT_PART(', _mapping[2], ','','',1)::VARCHAR, '','', ''.'')::DOUBLE PRECISION')
                         INTO _geom_x
                         USING address;
-                    EXECUTE CONCAT('SELECT REPLACE(SPLIT_PART(', _column_map[2], ','','',2)::VARCHAR, '','', ''.'')::DOUBLE PRECISION')
+                    EXECUTE CONCAT('SELECT REPLACE(SPLIT_PART(', _mapping[2], ','','',2)::VARCHAR, '','', ''.'')::DOUBLE PRECISION')
                         INTO _geom_y
                         USING address;
                 WHEN 'geo_latlon' THEN
                     -- latitude = Y, longitude = X
-                    EXECUTE CONCAT('SELECT REPLACE(SPLIT_PART(', _column_map[2], ','','',2)::VARCHAR, '','', ''.'')::DOUBLE PRECISION')
+                    EXECUTE CONCAT('SELECT REPLACE(SPLIT_PART(', _mapping[2], ','','',2)::VARCHAR, '','', ''.'')::DOUBLE PRECISION')
                         INTO _geom_x
                         USING address;
-                    EXECUTE CONCAT('SELECT REPLACE(SPLIT_PART(', _column_map[2], ','','',1)::VARCHAR, '','' ,''.'')::DOUBLE PRECISION')
+                    EXECUTE CONCAT('SELECT REPLACE(SPLIT_PART(', _mapping[2], ','','',1)::VARCHAR, '','' ,''.'')::DOUBLE PRECISION')
                         INTO _geom_y
                         USING address;
                     _geom_srid_default := 4326;
                 WHEN 'geo_x' THEN
-                    EXECUTE CONCAT('SELECT REPLACE(', _column_map[2], '::VARCHAR, '','', ''.'')::DOUBLE PRECISION')
+                    EXECUTE CONCAT('SELECT REPLACE(', _mapping[2], '::VARCHAR, '','', ''.'')::DOUBLE PRECISION')
                         INTO _geom_x
                         USING address;
                 WHEN 'geo_y' THEN
-                    EXECUTE CONCAT('SELECT REPLACE(', _column_map[2], '::VARCHAR, '','' ,''.'')::DOUBLE PRECISION')
+                    EXECUTE CONCAT('SELECT REPLACE(', _mapping[2], '::VARCHAR, '','' ,''.'')::DOUBLE PRECISION')
                         INTO _geom_y
                         USING address;
                 WHEN 'geo_srid' THEN
-                    EXECUTE CONCAT('SELECT ', _column_map[2], '::SMALLINT')
+                    EXECUTE CONCAT('SELECT ', _mapping[2], '::SMALLINT')
                         INTO _geom_srid
                         USING address;
                 WHEN 'geo_wkt' THEN
-                    EXECUTE CONCAT('SELECT ST_PointFromText(', _column_map[2], ')')
+                    EXECUTE CONCAT('SELECT ST_PointFromText(', _mapping[2], ')')
                         INTO _geom
                         USING address;
                 WHEN 'geo_json' THEN
-                    EXECUTE CONCAT('SELECT ST_GeomFromGeoJSON(', _column_map[2], ')')
+                    EXECUTE CONCAT('SELECT ST_GeomFromGeoJSON(', _mapping[2], ')')
                         INTO _geom
                         USING address;
                 WHEN 'geo' THEN
-                    EXECUTE CONCAT('SELECT ', _column_map[2])
+                    EXECUTE CONCAT('SELECT ', _mapping[2])
                         INTO _geom
                         USING address;
 
                 WHEN 'cadastre_parcel_number' THEN
-                    EXECUTE CONCAT('SELECT ', _column_map[2], '::INTEGER::VARCHAR')
+                    EXECUTE CONCAT('SELECT ', _mapping[2], '::INTEGER::VARCHAR')
                         INTO _cadastre_parcel_number
                         USING address;
                 WHEN 'cadastre_parcel_section' THEN
-                    EXECUTE CONCAT('SELECT ', _column_map[2])
+                    EXECUTE CONCAT('SELECT ', _mapping[2])
                         INTO _cadastre_parcel_section
                         USING address;
                     --On enlève les éventuel 0 préfixant l'identifiant de section cadastrale
                     --Alternative : ne prendre que les lettre alphabéthiques ?
                     _cadastre_parcel_section := REPLACE(_cadastre_parcel_section, '0', '');
                 WHEN 'cadastre_parcel_prefix' THEN
-                    EXECUTE CONCAT('SELECT ', _column_map[2])
+                    EXECUTE CONCAT('SELECT ', _mapping[2])
                         INTO _cadastre_parcel_prefix
                         USING address;
             ELSE
-                RAISE NOTICE 'Attribut % ignoré car inconnu', _column_map[1];
+                RAISE NOTICE 'Attribut % ignoré car inconnu', _mapping[1];
             END CASE;
         EXCEPTION WHEN OTHERS THEN
-            RAISE NOTICE 'Attribut % ignoré car provoquant une erreur à l''évaluation de % : %', _column_map[1], _column_map[2], SQLERRM;
+            RAISE NOTICE 'Attribut % ignoré car provoquant une erreur à l''évaluation de % : %', _mapping[1], _mapping[2], SQLERRM;
         END;
     END LOOP;
 

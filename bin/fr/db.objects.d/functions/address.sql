@@ -118,6 +118,39 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+-- remove article(s) from name
+SELECT drop_all_functions_if_exists('fr', 'get_street_name_without_article');
+CREATE OR REPLACE FUNCTION fr.get_street_name_without_article(
+    words IN TEXT[]
+    , nwords IN INT
+    , descriptors IN VARCHAR DEFAULT NULL
+    , without_article OUT TEXT[]
+)
+AS
+$func$
+DECLARE
+    _i INT;
+BEGIN
+    FOR _i IN 1 .. nwords
+    LOOP
+        IF ((
+                descriptors IS NOT NULL
+                AND
+                SUBSTR(descriptors, _i, 1) = 'A'
+            )
+            OR
+            (
+                fr.is_normalized_article(words[_i])
+            )
+        ) THEN
+            CONTINUE;
+        ELSE
+            without_article := ARRAY_APPEND(without_article, words[_i]);
+        END IF;
+    END LOOP;
+END
+$func$ LANGUAGE plpgsql;
+
 -- split descriptors as array
 /* NOTE
 words here must be the result of fr.get_descriptors_of_street(), splited w/ descriptors
