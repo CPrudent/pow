@@ -3,7 +3,7 @@
  */
 
 CREATE TABLE IF NOT EXISTS fr.constant (
-    usecase CHARACTER VARYING NOT NULL
+      usecase CHARACTER VARYING NOT NULL
     , key VARCHAR NOT NULL
     , value VARCHAR
 );
@@ -54,7 +54,7 @@ BEGIN
         WITH
         type_with_abbr AS (
             SELECT
-                lb_type
+                  lb_type
                 , lb_type_abrege
                 , COUNT(*) n
             FROM fr.laposte_address_street
@@ -63,20 +63,20 @@ BEGIN
                 AND
                 fl_active
             GROUP BY
-                lb_type
+                  lb_type
                 , lb_type_abrege
         )
         , type_with_larger_value AS (
             SELECT
-                lb_type
+                  lb_type
                 , FIRST(lb_type_abrege ORDER BY n DESC) lb_type_abrege
             FROM
                 type_with_abbr
             GROUP BY
-                lb_type
+                  lb_type
         )
         SELECT
-            'TYPE'
+              'TYPE'
             , lb_type
             , CASE
                 -- no abbreviation !
@@ -175,7 +175,7 @@ BEGIN
     WITH
     type_singular_plural AS (
         SELECT
-            k1.name type_singular
+              k1.name type_singular
             , k1.name_abbreviated type_abbr_singular
             , k2.name type_plural
             , k2.name_abbreviated type_abbr_plural
@@ -198,7 +198,7 @@ BEGIN
     WITH
     first_word_of_type AS (
         SELECT
-            name
+              name
             , CASE
                 WHEN POSITION(' ' IN name) = 0 THEN NULL
                 ELSE SUBSTR(name, 1, POSITION(' ' IN name) -1)
@@ -208,17 +208,17 @@ BEGIN
     )
     , occurs_type AS (
         SELECT
-            lb_type name
+              lb_type name
             , COUNT(*) occurs
         FROM fr.laposte_address_street
         WHERE lb_type IS NOT NULL
         GROUP BY lb_type
     )
     UPDATE fr.laposte_address_keyword st SET
-        first_word = fw.first_word
+          first_word = fw.first_word
         , occurs = ot.occurs
         FROM
-            first_word_of_type fw
+              first_word_of_type fw
             , occurs_type ot
         WHERE
             "group" = 'TYPE'
@@ -252,7 +252,7 @@ BEGIN
     CALL public.log_info(' Initialisation');
     INSERT INTO fr.constant (
         SELECT DISTINCT
-            'LAPOSTE_STREET_FIRSTNAME'
+              'LAPOSTE_STREET_FIRSTNAME'
             , mots.mot
         FROM fr.laposte_address_street AS voie_ran
         INNER JOIN LATERAL UNNEST(REGEXP_SPLIT_TO_ARRAY(voie_ran.lb_voie, '\s+'))
@@ -308,10 +308,10 @@ BEGIN
     WITH
     name_occurs AS (
         SELECT
-            k.name
+              k.name
             , COUNT(*) occurs
         FROM
-            fr.laposte_address_street s
+              fr.laposte_address_street s
             , fr.laposte_address_keyword k
         WHERE
             s.fl_active
@@ -667,10 +667,10 @@ BEGIN
     WITH
     title_occurs AS (
         SELECT
-            k.name
+              k.name
             , COUNT(*) occurs
         FROM
-            fr.laposte_address_street s
+              fr.laposte_address_street s
             , fr.laposte_address_keyword k
         WHERE
             s.fl_active
@@ -780,7 +780,7 @@ BEGIN
     WITH
     first_word_of_type AS (
         SELECT
-            name
+              name
             , CASE
                 WHEN POSITION(' ' IN name) = 0 THEN NULL
                 ELSE SUBSTR(name, 1, POSITION(' ' IN name) -1)
@@ -829,7 +829,7 @@ BEGIN
             , t.*
         FROM (
             SELECT
-                co_insee_commune
+                  co_insee_commune
                 , lb_ach_nn
             FROM fr.laposte_address_area
             WHERE
@@ -848,7 +848,7 @@ BEGIN
             UNION
 
             SELECT
-                co_insee_commune
+                  co_insee_commune
                 , lb_ach_nn
             FROM
                 fr.laposte_address_area
@@ -1036,7 +1036,7 @@ BEGIN
 
     DELETE FROM fr.constant WHERE usecase ~ '^LAPOSTE_ADDRESS_FAULT_';
     INSERT INTO fr.constant (usecase, key, value) VALUES
-        ('LAPOSTE_ADDRESS_FAULT_LINK', 'COMPLEMENT_WITH_STREET_ERROR', '0')
+          ('LAPOSTE_ADDRESS_FAULT_LINK', 'COMPLEMENT_WITH_STREET_ERROR', '0')
 
         , ('LAPOSTE_ADDRESS_FAULT_AREA', 'BAD_SPACE', '100')
 
@@ -1136,8 +1136,11 @@ BEGIN
     ALTER DATABASE pow SET fr.address.match.too_similar = 'KO_12';
 
     ALTER DATABASE pow SET fr.similarity.area.threshold = '0.5';
+    ALTER DATABASE pow SET fr.similarity.area.ratio = '0.15';
     ALTER DATABASE pow SET fr.similarity.street.threshold = '0.7';
     ALTER DATABASE pow SET fr.similarity.street.ratio = '0.15';
+    ALTER DATABASE pow SET fr.similarity.complement.threshold = '0.7';
+    ALTER DATABASE pow SET fr.similarity.complement.ratio = '0.15';
     ALTER DATABASE pow SET fr.max.street.occurs = '10';
     ALTER DATABASE pow SET fr.max.housenumber.occurs = '10';
     ALTER DATABASE pow SET fr.max.complement.occurs = '10';
@@ -1174,7 +1177,7 @@ BEGIN
     -- street-faults (part/1)
     CALL fr.set_laposte_address_fault(element => 'STREET');
     CALL fr.fix_laposte_address_fault_street(
-        element => 'STREET'
+          element => 'STREET'
         , fault => 'BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION,TYPO_ERROR'
     );
 
@@ -1183,7 +1186,7 @@ BEGIN
         SELECT DISTINCT
             f.name_id
         FROM
-            fr.laposte_address_fault f
+              fr.laposte_address_fault f
             , fr.constant c
         WHERE
             c.usecase = 'LAPOSTE_ADDRESS_FAULT_STREET'
@@ -1196,7 +1199,7 @@ BEGIN
     );
     IF _listof IS NOT NULL THEN
         CALL fr.set_laposte_address_street_membership(
-            set_case => 'CORRECTION'
+              set_case => 'CORRECTION'
             , listof => _listof
         );
     END IF;
@@ -1218,7 +1221,7 @@ BEGIN
     );
     -- street-faults (part/2)
     CALL fr.fix_laposte_address_fault(
-        element => 'STREET'
+          element => 'STREET'
         , fault => 'DESCRIPTORS,TYPE'
     );
 
@@ -1245,7 +1248,7 @@ BEGIN
     -- complement-faults (part/1)
     CALL fr.set_laposte_address_fault(element => 'COMPLEMENT');
     CALL fr.fix_laposte_address_fault_street(
-        element => 'COMPLEMENT'
+          element => 'COMPLEMENT'
         , fault => 'BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION,TYPO_ERROR'
     );
 
@@ -1254,7 +1257,7 @@ BEGIN
         SELECT DISTINCT
             f.name_id
         FROM
-            fr.laposte_address_fault f
+              fr.laposte_address_fault f
             , fr.constant c
         WHERE
             c.usecase = 'LAPOSTE_ADDRESS_FAULT_COMPLEMENT'
@@ -1267,7 +1270,7 @@ BEGIN
     );
     IF _listof IS NOT NULL THEN
         CALL fr.set_laposte_address_complement_membership(
-            set_case => 'CORRECTION'
+              set_case => 'CORRECTION'
             , listof => _listof
         );
     END IF;
@@ -1285,7 +1288,7 @@ BEGIN
     );
     -- street-faults (part/2)
     CALL fr.fix_laposte_address_fault(
-        element => 'COMPLEMENT'
+          element => 'COMPLEMENT'
         , fault => 'DESCRIPTORS'
     );
 

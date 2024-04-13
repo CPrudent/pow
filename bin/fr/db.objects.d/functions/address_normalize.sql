@@ -1255,6 +1255,7 @@ CREATE OR REPLACE FUNCTION fr.standardize_address(
     address IN RECORD                   -- address to standardize
     , mapping IN HSTORE                 -- mapping address(client)/address(reference)
     , matching IN HSTORE DEFAULT NULL   -- matching parameters
+    , raise_notice IN BOOLEAN DEFAULT FALSE
 )
 RETURNS fr.standardized_address AS
 $func$
@@ -1271,7 +1272,6 @@ DECLARE
     _exists BOOLEAN;
     _levels VARCHAR[] := ARRAY['COMPLEMENT', 'HOUSENUMBER', 'STREET'];
     _level VARCHAR;
-    _uncommon BOOLEAN;
     _record RECORD;
     _timestamp TIMESTAMP := clock_timestamp();
     _cadastre_parcel_number VARCHAR;
@@ -1408,7 +1408,7 @@ BEGIN
                         _standardized_address.postcode := NULL;
                     END IF;
                 WHEN 'municipality_name' THEN
-                    EXECUTE CONCAT('SELECT ', _mapping[2])
+                    EXECUTE CONCAT('SELECT NULLIF(TRIM(', _mapping[2], '::TEXT), '''')')
                         INTO _standardized_address.municipality_name
                         USING address;
                 -- TODO à intégrer dans lb_ligneX
@@ -1603,28 +1603,18 @@ BEGIN
                 level => _level
                 , standardized_address => _standardized_address
                 , parameters => matching
+                , raise_notice => raise_notice
             );
-            _uncommon := _record.with_uncommon;
-            _standardized_address := _record.standardized_address;
-
-            -- break once one uniq element found
-            IF (
-                _uncommon
-                AND (
+            IF _record.with_uncommon THEN
+                _standardized_address := _record.standardized_address;
+                -- break once one uniq element found
+                IF (
                     (_level = 'COMPLEMENT' AND _standardized_address.complement_uncommon_occur = 1)
                     OR
                     (_level = 'HOUSENUMBER' AND _standardized_address.housenumber_uncommon_occur = 1)
-                )
-            ) THEN
-                RAISE NOTICE 'élément %(%) unique trouvé!'
-                    , _level
-                    , CASE _level
-                        WHEN 'COMPLEMENT' THEN _standardized_address.complement_uncommon_value
-                        WHEN 'HOUSENUMBER' THEN _standardized_address.housenumber::VARCHAR
-                        WHEN 'STREET' THEN _standardized_address.street_uncommon_value
-                        END
-                    ;
-                EXIT;
+                ) THEN
+                    EXIT;
+                END IF;
             END IF;
         END IF;
     END LOOP;

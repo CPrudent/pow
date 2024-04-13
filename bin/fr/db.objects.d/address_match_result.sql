@@ -104,6 +104,7 @@ CREATE OR REPLACE PROCEDURE fr.set_match_standardize(
     file_path IN VARCHAR
     , mapping IN HSTORE
     , force IN BOOLEAN DEFAULT FALSE
+    , raise_notice IN BOOLEAN DEFAULT FALSE
 )
 AS
 $proc$
@@ -155,11 +156,12 @@ BEGIN
                         address =>  d
                         , mapping => $2
                         , matching => $3
+                        , raise_notice => $4
                     ) sa ON TRUE
             )
             '
         );
-        EXECUTE _query USING _id_request, mapping, _matching;
+        EXECUTE _query USING _id_request, mapping, _matching, raise_notice;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
         CALL public.log_info(CONCAT(_info, ' : #', _nrows));
 

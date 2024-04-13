@@ -62,30 +62,33 @@ get_definition() {
 
 bash_args \
     --args_p "
-        file_path:Fichier Adresses à rapprocher;
+        file_path:Fichier des Adresses à rapprocher;
         force:Forcer le traitement même si celui-ci a déjà été fait;
-        format:Fichier Format des données (ou chemin absolu);
-        suffix:Entité SQL des Données avec ce suffixe particulier;
-        parameters:Fichier Paramètres du Rapprochement (ou chemin absolu);
+        suffix:Entité SQL des Adresses avec ce suffixe particulier;
+        format:Mot clé du Format des Adresses ou chemin absolu;
+        parameters:Mot clé des Paramètres du Rapprochement ou chemin absolu;
         import_options:Options import (du fichier) spécifiques à son type;
         import_limit:Limiter à n enregistrements;
-        steps:Ensemble des étapes à réaliser (séparées par une virgule, si plusieurs)
+        steps:Ensemble des étapes à réaliser (séparées par une virgule, si plusieurs);
+        verbose:Ajouter des détails sur les traitements
     " \
     --args_o '
         file_path
     ' \
     --args_v '
-        force:yes|no
+        force:yes|no;
+        verbose:yes|no
     ' \
     --args_d '
         force:no;
+        verbose:no;
         steps:ALL
     ' \
     "$@" || exit $ERROR_CODE
 
 declare -A match_vars=(
-    [FORCE]=$get_arg_force
     [FILE_PATH]="$get_arg_file_path"
+    [FORCE]=$get_arg_force
     [SUFFIX]="$get_arg_suffix"
     [FORMAT]="$get_arg_format"
     [PARAMETERS]="$get_arg_parameters"
@@ -97,6 +100,7 @@ declare -A match_vars=(
     [PARAMETERS_PATH]=''
     [PARAMETERS_SQL]=''
     [STEPS]=${get_arg_steps// /}
+    [VERBOSE]=$get_arg_verbose
 )
 _k=0
 MATCH_REQUEST_ID=$((_k++))
@@ -167,6 +171,7 @@ match_vars[TABLE_NAME]=address_match_${match_request[$MATCH_REQUEST_SUFFIX]} &&
                 file_path => '${match_vars[FILE_PATH]}'
                 , mapping => '${match_vars[FORMAT_SQL]}'::HSTORE
                 , force => ('${match_vars[FORCE]}' = 'yes')
+                , raise_notice => ('${match_vars[VERBOSE]}' = 'yes')
             )"
     } || true
 } &&

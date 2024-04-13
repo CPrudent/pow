@@ -151,5 +151,34 @@ BEGIN
         , _query
         , 'WHERE street.fl_active AND street.fl_diffusable'
     );
+
+    _query := '
+        SELECT
+            -- STREET
+              dict.id
+            , dict.name
+            , dict.descriptors
+            , dict.as_words
+            , dict.name_normalized
+            , dict.descriptors_normalized
+            , dict.as_words_normalized
+            , dict.occurs
+            , dict.words
+            , dict.nwords
+
+            -- ADDRESS
+            , address.co_cea_determinant AS co_adr
+            , address.co_cea_za AS co_adr_za
+        FROM
+            fr.laposte_address_street_uniq dict
+                JOIN fr.laposte_address_street_reference ref ON dict.id = ref.name_id
+                JOIN fr.laposte_address address ON address.co_cea_determinant = ref.address_id
+    ';
+    DROP VIEW IF EXISTS fr.street_dict_view CASCADE;
+    EXECUTE CONCAT_WS(
+        ' '
+        , 'CREATE VIEW fr.street_dict_view AS'
+        , _query
+    );
 END
 $$;

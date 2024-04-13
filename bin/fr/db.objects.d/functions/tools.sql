@@ -4,11 +4,9 @@
 
 /* NOTE
 get value of parameters (threshold, ratio, ...) as real
-w/o parameters, take value from db
-    defaults are defined as global variables (fr.<category>.<level>.<key>)
-else
-    HSTORE parameters to custom properties (<level>_<key>)
-    '"STREET_OCCURS" => 3'::HSTORE
+    from custom value, as (<level>_<key>) format
+        '"STREET_OCCURS" => 3'::HSTORE
+    else default, defined as global variables w/ (fr.<category>.<level>.<key>) format
  */
 SELECT drop_all_functions_if_exists('fr', 'get_parameter_value');
 CREATE OR REPLACE FUNCTION fr.get_parameter_value(
@@ -35,7 +33,7 @@ BEGIN
         value := (parameters -> _property)::REAL;
     ELSE
         /* NOTE
-        get from global variables (defined in constant.sql)
+        as default, from global variables (defined in constant.sql)
          */
         _property := CONCAT_WS('.'
             , 'fr'

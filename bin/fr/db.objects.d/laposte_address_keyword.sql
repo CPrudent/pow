@@ -160,7 +160,7 @@ BEGIN
     IF raise_notice THEN RAISE NOTICE ' begin=%', _begin; END IF;
 
     IF _exists THEN
-        IF raise_notice THEN RAISE NOTICE ' recherche "%"', words[at_]; END IF;
+        IF raise_notice THEN RAISE NOTICE ' search "%"', words[at_]; END IF;
         FOR _kw IN (
             SELECT * FROM fr.laposte_address_keyword k
             WHERE
