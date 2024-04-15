@@ -41,8 +41,35 @@ END
 $proc$ LANGUAGE plpgsql;
 
 DO $$
+DECLARE
+    _query TEXT;
 BEGIN
     -- manage indexes
     CALL fr.set_laposte_address_housenumber_index();
+
+    -- create views
+    _query := '
+        SELECT
+            -- HOUSENUMBER
+              dict.id
+            , dict.number
+            , dict.extension
+            , dict.occurs
+
+            -- ADDRESS
+            , address.co_cea_determinant AS co_adr
+            , address.co_cea_za AS co_adr_za
+            , address.co_cea_voie AS co_adr_voie
+        FROM
+            fr.laposte_address_housenumber_uniq dict
+                JOIN fr.laposte_address_housenumber_reference ref ON dict.id = ref.number_id
+                JOIN fr.laposte_address address ON address.co_cea_determinant = ref.address_id
+    ';
+    DROP VIEW IF EXISTS fr.housenumber_dict_view CASCADE;
+    EXECUTE CONCAT_WS(
+        ' '
+        , 'CREATE VIEW fr.housenumber_dict_view AS'
+        , _query
+    );
 END
 $$;

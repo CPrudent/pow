@@ -129,5 +129,37 @@ BEGIN
         , _query
         , 'WHERE complement.fl_active AND complement.fl_diffusable'
     );
+
+    _query := '
+        SELECT
+            -- COMPLEMENT
+              dict.id
+            , dict.name
+            , dict.descriptors
+            , dict.as_words
+            , dict.as_groups
+            , dict.name_normalized
+            , dict.descriptors_normalized
+            , dict.as_words_normalized
+            , dict.occurs
+            , dict.words
+            , dict.nwords
+
+            -- ADDRESS
+            , address.co_cea_determinant AS co_adr
+            , address.co_cea_za AS co_adr_za
+            , address.co_cea_voie AS co_adr_voie
+            , address.co_cea_numero AS co_adr_numero
+        FROM
+            fr.laposte_address_complement_uniq dict
+                JOIN fr.laposte_address_complement_reference ref ON dict.id = ref.name_id
+                JOIN fr.laposte_address address ON address.co_cea_determinant = ref.address_id
+    ';
+    DROP VIEW IF EXISTS fr.complement_dict_view CASCADE;
+    EXECUTE CONCAT_WS(
+        ' '
+        , 'CREATE VIEW fr.complement_dict_view AS'
+        , _query
+    );
 END
 $$;

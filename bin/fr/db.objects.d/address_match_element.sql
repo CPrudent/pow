@@ -88,19 +88,18 @@ BEGIN
                     , CASE _level
                         WHEN 'AREA' THEN 'NULL::VARCHAR'
                         ELSE 'mc.match_code_parent'
-                        END
-                    , ' match_code_parent '
+                        END, ' match_code_parent '
                     , CASE _level
                         WHEN 'AREA' THEN 'NULL::fr.matched_element'
                         ELSE 'me.matched_element'
-                        END
-                    , ' matched_parent
+                        END, ' matched_parent
                         , (SELECT standardized_address
                             FROM fr.address_match_result
                             WHERE id_request = $1
                             AND
                             (standardized_address).match_code_', LOWER(_level), ' =
-                            mc.match_code_element LIMIT 1
+                            mc.match_code_element
+                            LIMIT 1
                         ) standardized_address
                     FROM
                         fr.address_match_code mc
