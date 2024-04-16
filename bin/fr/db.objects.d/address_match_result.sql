@@ -94,6 +94,22 @@ CREATE TABLE IF NOT EXISTS fr.address_match_result (
 CREATE UNIQUE INDEX IF NOT EXISTS iux_address_match_normalize_id ON fr.address_match_result(id);
 CREATE UNIQUE INDEX IF NOT EXISTS ix_address_match_result_ids ON fr.address_match_result(id_request, id_address);
 
+-- get value from standardized_address record
+SELECT drop_all_functions_if_exists('fr', '_get_value_from_standardized_address');
+CREATE OR REPLACE FUNCTION fr._get_value_from_standardized_address(
+      standardized_address IN fr.standardized_address
+    , key IN VARCHAR
+    , value OUT VARCHAR
+)
+AS
+$func$
+BEGIN
+    EXECUTE CONCAT('SELECT $1.', key)
+        INTO value
+        USING standardized_address;
+END
+$func$ LANGUAGE plpgsql;
+
 /* NOTE
 standardize addresses
 here goal is to standardize address (upcase, w/o abbr, ...) before matching step

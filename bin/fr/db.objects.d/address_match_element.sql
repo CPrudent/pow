@@ -85,14 +85,32 @@ BEGIN
                         mc.level
                         , mc.match_code_element
                         , '
+                    , CASE _step
+                        WHEN 1 THEN
+                            CONCAT('(SELECT
+                                ARRAY[
+                                    (standardized_address).match_code_area
+                                    , (standardized_address).match_code_street
+                                    , (standardized_address).match_code_housenumber
+                                    , (standardized_address).match_code_complement
+                                ]
+                                FROM fr.address_match_result
+                                WHERE id_request = $1
+                                AND
+                                (standardized_address).match_code_', LOWER(_level), ' =
+                                mc.match_code_element
+                                LIMIT 1
+                            )')
+                        ELSE
+                            CASE _level
+                                WHEN 'AREA' THEN 'ARRAY[NULL]::VARCHAR[]'
+                                ELSE 'ARRAY[mc.match_code_parent]'
+                                END
+                        END, ' match_code_parents, '
                     , CASE _level
-                        WHEN 'AREA' THEN 'NULL::VARCHAR'
-                        ELSE 'mc.match_code_parent'
-                        END, ' match_code_parent '
-                    , CASE _level
-                        WHEN 'AREA' THEN 'NULL::fr.matched_element'
-                        ELSE 'me.matched_element'
-                        END, ' matched_parent
+                        WHEN 'AREA' THEN 'ARRAY[NULL]'
+                        ELSE 'ARRAY[me.matched_element]'
+                        END, '::fr.matched_element[] matched_parents
                         , (SELECT standardized_address
                             FROM fr.address_match_result
                             WHERE id_request = $1
@@ -156,8 +174,9 @@ BEGIN
                     -- match element
                     _record := fr.match_element(
                           level => _element.level
+                        , step => _step
                         , standardized_address => _element.standardized_address
-                        , matched_parent => _element.matched_parent
+                        , matched_parents => _element.matched_parents
                         , parameters => _parameters
                     );
 

@@ -850,6 +850,25 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+-- level-address subscript
+SELECT drop_all_functions_if_exists('fr', 'get_subscript_of_level_address');
+CREATE OR REPLACE FUNCTION fr.get_subscript_of_level_address(
+    level IN VARCHAR
+    , subscript OUT INT
+)
+AS
+$func$
+BEGIN
+    subscript := CASE UPPER(level)
+        WHEN 'AREA' THEN 1
+        WHEN 'STREET' THEN 2
+        WHEN 'HOUSENUMBER' THEN 3
+        WHEN 'COMPLEMENT' THEN 4
+        END
+    ;
+END
+$func$ LANGUAGE plpgsql;
+
 -- complement-descriptors subscript of group : [G1, G2, G3]
 SELECT drop_all_functions_if_exists('fr', 'get_subscript_of_descriptor');
 CREATE OR REPLACE FUNCTION fr.get_subscript_of_descriptor(
