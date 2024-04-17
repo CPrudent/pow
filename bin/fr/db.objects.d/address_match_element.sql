@@ -57,6 +57,7 @@ DECLARE
     _query TEXT;
     _element RECORD;
     _record RECORD;
+    _i INT;
 BEGIN
     SELECT is_match_element, parameters
     INTO _is_match_element, _parameters
@@ -89,7 +90,7 @@ BEGIN
                         WHEN 1 THEN
                             CONCAT('(SELECT
                                 ARRAY[
-                                    (standardized_address).match_code_area
+                                      (standardized_address).match_code_area
                                     , (standardized_address).match_code_street
                                     , (standardized_address).match_code_housenumber
                                     , (standardized_address).match_code_complement
@@ -108,9 +109,9 @@ BEGIN
                                 END
                         END, ' match_code_parents, '
                     , CASE _level
-                        WHEN 'AREA' THEN 'ARRAY[NULL]'
-                        ELSE 'ARRAY[me.matched_element]'
-                        END, '::fr.matched_element[] matched_parents
+                        WHEN 'AREA' THEN 'NULL::fr.matched_element'
+                        ELSE 'me.matched_element'
+                        END, ' matched_parent
                         , (SELECT standardized_address
                             FROM fr.address_match_result
                             WHERE id_request = $1
@@ -176,30 +177,52 @@ BEGIN
                           level => _element.level
                         , step => _step
                         , standardized_address => _element.standardized_address
-                        , matched_parents => _element.matched_parents
+                        , matched_parent => _element.matched_parent
                         , parameters => _parameters
                     );
 
-                    -- new matched element w/ its match code
+                    -- matched element
                     INSERT INTO fr.address_match_element(
-                        level
+                          level
                         , match_code
                         , matched_element
                     )
                     VALUES(
-                        _element.level
+                          _element.level
                         , _element.match_code_element
                         , _record.matched_element
                     )
                     ;
 
-                    IF _record.update_parent THEN
-                        UPDATE fr.address_match_element SET
-                            matched_element = _record.matched_parent
-                            WHERE
-                                match_code = _element.match_code_parent
+                    FOR _i IN 1 .. COALESCE(ARRAY_LENGTH(_record.matched_parents, 1), 0)
+                    LOOP
+                        -- update parent
+                        IF _step = 2 THEN
+                            UPDATE fr.address_match_element SET
+                                matched_element = _record.matched_parents[1]
+                                WHERE
+                                    match_code = _element.match_code_parents[1]
+                                ;
+                        ELSE
+                            -- eventually none (complement on street, w/o housenumber)
+                            IF _record.matched_parents[_i] IS NULL THEN
+                                CONTINUE;
+                            END IF;
+
+                            -- matched parent
+                            INSERT INTO fr.address_match_element(
+                                  level
+                                , match_code
+                                , matched_element
+                            )
+                            VALUES(
+                                  _levels[_i]
+                                , _element.match_code_parents[_i]
+                                , _record.matched_parents[_i]
+                            )
                             ;
-                    END IF;
+                        END IF;
+                    END LOOP;
 
                     _nrows := nrows +1;
                 END LOOP;

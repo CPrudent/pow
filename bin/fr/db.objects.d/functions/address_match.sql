@@ -177,9 +177,9 @@ BEGIN
     query_match := CASE
         WHEN level = 'AREA' AND parameters & 1 = 0 THEN
             /* NOTE
-            $1 municipality_code
-            $2 municipality_name
-            $3 municipality_old_name
+            $1 municipality code
+            $2 municipality name
+            $3 municipality old name
             $4 postcode
             */
             CONCAT(
@@ -272,10 +272,25 @@ BEGIN
                         '
                     END
             )
+            /* NOTE
+            $1 area code(s)
+            $2 street name
+            */
         WHEN level = 'STREET' AND (
             (parameters & 1 = 0) OR (parameters & 2 = 0)
             ) THEN
-            'TODO'
+            CASE search
+                WHEN 'STRICT' THEN
+                    '
+                    SELECT ARRAY_AGG(co_adr)
+                    FROM fr.street_dict_view
+                    WHERE
+                        name = $2
+                        AND
+                        co_adr_za = ANY($1)
+                    '
+                ELSE
+                END
         WHEN level = 'STREET' AND parameters & 2 = 2 THEN
             'TODO'
         END
@@ -294,10 +309,10 @@ CREATE OR REPLACE FUNCTION fr.match_element(
       level IN VARCHAR
     , step IN INT
     , standardized_address IN fr.standardized_address
-    , matched_parents INOUT fr.matched_element[]
+    , matched_parent IN fr.matched_element
     , parameters IN HSTORE DEFAULT NULL
     , raise_notice IN BOOLEAN DEFAULT FALSE
-    , update_parent OUT BOOLEAN
+    , matched_parents OUT fr.matched_element[]
     , matched_element OUT fr.matched_element
 )
 AS
@@ -320,7 +335,6 @@ DECLARE
     _ext VARCHAR;
     _timestamp TIMESTAMP := clock_timestamp();
 BEGIN
-    update_parent := FALSE;
     -- level w/ uncommon item
     IF step = 1 THEN
         _query_parameters := _query_parameters | 1;
