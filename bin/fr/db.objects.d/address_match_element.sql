@@ -210,17 +210,22 @@ BEGIN
                             END IF;
 
                             -- matched parent
-                            INSERT INTO fr.address_match_element(
-                                  level
-                                , match_code
-                                , matched_element
-                            )
-                            VALUES(
-                                  _levels[_i]
-                                , _element.match_code_parents[_i]
-                                , _record.matched_parents[_i]
-                            )
-                            ;
+                            IF NOT EXISTS(SELECT 1
+                                FROM fr.address_match_element
+                                WHERE match_code = _element.match_code_parents[_i]
+                            ) THEN
+                                INSERT INTO fr.address_match_element(
+                                    level
+                                    , match_code
+                                    , matched_element
+                                )
+                                VALUES(
+                                    _levels[_i]
+                                    , _element.match_code_parents[_i]
+                                    , _record.matched_parents[_i]
+                                )
+                                ;
+                            END IF;
                         END IF;
                     END LOOP;
 

@@ -161,6 +161,7 @@ parameters
     1 w/ uncommon
     2 uniq uncommon
     3 w/ postcode
+    4 w/ multiple element (of uncommon)
  */
 SELECT drop_all_functions_if_exists('fr', 'get_query_match');
 CREATE OR REPLACE FUNCTION fr.get_query_match(
@@ -171,11 +172,65 @@ CREATE OR REPLACE FUNCTION fr.get_query_match(
 )
 AS
 $func$
+DECLARE
+    _level_up VARCHAR := UPPER(level);
+    _level_low VARCHAR := LOWER(level);
+    _where_area VARCHAR;
+    _columns VARCHAR;
 BEGIN
-    level := UPPER(level);
     search := UPPER(search);
+    _where_area := CONCAT(
+        '
+        -- municipality code (if defined)
+        (
+            ($1 IS NULL)
+            OR
+            (area.co_insee_commune = $1)
+        )
+        '
+        , CASE
+            -- w/ postcode
+            WHEN parameters & 4 = 4 THEN
+                '
+                -- postcode (if defined)
+                AND (
+                    ($4 IS NULL)
+                    OR
+                    (area.co_postal = $4)
+                )
+                '
+            END
+        , CASE search
+            WHEN 'STRICT' THEN
+                '
+                -- municipality name (if defined and not defined code)
+                AND (
+                    ($1 IS NOT NULL)
+                    OR
+                    ($2 IS NULL)
+                    OR
+                    (area.lb_acheminement = $2)
+                    OR
+                    (area.lb_ligne5 = $2)
+                )
+                -- municipality old name (if defined)
+                AND (
+                    (($3 IS NULL) AND (area.lb_ligne5 IS NULL))
+                    OR
+                    (area.lb_ligne5 = $3)
+                )
+                '
+            END
+        );
+    IF (parameters & 1 = 0) OR (parameters & 2 = 0) THEN
+        _columns := CASE _level_up
+            WHEN 'STREET' THEN 'co_voie, lb_voie'
+            WHEN 'COMPLEMENT' THEN 'co_adr_voie, co_adr_numero, lb_ligne3'
+            END
+            ;
+    END IF;
     query_match := CASE
-        WHEN level = 'AREA' AND parameters & 1 = 0 THEN
+        WHEN _level_up = 'AREA' AND parameters & 1 = 0 THEN
             /* NOTE
             $1 municipality code
             $2 municipality name
@@ -193,7 +248,7 @@ BEGIN
                         '
                     ELSE
                         '
-                        area.co_adr
+                          area.co_adr
                         , area.co_insee_commune
                         , area.co_postal
                         , area.lb_acheminement
@@ -215,45 +270,9 @@ BEGIN
                 FROM
                     fr.area_view area
                 WHERE
-                    -- municipality code (if defined)
-                    (
-                        ($1 IS NULL)
-                        OR
-                        (area.co_insee_commune = $1)
-                    )
-                '
-                , CASE
-                    WHEN parameters & 4 = 4 THEN
-                        '
-                        -- postcode (if defined)
-                        AND (
-                            ($4 IS NULL)
-                            OR
-                            (area.co_postal = $4)
-                        )
-                        '
-                    END
+                ', _where_area
                 , CASE search
-                    WHEN 'STRICT' THEN
-                        '
-                        -- municipality name (if defined and not defined code)
-                        AND (
-                            ($1 IS NOT NULL)
-                            OR
-                            ($2 IS NULL)
-                            OR
-                            (area.lb_acheminement = $2)
-                            OR
-                            (area.lb_ligne5 = $2)
-                        )
-                        -- municipality old name (if defined)
-                        AND (
-                            (($3 IS NULL) AND (area.lb_ligne5 IS NULL))
-                            OR
-                            (area.lb_ligne5 = $3)
-                        )
-                        '
-                    ELSE
+                    WHEN 'NEAR' THEN
                         '
                         ORDER BY
                             GREATEST(
@@ -273,26 +292,176 @@ BEGIN
                     END
             )
             /* NOTE
+            STRICT
             $1 area code(s)
             $2 street name
+
+            NEAR
+            $1 municipality code
+            $2 municipality name
+            $3 municipality old name
+            $4 postcode
+            $5 better word, or (multiple parent) parent address codes
+            $6 words (street name)
+            $7 descriptors
+            $8 limit
             */
-        WHEN level = 'STREET' AND (
+        WHEN (((_level_up = 'STREET') OR (_level_up = 'COMPLEMENT')) AND (
             (parameters & 1 = 0) OR (parameters & 2 = 0)
-            ) THEN
+        )) THEN
             CASE search
                 WHEN 'STRICT' THEN
                     '
-                    SELECT ARRAY_AGG(co_adr)
-                    FROM fr.street_dict_view
+                    SELECT
+                        ARRAY_AGG(co_adr)
+                    FRO
+                        fr.', _level_low, '_dict_view
                     WHERE
                         name = $2
                         AND
-                        co_adr_za = ANY($1)
-                    '
+                    ', CASE _level_up
+                        WHEN 'STREET' THEN 'co_adr_za = ANY($1)'
+                        ELSE '(
+                            (co_adr_voie = ANY($1))
+                            OR
+                            (co_adr_numero = ANY($1))
+                        )'
+                        END
                 ELSE
+                    CONCAT(
+                        '
+                        WITH
+                        potential_elements AS (
+                            SELECT
+                                  a.co_adr
+                                , a.co_adr_za
+                                ', alias_words(_columns, ',[ ]*', 'a'), '
+                                , r.name_id
+                            FROM
+                                fr.', _level_low, '_view a
+                                    JOIN fr.laposte_address_', _level_low, '_reference r ON a.co_adr = r.address_id
+                                    JOIN fr.laposte_address_', _level_low, '_membership m ON r.name_id = m.name_id
+                            WHERE
+                        '
+                        , CASE
+                            WHEN parameters & 8 = 0 THEN
+                                '
+                                m.word = $5
+                                '
+                            -- w/ multiple element (of uncommon)
+                            ELSE
+                                '
+                                a.co_adr = ANY($5)
+                                '
+                            END
+                        , ' AND '
+                        , CASE
+                            -- not uniq uncommon
+                            WHEN parameters & 2 = 0 THEN
+                                '
+                                -- can verify area (known as ZA)
+                                a.co_insee_commune = $1
+                                '
+                            ELSE
+                                _where_area
+                            END
+                        , '
+                        )
+                        , similarity_elements AS (
+                            SELECT
+                                  co_adr
+                                , co_adr_za
+                                ', _columns, '
+                                , fr.get_similarity_words(
+                                      words_a => $6
+                                    , words_b => u.words
+                                    , descriptors_a => $7
+                                    , descriptors_b => u.descriptors
+                                ) similarity
+                            FROM
+                                potential_elements p
+                                    JOIN fr.laposte_address_', _level_low, '_uniq u ON p.name_id = u.id
+                        )
+                        SELECT
+                            *
+                        FROM
+                            similarity_elements
+                        ORDER BY
+                            similarity DESC
+                        LIMIT
+                            $8
+                        '
+                    )
                 END
-        WHEN level = 'STREET' AND parameters & 2 = 2 THEN
-            'TODO'
+        /* NOTE
+        $1 uniq uncommon
+        */
+        WHEN _level_up = 'STREET' AND parameters & 2 = 2 THEN
+            '
+            SELECT
+                  d.co_adr
+                , d.co_adr_za
+            FROM
+                fr.laposte_address_street_membership m
+                    JOIN fr.laposte_address_street_reference r ON m.name_id = r.name_id
+                    JOIN fr.street_dict_view d ON r.name_id = d.id
+            WHERE
+                m.word = $1
+            '
+        /* NOTE
+        $1 uncommon word
+        */
+        WHEN _level_up = 'COMPLEMENT' AND parameters & 2 = 2 THEN
+            '
+            SELECT
+                  d.co_adr
+                , d.co_adr_za
+                , d.co_adr_voie
+                , d.co_adr_numero
+            FROM
+                fr.laposte_address_complement_membership m
+                    JOIN fr.laposte_address_complement_reference r ON m.name_id = r.name_id
+                    JOIN fr.complement_dict_view d ON r.name_id = d.id
+            WHERE
+                m.word = $1
+            '
+        /* NOTE
+        $1 address code parent
+        $2 housenumber
+        $3 extension (STRICT, else abbreviated as NEAR)
+        */
+        WHEN _level_up = 'HOUSENUMBER' AND parameters & 1 = 0 THEN
+            '
+            SELECT
+                ARRAY_AGG(co_adr)
+            FROM
+                fr.address_view
+            WHERE
+                co_adr_parent = $1
+                AND
+                co_adr_l3 IS NULL
+                AND
+                no_numero = $2
+                AND (
+                    ($3 IS NULL)
+                    OR
+                    (lb_extension_numero = $3)
+                )
+            '
+        /* NOTE
+        $1 housenumber id (uniq uncommon)
+        */
+        WHEN _level_up = 'HOUSENUMBER' AND parameters & 1 = 1 THEN
+            '
+            SELECT
+                  co_adr
+                , co_adr_za
+                , co_adr_voie
+            FROM
+                fr.housenumber_dict_view
+            WHERE
+                id = $1
+            '
         END
         ;
 END
