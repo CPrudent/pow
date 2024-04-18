@@ -156,7 +156,7 @@ END
 $func$ LANGUAGE plpgsql;
 
 /*
-get query for matching area
+get query for matching element
 parameters
     1 w/ uncommon
     2 uniq uncommon
@@ -178,7 +178,6 @@ DECLARE
     _where_area VARCHAR;
     _columns VARCHAR;
 BEGIN
-    search := UPPER(search);
     _where_area := CONCAT(
         '
         -- municipality code (if defined)
@@ -224,8 +223,8 @@ BEGIN
         );
     IF (parameters & 1 = 0) OR (parameters & 2 = 0) THEN
         _columns := CASE _level_up
-            WHEN 'STREET' THEN 'co_voie, lb_voie'
-            WHEN 'COMPLEMENT' THEN 'co_adr_voie, co_adr_numero, lb_ligne3'
+            WHEN 'STREET' THEN 'co_voie'
+            WHEN 'COMPLEMENT' THEN 'co_adr_voie, co_adr_numero'
             END
             ;
     END IF;
@@ -244,7 +243,7 @@ BEGIN
                 , CASE search
                     WHEN 'STRICT' THEN
                         '
-                        ARRAY_AGG(area.co_adr)
+                        ARRAY_AGG(area.co_adr) codes_address
                         '
                     ELSE
                         '
@@ -293,8 +292,8 @@ BEGIN
             )
             /* NOTE
             STRICT
-            $1 area code(s)
-            $2 street name
+            $1 parent code(s)
+            $2 name
 
             NEAR
             $1 municipality code
@@ -302,7 +301,7 @@ BEGIN
             $3 municipality old name
             $4 postcode
             $5 better word, or (multiple parent) parent address codes
-            $6 words (street name)
+            $6 words (name)
             $7 descriptors
             $8 limit
             */
@@ -311,23 +310,31 @@ BEGIN
         )) THEN
             CASE search
                 WHEN 'STRICT' THEN
-                    '
-                    SELECT
-                        ARRAY_AGG(co_adr)
-                    FRO
-                        fr.', _level_low, '_dict_view
-                    WHERE
-                        name = $2
-                        AND
-                    ', CASE _level_up
-                        WHEN 'STREET' THEN 'co_adr_za = ANY($1)'
-                        ELSE '(
-                            (co_adr_voie = ANY($1))
-                            OR
-                            (co_adr_numero = ANY($1))
-                        )'
-                        END
+                    CONCAT(
+                        '
+                        SELECT
+                            ARRAY_AGG(co_adr) codes_address
+                        FROM
+                            fr.', _level_low, '_dict_view
+                        WHERE
+                            name = $2
+                            AND
+                        ', CASE _level_up
+                            WHEN 'STREET' THEN 'co_adr_za = ANY($1)'
+                            ELSE '(
+                                (co_adr_voie = ANY($1))
+                                OR
+                                (co_adr_numero = ANY($1))
+                            )'
+                            END
+                    )
                 ELSE
+                    /* NOTE
+                    STREET (limit)
+                    same street can be delivered by many areas (postcode, district, ...)
+                    to the maximum it exists a street w/ 3 areas!
+                    this loop aims to find gap between two successive streets, so 3 +1
+                     */
                     CONCAT(
                         '
                         WITH
@@ -335,6 +342,7 @@ BEGIN
                             SELECT
                                   a.co_adr
                                 , a.co_adr_za
+                                , a.name
                                 ', alias_words(_columns, ',[ ]*', 'a'), '
                                 , r.name_id
                             FROM
@@ -372,6 +380,7 @@ BEGIN
                                   co_adr
                                 , co_adr_za
                                 ', _columns, '
+                                , name
                                 , fr.get_similarity_words(
                                       words_a => $6
                                     , words_b => u.words
@@ -426,14 +435,14 @@ BEGIN
                 m.word = $1
             '
         /* NOTE
-        $1 address code parent
+        $1 parent code
         $2 housenumber
         $3 extension (STRICT, else abbreviated as NEAR)
         */
         WHEN _level_up = 'HOUSENUMBER' AND parameters & 1 = 0 THEN
             '
             SELECT
-                ARRAY_AGG(co_adr)
+                ARRAY_AGG(co_adr) codes_address
             FROM
                 fr.address_view
             WHERE
@@ -467,69 +476,103 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
--- match element (of address) w/ referential
-/* NOTE
-HSTORE parameters to custom properties, as:
-'"AREA_THRESHOLD" => 0.6, "STREET_THRESHOLD" => 0.75, "STREET_RATIO" => 0.2'::HSTORE
-defaults are defined as global variables, view constant.sql
- */
-SELECT drop_all_functions_if_exists('fr', 'match_element');
-CREATE OR REPLACE FUNCTION fr.match_element(
+SELECT drop_all_functions_if_exists('fr', 'exec_query_match');
+CREATE OR REPLACE FUNCTION fr.exec_query_match(
       level IN VARCHAR
-    , step IN INT
+    , search IN VARCHAR
+    , parameters IN INT
     , standardized_address IN fr.standardized_address
-    , matched_parent IN fr.matched_element
-    , parameters IN HSTORE DEFAULT NULL
-    , raise_notice IN BOOLEAN DEFAULT FALSE
-    , matched_parents OUT fr.matched_element[]
-    , matched_element OUT fr.matched_element
+    , match_parameters IN fr.match_parameters
 )
+RETURNS SETOF RECORD
 AS
 $func$
 DECLARE
-    _SEARCHS VARCHAR[] := ARRAY['STRICT', 'NEAR'];
-    _limits_by_level INT[4] := ARRAY[2, 4, 0, 2];
-    _similarity_threshold REAL;
-    _similarity_ratio REAL;
-    _element_ratio REAL;
-    _search VARCHAR;
-    _todo BOOLEAN;
     _query TEXT;
-    _query_parameters INT := 0;
-    _word TEXT;
-    _element_current RECORD;
-    _element_previous RECORD;
-    _with_near BOOLEAN := TRUE;
-    _abbr VARCHAR;
-    _ext VARCHAR;
-    _timestamp TIMESTAMP := clock_timestamp();
 BEGIN
-    -- level w/ uncommon item
-    IF step = 1 THEN
-        _query_parameters := _query_parameters | 1;
-        IF (
-            (fr._get_value_from_standardized_address(
-                  standardized_address => standardized_address
-                , key => CONCAT(LOWER(level), '_uncommon_occur')
-            ))::INT = 1
-        ) THEN
-            _query_parameters := _query_parameters | 2;
+    _query := fr.get_query_match(
+          level => level
+        , search => _search
+        , parameters => parameters
+    );
+
+    IF level = 'AREA' AND parameters & 1 = 0 THEN
+        RETURN QUERY EXECUTE _query USING
+              (standardized_address).municipality_code
+            , (standardized_address).municipality_name
+            , (standardized_address).municipality_old_name
+            , (standardized_address).postcode
+            ;
+    ELSIF (((level = 'STREET') OR (level = 'COMPLEMENT')) AND (
+            (parameters & 1 = 0) OR (parameters & 2 = 0))) THEN
+        IF search = 'STRICT' THEN
+            RETURN QUERY EXECUTE _query USING
+                  (match_parameters).codes_address
+                , fr._get_value_from_standardized_address(
+                      standardized_address => standardized_address
+                    , key => CONCAT(LOWER(level), '_name')
+                )
+                ;
+        ELSE
+            RETURN QUERY EXECUTE _query USING
+                  (standardized_address).municipality_code
+                , (standardized_address).municipality_name
+                , (standardized_address).municipality_old_name
+                , (standardized_address).postcode
+                , CASE
+                    WHEN parameters & 8 = 0 THEN
+                        word
+                    -- w/ multiple element (of uncommon)
+                    ELSE
+                        (match_parameters).codes_address
+                    END
+                , fr._get_value_from_standardized_address(
+                      standardized_address => standardized_address
+                    , key => CONCAT(LOWER(level), '_words')
+                )
+                , fr._get_value_from_standardized_address(
+                      standardized_address => standardized_address
+                    , key => CONCAT(LOWER(level), '_descriptors')
+                )
+                , (match_parameters).limit
+                ;
         END IF;
-        -- not uniq
-        IF _query_parameters & 2 = 0 THEN
-        END IF;
+    ELSIF (((level = 'STREET') OR (level = 'COMPLEMENT')) AND (parameters & 2 = 2)) THEN
+        RETURN QUERY EXECUTE _query USING
+            (match_parameters).word
+            ;
+    ELSIF level = 'HOUSENUMBER' AND parameters & 1 = 0 THEN
+        RETURN QUERY EXECUTE _query USING
+              (match_parameters).codes_address[1]
+            , (standardized_address).housenumber
+            , CASE search
+                WHEN 'STRICT' THEN (standardized_address).extension
+                ELSE (match_parameters).abbreviated_extension
+                END
+            ;
+    ELSIF level = 'HOUSENUMBER' AND parameters & 1 = 1 THEN
+        RETURN QUERY EXECUTE _query USING
+            (match_parameters).uncommon_id
+            ;
     ELSE
+        RAISE 'exec_query_match: usecase not defined!';
     END IF;
+END
+$func$ LANGUAGE plpgsql;
 
-
-    matched_element.elapsed_time := clock_timestamp() - _timestamp;
-
-    /*
-    IF level = 'AREA' THEN
-        _SEARCHS := ARRAY_APPEND(_SEARCHS, 'NEAR_WO_POSTCODE');
-        FOREACH _search IN ARRAY _SEARCHS
-        LOOP
-            _todo := CASE _search
+SELECT drop_all_functions_if_exists('fr', 'is_match_todo');
+CREATE OR REPLACE FUNCTION fr.is_match_todo(
+      level IN VARCHAR
+    , search IN VARCHAR
+    , standardized_address IN fr.standardized_address
+    , is_todo OUT BOOLEAN
+)
+AS
+$func$
+BEGIN
+    is_todo := CASE level
+        WHEN 'AREA' THEN
+            CASE search
                 WHEN 'STRICT' THEN
                     (
                         (standardized_address).municipality_code IS NOT NULL
@@ -553,57 +596,570 @@ BEGIN
                     ((
                             (standardized_address).municipality_code IS NOT NULL
                             OR
-                            ((standardized_address).municipality_name IS NOT NULL)
+                            (standardized_address).municipality_name IS NOT NULL
                             OR
-                            ((standardized_address).municipality_old_name IS NOT NULL)
+                            (standardized_address).municipality_old_name IS NOT NULL
                         )
                         AND
                         ((standardized_address).postcode IS NOT NULL)
                     )
-            END;
+            END
+        WHEN 'STREET' THEN
+            (standardized_address).street_name IS NOT NULL
+        WHEN 'HOUSENUMBER' THEN
+            (standardized_address).housenumber IS NOT NULL
+        WHEN 'COMPLEMENT' THEN
+            (standardized_address).complement_name IS NOT NULL
+        END
+        ;
+END
+$func$ LANGUAGE plpgsql;
 
-            IF _todo THEN
-                _query := fr.get_query_match(
-                    search => _search
-                    , with_postcode => CASE _search WHEN 'NEAR_WO_POSTCODE' THEN FALSE ELSE TRUE END
+SELECT drop_all_functions_if_exists('fr', 'notice_match_info');
+SELECT drop_all_functions_if_exists('fr', 'notice_match');
+CREATE OR REPLACE PROCEDURE fr.notice_match(
+      level IN VARCHAR
+    , search IN VARCHAR
+    , standardized_address IN fr.standardized_address
+    , usecase IN VARCHAR
+    , current IN RECORD
+    , ratio IN REAL DEFAULT 1
+    , raise_notice IN BOOLEAN DEFAULT TRUE
+)
+AS
+$proc$
+DECLARE
+    _notice VARCHAR;
+BEGIN
+    IF raise_notice THEN
+        _notice := CASE
+            WHEN usecase = level THEN
+                CASE level
+                    WHEN 'AREA' THEN
+                        FORMAT('%s: MUNICIPALITY(%s) OLD(%s) POSTCODE(%s) NAME(%s)'
+                            , level
+                            , (standardized_address).municipality_code
+                            , (standardized_address).municipality_old_name
+                            , (standardized_address).postcode
+                            , (standardized_address).municipality_name
+                        )
+                    WHEN 'STREET' THEN
+                        FORMAT('%s: MUNICIPALITY(%s) NAME(%s)'
+                            , level
+                            , (standardized_address).municipality_code
+                            , (standardized_address).street_name
+                        )
+                    WHEN 'HOUSENUMBER' THEN
+                        FORMAT('%s: MUNICIPALITY(%s) NUMBER(%s) EXTENSION(%s)'
+                            , level
+                            , (standardized_address).municipality_code
+                            , (standardized_address).housenumber
+                            , (standardized_address).extension
+                        )
+                    WHEN 'COMPLEMENT' THEN
+                        FORMAT('%s: MUNICIPALITY(%s) NAME(%s)'
+                            , level
+                            , (standardized_address).municipality_code
+                            , (standardized_address).complement_name
+                        )
+                    END
+            WHEN usecase = '1ST_NOT_NEAR_1' THEN
+                FORMAT('%s: first choice too low NAME(%s) [SIMILARITY=%s]'
+                    , level
+                    , (current).lb_acheminement
+                    , ROUND(current.similarity_1, 5)
+                )
+            WHEN usecase = '1ST_NOT_NEAR_2' THEN
+                FORMAT('%s: first choice too low OLD_NAME(%s) [SIMILARITY=%s]'
+                    , level
+                    , (current).lb_ligne5
+                    , ROUND(current.similarity_2, 5)
+                )
+            WHEN usecase = '1ST_NOT_NEAR' THEN
+                FORMAT('%s: first choice too low NAME(%s) [SIMILARITY=%s]'
+                    , level
+                    , (current).name
+                    , ROUND(current.similarity, 5)
+                )
+            WHEN usecase = '1ST_OK_1' THEN
+                FORMAT('%s: first choice ok NAME(%s) [SIMILARITY=%s]'
+                    , level
+                    , (current).lb_acheminement
+                    , ROUND(current.similarity_1, 5)
+                )
+            WHEN usecase = '1ST_OK_2' THEN
+                FORMAT('%s: first choice ok OLD_NAME(%s) [SIMILARITY=%s]'
+                    , level
+                    , (current).lb_ligne5
+                    , ROUND(current.similarity_2, 5)
+                )
+            WHEN usecase = '1ST_OK' THEN
+                FORMAT('%s: first choice ok NAME(%s) [SIMILARITY=%s]'
+                    , level
+                    , (current).name
+                    , ROUND(current.similarity, 5)
+                )
+            WHEN usecase = '2ND_SAME_CODE' THEN
+                FORMAT('%s: second choice same CODE(%s) [ADDRESS=%s]'
+                    , level
+                    , (current).co_voie
+                    , (current).co_adr
+                )
+            WHEN usecase = '2ND_TOO_SIMILAR_1' THEN
+                FORMAT('%s: second choice too similar NAME(%s) [SIMILARITY=%s,RATIO=%s]'
+                    , level
+                    , (current).lb_acheminement
+                    , ROUND(current.similarity_1, 5)
+                    , ROUND(ratio, 2)
+                )
+            WHEN usecase = '2ND_TOO_SIMILAR_2' THEN
+                FORMAT('%s: second choice too similar OLD_NAME(%s) [SIMILARITY=%s,RATIO=%s]'
+                    , level
+                    , (current).lb_ligne5
+                    , ROUND(current.similarity_2, 5)
+                    , ROUND(ratio, 2)
+                )
+            WHEN usecase = '2ND_TOO_SIMILAR' THEN
+                FORMAT('%s: second choice too similar NAME(%s) [SIMILARITY=%s,RATIO=%s]'
+                    , level
+                    , (current).name
+                    , ROUND(current.similarity, 5)
+                    , ROUND(ratio, 2)
+                )
+            WHEN usecase = '2ND_OK_1' THEN
+                FORMAT('%s: second choice ok NAME(%s) [SIMILARITY=%s,RATIO=%s]'
+                    , level
+                    , (current).name
+                    , ROUND(current.similarity_1, 5)
+                    , ROUND(ratio, 2)
+                )
+            WHEN usecase = '2ND_OK_2' THEN
+                FORMAT('%s: second choice ok NAME(%s) [SIMILARITY=%s,RATIO=%s]'
+                    , level
+                    , (current).name
+                    , ROUND(current.similarity_2, 5)
+                    , ROUND(ratio, 2)
+                )
+            WHEN usecase = '2ND_OK' THEN
+                FORMAT('%s: second choice ok NAME(%s) [SIMILARITY=%s,RATIO=%s]'
+                    , level
+                    , (current).name
+                    , ROUND(current.similarity, 5)
+                    , ROUND(ratio, 2)
+                )
+            END
+            ;
+        RAISE NOTICE ' %', _notice;
+    END IF;
+END
+$proc$ LANGUAGE plpgsql;
+
+SELECT drop_all_functions_if_exists('fr', 'analyze_matched_elements');
+CREATE OR REPLACE FUNCTION fr.analyze_matched_elements(
+      level IN VARCHAR
+    , search IN VARCHAR
+    , standardized_address IN fr.standardized_address
+    , matched_parent IN fr.matched_element
+    , current IN RECORD
+    , previous IN RECORD
+    , similarity_threshold IN REAL DEFAULT 0.5
+    , similarity_ratio IN REAL DEFAULT 0.5
+    , raise_notice IN BOOLEAN DEFAULT FALSE
+    , matched_parents OUT fr.matched_element[]
+    , matched_element OUT fr.matched_element
+)
+AS
+$func$
+DECLARE
+    _element_ratio REAL;
+BEGIN
+    IF search = 'STRICT' THEN
+        matched_element.codes_address := current.codes_address;
+        matched_element := fr.match_element_status(
+              search => search
+            , matched_element => matched_element
+        );
+    ELSE
+        IF (previous IS NULL) THEN
+            CALL fr.notice_match(
+                  level => level
+                , search => search
+                , standardized_address => standardized_address
+                , usecase => level
+                , current => current
+            );
+            IF ((
+                    (level = 'AREA')
+                    AND
+                    (COALESCE(current.similarity_1, 0) < similarity_threshold)
+                    AND
+                    (COALESCE(current.similarity_2, 0) < similarity_threshold)
+                ) OR (
+                    (level != 'AREA')
+                    AND
+                    (COALESCE(current.similarity, 0) < similarity_threshold)
+                )
+            ) THEN
+                CALL fr.notice_match(
+                      level => level
+                    , search => search
+                    , standardized_address => standardized_address
+                    , usecase => CASE
+                        WHEN level = 'AREA' AND standardized_address.municipality_name IS NOT NULL AND current.similarity_1 < similarity_threshold THEN
+                            '1ST_NOT_NEAR_1'
+                        WHEN level = 'AREA' AND standardized_address.municipality_old_name IS NOT NULL AND current.similarity_2 < similarity_threshold THEN
+                            '1ST_NOT_NEAR_2'
+                        ELSE '1ST_NOT_NEAR'
+                        END
+                    , current => current
                 );
-
-                IF _search != 'STRICT' AND _similarity_threshold IS NULL THEN
-                    /* NOTE
-                    similarity w/ low value (default to 0.5) to match:
-                    ('ST MEDARD', 'ST MEDARD EN JALLES')
-                     */
-                    _similarity_threshold := fr.get_parameter_value(
-                        parameters => parameters
-                        , category => 'similarity'
-                        , level => level
-                        , key => 'THRESHOLD'
-                    );
-                    --SET pg_trgm.similarity_threshold = _similarity_threshold;
-                    _similarity_threshold := set_limit(_similarity_threshold);
+                matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.not_near'));
+            ELSE
+                CALL fr.notice_match(
+                      level => level
+                    , search => search
+                    , standardized_address => standardized_address
+                    , usecase => '1ST_OK'
+                    , current => current
+                );
+                matched_element.codes_address := ARRAY[current.co_adr]::VARCHAR[];
+                matched_element.similarity_1 := CASE
+                    WHEN level = 'AREA' THEN current.similarity_1
+                    ELSE current.similarity
+                    END;
+                IF level = 'AREA' AND standardized_address.municipality_old_name IS NOT NULL THEN
+                    matched_element.similarity_2 := current.similarity_2;
                 END IF;
 
-                EXECUTE _query
-                    INTO matched_element.codes_address
-                    USING
-                        (standardized_address).municipality_code
-                        , (standardized_address).municipality_name
-                        , (standardized_address).municipality_old_name
-                        , (standardized_address).postcode
-                        , _similarity_threshold
+                /* TODO STREET, else ...
+                IF (current.co_adr_za != matched_parent.codes_address[1]) THEN
+                    RAISE NOTICE ' mais sur ZA différente (%/%)'
+                        , current.co_adr_za
+                        , matched_parent.codes_address
                     ;
-
-                matched_element := fr.match_element_status(
-                    search => _search
-                    , matched_element => matched_element
-                );
-                IF (
-                    matched_element.status != (SELECT (CURRENT_SETTING('fr.address.match.not_found')))
-                ) THEN
-                    EXIT;
+                    matched_parent.codes_address := ARRAY[current.co_adr_za]::VARCHAR[];
+                    matched_element := fr.match_element_status(
+                        search => search
+                        , matched_element => matched_element
+                    );
+                    matched_parent := (
+                        SELECT fr.match_element_status(
+                            search => 'NEAR'
+                            , matched_element => matched_parent
+                        )
+                    );
                 END IF;
+                 */
             END IF;
+        ELSE
+            IF (level = 'STREET'
+                AND
+                previous.co_voie = current.co_voie
+            ) THEN
+                CALL fr.notice_match(
+                      level => level
+                    , search => search
+                    , standardized_address => standardized_address
+                    , usecase => '2ND_SAME_CODE'
+                    , current => current
+                );
+                -- TODO test postcode!
+                matched_element.codes_address := ARRAY_APPEND(matched_element.codes_address, current.co_adr);
+                RETURN;
+            END IF;
+
+            /* NOTE
+            OK if second choice far enough (15%)
+            minimum gap between 2 results ascending when similarity decrease
+            */
+            _element_ratio := (previous.similarity / current.similarity);
+            IF NOT (_element_ratio > similarity_ratio) THEN
+                CALL fr.notice_match(
+                      level => level
+                    , search => search
+                    , standardized_address => standardized_address
+                    , usecase => '2ND_TOO_SIMILAR'
+                    , current => current
+                    , ratio => _element_ratio
+                );
+                matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.too_similar'));
+            ELSE
+                CALL fr.notice_match(
+                      level => level
+                    , search => search
+                    , standardized_address => standardized_address
+                    , usecase => '2ND_OK'
+                    , current => current
+                    , ratio => _element_ratio
+                );
+                matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.near'));
+            END IF;
+        END IF;
+    END IF;
+END
+$func$ LANGUAGE plpgsql;
+
+-- match element (of address) w/ referential
+/* NOTE
+HSTORE parameters to custom properties, as:
+'"AREA_THRESHOLD" => 0.6, "STREET_THRESHOLD" => 0.75, "STREET_RATIO" => 0.2'::HSTORE
+defaults are defined as global variables, view constant.sql
+ */
+SELECT drop_all_functions_if_exists('fr', 'match_element');
+CREATE OR REPLACE FUNCTION fr.match_element(
+      level IN VARCHAR
+    , step IN INT
+    , standardized_address IN fr.standardized_address
+    , matched_parent IN fr.matched_element
+    , parameters IN HSTORE DEFAULT NULL
+    , raise_notice IN BOOLEAN DEFAULT FALSE
+    , matched_parents OUT fr.matched_element[]
+    , matched_element OUT fr.matched_element
+)
+AS
+$func$
+DECLARE
+    _searchs VARCHAR[] := ARRAY['STRICT', 'NEAR'];
+    _search VARCHAR;
+    _limits_by_level INT[4] := ARRAY[2, 4, 0, 2];
+    _similarity_threshold REAL;
+    _similarity_ratio REAL;
+    _query TEXT;
+    _query_parameters INT := 0;
+    _element_current RECORD;
+    _element_previous RECORD;
+    _with_near BOOLEAN := TRUE;
+    _match_parameters fr.match_parameters;
+    _match_result RECORD;
+    _timestamp TIMESTAMP := clock_timestamp();
+BEGIN
+    -- level w/ uncommon item
+    IF step = 1 THEN
+        _query_parameters := _query_parameters | 1;
+        IF (
+            (fr._get_value_from_standardized_address(
+                  standardized_address => standardized_address
+                , key => CONCAT(LOWER(level), '_uncommon_occur')
+            ))::INT = 1
+        ) THEN
+            _query_parameters := _query_parameters | 2;
+        END IF;
+        -- not uniq
+        IF _query_parameters & 2 = 0 THEN
+        END IF;
+    ELSE
+        _query_parameters := _query_parameters | 4;
+        IF level = 'AREA' THEN
+            _searchs := ARRAY_APPEND(_searchs, 'NEAR_WO_POSTCODE');
+        ELSIF level = 'HOUSENUMBER' THEN
+            IF (standardized_address).extension IS NOT NULL THEN
+                _match_parameters.abbreviated_extension := fr.normalize_abbreviate_keyword(
+                    name => (standardized_address).extension
+                    , groups => 'EXT'
+                );
+            END IF;
+            IF _match_parameters.abbreviated_extension IS NULL THEN
+                _searchs := ARRAY_REMOVE(_searchs, 'NEAR');
+            END IF;
+        END IF;
+
+        FOREACH _search IN ARRAY _searchs
+        LOOP
+            IF _search = 'NEAR_WO_POSTCODE' THEN
+                -- XOR better but!
+                _query_parameters := _query_parameters - 4;
+            END IF;
+
+            IF fr.is_match_todo(
+                  level => level
+                , search => _search
+                , standardized_address => standardized_address
+            ) THEN
+                -- near match, set threshold, ratio, better word
+                IF _search != 'STRICT' THEN
+                    IF _similarity_threshold IS NULL THEN
+                        /* NOTE
+                        AREA
+                        similarity w/ low value (default to 0.5) to match:
+                        ('ST MEDARD', 'ST MEDARD EN JALLES')
+                        */
+                        _similarity_threshold := fr.get_parameter_value(
+                            parameters => parameters
+                            , category => 'similarity'
+                            , level => level
+                            , key => 'THRESHOLD'
+                        );
+                        --SET pg_trgm.similarity_threshold = _similarity_threshold;
+                        _similarity_threshold := set_limit(_similarity_threshold);
+
+                        _similarity_ratio := fr.get_parameter_value(
+                            parameters => parameters
+                            , category => 'similarity'
+                            , level => level
+                            , key => 'RATIO'
+                        );
+                    END IF;
+
+                    IF ((level = 'STREET') OR (level = 'COMPLEMENT')) THEN
+                        /* NOTE
+                        retrieve word w/ better similarity and rarity
+                         */
+                        _match_parameters.word := fr.get_better_word_with_similarity_criteria(
+                            words => fr._get_value_from_standardized_address(
+                                standardized_address => standardized_address
+                                , key => CONCAT(LOWER(level), '_words')
+                            )
+                            , level => 'ZA'
+                            , codes => (matched_parent).codes_address
+                            , raise_notice => raise_notice
+                        );
+                        IF _match_parameters.word IS NULL THEN
+                            RAISE NOTICE 'match_element: no better word!';
+                            RAISE NOTICE ' level(%), search(%), data(%)'
+                                , level
+                                , _search
+                                , standardized_address
+                                ;
+                            CONTINUE;
+                        END IF;
+                    END IF;
+                END IF;
+
+                _element_previous := ROW(NULL);
+                matched_element.status := NULL;
+                _query := CONCAT(
+                    '
+                    SELECT * FROM fr.exec_query_match(
+                          level => $1
+                        , search => $2
+                        , parameters => $3
+                        , standardized_address => $4
+                        , match_parameters => $5
+                    ) AS t('
+                    ,
+                    CASE
+                        WHEN level = 'AREA' AND _query_parameters & 1 = 0 THEN
+                            CASE _search
+                                WHEN 'STRICT' THEN
+                                    '
+                                    codes_address CHAR(10)[]
+                                    '
+                                ELSE
+                                    '
+                                      co_adr CHAR(10)
+                                    , co_insee_commune CHAR(5)
+                                    , co_postal CHAR(5)
+                                    , lb_acheminement VARCHAR
+                                    , lb_ligne5 VARCHAR
+                                    , similarity_1 REAL
+                                    , similarity_2 REAL
+                                    '
+                                END
+                        WHEN ((level = 'STREET') AND ((parameters & 1 = 0) OR (parameters & 2 = 0))) THEN
+                            CASE _search
+                                WHEN 'STRICT' THEN
+                                    '
+                                    codes_address CHAR(10)[]
+                                    '
+                                ELSE
+                                    '
+                                      co_adr CHAR(10)
+                                    , co_adr_za CHAR(10)
+                                    , co_voie INT
+                                    , name VARCHAR
+                                    , similarity REAL
+                                    '
+                                END
+                        WHEN ((level = 'COMPLEMENT') AND ((parameters & 1 = 0) OR (parameters & 2 = 0))) THEN
+                            CASE _search
+                                WHEN 'STRICT' THEN
+                                    '
+                                    codes_address CHAR(10)[]
+                                    '
+                                ELSE
+                                    '
+                                      co_adr CHAR(10)
+                                    , co_adr_za CHAR(10)
+                                    , co_adr_voie CHAR(10)
+                                    , co_adr_numero CHAR(10)
+                                    , name VARCHAR
+                                    , similarity REAL
+                                    '
+                                END
+                        WHEN level = 'STREET' AND parameters & 2 = 2 THEN
+                            '
+                              co_adr CHAR(10)
+                            , co_adr_za CHAR(10)
+                            '
+                        WHEN level = 'COMPLEMENT' AND parameters & 2 = 2 THEN
+                            '
+                              co_adr CHAR(10)
+                            , co_adr_za CHAR(10)
+                            , co_adr_voie CHAR(10)
+                            , co_adr_numero CHAR(10)
+                            '
+                        WHEN level = 'HOUSENUMBER' AND parameters & 1 = 0 THEN
+                            '
+                            codes_address CHAR(10)[]
+                            '
+                        WHEN level = 'HOUSENUMBER' AND parameters & 1 = 1 THEN
+                            '
+                              co_adr CHAR(10)
+                            , co_adr_za CHAR(10)
+                            , co_adr_voie CHAR(10)
+                            '
+                        END
+                    , ')'
+                    )
+                    ;
+                FOR _element_current IN EXECUTE _query USING
+                      level
+                    , _search
+                    , _query_parameters
+                    , standardized_address
+                    , _match_parameters
+                LOOP
+                    _match_result := fr.analyze_matched_elements(
+                          level => level
+                        , search => _search
+                        , standardized_address => standardized_address
+                        , matched_parent => matched_parent
+                        , current => _element_current
+                        , previous => _element_previous
+                        , similarity_threshold => _similarity_threshold
+                        , similarity_ratio => _similarity_ratio
+                        , raise_notice => raise_notice
+                    );
+                    matched_parents := _match_result.matched_parents;
+                    matched_element := _match_result.matched_element;
+                    IF matched_element.status IS NOT NULL THEN
+                        EXIT;
+                    END IF;
+
+                    _element_previous := _element_current;
+                -- loop elements
+                END LOOP;
+            ELSE
+                RAISE NOTICE 'match_element: not todo!';
+                RAISE NOTICE ' level(%), search(%), data(%)'
+                    , level
+                    , _search
+                    , standardized_address
+                    ;
+            END IF;
+        -- loop searchs
         END LOOP;
+    END IF;
+    matched_element.elapsed_time := clock_timestamp() - _timestamp;
+    IF matched_element.status IS NULL THEN
+        matched_element := fr.match_element_status(
+              search => 'NEAR'
+            , matched_element => matched_element
+        );
+    END IF;
+
+
+    /*
         matched_element.elapsed_time := clock_timestamp() - _timestamp;
     ELSIF level = 'STREET' THEN
         -- parent found (area)
@@ -826,10 +1382,10 @@ BEGIN
             END IF;
             _with_near := (((standardized_address).extension IS NULL) OR (_abbr IS NULL));
             IF NOT _with_near THEN
-                _SEARCHS := ARRAY_REMOVE(_SEARCHS, 'NEAR');
+                _searchs := ARRAY_REMOVE(_searchs, 'NEAR');
             END IF;
 
-            FOREACH _search IN ARRAY _SEARCHS
+            FOREACH _search IN ARRAY _searchs
             LOOP
                 _ext := CASE _search
                     WHEN 'STRICT' THEN (standardized_address).extension

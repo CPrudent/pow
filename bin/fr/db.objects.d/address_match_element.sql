@@ -18,6 +18,21 @@ BEGIN
             , similarity_2 NUMERIC              -- AREA (municipality_name AND old_name)
         );
     END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'match_parameters')
+    OR NOT EXISTS (
+        SELECT 1 FROM information_schema.attributes
+        WHERE udt_name = 'match_parameters' AND attribute_name = 'codes_address')
+    THEN
+        DROP TYPE IF EXISTS fr.match_parameters CASCADE;
+        CREATE TYPE fr.match_parameters AS (
+              codes_address CHAR(10)[]
+            , word VARCHAR
+            , "limit" INT
+            , abbreviated_extension VARCHAR
+            , uncommon_id INT
+        );
+    END IF;
 END $$;
 
 DO $$

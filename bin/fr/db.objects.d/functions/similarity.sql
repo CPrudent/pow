@@ -64,7 +64,7 @@ $func$ LANGUAGE plpgsql;
 -- find better word according to (similarity, rarity and descriptor)
 SELECT drop_all_functions_if_exists('fr', 'get_better_word_with_similarity_criteria');
 CREATE OR REPLACE FUNCTION fr.get_better_word_with_similarity_criteria(
-    words IN TEXT[]
+      words IN TEXT[]
     , level IN VARCHAR
     , codes IN VARCHAR[]
     , raise_notice IN BOOLEAN DEFAULT FALSE
@@ -119,10 +119,12 @@ END
 $func$ LANGUAGE plpgsql;
 
 -- match name according to sum similarity of its words
-SELECT drop_all_functions_if_exists('fr', 'get_similarity_street');
+/* NOTE
+https://stackoverflow.com/questions/40078047/sql-weighted-average
+ */
 SELECT drop_all_functions_if_exists('fr', 'get_similarity_words');
 CREATE OR REPLACE FUNCTION fr.get_similarity_words(
-    words_a IN TEXT[]
+      words_a IN TEXT[]
     , words_b IN TEXT[]
     , descriptors_a IN VARCHAR
     , descriptors_b IN VARCHAR
