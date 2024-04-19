@@ -229,13 +229,13 @@ BEGIN
             ;
     END IF;
     query_match := CASE
+        /* NOTE
+        $1 municipality code
+        $2 municipality name
+        $3 municipality old name
+        $4 postcode
+         */
         WHEN _level_up = 'AREA' AND parameters & 1 = 0 THEN
-            /* NOTE
-            $1 municipality code
-            $2 municipality name
-            $3 municipality old name
-            $4 postcode
-            */
             CONCAT(
                 '
                 SELECT
@@ -290,21 +290,21 @@ BEGIN
                         '
                     END
             )
-            /* NOTE
-            STRICT
-            $1 parent code(s)
-            $2 name
+        /* NOTE
+        STRICT
+        $1 parent code(s)
+        $2 name
 
-            NEAR
-            $1 municipality code
-            $2 municipality name
-            $3 municipality old name
-            $4 postcode
-            $5 better word, or (multiple parent) parent address codes
-            $6 words (name)
-            $7 descriptors
-            $8 limit
-            */
+        NEAR
+        $1 municipality code
+        $2 municipality name
+        $3 municipality old name
+        $4 postcode
+        $5 better word, or (multiple parent) parent address codes
+        $6 words (name)
+        $7 descriptors
+        $8 limit
+         */
         WHEN (((_level_up = 'STREET') OR (_level_up = 'COMPLEMENT')) AND (
             (parameters & 1 = 0) OR (parameters & 2 = 0)
         )) THEN
@@ -404,7 +404,7 @@ BEGIN
                 END
         /* NOTE
         $1 uniq uncommon
-        */
+         */
         WHEN _level_up = 'STREET' AND parameters & 2 = 2 THEN
             '
             SELECT
@@ -419,7 +419,7 @@ BEGIN
             '
         /* NOTE
         $1 uncommon word
-        */
+         */
         WHEN _level_up = 'COMPLEMENT' AND parameters & 2 = 2 THEN
             '
             SELECT
@@ -438,7 +438,7 @@ BEGIN
         $1 parent code
         $2 housenumber
         $3 extension (STRICT, else abbreviated as NEAR)
-        */
+         */
         WHEN _level_up = 'HOUSENUMBER' AND parameters & 1 = 0 THEN
             '
             SELECT
@@ -446,7 +446,7 @@ BEGIN
             FROM
                 fr.address_view
             WHERE
-                co_adr_parent = $1
+                co_adr_parent = ANY($1)
                 AND
                 co_adr_l3 IS NULL
                 AND
@@ -459,7 +459,7 @@ BEGIN
             '
         /* NOTE
         $1 housenumber id (uniq uncommon)
-        */
+         */
         WHEN _level_up = 'HOUSENUMBER' AND parameters & 1 = 1 THEN
             '
             SELECT
@@ -947,213 +947,215 @@ BEGIN
         -- not uniq
         IF _query_parameters & 2 = 0 THEN
         END IF;
-    ELSE
-        _query_parameters := _query_parameters | 4;
-        IF level = 'AREA' THEN
-            _searchs := ARRAY_APPEND(_searchs, 'NEAR_WO_POSTCODE');
-        ELSIF level = 'HOUSENUMBER' THEN
-            IF (standardized_address).extension IS NOT NULL THEN
-                _match_parameters.abbreviated_extension := fr.normalize_abbreviate_keyword(
-                    name => (standardized_address).extension
-                    , groups => 'EXT'
-                );
-            END IF;
-            IF _match_parameters.abbreviated_extension IS NULL THEN
-                _searchs := ARRAY_REMOVE(_searchs, 'NEAR');
-            END IF;
+    END IF;
+    -- w/ postcode
+    _query_parameters := _query_parameters | 4;
+
+    IF level = 'AREA' THEN
+        _searchs := ARRAY_APPEND(_searchs, 'NEAR_WO_POSTCODE');
+    ELSIF level = 'HOUSENUMBER' THEN
+        IF (standardized_address).extension IS NOT NULL THEN
+            _match_parameters.abbreviated_extension := fr.normalize_abbreviate_keyword(
+                name => (standardized_address).extension
+                , groups => 'EXT'
+            );
+        END IF;
+        IF _match_parameters.abbreviated_extension IS NULL THEN
+            _searchs := ARRAY_REMOVE(_searchs, 'NEAR');
+        END IF;
+    END IF;
+
+    FOREACH _search IN ARRAY _searchs
+    LOOP
+        IF _search = 'NEAR_WO_POSTCODE' THEN
+            -- XOR better but!
+            _query_parameters := _query_parameters - 4;
         END IF;
 
-        FOREACH _search IN ARRAY _searchs
-        LOOP
-            IF _search = 'NEAR_WO_POSTCODE' THEN
-                -- XOR better but!
-                _query_parameters := _query_parameters - 4;
-            END IF;
+        IF fr.is_match_todo(
+                level => level
+            , search => _search
+            , standardized_address => standardized_address
+        ) THEN
+            -- near match, set threshold, ratio, better word
+            IF _search != 'STRICT' THEN
+                IF _similarity_threshold IS NULL THEN
+                    /* NOTE
+                    AREA
+                    similarity w/ low value (default to 0.5) to match:
+                    ('ST MEDARD', 'ST MEDARD EN JALLES')
+                    */
+                    _similarity_threshold := fr.get_parameter_value(
+                        parameters => parameters
+                        , category => 'similarity'
+                        , level => level
+                        , key => 'THRESHOLD'
+                    );
+                    --SET pg_trgm.similarity_threshold = _similarity_threshold;
+                    _similarity_threshold := set_limit(_similarity_threshold);
 
-            IF fr.is_match_todo(
-                  level => level
-                , search => _search
-                , standardized_address => standardized_address
-            ) THEN
-                -- near match, set threshold, ratio, better word
-                IF _search != 'STRICT' THEN
-                    IF _similarity_threshold IS NULL THEN
-                        /* NOTE
-                        AREA
-                        similarity w/ low value (default to 0.5) to match:
-                        ('ST MEDARD', 'ST MEDARD EN JALLES')
-                        */
-                        _similarity_threshold := fr.get_parameter_value(
-                            parameters => parameters
-                            , category => 'similarity'
-                            , level => level
-                            , key => 'THRESHOLD'
-                        );
-                        --SET pg_trgm.similarity_threshold = _similarity_threshold;
-                        _similarity_threshold := set_limit(_similarity_threshold);
-
-                        _similarity_ratio := fr.get_parameter_value(
-                            parameters => parameters
-                            , category => 'similarity'
-                            , level => level
-                            , key => 'RATIO'
-                        );
-                    END IF;
-
-                    IF ((level = 'STREET') OR (level = 'COMPLEMENT')) THEN
-                        /* NOTE
-                        retrieve word w/ better similarity and rarity
-                         */
-                        _match_parameters.word := fr.get_better_word_with_similarity_criteria(
-                            words => fr._get_value_from_standardized_address(
-                                standardized_address => standardized_address
-                                , key => CONCAT(LOWER(level), '_words')
-                            )
-                            , level => 'ZA'
-                            , codes => (matched_parent).codes_address
-                            , raise_notice => raise_notice
-                        );
-                        IF _match_parameters.word IS NULL THEN
-                            RAISE NOTICE 'match_element: no better word!';
-                            RAISE NOTICE ' level(%), search(%), data(%)'
-                                , level
-                                , _search
-                                , standardized_address
-                                ;
-                            CONTINUE;
-                        END IF;
-                    END IF;
+                    _similarity_ratio := fr.get_parameter_value(
+                        parameters => parameters
+                        , category => 'similarity'
+                        , level => level
+                        , key => 'RATIO'
+                    );
                 END IF;
 
-                _element_previous := ROW(NULL);
-                matched_element.status := NULL;
-                _query := CONCAT(
-                    '
-                    SELECT * FROM fr.exec_query_match(
-                          level => $1
-                        , search => $2
-                        , parameters => $3
-                        , standardized_address => $4
-                        , match_parameters => $5
-                    ) AS t('
-                    ,
-                    CASE
-                        WHEN level = 'AREA' AND _query_parameters & 1 = 0 THEN
-                            CASE _search
-                                WHEN 'STRICT' THEN
-                                    '
-                                    codes_address CHAR(10)[]
-                                    '
-                                ELSE
-                                    '
-                                      co_adr CHAR(10)
-                                    , co_insee_commune CHAR(5)
-                                    , co_postal CHAR(5)
-                                    , lb_acheminement VARCHAR
-                                    , lb_ligne5 VARCHAR
-                                    , similarity_1 REAL
-                                    , similarity_2 REAL
-                                    '
-                                END
-                        WHEN ((level = 'STREET') AND ((parameters & 1 = 0) OR (parameters & 2 = 0))) THEN
-                            CASE _search
-                                WHEN 'STRICT' THEN
-                                    '
-                                    codes_address CHAR(10)[]
-                                    '
-                                ELSE
-                                    '
-                                      co_adr CHAR(10)
-                                    , co_adr_za CHAR(10)
-                                    , co_voie INT
-                                    , name VARCHAR
-                                    , similarity REAL
-                                    '
-                                END
-                        WHEN ((level = 'COMPLEMENT') AND ((parameters & 1 = 0) OR (parameters & 2 = 0))) THEN
-                            CASE _search
-                                WHEN 'STRICT' THEN
-                                    '
-                                    codes_address CHAR(10)[]
-                                    '
-                                ELSE
-                                    '
-                                      co_adr CHAR(10)
-                                    , co_adr_za CHAR(10)
-                                    , co_adr_voie CHAR(10)
-                                    , co_adr_numero CHAR(10)
-                                    , name VARCHAR
-                                    , similarity REAL
-                                    '
-                                END
-                        WHEN level = 'STREET' AND parameters & 2 = 2 THEN
-                            '
-                              co_adr CHAR(10)
-                            , co_adr_za CHAR(10)
-                            '
-                        WHEN level = 'COMPLEMENT' AND parameters & 2 = 2 THEN
-                            '
-                              co_adr CHAR(10)
-                            , co_adr_za CHAR(10)
-                            , co_adr_voie CHAR(10)
-                            , co_adr_numero CHAR(10)
-                            '
-                        WHEN level = 'HOUSENUMBER' AND parameters & 1 = 0 THEN
-                            '
-                            codes_address CHAR(10)[]
-                            '
-                        WHEN level = 'HOUSENUMBER' AND parameters & 1 = 1 THEN
-                            '
-                              co_adr CHAR(10)
-                            , co_adr_za CHAR(10)
-                            , co_adr_voie CHAR(10)
-                            '
-                        END
-                    , ')'
-                    )
-                    ;
-                FOR _element_current IN EXECUTE _query USING
-                      level
-                    , _search
-                    , _query_parameters
-                    , standardized_address
-                    , _match_parameters
-                LOOP
-                    _match_result := fr.analyze_matched_elements(
-                          level => level
-                        , search => _search
-                        , standardized_address => standardized_address
-                        , matched_parent => matched_parent
-                        , current => _element_current
-                        , previous => _element_previous
-                        , similarity_threshold => _similarity_threshold
-                        , similarity_ratio => _similarity_ratio
+                IF ((level = 'STREET') OR (level = 'COMPLEMENT')) THEN
+                    /* NOTE
+                    retrieve word w/ better similarity and rarity
+                        */
+                    _match_parameters.word := fr.get_better_word_with_similarity_criteria(
+                        words => fr._get_value_from_standardized_address(
+                            standardized_address => standardized_address
+                            , key => CONCAT(LOWER(level), '_words')
+                        )
+                        , level => 'ZA'
+                        , codes => (matched_parent).codes_address
                         , raise_notice => raise_notice
                     );
-                    matched_parents := _match_result.matched_parents;
-                    matched_element := _match_result.matched_element;
-                    IF matched_element.status IS NOT NULL THEN
-                        EXIT;
+                    IF _match_parameters.word IS NULL THEN
+                        RAISE NOTICE 'match_element: no better word!';
+                        RAISE NOTICE ' level(%), search(%), data(%)'
+                            , level
+                            , _search
+                            , standardized_address
+                            ;
+                        CONTINUE;
                     END IF;
-
-                    _element_previous := _element_current;
-                -- loop elements
-                END LOOP;
-            ELSE
-                RAISE NOTICE 'match_element: not todo!';
-                RAISE NOTICE ' level(%), search(%), data(%)'
-                    , level
-                    , _search
-                    , standardized_address
-                    ;
+                END IF;
             END IF;
-        -- loop searchs
-        END LOOP;
-    END IF;
+
+            _element_previous := ROW(NULL);
+            matched_element.status := NULL;
+            _query := CONCAT(
+                '
+                SELECT * FROM fr.exec_query_match(
+                      level => $1
+                    , search => $2
+                    , parameters => $3
+                    , standardized_address => $4
+                    , match_parameters => $5
+                ) AS t('
+                ,
+                CASE
+                    WHEN level = 'AREA' AND _query_parameters & 1 = 0 THEN
+                        CASE _search
+                            WHEN 'STRICT' THEN
+                                '
+                                codes_address CHAR(10)[]
+                                '
+                            ELSE
+                                '
+                                  co_adr CHAR(10)
+                                , co_insee_commune CHAR(5)
+                                , co_postal CHAR(5)
+                                , lb_acheminement VARCHAR
+                                , lb_ligne5 VARCHAR
+                                , similarity_1 REAL
+                                , similarity_2 REAL
+                                '
+                            END
+                    WHEN ((level = 'STREET') AND ((parameters & 1 = 0) OR (parameters & 2 = 0))) THEN
+                        CASE _search
+                            WHEN 'STRICT' THEN
+                                '
+                                codes_address CHAR(10)[]
+                                '
+                            ELSE
+                                '
+                                  co_adr CHAR(10)
+                                , co_adr_za CHAR(10)
+                                , co_voie INT
+                                , name VARCHAR
+                                , similarity REAL
+                                '
+                            END
+                    WHEN ((level = 'COMPLEMENT') AND ((parameters & 1 = 0) OR (parameters & 2 = 0))) THEN
+                        CASE _search
+                            WHEN 'STRICT' THEN
+                                '
+                                codes_address CHAR(10)[]
+                                '
+                            ELSE
+                                '
+                                  co_adr CHAR(10)
+                                , co_adr_za CHAR(10)
+                                , co_adr_voie CHAR(10)
+                                , co_adr_numero CHAR(10)
+                                , name VARCHAR
+                                , similarity REAL
+                                '
+                            END
+                    WHEN level = 'STREET' AND parameters & 2 = 2 THEN
+                        '
+                          co_adr CHAR(10)
+                        , co_adr_za CHAR(10)
+                        '
+                    WHEN level = 'COMPLEMENT' AND parameters & 2 = 2 THEN
+                        '
+                          co_adr CHAR(10)
+                        , co_adr_za CHAR(10)
+                        , co_adr_voie CHAR(10)
+                        , co_adr_numero CHAR(10)
+                        '
+                    WHEN level = 'HOUSENUMBER' AND parameters & 1 = 0 THEN
+                        '
+                        codes_address CHAR(10)[]
+                        '
+                    WHEN level = 'HOUSENUMBER' AND parameters & 1 = 1 THEN
+                        '
+                          co_adr CHAR(10)
+                        , co_adr_za CHAR(10)
+                        , co_adr_voie CHAR(10)
+                        '
+                    END
+                , ')'
+                )
+                ;
+            FOR _element_current IN EXECUTE _query USING
+                    level
+                , _search
+                , _query_parameters
+                , standardized_address
+                , _match_parameters
+            LOOP
+                _match_result := fr.analyze_matched_elements(
+                        level => level
+                    , search => _search
+                    , standardized_address => standardized_address
+                    , matched_parent => matched_parent
+                    , current => _element_current
+                    , previous => _element_previous
+                    , similarity_threshold => _similarity_threshold
+                    , similarity_ratio => _similarity_ratio
+                    , raise_notice => raise_notice
+                );
+                matched_parents := _match_result.matched_parents;
+                matched_element := _match_result.matched_element;
+                IF matched_element.status IS NOT NULL THEN
+                    EXIT;
+                END IF;
+
+                _element_previous := _element_current;
+            -- loop elements
+            END LOOP;
+        ELSE
+            RAISE NOTICE 'match_element: not todo!';
+            RAISE NOTICE ' level(%), search(%), data(%)'
+                , level
+                , _search
+                , standardized_address
+                ;
+        END IF;
+    -- loop searchs
+    END LOOP;
+
     matched_element.elapsed_time := clock_timestamp() - _timestamp;
     IF matched_element.status IS NULL THEN
         matched_element := fr.match_element_status(
-              search => 'NEAR'
+                search => 'NEAR'
             , matched_element => matched_element
         );
     END IF;
