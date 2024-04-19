@@ -128,7 +128,7 @@ BEGIN
         LIMIT
             1
         '
-    ;
+    );
 
     EXECUTE _query
         INTO better_word

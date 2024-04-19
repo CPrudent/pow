@@ -623,119 +623,128 @@ AS
 $proc$
 DECLARE
     _notice VARCHAR;
+    _notice_element VARCHAR := FORMAT('%s: MUNICIPALITY(%s) '
+            , level
+            , (standardized_address).municipality_code
+        );
+    _notice_1st VARCHAR := FORMAT('%s: first choice '
+            , level
+        );
+    _notice_2nd VARCHAR := FORMAT('%s: second choice '
+            , level
+        );
 BEGIN
     IF raise_notice THEN
         _notice := CASE
             WHEN usecase = level THEN
                 CASE level
                     WHEN 'AREA' THEN
-                        FORMAT('%s: MUNICIPALITY(%s) OLD(%s) POSTCODE(%s) NAME(%s)'
-                            , level
-                            , (standardized_address).municipality_code
+                        FORMAT('%sOLD(%s) POSTCODE(%s) NAME(%s)'
+                            , _notice_element
                             , (standardized_address).municipality_old_name
                             , (standardized_address).postcode
                             , (standardized_address).municipality_name
                         )
                     WHEN 'STREET' THEN
-                        FORMAT('%s: MUNICIPALITY(%s) NAME(%s)'
-                            , level
+                        FORMAT('%sNAME(%s)'
+                            , _notice_element
                             , (standardized_address).municipality_code
                             , (standardized_address).street_name
                         )
                     WHEN 'HOUSENUMBER' THEN
-                        FORMAT('%s: MUNICIPALITY(%s) NUMBER(%s) EXTENSION(%s)'
-                            , level
+                        FORMAT('%sNUMBER(%s) EXTENSION(%s)'
+                            , _notice_element
                             , (standardized_address).municipality_code
                             , (standardized_address).housenumber
                             , (standardized_address).extension
                         )
                     WHEN 'COMPLEMENT' THEN
-                        FORMAT('%s: MUNICIPALITY(%s) NAME(%s)'
-                            , level
+                        FORMAT('%sNAME(%s)'
+                            , _notice_element
                             , (standardized_address).municipality_code
                             , (standardized_address).complement_name
                         )
                     END
             WHEN usecase = '1ST_NOT_NEAR_1' THEN
-                FORMAT('%s: first choice too low NAME(%s) [SIMILARITY=%s]'
-                    , level
+                FORMAT('%stoo low NAME(%s) [SIMILARITY=%s]'
+                    , _notice_1st
                     , (current).lb_acheminement
                     , ROUND(current.similarity_1, 5)
                 )
             WHEN usecase = '1ST_NOT_NEAR_2' THEN
-                FORMAT('%s: first choice too low OLD_NAME(%s) [SIMILARITY=%s]'
-                    , level
+                FORMAT('%stoo low OLD_NAME(%s) [SIMILARITY=%s]'
+                    , _notice_1st
                     , (current).lb_ligne5
                     , ROUND(current.similarity_2, 5)
                 )
             WHEN usecase = '1ST_NOT_NEAR' THEN
-                FORMAT('%s: first choice too low NAME(%s) [SIMILARITY=%s]'
-                    , level
+                FORMAT('%stoo low NAME(%s) [SIMILARITY=%s]'
+                    , _notice_1st
                     , (current).name
                     , ROUND(current.similarity, 5)
                 )
             WHEN usecase = '1ST_OK_1' THEN
-                FORMAT('%s: first choice ok NAME(%s) [SIMILARITY=%s]'
-                    , level
+                FORMAT('%sok NAME(%s) [SIMILARITY=%s]'
+                    , _notice_1st
                     , (current).lb_acheminement
                     , ROUND(current.similarity_1, 5)
                 )
             WHEN usecase = '1ST_OK_2' THEN
-                FORMAT('%s: first choice ok OLD_NAME(%s) [SIMILARITY=%s]'
-                    , level
+                FORMAT('%sok OLD_NAME(%s) [SIMILARITY=%s]'
+                    , _notice_1st
                     , (current).lb_ligne5
                     , ROUND(current.similarity_2, 5)
                 )
             WHEN usecase = '1ST_OK' THEN
-                FORMAT('%s: first choice ok NAME(%s) [SIMILARITY=%s]'
-                    , level
+                FORMAT('%sok NAME(%s) [SIMILARITY=%s]'
+                    , _notice_1st
                     , (current).name
                     , ROUND(current.similarity, 5)
                 )
             WHEN usecase = '2ND_SAME_CODE' THEN
-                FORMAT('%s: second choice same CODE(%s) [ADDRESS=%s]'
-                    , level
+                FORMAT('%ssame CODE(%s) [ADDRESS=%s]'
+                    , _notice_2nd
                     , (current).co_voie
                     , (current).co_adr
                 )
             WHEN usecase = '2ND_TOO_SIMILAR_1' THEN
-                FORMAT('%s: second choice too similar NAME(%s) [SIMILARITY=%s,RATIO=%s]'
-                    , level
+                FORMAT('%stoo similar NAME(%s) [SIMILARITY=%s,RATIO=%s]'
+                    , _notice_2nd
                     , (current).lb_acheminement
                     , ROUND(current.similarity_1, 5)
                     , ROUND(ratio, 2)
                 )
             WHEN usecase = '2ND_TOO_SIMILAR_2' THEN
-                FORMAT('%s: second choice too similar OLD_NAME(%s) [SIMILARITY=%s,RATIO=%s]'
-                    , level
+                FORMAT('%stoo similar OLD_NAME(%s) [SIMILARITY=%s,RATIO=%s]'
+                    , _notice_2nd
                     , (current).lb_ligne5
                     , ROUND(current.similarity_2, 5)
                     , ROUND(ratio, 2)
                 )
             WHEN usecase = '2ND_TOO_SIMILAR' THEN
-                FORMAT('%s: second choice too similar NAME(%s) [SIMILARITY=%s,RATIO=%s]'
-                    , level
+                FORMAT('%stoo similar NAME(%s) [SIMILARITY=%s,RATIO=%s]'
+                    , _notice_2nd
                     , (current).name
                     , ROUND(current.similarity, 5)
                     , ROUND(ratio, 2)
                 )
             WHEN usecase = '2ND_OK_1' THEN
-                FORMAT('%s: second choice ok NAME(%s) [SIMILARITY=%s,RATIO=%s]'
-                    , level
+                FORMAT('%sok NAME(%s) [SIMILARITY=%s,RATIO=%s]'
+                    , _notice_2nd
                     , (current).name
                     , ROUND(current.similarity_1, 5)
                     , ROUND(ratio, 2)
                 )
             WHEN usecase = '2ND_OK_2' THEN
-                FORMAT('%s: second choice ok NAME(%s) [SIMILARITY=%s,RATIO=%s]'
-                    , level
+                FORMAT('%sok NAME(%s) [SIMILARITY=%s,RATIO=%s]'
+                    , _notice_2nd
                     , (current).name
                     , ROUND(current.similarity_2, 5)
                     , ROUND(ratio, 2)
                 )
             WHEN usecase = '2ND_OK' THEN
-                FORMAT('%s: second choice ok NAME(%s) [SIMILARITY=%s,RATIO=%s]'
-                    , level
+                FORMAT('%sok NAME(%s) [SIMILARITY=%s,RATIO=%s]'
+                    , _notice_2nd
                     , (current).name
                     , ROUND(current.similarity, 5)
                     , ROUND(ratio, 2)
