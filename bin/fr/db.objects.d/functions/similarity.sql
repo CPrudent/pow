@@ -5,7 +5,7 @@
 -- get value of similarity parameters (threshold, ratio)
 SELECT drop_all_functions_if_exists('fr', 'get_similarity_property');
 CREATE OR REPLACE FUNCTION fr.get_similarity_property(
-    similarity IN HSTORE
+      similarity IN HSTORE
     , level IN VARCHAR
     , key IN VARCHAR
     , value OUT REAL
@@ -45,7 +45,7 @@ $func$ LANGUAGE plpgsql;
 -- weighted factor to differentiate word (with its descriptor)
 SELECT drop_all_functions_if_exists('fr', 'get_descriptor_factor');
 CREATE OR REPLACE FUNCTION fr.get_descriptor_factor(
-    descriptor IN VARCHAR
+      descriptor IN VARCHAR
     , descriptor_factor OUT REAL
 )
 AS
@@ -105,7 +105,7 @@ BEGIN
         WITH
         similarity_word(i, word, similarity, rank, descriptor_factor) AS (
             SELECT
-                w.i
+                  w.i
                 , wl.word
                 , get_similarity(wl.word, w.word)
                 , wl.rank

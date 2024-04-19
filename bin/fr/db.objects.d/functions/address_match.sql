@@ -479,6 +479,24 @@ CREATE OR REPLACE FUNCTION fr.exec_query_match(
     , match_parameters IN fr.match_parameters
 )
 RETURNS SETOF RECORD
+/*
+RETURNS TABLE(
+      codes_address CHAR(10)[]
+    , co_adr CHAR(10)
+    , co_adr_za CHAR(10)
+    , co_adr_voie CHAR(10)
+    , co_adr_numero CHAR(10)
+    , co_voie INT
+    , co_insee_commune CHAR(5)
+    , co_postal VARCHAR
+    , lb_acheminement VARCHAR
+    , lb_ligne5 VARCHAR
+    , name VARCHAR
+    , similarity_1 NUMERIC
+    , similarity_2 NUMERIC
+    , similarity NUMERIC
+)
+ */
 AS
 $func$
 DECLARE
@@ -486,7 +504,7 @@ DECLARE
 BEGIN
     _query := fr.get_query_match(
           level => level
-        , search => _search
+        , search => search
         , parameters => parameters
     );
 
@@ -624,19 +642,19 @@ $proc$
 DECLARE
     _notice VARCHAR;
     _notice_element VARCHAR := FORMAT('%s: MUNICIPALITY(%s) '
-            , level
-            , (standardized_address).municipality_code
-        );
+        , level
+        , (standardized_address).municipality_code
+    );
     _notice_1st VARCHAR := FORMAT('%s: first choice '
-            , level
-        );
+        , level
+    );
     _notice_2nd VARCHAR := FORMAT('%s: second choice '
-            , level
-        );
+        , level
+    );
 BEGIN
     IF raise_notice THEN
         _notice := CASE
-            WHEN usecase = level THEN
+            WHEN usecase = 'ELEMENT' THEN
                 CASE level
                     WHEN 'AREA' THEN
                         FORMAT('%sOLD(%s) POSTCODE(%s) NAME(%s)'
@@ -788,7 +806,7 @@ BEGIN
                   level => level
                 , search => search
                 , standardized_address => standardized_address
-                , usecase => level
+                , usecase => 'ELEMENT'
                 , current => current
             );
             IF ((
@@ -977,6 +995,10 @@ BEGIN
             _query_parameters := _query_parameters - 4;
         END IF;
 
+        IF raise_notice THEN
+            RAISE NOTICE 'search(%) parameters(%)', _search, _query_parameters;
+        END IF;
+
         IF fr.is_match_todo(
               level => level
             , search => _search
@@ -1067,71 +1089,71 @@ BEGIN
                         CASE _search
                             WHEN 'STRICT' THEN
                                 '
-                                codes_address CHAR(10)[]
+                                codes_address BPCHAR[]
                                 '
                             ELSE
                                 '
-                                  co_adr CHAR(10)
+                                  co_adr BPCHAR
                                 , co_insee_commune CHAR(5)
-                                , co_postal CHAR(5)
+                                , co_postal VARCHAR
                                 , lb_acheminement VARCHAR
                                 , lb_ligne5 VARCHAR
-                                , similarity_1 REAL
-                                , similarity_2 REAL
+                                , similarity_1 NUMERIC
+                                , similarity_2 NUMERIC
                                 '
                             END
-                    WHEN ((level = 'STREET') AND ((parameters & 1 = 0) OR (parameters & 2 = 0))) THEN
+                    WHEN ((level = 'STREET') AND ((_query_parameters & 1 = 0) OR (_query_parameters & 2 = 0))) THEN
                         CASE _search
                             WHEN 'STRICT' THEN
                                 '
-                                codes_address CHAR(10)[]
+                                codes_address BPCHAR[]
                                 '
                             ELSE
                                 '
-                                  co_adr CHAR(10)
-                                , co_adr_za CHAR(10)
+                                  co_adr BPCHAR
+                                , co_adr_za BPCHAR
                                 , co_voie INT
                                 , name VARCHAR
-                                , similarity REAL
+                                , similarity NUMERIC
                                 '
                             END
-                    WHEN ((level = 'COMPLEMENT') AND ((parameters & 1 = 0) OR (parameters & 2 = 0))) THEN
+                    WHEN ((level = 'COMPLEMENT') AND ((_query_parameters & 1 = 0) OR (_query_parameters & 2 = 0))) THEN
                         CASE _search
                             WHEN 'STRICT' THEN
                                 '
-                                codes_address CHAR(10)[]
+                                codes_address BPCHAR[]
                                 '
                             ELSE
                                 '
-                                  co_adr CHAR(10)
-                                , co_adr_za CHAR(10)
-                                , co_adr_voie CHAR(10)
-                                , co_adr_numero CHAR(10)
+                                  co_adr BPCHAR
+                                , co_adr_za BPCHAR
+                                , co_adr_voie BPCHAR
+                                , co_adr_numero BPCHAR
                                 , name VARCHAR
-                                , similarity REAL
+                                , similarity NUMERIC
                                 '
                             END
-                    WHEN level = 'STREET' AND parameters & 2 = 2 THEN
+                    WHEN level = 'STREET' AND _query_parameters & 2 = 2 THEN
                         '
-                          co_adr CHAR(10)
-                        , co_adr_za CHAR(10)
+                          co_adr BPCHAR
+                        , co_adr_za BPCHAR
                         '
-                    WHEN level = 'COMPLEMENT' AND parameters & 2 = 2 THEN
+                    WHEN level = 'COMPLEMENT' AND _query_parameters & 2 = 2 THEN
                         '
-                          co_adr CHAR(10)
-                        , co_adr_za CHAR(10)
-                        , co_adr_voie CHAR(10)
-                        , co_adr_numero CHAR(10)
+                          co_adr BPCHAR
+                        , co_adr_za BPCHAR
+                        , co_adr_voie BPCHAR
+                        , co_adr_numero BPCHAR
                         '
-                    WHEN level = 'HOUSENUMBER' AND parameters & 1 = 0 THEN
+                    WHEN level = 'HOUSENUMBER' AND _query_parameters & 1 = 0 THEN
                         '
-                        codes_address CHAR(10)[]
+                        codes_address BPCHAR[]
                         '
-                    WHEN level = 'HOUSENUMBER' AND parameters & 1 = 1 THEN
+                    WHEN level = 'HOUSENUMBER' AND _query_parameters & 1 = 1 THEN
                         '
-                          co_adr CHAR(10)
-                        , co_adr_za CHAR(10)
-                        , co_adr_voie CHAR(10)
+                          co_adr BPCHAR
+                        , co_adr_za BPCHAR
+                        , co_adr_voie BPCHAR
                         '
                     END
                 , ')'
@@ -1144,6 +1166,8 @@ BEGIN
                 , standardized_address
                 , _match_parameters
             LOOP
+                IF raise_notice THEN RAISE NOTICE 'current=%', _element_current; END IF;
+
                 _match_result := fr.analyze_matched_elements(
                       level => level
                     , search => _search
@@ -1156,8 +1180,10 @@ BEGIN
                     , similarity_ratio => _similarity_ratio
                     , raise_notice => raise_notice
                 );
+
                 matched_parents := _match_result.matched_parents;
                 matched_element := _match_result.matched_element;
+                IF raise_notice THEN RAISE NOTICE 'match=%', _match_result; END IF;
                 IF matched_element.status IS NOT NULL THEN
                     EXIT;
                 END IF;
@@ -1172,6 +1198,9 @@ BEGIN
                 , _search
                 , standardized_address
                 ;
+        END IF;
+        IF matched_element.status IS NOT NULL THEN
+            EXIT;
         END IF;
     -- loop searchs
     END LOOP;
@@ -1456,62 +1485,3 @@ BEGIN
      */
 END
 $func$ LANGUAGE plpgsql;
-
-/*
--- match one address
-SELECT drop_all_functions_if_exists('fr', 'match_address');
-CREATE OR REPLACE FUNCTION fr.match_address(
-    address_normalized IN fr.address_normalized           -- address to match
-    --, address_matched OUT fr.address_matched              -- address matched
-)
-RETURNS fr.address_matched AS
-$func$
-DECLARE
-    _address_matched fr.address_matched;
-BEGIN
-    -- basic algorithm
-    SELECT
-        ARRAY_AGG(a.co_adr)
-    INTO
-        _address_matched.codes_area_possible
-    FROM
-        fr.address_view a
-    WHERE
-        a.co_niveau = 'ZA'
-        --Recherche par code postal exact, à moins qu'il ne soit pas indiqué
-        AND (
-            (address_normalized.postcode IS NULL)
-            OR
-            (a.co_postal = address_normalized.postcode)
-        )
-        --Recherche par code INSEE commune exact, à moins qu'il ne soit pas indiqué
-        AND (
-            (address_normalized.municipality_code IS NULL)
-            OR
-            (a.co_insee_commune = address_normalized.municipality_code)
-        )
-        --Recherche par libellé localité exact, à moins qu'il ne soit pas indiqué OU à moins que le code INSEE soit indiqué
-        AND (
-            (address_normalized.municipality_name IS NULL)
-            OR
-            (address_normalized.municipality_code IS NOT NULL)
-            OR
-            (a.lb_acheminement = address_normalized.municipality_name)
-            OR
-            (a.lb_ligne5 = address_normalized.municipality_name)
-        )
-    ;
-
-    IF ARRAY_LENGTH(_address_matched.codes_area_possible, 1) = 1 THEN
-        _address_matched.status := 1;
-    ELSIF _address_matched.codes_area_possible IS NOT NULL THEN
-        _address_matched.status := 22;
-    ELSE
-        _address_matched.status := 21;
-    END IF;
-
-    RAISE NOTICE 'address_matched= %', _address_matched;
-    RETURN _address_matched;
-END
-$func$ LANGUAGE plpgsql;
- */
