@@ -2,6 +2,30 @@
  * add FR-ADDRESS facilities (matching address)
  */
 
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'match_results')
+    THEN
+        DROP TYPE IF EXISTS fr.match_results CASCADE;
+        CREATE TYPE fr.match_results AS (
+              codes_address CHAR(10)[]
+            , co_adr CHAR(10)
+            , co_adr_za CHAR(10)
+            , co_adr_voie CHAR(10)
+            , co_adr_numero CHAR(10)
+            , co_voie INT
+            , co_insee_commune CHAR(5)
+            , co_postal VARCHAR
+            , lb_acheminement VARCHAR
+            , lb_ligne5 VARCHAR
+            , name VARCHAR
+            , similarity_1 NUMERIC
+            , similarity_2 NUMERIC
+            , similarity NUMERIC
+        );
+    END IF;
+END $$;
+
 -- set status of matching element
 SELECT drop_all_functions_if_exists('fr', 'match_element_status');
 CREATE OR REPLACE FUNCTION fr.match_element_status(
@@ -234,6 +258,7 @@ BEGIN
         $2 municipality name
         $3 municipality old name
         $4 postcode
+        $5 limit
          */
         WHEN _level_up = 'AREA' AND parameters & 1 = 0 THEN
             CONCAT(
@@ -286,7 +311,9 @@ BEGIN
                                     WHEN $3 IS NOT NULL THEN
                                         get_similarity($3, area.lb_ligne5)
                                     END
-                            )
+                            ) DESC
+                        LIMIT
+                            $5
                         '
                     END
             )
@@ -509,12 +536,22 @@ BEGIN
     );
 
     IF level = 'AREA' AND parameters & 1 = 0 THEN
-        RETURN QUERY EXECUTE _query USING
-              (standardized_address).municipality_code
-            , (standardized_address).municipality_name
-            , (standardized_address).municipality_old_name
-            , (standardized_address).postcode
-            ;
+        IF search = 'STRICT' THEN
+            RETURN QUERY EXECUTE _query USING
+                  (standardized_address).municipality_code
+                , (standardized_address).municipality_name
+                , (standardized_address).municipality_old_name
+                , (standardized_address).postcode
+                ;
+        ELSE
+            RETURN QUERY EXECUTE _query USING
+                  (standardized_address).municipality_code
+                , (standardized_address).municipality_name
+                , (standardized_address).municipality_old_name
+                , (standardized_address).postcode
+                , (match_parameters).limit
+                ;
+        END IF;
     ELSIF (((level = 'STREET') OR (level = 'COMPLEMENT')) AND (
             (parameters & 1 = 0) OR (parameters & 2 = 0))) THEN
         IF search = 'STRICT' THEN
@@ -633,15 +670,15 @@ CREATE OR REPLACE PROCEDURE fr.notice_match(
     , search IN VARCHAR
     , standardized_address IN fr.standardized_address
     , usecase IN VARCHAR
-    , current IN RECORD
-    , ratio IN REAL DEFAULT 1
+    , current IN fr.match_results
+    , ratio IN NUMERIC DEFAULT 1
     , raise_notice IN BOOLEAN DEFAULT TRUE
 )
 AS
 $proc$
 DECLARE
     _notice VARCHAR;
-    _notice_element VARCHAR := FORMAT('%s: MUNICIPALITY(%s) '
+    _notice_element VARCHAR := FORMAT('%s: INSEE(%s) '
         , level
         , (standardized_address).municipality_code
     );
@@ -653,6 +690,7 @@ DECLARE
     );
 BEGIN
     IF raise_notice THEN
+        RAISE NOTICE 'notice_match: current=%', current;
         _notice := CASE
             WHEN usecase = 'ELEMENT' THEN
                 CASE level
@@ -698,72 +736,72 @@ BEGIN
             WHEN usecase = '1ST_NOT_NEAR' THEN
                 FORMAT('%stoo low NAME(%s) [SIMILARITY=%s]'
                     , _notice_1st
-                    , (current).name
+                    , current.name
                     , ROUND(current.similarity, 5)
                 )
             WHEN usecase = '1ST_OK_1' THEN
                 FORMAT('%sok NAME(%s) [SIMILARITY=%s]'
                     , _notice_1st
-                    , (current).lb_acheminement
+                    , current.lb_acheminement
                     , ROUND(current.similarity_1, 5)
                 )
             WHEN usecase = '1ST_OK_2' THEN
                 FORMAT('%sok OLD_NAME(%s) [SIMILARITY=%s]'
                     , _notice_1st
-                    , (current).lb_ligne5
+                    , current.lb_ligne5
                     , ROUND(current.similarity_2, 5)
                 )
             WHEN usecase = '1ST_OK' THEN
                 FORMAT('%sok NAME(%s) [SIMILARITY=%s]'
                     , _notice_1st
-                    , (current).name
+                    , current.name
                     , ROUND(current.similarity, 5)
                 )
             WHEN usecase = '2ND_SAME_CODE' THEN
                 FORMAT('%ssame CODE(%s) [ADDRESS=%s]'
                     , _notice_2nd
-                    , (current).co_voie
-                    , (current).co_adr
+                    , current.co_voie
+                    , current.co_adr
                 )
             WHEN usecase = '2ND_TOO_SIMILAR_1' THEN
                 FORMAT('%stoo similar NAME(%s) [SIMILARITY=%s,RATIO=%s]'
                     , _notice_2nd
-                    , (current).lb_acheminement
+                    , current.lb_acheminement
                     , ROUND(current.similarity_1, 5)
                     , ROUND(ratio, 2)
                 )
             WHEN usecase = '2ND_TOO_SIMILAR_2' THEN
                 FORMAT('%stoo similar OLD_NAME(%s) [SIMILARITY=%s,RATIO=%s]'
                     , _notice_2nd
-                    , (current).lb_ligne5
+                    , current.lb_ligne5
                     , ROUND(current.similarity_2, 5)
                     , ROUND(ratio, 2)
                 )
             WHEN usecase = '2ND_TOO_SIMILAR' THEN
                 FORMAT('%stoo similar NAME(%s) [SIMILARITY=%s,RATIO=%s]'
                     , _notice_2nd
-                    , (current).name
+                    , current.name
                     , ROUND(current.similarity, 5)
                     , ROUND(ratio, 2)
                 )
             WHEN usecase = '2ND_OK_1' THEN
                 FORMAT('%sok NAME(%s) [SIMILARITY=%s,RATIO=%s]'
                     , _notice_2nd
-                    , (current).name
+                    , current.name
                     , ROUND(current.similarity_1, 5)
                     , ROUND(ratio, 2)
                 )
             WHEN usecase = '2ND_OK_2' THEN
                 FORMAT('%sok NAME(%s) [SIMILARITY=%s,RATIO=%s]'
                     , _notice_2nd
-                    , (current).name
+                    , current.name
                     , ROUND(current.similarity_2, 5)
                     , ROUND(ratio, 2)
                 )
             WHEN usecase = '2ND_OK' THEN
                 FORMAT('%sok NAME(%s) [SIMILARITY=%s,RATIO=%s]'
                     , _notice_2nd
-                    , (current).name
+                    , current.name
                     , ROUND(current.similarity, 5)
                     , ROUND(ratio, 2)
                 )
@@ -781,8 +819,8 @@ CREATE OR REPLACE FUNCTION fr.analyze_matched_elements(
     , parameters IN INT
     , standardized_address IN fr.standardized_address
     , matched_parent IN fr.matched_element
-    , current IN RECORD
-    , previous IN RECORD
+    , current IN fr.match_results
+    , previous IN fr.match_results
     , similarity_threshold IN REAL DEFAULT 0.5
     , similarity_ratio IN REAL DEFAULT 0.5
     , raise_notice IN BOOLEAN DEFAULT FALSE
@@ -792,15 +830,12 @@ CREATE OR REPLACE FUNCTION fr.analyze_matched_elements(
 AS
 $func$
 DECLARE
-    _element_ratio REAL;
+    _element_ratio NUMERIC;
 BEGIN
     IF search = 'STRICT' THEN
         matched_element.codes_address := current.codes_address;
-        matched_element := fr.match_element_status(
-              search => search
-            , matched_element => matched_element
-        );
     ELSE
+        IF raise_notice THEN RAISE NOTICE 'analyze_match: current=%', current; END IF;
         IF (previous IS NULL) THEN
             CALL fr.notice_match(
                   level => level
@@ -843,7 +878,7 @@ BEGIN
                     , usecase => '1ST_OK'
                     , current => current
                 );
-                matched_element.codes_address := ARRAY[current.co_adr]::VARCHAR[];
+                matched_element.codes_address := ARRAY[current.co_adr];
                 matched_element.similarity_1 := CASE
                     WHEN level = 'AREA' THEN current.similarity_1
                     ELSE current.similarity
@@ -917,6 +952,12 @@ BEGIN
             END IF;
         END IF;
     END IF;
+    IF matched_element.status IS NULL THEN
+        matched_element := fr.match_element_status(
+              search => search
+            , matched_element => matched_element
+        );
+    END IF;
 END
 $func$ LANGUAGE plpgsql;
 
@@ -942,16 +983,16 @@ $func$
 DECLARE
     _searchs VARCHAR[] := ARRAY['STRICT', 'NEAR'];
     _search VARCHAR;
-    _limits_by_level INT[4] := ARRAY[2, 4, 0, 2];
+    _limits_by_level INT[4] := ARRAY[10, 4, 0, 2];
     _similarity_threshold REAL;
     _similarity_ratio REAL;
     _query TEXT;
     _query_parameters INT := 0;
-    _element_current RECORD;
-    _element_previous RECORD;
-    _with_near BOOLEAN := TRUE;
+    _results RECORD;
+    _match_current fr.match_results;
+    _match_previous fr.match_results;
     _match_parameters fr.match_parameters;
-    _match_result RECORD;
+    _match_analyze RECORD;
     _timestamp TIMESTAMP := clock_timestamp();
 BEGIN
     -- level w/ uncommon item
@@ -1072,7 +1113,7 @@ BEGIN
                 _match_parameters.limit := _limits_by_level[fr.get_subscript_of_level_address(level)];
             END IF;
 
-            _element_previous := ROW(NULL);
+            _match_previous := NULL::fr.match_results;
             matched_element.status := NULL;
             _query := CONCAT(
                 '
@@ -1159,36 +1200,86 @@ BEGIN
                 , ')'
                 )
                 ;
-            FOR _element_current IN EXECUTE _query USING
+            FOR _results IN EXECUTE _query USING
                   level
                 , _search
                 , _query_parameters
                 , standardized_address
                 , _match_parameters
             LOOP
-                IF raise_notice THEN RAISE NOTICE 'current=%', _element_current; END IF;
+                IF raise_notice THEN RAISE NOTICE 'results=%', _results; END IF;
 
-                _match_result := fr.analyze_matched_elements(
+                IF level = 'AREA' AND _query_parameters & 1 = 0 THEN
+                    IF _search = 'STRICT' THEN
+                        _match_current.codes_address := _results.codes_address;
+                    ELSE
+                        _match_current.co_adr := _results.co_adr;
+                        _match_current.co_insee_commune := _results.co_insee_commune;
+                        _match_current.co_postal := _results.co_postal;
+                        _match_current.lb_acheminement := _results.lb_acheminement;
+                        _match_current.lb_ligne5 := _results.lb_ligne5;
+                        _match_current.similarity_1 := _results.similarity_1;
+                        _match_current.similarity_2 := _results.similarity_2;
+                    END IF;
+                ELSIF ((level = 'STREET') AND ((_query_parameters & 1 = 0) OR (_query_parameters & 2 = 0))) THEN
+                    IF _search = 'STRICT' THEN
+                        _match_current.codes_address := _results.codes_address;
+                    ELSE
+                        _match_current.co_adr := _results.co_adr;
+                        _match_current.co_adr_za := _results.co_adr_za;
+                        _match_current.co_voie := _results.co_voie;
+                        _match_current.name := _results.name;
+                        _match_current.similarity := _results.similarity;
+                    END IF;
+                ELSIF ((level = 'COMPLEMENT') AND ((_query_parameters & 1 = 0) OR (_query_parameters & 2 = 0))) THEN
+                    IF _search = 'STRICT' THEN
+                        _match_current.codes_address := _results.codes_address;
+                    ELSE
+                        _match_current.co_adr := _results.co_adr;
+                        _match_current.co_adr_za := _results.co_adr_za;
+                        _match_current.co_adr_voie := _results.co_adr_voie;
+                        _match_current.co_adr_numero := _results.co_adr_numero;
+                        _match_current.name := _results.name;
+                        _match_current.similarity := _results.similarity;
+                    END IF;
+                ELSIF level = 'STREET' AND _query_parameters & 2 = 2 THEN
+                    _match_current.co_adr := _results.co_adr;
+                    _match_current.co_adr_za := _results.co_adr_za;
+                ELSIF level = 'COMPLEMENT' AND _query_parameters & 2 = 2 THEN
+                    _match_current.co_adr := _results.co_adr;
+                    _match_current.co_adr_za := _results.co_adr_za;
+                    _match_current.co_adr_voie := _results.co_adr_voie;
+                    _match_current.co_adr_numero := _results.co_adr_numero;
+                ELSIF level = 'HOUSENUMBER' AND _query_parameters & 1 = 0 THEN
+                    _match_current.codes_address := _results.codes_address;
+                ELSIF level = 'HOUSENUMBER' AND _query_parameters & 1 = 1 THEN
+                    _match_current.co_adr := _results.co_adr;
+                    _match_current.co_adr_za := _results.co_adr_za;
+                    _match_current.co_adr_voie := _results.co_adr_voie;
+                END IF;
+
+                IF raise_notice THEN RAISE NOTICE 'current=%', _match_current; END IF;
+                _match_analyze := fr.analyze_matched_elements(
                       level => level
                     , search => _search
                     , parameters => _query_parameters
                     , standardized_address => standardized_address
                     , matched_parent => matched_parent
-                    , current => _element_current
-                    , previous => _element_previous
+                    , current => _match_current
+                    , previous => _match_previous
                     , similarity_threshold => _similarity_threshold
                     , similarity_ratio => _similarity_ratio
                     , raise_notice => raise_notice
                 );
 
-                matched_parents := _match_result.matched_parents;
-                matched_element := _match_result.matched_element;
-                IF raise_notice THEN RAISE NOTICE 'match=%', _match_result; END IF;
-                IF matched_element.status IS NOT NULL THEN
+                matched_parents := _match_analyze.matched_parents;
+                matched_element := _match_analyze.matched_element;
+                IF raise_notice THEN RAISE NOTICE 'match=%', _match_analyze; END IF;
+                IF LEFT(matched_element.status, 2) = 'OK' THEN
                     EXIT;
                 END IF;
 
-                _element_previous := _element_current;
+                _match_previous := _match_current;
             -- loop elements
             END LOOP;
         ELSE
@@ -1199,7 +1290,7 @@ BEGIN
                 , standardized_address
                 ;
         END IF;
-        IF matched_element.status IS NOT NULL THEN
+        IF LEFT(matched_element.status, 2) = 'OK' THEN
             EXIT;
         END IF;
     -- loop searchs
@@ -1208,7 +1299,7 @@ BEGIN
     matched_element.elapsed_time := clock_timestamp() - _timestamp;
     IF matched_element.status IS NULL THEN
         matched_element := fr.match_element_status(
-                search => 'NEAR'
+              search => 'NEAR'
             , matched_element => matched_element
         );
     END IF;
