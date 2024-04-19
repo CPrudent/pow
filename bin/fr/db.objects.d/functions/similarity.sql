@@ -64,8 +64,9 @@ $func$ LANGUAGE plpgsql;
 -- find better word according to (similarity, rarity and descriptor)
 SELECT drop_all_functions_if_exists('fr', 'get_better_word_with_similarity_criteria');
 CREATE OR REPLACE FUNCTION fr.get_better_word_with_similarity_criteria(
-      words IN TEXT[]
-    , level IN VARCHAR
+      level IN VARCHAR
+    , words IN TEXT[]
+    , zone IN VARCHAR
     , codes IN VARCHAR[]
     , raise_notice IN BOOLEAN DEFAULT FALSE
     , better_word OUT TEXT
@@ -73,48 +74,66 @@ CREATE OR REPLACE FUNCTION fr.get_better_word_with_similarity_criteria(
 AS
 $func$
 DECLARE
+    _level_low VARCHAR := LOWER(level);
     _criteria RECORD;
     _nof INT;
+    _query TEXT;
 BEGIN
-    IF level IS NULL OR codes IS NULL THEN
-        CALL public.log_info('manque paramètres (niveau, code)');
+    IF zone IS NULL OR codes IS NULL THEN
+        CALL public.log_info('missing parameters (zone, codes)');
         RETURN;
     END IF;
 
-    _nof := (
-        SELECT MAX(rank)
-        FROM fr.laposte_address_street_word_level
-        WHERE nivgeo = level AND codgeo = ANY(codes)
-    );
+    _nof := CASE level
+        WHEN 'STREET' THEN
+            (
+                SELECT MAX(rank)
+                FROM fr.laposte_address_street_word_level
+                WHERE nivgeo = zone AND codgeo = ANY(codes)
+            )
+        WHEN 'COMPLEMENT' THEN
+            (
+                SELECT MAX(rank)
+                FROM fr.laposte_address_complement_word_level
+                WHERE nivgeo = zone AND codgeo = ANY(codes)
+            )
+        END
+        ;
 
-    WITH
-    similarity_word(i, word, similarity, rank, descriptor_factor) AS (
+    _query := CONCAT(
+        '
+        WITH
+        similarity_word(i, word, similarity, rank, descriptor_factor) AS (
+            SELECT
+                w.i
+                , wl.word
+                , get_similarity(wl.word, w.word)
+                , wl.rank
+                , fr.get_descriptor_factor(wd.as_default)
+            FROM
+                fr.laposte_address_', _level_low, '_word_level wl
+                    -- remember: w/o article
+                    JOIN fr.laposte_address_', _level_low, '_word_descriptor wd ON wl.word = wd.word
+                    JOIN LATERAL UNNEST(words) WITH ORDINALITY AS w(word, i) ON TRUE
+            WHERE
+                wl.nivgeo = $1 AND wl.codgeo = ANY($2)
+        )
         SELECT
-            w.i
-            , wl.word
-            , get_similarity(wl.word, w.word)
-            , wl.rank
-            , fr.get_descriptor_factor(wd.as_default)
+            word
         FROM
-            fr.laposte_address_street_word_level wl
-                -- remember: w/o article
-                JOIN fr.laposte_address_street_word_descriptor wd ON wl.word = wd.word
-                JOIN LATERAL UNNEST(words) WITH ORDINALITY AS w(word, i) ON TRUE
-        WHERE
-            wl.nivgeo = level AND wl.codgeo = ANY(codes)
-    )
-    SELECT
-        word
-    INTO
-        better_word
-    FROM
-        similarity_word
-    ORDER BY
-        -- get word w/ better similarity and rarity
-        (similarity * EXP((1 - (((_nof - "rank") +1)::NUMERIC / _nof))) * descriptor_factor) DESC
-    LIMIT
-        1
+            similarity_word
+        ORDER BY
+            -- get word w/ better similarity and rarity
+            (similarity * EXP((1 - ((($3 - rank) +1)::NUMERIC / $3))) * descriptor_factor) DESC
+        LIMIT
+            1
+        '
     ;
+
+    EXECUTE _query
+        INTO better_word
+        USING zone, codes, _nof
+        ;
 END
 $func$ LANGUAGE plpgsql;
 

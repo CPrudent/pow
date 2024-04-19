@@ -329,12 +329,6 @@ BEGIN
                             END
                     )
                 ELSE
-                    /* NOTE
-                    STREET (limit)
-                    same street can be delivered by many areas (postcode, district, ...)
-                    to the maximum it exists a street w/ 3 areas!
-                    this loop aims to find gap between two successive streets, so 3 +1
-                     */
                     CONCAT(
                         '
                         WITH
@@ -521,7 +515,7 @@ BEGIN
                 , (standardized_address).postcode
                 , CASE
                     WHEN parameters & 8 = 0 THEN
-                        word
+                        (match_parameters).word
                     -- w/ multiple element (of uncommon)
                     ELSE
                         (match_parameters).codes_address
@@ -615,7 +609,6 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
-SELECT drop_all_functions_if_exists('fr', 'notice_match_info');
 SELECT drop_all_functions_if_exists('fr', 'notice_match');
 CREATE OR REPLACE PROCEDURE fr.notice_match(
       level IN VARCHAR
@@ -758,6 +751,7 @@ SELECT drop_all_functions_if_exists('fr', 'analyze_matched_elements');
 CREATE OR REPLACE FUNCTION fr.analyze_matched_elements(
       level IN VARCHAR
     , search IN VARCHAR
+    , parameters IN INT
     , standardized_address IN fr.standardized_address
     , matched_parent IN fr.matched_element
     , current IN RECORD
@@ -944,24 +938,26 @@ BEGIN
         ) THEN
             _query_parameters := _query_parameters | 2;
         END IF;
-        -- not uniq
-        IF _query_parameters & 2 = 0 THEN
-        END IF;
     END IF;
     -- w/ postcode
     _query_parameters := _query_parameters | 4;
+    -- parent codes address
+    _match_parameters.codes_address := matched_parent.codes_address;
 
     IF level = 'AREA' THEN
         _searchs := ARRAY_APPEND(_searchs, 'NEAR_WO_POSTCODE');
     ELSIF level = 'HOUSENUMBER' THEN
         IF (standardized_address).extension IS NOT NULL THEN
             _match_parameters.abbreviated_extension := fr.normalize_abbreviate_keyword(
-                name => (standardized_address).extension
+                  name => (standardized_address).extension
                 , groups => 'EXT'
             );
         END IF;
         IF _match_parameters.abbreviated_extension IS NULL THEN
             _searchs := ARRAY_REMOVE(_searchs, 'NEAR');
+        END IF;
+        IF _query_parameters & 1 = 1 THEN
+            _match_parameters.uncommon_id := (standardized_address).housenumber_uncommon_id;
         END IF;
     END IF;
 
@@ -973,7 +969,7 @@ BEGIN
         END IF;
 
         IF fr.is_match_todo(
-                level => level
+              level => level
             , search => _search
             , standardized_address => standardized_address
         ) THEN
@@ -986,7 +982,7 @@ BEGIN
                     ('ST MEDARD', 'ST MEDARD EN JALLES')
                     */
                     _similarity_threshold := fr.get_parameter_value(
-                        parameters => parameters
+                          parameters => parameters
                         , category => 'similarity'
                         , level => level
                         , key => 'THRESHOLD'
@@ -995,7 +991,7 @@ BEGIN
                     _similarity_threshold := set_limit(_similarity_threshold);
 
                     _similarity_ratio := fr.get_parameter_value(
-                        parameters => parameters
+                          parameters => parameters
                         , category => 'similarity'
                         , level => level
                         , key => 'RATIO'
@@ -1003,18 +999,27 @@ BEGIN
                 END IF;
 
                 IF ((level = 'STREET') OR (level = 'COMPLEMENT')) THEN
-                    /* NOTE
-                    retrieve word w/ better similarity and rarity
-                        */
-                    _match_parameters.word := fr.get_better_word_with_similarity_criteria(
-                        words => fr._get_value_from_standardized_address(
-                            standardized_address => standardized_address
-                            , key => CONCAT(LOWER(level), '_words')
-                        )
-                        , level => 'ZA'
-                        , codes => (matched_parent).codes_address
-                        , raise_notice => raise_notice
-                    );
+                    _match_parameters.word := CASE
+                        WHEN _query_parameters & 1 = 0 THEN
+                            -- retrieve word w/ better similarity and rarity
+                            fr.get_better_word_with_similarity_criteria(
+                                  level => level
+                                , words => fr._get_value_from_standardized_address(
+                                    standardized_address => standardized_address
+                                    , key => CONCAT(LOWER(level), '_words')
+                                )
+                                , zone => 'ZA'
+                                , codes => (matched_parent).codes_address
+                                , raise_notice => raise_notice
+                            )
+                        ELSE
+                            -- uncommon word
+                            fr._get_value_from_standardized_address(
+                                  standardized_address => standardized_address
+                                , key => CONCAT(LOWER(level), '_uncommon_value')
+                            )
+                        END
+                        ;
                     IF _match_parameters.word IS NULL THEN
                         RAISE NOTICE 'match_element: no better word!';
                         RAISE NOTICE ' level(%), search(%), data(%)'
@@ -1025,6 +1030,15 @@ BEGIN
                         CONTINUE;
                     END IF;
                 END IF;
+
+                /* NOTE
+                for STREET, limit set to 4
+                same street can be delivered by many areas (postcode, district, ...)
+                to the maximum it exists a street w/ 3 areas!
+                this loop aims to find gap between two successive streets, so 3 +1
+                for others, limit 2 is ok
+                 */
+                _match_parameters.limit := _limits_by_level[fr.get_subscript_of_level_address(level)];
             END IF;
 
             _element_previous := ROW(NULL);
@@ -1115,15 +1129,16 @@ BEGIN
                 )
                 ;
             FOR _element_current IN EXECUTE _query USING
-                    level
+                  level
                 , _search
                 , _query_parameters
                 , standardized_address
                 , _match_parameters
             LOOP
                 _match_result := fr.analyze_matched_elements(
-                        level => level
+                      level => level
                     , search => _search
+                    , parameters => _query_parameters
                     , standardized_address => standardized_address
                     , matched_parent => matched_parent
                     , current => _element_current
