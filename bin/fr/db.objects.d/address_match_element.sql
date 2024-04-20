@@ -218,11 +218,15 @@ BEGIN
                                 WHERE
                                     match_code = _element.match_code_parents[1]
                                 ;
+                            -- by security, one element only in array!
+                            EXIT;
                         ELSE
+                            /*
                             -- eventually none (complement on street, w/o housenumber)
                             IF _record.matched_parents[_i] IS NULL THEN
                                 CONTINUE;
                             END IF;
+                             */
 
                             -- matched parent
                             IF NOT EXISTS(SELECT 1

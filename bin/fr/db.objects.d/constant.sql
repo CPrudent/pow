@@ -1142,7 +1142,7 @@ BEGIN
     ALTER DATABASE pow SET fr.similarity.complement.threshold = '0.7';
     ALTER DATABASE pow SET fr.similarity.complement.ratio = '0.15';
     ALTER DATABASE pow SET fr.max.street.occurs = '10';
-    ALTER DATABASE pow SET fr.max.housenumber.occurs = '10';
+    ALTER DATABASE pow SET fr.max.housenumber.occurs = '1';
     ALTER DATABASE pow SET fr.max.complement.occurs = '10';
 END;
 $proc$ LANGUAGE plpgsql;
