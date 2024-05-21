@@ -234,10 +234,10 @@ BEGIN
                 WHERE
                     mr.id_request = $1
                 ORDER BY
-                      (mr.standardized_address)._order_code_area
-                    , (mr.standardized_address)._order_code_street
-                    , (mr.standardized_address)._order_code_housenumber
-                    , (mr.standardized_address)._order_code_complement
+                      (mr.standardized_address).match_code_area
+                    , (mr.standardized_address).match_code_street
+                    , (mr.standardized_address).match_code_housenumber
+                    , (mr.standardized_address).match_code_complement
 
             )
             UPDATE fr.address_match_result mr SET

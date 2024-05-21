@@ -1037,6 +1037,11 @@ $func$ LANGUAGE plpgsql;
 HSTORE parameters to custom properties, as:
 '"AREA_THRESHOLD" => 0.6, "STREET_THRESHOLD" => 0.75, "STREET_RATIO" => 0.2'::HSTORE
 defaults are defined as global variables, view constant.sql
+
+"""
+When resolving an overloaded function call, the Mojo compiler tries each candidate function and uses the one that works (if only one version works), or it picks the closest match (if it can determine a close match), or it reports that the call is ambiguous (if it can’t figure out which one to pick).
+"""
+
  */
 SELECT drop_all_functions_if_exists('fr', 'match_element');
 CREATE OR REPLACE FUNCTION fr.match_element(
@@ -1141,39 +1146,6 @@ BEGIN
                     );
                 END IF;
 
-                IF ((level = 'STREET') OR (level = 'COMPLEMENT')) THEN
-                    _match_parameters.word := CASE
-                        WHEN _query_parameters & 1 = 0 THEN
-                            -- retrieve word w/ better similarity and rarity
-                            fr.get_better_word_with_similarity_criteria(
-                                  level => level
-                                , words => CASE level
-                                    WHEN 'STREET' THEN standardized_address.street_words
-                                    ELSE standardized_address.complement_words
-                                    END
-                                , zone => 'ZA'
-                                , codes => (matched_parent).codes_address
-                                , raise_notice => raise_notice
-                            )
-                        ELSE
-                            -- uncommon word
-                            fr._get_value_from_standardized_address(
-                                  standardized_address => standardized_address
-                                , key => CONCAT(LOWER(level), '_uncommon_value')
-                            )
-                        END
-                        ;
-                    IF _match_parameters.word IS NULL THEN
-                        RAISE NOTICE 'match_element: no better word!';
-                        RAISE NOTICE ' level(%), search(%), data(%)'
-                            , level
-                            , _search
-                            , standardized_address
-                            ;
-                        CONTINUE;
-                    END IF;
-                END IF;
-
                 /* NOTE
                 for STREET, limit set to 4
                 same street can be delivered by many areas (postcode, district, ...)
@@ -1182,6 +1154,39 @@ BEGIN
                 for others, limit 2 is ok
                  */
                 _match_parameters.limit := _limits_by_level[fr.get_subscript_of_level_address(level)];
+            END IF;
+
+            IF ((level = 'STREET') OR (level = 'COMPLEMENT')) THEN
+                _match_parameters.word := CASE
+                    WHEN _query_parameters & 1 = 0 THEN
+                        -- retrieve word w/ better similarity and rarity
+                        fr.get_better_word_with_similarity_criteria(
+                                level => level
+                            , words => CASE level
+                                WHEN 'STREET' THEN standardized_address.street_words
+                                ELSE standardized_address.complement_words
+                                END
+                            , zone => 'ZA'
+                            , codes => (matched_parent).codes_address
+                            , raise_notice => raise_notice
+                        )
+                    ELSE
+                        -- uncommon word
+                        fr._get_value_from_standardized_address(
+                                standardized_address => standardized_address
+                            , key => CONCAT(LOWER(level), '_uncommon_value')
+                        )
+                    END
+                    ;
+                IF _match_parameters.word IS NULL THEN
+                    RAISE NOTICE 'match_element: no better word!';
+                    RAISE NOTICE ' level(%), search(%), data(%)'
+                        , level
+                        , _search
+                        , standardized_address
+                        ;
+                    EXIT;
+                END IF;
             END IF;
 
             _match_previous := NULL::fr.match_results;
