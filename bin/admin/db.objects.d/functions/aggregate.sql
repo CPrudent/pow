@@ -6,9 +6,9 @@
 
 -- create a function that always returns the first non-NULL item
 CREATE OR REPLACE FUNCTION public.first_agg(
+    ANYELEMENT,
     ANYELEMENT
-    , ANYELEMENT
-    )
+)
 RETURNS ANYELEMENT LANGUAGE SQL IMMUTABLE STRICT AS
 $$
     SELECT $1;
@@ -40,9 +40,9 @@ CREATE AGGREGATE public.LAST(
 -- uniq aggregate
 SELECT public.drop_all_functions_if_exists('public', 'null_if_not_equal');
 CREATE OR REPLACE FUNCTION public.null_if_not_equal(
-    val_a ANYELEMENT
-    , val_b ANYELEMENT
-    )
+    val_a ANYELEMENT,
+    val_b ANYELEMENT
+)
 RETURNS ANYELEMENT LANGUAGE plpgsql IMMUTABLE /*STRICT*/ AS
 $$
 BEGIN
@@ -72,9 +72,9 @@ CREATE AGGREGATE public.unique_agg(
 DROP AGGREGATE IF EXISTS public.exists_agg(bool) CASCADE;
 SELECT public.drop_all_functions_if_exists('public', 'exists_agg_fn');
 CREATE OR REPLACE FUNCTION public.exists_agg_fn(
-    was_true BOOLEAN
-    , is_true BOOLEAN
-    )
+    was_true BOOLEAN,
+    is_true BOOLEAN
+)
 RETURNS BOOLEAN AS
 $$
 BEGIN

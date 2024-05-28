@@ -12,34 +12,34 @@ CREATE OR REPLACE PROCEDURE fr.set_territory_level(
 $proc$
 BEGIN
     CALL fr.check_municipality_subsection(
-        municipality_subsection => municipality_subsection
-        , check_level => FALSE
-        , check_territory => FALSE
+        municipality_subsection => municipality_subsection,
+        check_level => FALSE,
+        check_territory => FALSE
     );
 
     DELETE FROM public.territory_level WHERE country = 'FR';
 
     INSERT INTO public.territory_level(
-        country
-        , level
+        country,
+        level
     )
     (
         SELECT 'FR', UNNEST(ARRAY[
-            municipality_subsection
-                , 'CP'
-                    , 'PDC_PPDC'
-                        , 'PPDC_PDC'
-                                , 'DEX'
-        , 'IRIS'
-                , 'COM'
-                    , 'COM_GLOBALE_ARM'
-                        , 'EPCI'
-                        , 'CV'
-                        , 'ARR'
-                            , 'DEP'
-                                , 'REG'
-                                    , 'METROPOLE_DOM_TOM'
-                                        , 'PAYS'
+            municipality_subsection,
+                'CP',
+                    'PDC_PPDC',
+                        'PPDC_PDC',
+                                'DEX',
+        'IRIS',
+                'COM',
+                    'COM_GLOBALE_ARM',
+                        'EPCI',
+                        'CV',
+                        'ARR',
+                            'DEP',
+                                'REG',
+                                    'METROPOLE_DOM_TOM',
+                                        'PAYS'
         ])
     );
 
@@ -66,9 +66,8 @@ BEGIN
                                     WHEN 'METROPOLE_DOM_TOM' THEN 'Métropole ou territoire d''outre-mer'
                                         WHEN 'PAYS'          THEN 'Pays'
             ELSE level
-        END
-
-        , name_short =
+        END,
+        name_short =
         CASE level
             WHEN municipality_subsection    THEN
                                                 CASE
@@ -90,8 +89,8 @@ BEGIN
                                     WHEN 'METROPOLE_DOM_TOM' THEN 'Métropole ou DOM/TOM'
                                         WHEN 'PAYS'          THEN 'Pays'
             ELSE level
-        END
-        , name_plural =
+        END,
+        name_plural =
         CASE level
             WHEN municipality_subsection    THEN
                                                 CASE
@@ -113,8 +112,8 @@ BEGIN
                                     WHEN 'METROPOLE_DOM_TOM' THEN 'Métropoles ou territoires d''outre-mer'
                                         WHEN 'PAYS'          THEN 'Pays'
             ELSE level
-        END
-        , article =
+        END,
+        article =
         CASE level
             WHEN municipality_subsection    THEN
                                                 CASE
@@ -136,8 +135,8 @@ BEGIN
                                     WHEN 'METROPOLE_DOM_TOM' THEN 'la'
                                         WHEN 'PAYS'          THEN 'le'
             ELSE level
-        END
-        , hierarchy =
+        END,
+        hierarchy =
         CASE level
             WHEN municipality_subsection    THEN 110
                 WHEN 'CP'                   THEN 210
@@ -155,8 +154,8 @@ BEGIN
                                     WHEN 'METROPOLE_DOM_TOM' THEN 700
                                         WHEN 'PAYS'          THEN 800
             ELSE NULL
-        END
-        , sublevels =
+        END,
+        sublevels =
         CASE level
             WHEN municipality_subsection    THEN NULL
                 WHEN 'CP'                   THEN ARRAY[municipality_subsection]
@@ -184,8 +183,8 @@ $proc$ LANGUAGE plpgsql;
 -- get common level between 2 levels
 SELECT public.drop_all_functions_if_exists('fr', 'get_common_level');
 CREATE OR REPLACE FUNCTION fr.get_common_level(
-    level_a VARCHAR
-    , level_b VARCHAR
+    level_a VARCHAR,
+    level_b VARCHAR
 )
 RETURNS VARCHAR AS
 $func$

@@ -5,9 +5,9 @@
 -- delete (or test) "bad" space(s) in name
 SELECT public.drop_all_functions_if_exists('public', 'bad_space_in_name');
 CREATE OR REPLACE FUNCTION public.bad_space_in_name(
-    name INOUT VARCHAR
-    , test_only IN BOOLEAN DEFAULT FALSE
-    , to_fix OUT BOOLEAN
+    name INOUT VARCHAR,
+    test_only IN BOOLEAN DEFAULT FALSE,
+    to_fix OUT BOOLEAN
 )
 AS
 $func$
@@ -55,9 +55,9 @@ BEGIN
     END IF;
 
     name := TRANSLATE(
-        UPPER(name)
-        , 'ÀÁÂÃÄÅÇÊÉÈËÌÍÎÏÌÑÒÓÔÕÖÙÚÛÜÝŸ'
-        , 'AAAAAACEEEEIIIIINOOOOOUUUUYY'
+        UPPER(name),
+        'ÀÁÂÃÄÅÇÊÉÈËÌÍÎÏÌÑÒÓÔÕÖÙÚÛÜÝŸ',
+        'AAAAAACEEEEIIIIINOOOOOUUUUYY'
     );
     name := REPLACE(name, 'Œ', 'OE');
     name := REPLACE(name, 'Æ', 'AE');

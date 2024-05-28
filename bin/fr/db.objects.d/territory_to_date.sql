@@ -28,10 +28,10 @@ BEGIN
         END IF;
         RETURN TO_DATE(
             NULLIF(
-                current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_min'))
-                , 'NULL'
-            )
-            , 'DD/MM/YYYY'
+                current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_min')),
+                'NULL'
+            ),
+            'DD/MM/YYYY'
         );
     ELSE
         IF NULLIF(current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_max')), '') IS NULL THEN
@@ -39,10 +39,10 @@ BEGIN
         END IF;
         RETURN TO_DATE(
             NULLIF(
-                current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_max'))
-                , 'NULL'
-            )
-            , 'DD/MM/YYYY'
+                current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_max')),
+                'NULL'
+            ),
+            'DD/MM/YYYY'
         );
     END IF;
 EXCEPTION WHEN OTHERS THEN
@@ -50,18 +50,18 @@ EXCEPTION WHEN OTHERS THEN
     INTO _date_min, _date_max
     FROM fr.insee_municipality_event;
     EXECUTE CONCAT(
-        'SELECT set_config('''
-        , CONCAT_WS('.', _fr_municipality_event, 'date_min')
-        , ''', '''
-        , COALESCE(TO_CHAR(_date_min, 'DD/MM/YYYY'), 'NULL')
-        , ''', TRUE)'
+        'SELECT set_config(''',
+        CONCAT_WS('.', _fr_municipality_event, 'date_min'),
+        ''', ''',
+        COALESCE(TO_CHAR(_date_min, 'DD/MM/YYYY'), 'NULL'),
+        ''', TRUE)'
     );
     EXECUTE CONCAT(
-        'SELECT set_config('''
-        , CONCAT_WS('.', _fr_municipality_event, 'date_max')
-        , ''', '''
-        , COALESCE(TO_CHAR(_date_max, 'DD/MM/YYYY'), 'NULL')
-        , ''', TRUE)'
+        'SELECT set_config(''',
+        CONCAT_WS('.', _fr_municipality_event, 'date_max'),
+        ''', ''',
+        COALESCE(TO_CHAR(_date_max, 'DD/MM/YYYY'), 'NULL'),
+        ''', TRUE)'
     );
     IF minmax THEN RETURN _date_min; ELSE RETURN _date_max; END IF;
 END
@@ -98,10 +98,10 @@ BEGIN
         END IF;
         RETURN TO_DATE(
             NULLIF(
-                current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_min'))
-                , 'NULL'
-            )
-            , 'DD/MM/YYYY'
+                current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_min')),
+                'NULL'
+            ),
+            'DD/MM/YYYY'
         );
     ELSE
         IF NULLIF(current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_max')), '') IS NULL THEN
@@ -109,10 +109,10 @@ BEGIN
         END IF;
         RETURN TO_DATE(
             NULLIF(
-                current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_max'))
-                , 'NULL'
-            )
-            , 'DD/MM/YYYY'
+                current_setting(CONCAT_WS('.', _fr_municipality_event, 'date_max')),
+                'NULL'
+            ),
+            'DD/MM/YYYY'
         );
     END IF;
 EXCEPTION WHEN OTHERS THEN
@@ -120,18 +120,18 @@ EXCEPTION WHEN OTHERS THEN
     INTO _date_min, _date_max
     FROM fr.wikipedia_municipality_event;
     EXECUTE CONCAT(
-        'SELECT set_config('''
-        , CONCAT_WS('.', _fr_municipality_event, 'date_min')
-        , ''', '''
-        , COALESCE(TO_CHAR(_date_min, 'DD/MM/YYYY'), 'NULL')
-        , ''', TRUE)'
+        'SELECT set_config(''',
+        CONCAT_WS('.', _fr_municipality_event, 'date_min'),
+        ''', ''',
+        COALESCE(TO_CHAR(_date_min, 'DD/MM/YYYY'), 'NULL'),
+        ''', TRUE)'
     );
     EXECUTE CONCAT(
-        'SELECT set_config('''
-        , CONCAT_WS('.', _fr_municipality_event, 'date_max')
-        , ''', '''
-        , COALESCE(TO_CHAR(_date_max, 'DD/MM/YYYY'), 'NULL')
-        , ''', TRUE)'
+        'SELECT set_config(''',
+        CONCAT_WS('.', _fr_municipality_event, 'date_max'),
+        ''', ''',
+        COALESCE(TO_CHAR(_date_max, 'DD/MM/YYYY'), 'NULL'),
+        ''', TRUE)'
     );
     IF minmax THEN RETURN _date_min; ELSE RETURN _date_max; END IF;
 END
@@ -146,19 +146,19 @@ SELECT fr.get_date_wikipedia_municipality_event()
  */
 SELECT public.drop_all_functions_if_exists('fr', 'get_most_recent_municipality_to_date');
 CREATE OR REPLACE FUNCTION fr.get_most_recent_municipality_to_date(
-    date_geography_from DATE DEFAULT NULL    -- date from which apply updates
-    , date_geography_to DATE DEFAULT NOW()   -- date up to which apply updates
+    date_geography_from DATE DEFAULT NULL,    -- date from which apply updates
+    date_geography_to DATE DEFAULT NOW()      -- date up to which apply updates
 )
 RETURNS DATE AS
 $func$
 BEGIN
     RETURN GREATEST(
-        date_geography_from
-        , LEAST(
-            date_geography_to
-            , GREATEST(
-                fr.get_date_insee_municipality_event()
-                , fr.get_date_wikipedia_municipality_event()
+        date_geography_from,
+        LEAST(
+            date_geography_to,
+            GREATEST(
+                fr.get_date_insee_municipality_event(),
+                fr.get_date_wikipedia_municipality_event()
             )
         )
     );
@@ -170,16 +170,16 @@ $func$ LANGUAGE plpgsql;
  */
 SELECT public.drop_all_functions_if_exists('fr', 'get_municipality_to_date_from_insee');
 CREATE OR REPLACE FUNCTION fr.get_municipality_to_date_from_insee(
-    code VARCHAR
-    , date_geography_from DATE
-    , name VARCHAR DEFAULT NULL
-    , distribution NUMERIC DEFAULT 1
-    , information TEXT DEFAULT NULL
-    , codes_event INTEGER[] DEFAULT NULL     -- only if all events not treated (to date)
-    , date_geography_to DATE DEFAULT NOW()
-    , is_new BOOLEAN DEFAULT FALSE
-    , with_deleted BOOLEAN DEFAULT FALSE
-    , code_previous VARCHAR DEFAULT NULL
+    code VARCHAR,
+    date_geography_from DATE,
+    name VARCHAR DEFAULT NULL,
+    distribution NUMERIC DEFAULT 1,
+    information TEXT DEFAULT NULL,
+    codes_event INTEGER[] DEFAULT NULL,     -- only if all events not treated (to date)
+    date_geography_to DATE DEFAULT NOW(),
+    is_new BOOLEAN DEFAULT FALSE,
+    with_deleted BOOLEAN DEFAULT FALSE,
+    code_previous VARCHAR DEFAULT NULL
 )
 RETURNS SETOF public.territory_to_date_t AS
 $func$
@@ -309,30 +309,30 @@ BEGIN
         */
 
         RETURN NEXT ROW (
-            code
-            , code_previous
-            , name
-            , CASE
+            code,
+            code_previous,
+            name,
+            CASE
                 WHEN date_geography_to IS NULL OR date_geography_to > date_geography_from THEN
                     GREATEST(
-                        date_geography_from
-                        , LEAST(
-                            date_geography_to
-                            , fr.get_date_insee_municipality_event()
+                        date_geography_from,
+                        LEAST(
+                            date_geography_to,
+                            fr.get_date_insee_municipality_event()
                         )
                     )
                 ELSE
                     LEAST(
-                        date_geography_from
-                        , GREATEST(
-                            date_geography_to
-                            , fr.get_date_insee_municipality_event(minmax => TRUE)
+                        date_geography_from,
+                        GREATEST(
+                            date_geography_to,
+                            fr.get_date_insee_municipality_event(minmax => TRUE)
                         )
                     )
-            END
-            , distribution
-            , information
-            , is_new
+            END,
+            distribution,
+            information,
+            is_new
         );
     ELSE
         _i := 0;
@@ -422,20 +422,20 @@ BEGIN
             RETURN QUERY
                 SELECT *
                 FROM fr.get_municipality_to_date_from_insee(
-                    code => _code_new
-                    , name => _name_new
-                    , date_geography_from => _date_effect
-                    , distribution => _distribution_new
-                    , information => CONCAT_WS(' -> '
-                        , COALESCE(information, CONCAT(CONCAT_WS(' ', CONCAT_WS('/', code, code_previous), name), ' le ', date_geography_from))
-                        , CONCAT(CONCAT_WS('/', _code_new, _code_previous_new), ' ', _name_new, ' le ', _date_effect, ' (mod=', _code_event, ')')
-                    )
-                    , codes_event => ARRAY_APPEND(codes_event, _code_event)
-                    , date_geography_to => date_geography_to
-                    , is_new => TRUE
-                    , with_deleted => with_deleted
+                    code => _code_new,
+                    name => _name_new,
+                    date_geography_from => _date_effect,
+                    distribution => _distribution_new,
+                    information => CONCAT_WS(' -> ',
+                        COALESCE(information, CONCAT(CONCAT_WS(' ', CONCAT_WS('/', code, code_previous), name), ' le ', date_geography_from)),
+                        CONCAT(CONCAT_WS('/', _code_new, _code_previous_new), ' ', _name_new, ' le ', _date_effect, ' (mod=', _code_event, ')')
+                    ),
+                    codes_event => ARRAY_APPEND(codes_event, _code_event),
+                    date_geography_to => date_geography_to,
+                    is_new => TRUE,
+                    with_deleted => with_deleted,
                     --En cas de succession de changement de code géo, on mémorise le premier seulement
-                    , code_previous => _code_previous_new
+                    code_previous => _code_previous_new
                 );
         END LOOP;
     END IF;
@@ -487,21 +487,21 @@ WITH millesime_a_to_now AS (
     FROM fr.insee_municipality AS dcca
     WHERE dcca.millesime = '2019'
 )
-, millesime_b_to_now AS (
+millesime_b_to_now AS (
     SELECT commune_to_now.codgeo, commune_to_now.dt_reference, commune_to_now.information, ROUND(commune_to_now.distribution, 1)
     FROM fr.insee_municipality AS dcca
     INNER JOIN get_municipality_to_date_from_insee(
-        code => dcca.codgeo
-        , date_geography_from => TO_DATE(dcca.millesime::VARCHAR, 'YYYY')
-        , date_geography_to => TO_DATE('01/01/2019', 'DD/MM/YYYY')
+        code => dcca.codgeo,
+        date_geography_from => TO_DATE(dcca.millesime::VARCHAR, 'YYYY'),
+        date_geography_to => TO_DATE('01/01/2019', 'DD/MM/YYYY')
     ) AS commune_to_now ON TRUE
     WHERE dcca.millesime = '2015'
 )
 SELECT
-    millesime_a_to_now.codgeo AS codgeo_a_to_now
-    , millesime_a_to_now.information AS information_a_to_now
-    , millesime_b_to_now.codgeo AS codgeo_b_to_now
-    , millesime_b_to_now.information AS information_b_to_now
+    millesime_a_to_now.codgeo AS codgeo_a_to_now,
+    millesime_a_to_now.information AS information_a_to_now,
+    millesime_b_to_now.codgeo AS codgeo_b_to_now,
+    millesime_b_to_now.information AS information_b_to_now
 FROM millesime_b_to_now
 FULL OUTER JOIN millesime_a_to_now ON millesime_a_to_now.codgeo = millesime_b_to_now.codgeo
 WHERE millesime_a_to_now.codgeo IS NULL
@@ -544,14 +544,14 @@ having COUNT(*) > 1
  */
 SELECT public.drop_all_functions_if_exists('fr', 'get_municipality_to_date_from_wikipedia');
 CREATE OR REPLACE FUNCTION fr.get_municipality_to_date_from_wikipedia(
-    code VARCHAR
-    , date_geography_from DATE
-    , name VARCHAR DEFAULT NULL
-    , distribution NUMERIC DEFAULT 1
-    , information TEXT DEFAULT NULL
-    , date_geography_to DATE DEFAULT NOW()
-    , is_new BOOLEAN DEFAULT FALSE
-    , code_previous VARCHAR DEFAULT NULL
+    code VARCHAR,
+    date_geography_from DATE,
+    name VARCHAR DEFAULT NULL,
+    distribution NUMERIC DEFAULT 1,
+    information TEXT DEFAULT NULL,
+    date_geography_to DATE DEFAULT NOW(),
+    is_new BOOLEAN DEFAULT FALSE,
+    code_previous VARCHAR DEFAULT NULL
 )
 RETURNS SETOF public.territory_to_date_t AS
 $func$
@@ -589,30 +589,30 @@ BEGIN
     -- no event
     IF _date_effect IS NULL THEN
         RETURN NEXT ROW (
-            code
-            , code_previous
-            , name
-            , CASE
+            code,
+            code_previous,
+            name,
+            CASE
                 WHEN date_geography_to IS NULL OR date_geography_to > date_geography_from THEN
                     GREATEST(
-                        date_geography_from
-                        , LEAST(
-                            date_geography_to
-                            , fr.get_date_wikipedia_municipality_event()
+                        date_geography_from,
+                        LEAST(
+                            date_geography_to,
+                            fr.get_date_wikipedia_municipality_event()
                         )
                     )
                 ELSE
                     LEAST(
-                        date_geography_from
-                        , GREATEST(
-                            date_geography_to
-                            , fr.get_date_wikipedia_municipality_event(minmax => TRUE)
+                        date_geography_from,
+                        GREATEST(
+                            date_geography_to,
+                            fr.get_date_wikipedia_municipality_event(minmax => TRUE)
                         )
                     )
-            END
-            , distribution
-            , information
-            , is_new
+            END,
+            distribution,
+            information,
+            is_new
         );
     ELSE
         _i := 0;
@@ -644,18 +644,18 @@ BEGIN
             RETURN QUERY
                 SELECT *
                 FROM fr.get_municipality_to_date_from_wikipedia(
-                    code => _code_new
-                    , name => _name_new
-                    , date_geography_from => _date_effect
-                    , distribution => _distribution_new
-                    , information => CONCAT_WS(' -> '
-                        , COALESCE(information, CONCAT(CONCAT_WS(' ', CONCAT_WS('/', code, code_previous), name), ' le ', date_geography_from))
-                        , CONCAT(CONCAT_WS('/', _code_new, _code_previous_new), ' ', _name_new, ' le ', _date_effect)
-                    )
-                    , date_geography_to => date_geography_to
-                    , is_new => TRUE
+                    code => _code_new,
+                    name => _name_new,
+                    date_geography_from => _date_effect,
+                    distribution => _distribution_new,
+                    information => CONCAT_WS(' -> ',
+                        COALESCE(information, CONCAT(CONCAT_WS(' ', CONCAT_WS('/', code, code_previous), name), ' le ', date_geography_from)),
+                        CONCAT(CONCAT_WS('/', _code_new, _code_previous_new), ' ', _name_new, ' le ', _date_effect)
+                    ),
+                    date_geography_to => date_geography_to,
+                    is_new => TRUE,
                     --En cas de succession de changement de code géo, on mémorise le premier seulement
-                    , code_previous => _code_previous_new
+                    code_previous => _code_previous_new
                 );
         END LOOP;
     END IF;
@@ -690,17 +690,17 @@ WITH millesime_20xx_to_now AS (
     INNER JOIN get_municipality_to_date_from_wikipedia(dcca.codgeo, TO_DATE(dcca.millesime::VARCHAR, 'YYYY')) AS commune_to_now ON TRUE
     WHERE dcca.millesime = '2015'
 )
-, millesime_last_to_now AS (
+millesime_last_to_now AS (
     SELECT commune_to_now.codgeo, commune_to_now.dt_reference, ROUND(commune_to_now.distribution, 1), commune_to_now.information
     FROM fr.insee_municipality AS dcca
     INNER JOIN get_municipality_to_date_from_wikipedia(dcca.codgeo, TO_DATE(dcca.millesime::VARCHAR, 'YYYY')) AS commune_to_now ON TRUE
     WHERE dcca.millesime = (SELECT MAX(millesime) FROM fr.insee_municipality)
 )
 SELECT
-    millesime_last_to_now.codgeo AS codgeo_last_to_now
-    , millesime_last_to_now.information AS information_last_to_now
-    , millesime_20xx_to_now.codgeo AS codgeo_20xx_to_now
-    , millesime_20xx_to_now.information AS information_20xx_to_now
+    millesime_last_to_now.codgeo AS codgeo_last_to_now,
+    millesime_last_to_now.information AS information_last_to_now,
+    millesime_20xx_to_now.codgeo AS codgeo_20xx_to_now,
+    millesime_20xx_to_now.information AS information_20xx_to_now
 FROM millesime_last_to_now
 FULL OUTER JOIN millesime_20xx_to_now ON millesime_20xx_to_now.codgeo = millesime_last_to_now.codgeo
 WHERE millesime_20xx_to_now.codgeo IS NULL
@@ -721,19 +721,19 @@ OR millesime_last_to_now.codgeo IS NULL
  */
 SELECT public.drop_all_functions_if_exists('fr', 'get_municipality_to_date');
 CREATE OR REPLACE FUNCTION fr.get_municipality_to_date(
-    code VARCHAR
-    , date_geography_from DATE
-    , name VARCHAR DEFAULT NULL
-    , distribution NUMERIC DEFAULT 1
-    , information TEXT DEFAULT NULL
-    , check_exists BOOLEAN DEFAULT TRUE
-    , months_back_if_not_exists INTEGER DEFAULT 12
-    , date_geography_to DATE DEFAULT NOW()   -- date up to which apply updates
+    code VARCHAR,
+    date_geography_from DATE,
+    name VARCHAR DEFAULT NULL,
+    distribution NUMERIC DEFAULT 1,
+    information TEXT DEFAULT NULL,
+    check_exists BOOLEAN DEFAULT TRUE,
+    months_back_if_not_exists INTEGER DEFAULT 12,
+    date_geography_to DATE DEFAULT NOW(),    -- date up to which apply updates
                                              -- NOW() till today, NULL most as possible
-    , is_new BOOLEAN DEFAULT FALSE
-    , with_deleted BOOLEAN DEFAULT FALSE
-    , date_geography_from_first DATE DEFAULT NULL
-    , code_previous VARCHAR DEFAULT NULL
+    is_new BOOLEAN DEFAULT FALSE,
+    with_deleted BOOLEAN DEFAULT FALSE,
+    date_geography_from_first DATE DEFAULT NULL,
+    code_previous VARCHAR DEFAULT NULL
 )
 RETURNS SETOF public.territory_to_date_t AS
 $func$
@@ -744,43 +744,43 @@ DECLARE
 BEGIN
     /*
     RAISE NOTICE 'get_municipality_to_date(%, %, %, %, %, %, %, %, %, %, %)'
-        , code
-        , date_geography_from
-        , name
-        , distribution
-        , information
-        , check_exists
-        , months_back_if_not_exists
-        , date_geography_to
-        , is_new
-        , with_deleted
-        , date_geography_from_first;
+        code,
+        date_geography_from,
+        name,
+        distribution,
+        information,
+        check_exists,
+        months_back_if_not_exists,
+        date_geography_to,
+        is_new,
+        with_deleted,
+        date_geography_from_first;
      */
     IF date_geography_from_first IS NULL THEN date_geography_from_first := date_geography_from; END IF;
     IF code = '97123'
     AND date_geography_from < TO_DATE('15/07/2007', 'DD/MM/YYYY')
     AND (date_geography_to IS NULL OR date_geography_to >= TO_DATE('15/07/2007', 'DD/MM/YYYY')) THEN
         RETURN NEXT ROW(
-            '97701'::VARCHAR
-            , code
-            , 'Saint-Barthélemy'::VARCHAR
-            , TO_DATE('15/07/2007', 'DD/MM/YYYY')
-            , 1::NUMERIC
-            , 'Les anciennes communes de Saint-Barthélemy (ancien code INSEE 97123) et Saint-Martin (ancien code INSEE 97127) ne font plus partie du département et la région d''outre-mer de Guadeloupe mais forment des collectivités d''outre-mer séparées depuis le 15 juillet 2007'::TEXT
-            , TRUE
+            '97701'::VARCHAR,
+            code,
+            'Saint-Barthélemy'::VARCHAR,
+            TO_DATE('15/07/2007', 'DD/MM/YYYY'),
+            1::NUMERIC,
+            'Les anciennes communes de Saint-Barthélemy (ancien code INSEE 97123) et Saint-Martin (ancien code INSEE 97127) ne font plus partie du département et la région d''outre-mer de Guadeloupe mais forment des collectivités d''outre-mer séparées depuis le 15 juillet 2007'::TEXT,
+            TRUE
         );
         RETURN;
     ELSIF code = '97127'
     AND date_geography_from < TO_DATE('15/07/2007', 'DD/MM/YYYY')
     AND (date_geography_to IS NULL OR date_geography_to >= TO_DATE('15/07/2007', 'DD/MM/YYYY')) THEN
         RETURN NEXT ROW(
-            '97801'::VARCHAR
-            , code
-            , 'Saint-Martin'::VARCHAR
-            , TO_DATE('15/07/2007', 'DD/MM/YYYY')
-            , 1::NUMERIC
-            , 'Les anciennes communes de Saint-Barthélemy (ancien code INSEE 97123) et Saint-Martin (ancien code INSEE 97127) ne font plus partie du département et la région d''outre-mer de Guadeloupe mais forment des collectivités d''outre-mer séparées depuis le 15 juillet 2007'::TEXT
-            , TRUE
+            '97801'::VARCHAR,
+            code,
+            'Saint-Martin'::VARCHAR,
+            TO_DATE('15/07/2007', 'DD/MM/YYYY'),
+            1::NUMERIC,
+            'Les anciennes communes de Saint-Barthélemy (ancien code INSEE 97123) et Saint-Martin (ancien code INSEE 97127) ne font plus partie du département et la région d''outre-mer de Guadeloupe mais forment des collectivités d''outre-mer séparées depuis le 15 juillet 2007'::TEXT,
+            TRUE
         );
         RETURN;
     ELSIF code IN ('75056', '13055', '69123') THEN
@@ -789,13 +789,13 @@ BEGIN
             is_new := TRUE;
             distribution := 0;
             RETURN NEXT ROW (
-                code
-                , code_previous
-                , name
-                , date_geography_from
-                , distribution
-                , information
-                , is_new
+                code,
+                code_previous,
+                name,
+                date_geography_from,
+                distribution,
+                information,
+                is_new
             );
         END IF;
         RETURN;
@@ -805,13 +805,13 @@ BEGIN
             is_new := TRUE;
             distribution := 0;
             RETURN NEXT ROW (
-                code
-                , code_previous
-                , name
-                , date_geography_from
-                , distribution
-                , information
-                , is_new
+                code,
+                code_previous,
+                name,
+                date_geography_from,
+                distribution,
+                information,
+                is_new
             );
         END IF;
         RETURN;
@@ -823,8 +823,8 @@ BEGIN
             (
                 (date_geography_to IS NULL OR date_geography_from < date_geography_to)
                 AND date_geography_from < LEAST(
-                    date_geography_to
-                    , fr.get_date_insee_municipality_event()
+                    date_geography_to,
+                    fr.get_date_insee_municipality_event()
                 )
                 AND (
                     --Pas de MAJ possible par WIKIPEDIA
@@ -839,8 +839,8 @@ BEGIN
                 --retour vers le passé
                 (date_geography_from > date_geography_to)
                 AND date_geography_from > GREATEST(
-                    date_geography_to
-                    , fr.get_date_insee_municipality_event(minmax => TRUE)
+                    date_geography_to,
+                    fr.get_date_insee_municipality_event(minmax => TRUE)
                 )
                 AND (
                     --Pas de MAJ possible par WIKIPEDIA
@@ -856,32 +856,32 @@ BEGIN
         FOR _territory_to_date_t IN (
             SELECT *
             FROM fr.get_municipality_to_date_from_insee(
-                code => code
-                , name => name
-                , date_geography_from => date_geography_from
-                , distribution => distribution
-                , information => information
-                , date_geography_to => date_geography_to
-                , is_new => is_new
-                , with_deleted => with_deleted
-                , code_previous => code_previous
+                code => code,
+                name => name,
+                date_geography_from => date_geography_from,
+                distribution => distribution,
+                information => information,
+                date_geography_to => date_geography_to,
+                is_new => is_new,
+                with_deleted => with_deleted,
+                code_previous => code_previous
             )
         )
         LOOP
             RETURN QUERY
                 SELECT * FROM fr.get_municipality_to_date(
-                    code => _territory_to_date_t.code
-                    , name => _territory_to_date_t.name
-                    , date_geography_from => _territory_to_date_t.date_geography
-                    , distribution => _territory_to_date_t.distribution
-                    , information => _territory_to_date_t.information
-                    , check_exists => check_exists
-                    , months_back_if_not_exists => months_back_if_not_exists
-                    , date_geography_to => date_geography_to
-                    , is_new => _territory_to_date_t.is_new
-                    , with_deleted => with_deleted
-                    , date_geography_from_first => date_geography_from_first
-                    , code_previous => _territory_to_date_t.code_previous
+                    code => _territory_to_date_t.code,
+                    name => _territory_to_date_t.name,
+                    date_geography_from => _territory_to_date_t.date_geography,
+                    distribution => _territory_to_date_t.distribution,
+                    information => _territory_to_date_t.information,
+                    check_exists => check_exists,
+                    months_back_if_not_exists => months_back_if_not_exists,
+                    date_geography_to => date_geography_to,
+                    is_new => _territory_to_date_t.is_new,
+                    with_deleted => with_deleted,
+                    date_geography_from_first => date_geography_from_first,
+                    code_previous => _territory_to_date_t.code_previous
                 );
         END LOOP;
         RETURN;
@@ -892,8 +892,8 @@ BEGIN
             (
                 (date_geography_to IS NULL OR date_geography_from < date_geography_to)
                 AND date_geography_from < LEAST(
-                    date_geography_to
-                    , fr.get_date_wikipedia_municipality_event()
+                    date_geography_to,
+                    fr.get_date_wikipedia_municipality_event()
                 )
                 AND (
                     --Pas de MAJ possible par INSEE
@@ -908,8 +908,8 @@ BEGIN
                 --retour vers le passé
                 (date_geography_from > date_geography_to)
                 AND date_geography_from > GREATEST(
-                    date_geography_to
-                    , fr.get_date_wikipedia_municipality_event(minmax => TRUE))
+                    date_geography_to,
+                    fr.get_date_wikipedia_municipality_event(minmax => TRUE))
                 AND (
                     --Pas de MAJ possible par INSEE
                     fr.get_date_insee_municipality_event() IS NULL
@@ -923,31 +923,31 @@ BEGIN
     THEN
         FOR _territory_to_date_t IN (
             SELECT * FROM fr.get_municipality_to_date_from_wikipedia(
-                code => code
-                , name => name
-                , date_geography_from => date_geography_from
-                , distribution => distribution
-                , information => information
-                , date_geography_to => date_geography_to
-                , is_new => is_new
-                , code_previous => code_previous
+                code => code,
+                name => name,
+                date_geography_from => date_geography_from,
+                distribution => distribution,
+                information => information,
+                date_geography_to => date_geography_to,
+                is_new => is_new,
+                code_previous => code_previous
             )
         )
         LOOP
             RETURN QUERY
                 SELECT * FROM fr.get_municipality_to_date(
-                    code => _territory_to_date_t.code
-                    , name => _territory_to_date_t.name
-                    , date_geography_from => _territory_to_date_t.date_geography
-                    , distribution => _territory_to_date_t.distribution
-                    , information => _territory_to_date_t.information
-                    , check_exists => check_exists
-                    , months_back_if_not_exists => months_back_if_not_exists
-                    , date_geography_to => date_geography_to
-                    , is_new => _territory_to_date_t.is_new
-                    , with_deleted => with_deleted
-                    , date_geography_from_first => date_geography_from_first
-                    , code_previous => _territory_to_date_t.code_previous
+                    code => _territory_to_date_t.code,
+                    name => _territory_to_date_t.name,
+                    date_geography_from => _territory_to_date_t.date_geography,
+                    distribution => _territory_to_date_t.distribution,
+                    information => _territory_to_date_t.information,
+                    check_exists => check_exists,
+                    months_back_if_not_exists => months_back_if_not_exists,
+                    date_geography_to => date_geography_to,
+                    is_new => _territory_to_date_t.is_new,
+                    with_deleted => with_deleted,
+                    date_geography_from_first => date_geography_from_first,
+                    code_previous => _territory_to_date_t.code_previous
                 );
         END LOOP;
         RETURN;
@@ -967,18 +967,18 @@ BEGIN
                     RAISE NOTICE 'Avertissement : la commune % n''existe pas dans fr.territory : recherche d''un évènement un mois avant la date de référence initiale (soit à partir du %)', code, date_geography_from;
                     RETURN QUERY
                         SELECT * FROM fr.get_municipality_to_date(
-                            code => code
-                            , name => name
-                            , date_geography_from => date_geography_from
-                            , distribution => distribution
-                            , information => information
-                            , check_exists => check_exists
-                            , months_back_if_not_exists => months_back_if_not_exists - 1
-                            , date_geography_to => date_geography_to
-                            , is_new => is_new
-                            , with_deleted => with_deleted
-                            , date_geography_from_first => date_geography_from
-                            , code_previous => code_previous
+                            code => code,
+                            name => name,
+                            date_geography_from => date_geography_from,
+                            distribution => distribution,
+                            information => information,
+                            check_exists => check_exists,
+                            months_back_if_not_exists => months_back_if_not_exists - 1,
+                            date_geography_to => date_geography_to,
+                            is_new => is_new,
+                            with_deleted => with_deleted,
+                            date_geography_from_first => date_geography_from,
+                            code_previous => code_previous
                         );
                     RETURN;
                 ELSE
@@ -993,13 +993,13 @@ BEGIN
             END;
         END IF;
         RETURN NEXT ROW (
-            code
-            , code_previous
-            , name
-            , date_geography_from
-            , distribution
-            , information
-            , is_new
+            code,
+            code_previous,
+            name,
+            date_geography_from,
+            distribution,
+            information,
+            is_new
         );
     END IF;
 END
@@ -1020,17 +1020,17 @@ SELECT * FROM get_municipality_to_date('31300', TO_DATE('01/01/1999', 'DD/MM/YYY
 
 -- municipality merge on 01/01/2018
 SELECT fr.get_municipality_to_date(
-    code => '16296'
-    , date_geography_from => TO_DATE('2018-01-06', 'YYYY-MM-DD')
+    code => '16296',
+    date_geography_from => TO_DATE('2018-01-06', 'YYYY-MM-DD')
 );
  */
 
 SELECT public.drop_all_functions_if_exists('fr', 'get_municipality_to_date_from_laposte');
 CREATE OR REPLACE FUNCTION fr.get_municipality_to_date_from_laposte(
-    code VARCHAR
-    , date_geography_from DATE
-    , distribution NUMERIC DEFAULT 1
-    , raise_notice BOOLEAN DEFAULT FALSE
+    code VARCHAR,
+    date_geography_from DATE,
+    distribution NUMERIC DEFAULT 1,
+    raise_notice BOOLEAN DEFAULT FALSE
 )
 RETURNS SETOF public.territory_to_date_t AS
 $func$
@@ -1044,8 +1044,8 @@ DECLARE
 BEGIN
     FOR _municipalities IN (
         SELECT
-            ARRAY_AGG(DISTINCT co_insee_commune) AS municipalities_now
-            , 1::NUMERIC/COUNT(DISTINCT co_insee_commune) AS distribution
+            ARRAY_AGG(DISTINCT co_insee_commune) AS municipalities_now,
+            1::NUMERIC/COUNT(DISTINCT co_insee_commune) AS distribution
         FROM fr.laposte_address_area
         WHERE co_insee_commune_precedente = code
         --WHERE co_insee_commune_precedente = '05088'
@@ -1058,20 +1058,20 @@ BEGIN
         _return := FALSE;
         FOREACH _municipality IN ARRAY _municipalities.municipalities_now LOOP
             RETURN NEXT ROW (
-                _municipality
-                , NULL
-                , _date_address
-                , _municipalities.distribution
+                _municipality,
+                NULL,
+                _date_address,
+                _municipalities.distribution
             );
         END LOOP;
     END LOOP;
 
     IF _return THEN
         RETURN NEXT ROW (
-            code
-            , NULL
-            , _date_address
-            , distribution
+            code,
+            NULL,
+            _date_address,
+            distribution
         );
     END IF;
 END
@@ -1093,15 +1093,15 @@ BEGIN
     SELECT *
     INTO _municipality_to_now
     FROM fr.get_municipality_to_date(
-        code => address_area.co_insee_commune
+        code => address_area.co_insee_commune,
         --On force l'algo à considérer en cas de fusion que cette ZA correspond à la portion avant fusion, même pour la commune déléguée chef lieu
-        , code_previous => COALESCE(
-            address_area.co_insee_commune_precedente
-            , address_area.co_insee_commune
-        )
-        , date_geography_from => address_area.dt_reference_commune
-        , with_deleted => TRUE --Cas de suppression/désactivation non géré pour le moment : est-ce un cas possible ?
-        , check_exists => FALSE --Ce test n'aurait pas de sens, puisque la liste des communes de la table territory est issue de RAN
+        code_previous => COALESCE(
+            address_area.co_insee_commune_precedente,
+            address_area.co_insee_commune
+        ),
+        date_geography_from => address_area.dt_reference_commune,
+        with_deleted => TRUE, --Cas de suppression/désactivation non géré pour le moment : est-ce un cas possible ?
+        check_exists => FALSE --Ce test n'aurait pas de sens, puisque la liste des communes de la table territory est issue de RAN
     ) AS commune_to_now
     WHERE commune_to_now.is_new --Seulement ce qui est nouveau
     ;
@@ -1114,13 +1114,13 @@ BEGIN
      */
 
     IF _municipality_to_now.distribution = 1 THEN
-        RAISE NOTICE 'Cas de (fusion de commune / création commune nouvelle) géré pour maj GEO de RAN ZA : %, % / %, % -> %, %'
-            , address_area.co_cea
-            , address_area.co_insee_commune
-            , address_area.co_insee_commune_precedente
-            , address_area.lb_nn
-            , _municipality_to_now.code
-            , _municipality_to_now.name;
+        RAISE NOTICE 'Cas de (fusion de commune / création commune nouvelle) géré pour maj GEO de RAN ZA : %, % / %, % -> %, %',
+            address_area.co_cea,
+            address_area.co_insee_commune,
+            address_area.co_insee_commune_precedente,
+            address_area.lb_nn,
+            _municipality_to_now.code,
+            _municipality_to_now.name;
 
         -- rename municipality
         IF _municipality_to_now.code_previous IS NOT NULL THEN
@@ -1140,13 +1140,13 @@ BEGIN
         address_area.dt_reference_commune := _municipality_to_now.date_geography;
 
     ELSIF _municipality_to_now.distribution < 1 AND _municipality_to_now.distribution > 0 THEN
-        RAISE NOTICE 'Cas de rétablissement de commune géré pour maj GEO de RAN ZA : %, % / %, % -> %, %'
-            , address_area.co_cea
-            , address_area.co_insee_commune
-            , address_area.co_insee_commune_precedente
-            , address_area.lb_nn
-            , _municipality_to_now.code
-            , _municipality_to_now.name;
+        RAISE NOTICE 'Cas de rétablissement de commune géré pour maj GEO de RAN ZA : %, % / %, % -> %, %',
+            address_area.co_cea,
+            address_area.co_insee_commune,
+            address_area.co_insee_commune_precedente,
+            address_area.lb_nn,
+            _municipality_to_now.code,
+            _municipality_to_now.name;
 
         address_area.co_insee_commune := address_area.co_insee_commune_precedente;
         address_area.co_insee_departement := fr.get_department_code_from_municipality_code(address_area.co_insee_commune);
@@ -1160,11 +1160,11 @@ BEGIN
         address_area.dt_reference_commune = _municipality_to_now.date_geography;
          */
     ELSIF _municipality_to_now.distribution = 0 THEN
-        RAISE NOTICE 'Cas de suppression de commune non géré pour maj GEO de RAN ZA : %, % / %, %'
-            , address_area.co_cea
-            , address_area.co_insee_commune
-            , address_area.co_insee_commune_precedente
-            , address_area.lb_nn;
+        RAISE NOTICE 'Cas de suppression de commune non géré pour maj GEO de RAN ZA : %, % / %, %',
+            address_area.co_cea,
+            address_area.co_insee_commune,
+            address_area.co_insee_commune_precedente,
+            address_area.lb_nn;
         /* NOTE : Cas rare (inexistant ?) de suppression non géré pour le moment, pourrait être
         address_area.fl_active := FALSE;
         address_area.dt_reference_commune := _municipality_to_now.date_geography;
@@ -1188,22 +1188,22 @@ DECLARE
 BEGIN
     FOR _zone_address_to_now IN (
         SELECT
-            za_to_now.co_cea
-            , za_to_now.co_insee_commune
-            , za_to_now.co_insee_commune_precedente
-            , za_to_now.dt_reference_commune
-            , za_to_now.co_insee_departement
-            , za_to_now.lb_ach_nn
-            , za_to_now.lb_l5_nn
+            za_to_now.co_cea,
+            za_to_now.co_insee_commune,
+            za_to_now.co_insee_commune_precedente,
+            za_to_now.dt_reference_commune,
+            za_to_now.co_insee_departement,
+            za_to_now.lb_ach_nn,
+            za_to_now.lb_l5_nn,
             --Si modification effective hormis la date de référence
-            , CASE
+            CASE
                 WHEN za_to_now.co_insee_commune != za.co_insee_commune
                     OR za_to_now.co_insee_commune_precedente IS DISTINCT FROM za.co_insee_commune_precedente
                 --On considère l'adresse mise à jour à date de RAN + 1, de telle façon que les traitements DELTA traitent cette adresse lors de leur prochain lancement
                 THEN _date_address + 1
                 ELSE za.dt_reference
-            END AS dt_reference
-            , CASE
+            END AS dt_reference,
+            CASE
                 WHEN za_to_now.co_insee_commune != za.co_insee_commune
                     OR za_to_now.co_insee_commune_precedente IS DISTINCT FROM za.co_insee_commune_precedente
                 THEN TRUE
@@ -1216,18 +1216,18 @@ BEGIN
     LOOP
         _query := CONCAT('
             INSERT INTO fr.laposte_address_history (
-                code_address
-                , date_change
-                , change
-                , kind
-                , values
+                code_address,
+                date_change,
+                change,
+                kind,
+                values
             )
             SELECT
-                co_cea
-                , TIMEOFDAY()::DATE
-                , ', quote_literal('MUNICIPALITY_EVENT')
-                , ', ', quote_literal('AREA'), '
-                , ROW_TO_JSON(a.*)::JSONB
+                co_cea,
+                TIMEOFDAY()::DATE,
+                ', quote_literal('MUNICIPALITY_EVENT'),
+                ', ', quote_literal('AREA'), ',
+                ROW_TO_JSON(a.*)::JSONB
             FROM
                 fr.laposte_address_area a
             WHERE
@@ -1237,20 +1237,20 @@ BEGIN
         EXECUTE _query;
 
         UPDATE fr.laposte_address_area za
-        SET co_insee_commune = _zone_address_to_now.co_insee_commune
-            , co_insee_commune_precedente = _zone_address_to_now.co_insee_commune_precedente
-            , dt_reference_commune = _zone_address_to_now.dt_reference_commune
-            , dt_reference = _zone_address_to_now.dt_reference
-            , co_insee_departement = _zone_address_to_now.co_insee_departement
-            , lb_l5_nn = _zone_address_to_now.lb_l5_nn
-            , lb_ach_nn = _zone_address_to_now.lb_ach_nn
+        SET co_insee_commune = _zone_address_to_now.co_insee_commune,
+            co_insee_commune_precedente = _zone_address_to_now.co_insee_commune_precedente,
+            dt_reference_commune = _zone_address_to_now.dt_reference_commune,
+            dt_reference = _zone_address_to_now.dt_reference,
+            co_insee_departement = _zone_address_to_now.co_insee_departement,
+            lb_l5_nn = _zone_address_to_now.lb_l5_nn,
+            lb_ach_nn = _zone_address_to_now.lb_ach_nn
         WHERE za.co_cea = _zone_address_to_now.co_cea;
 
         --Si modification effective hormis la date de référence
         IF _zone_address_to_now.modification THEN
             UPDATE fr.laposte_address
-            SET dt_reference_za = _zone_address_to_now.dt_reference
-                , dt_reference = GREATEST(dt_reference, _zone_address_to_now.dt_reference)
+            SET dt_reference_za = _zone_address_to_now.dt_reference,
+                dt_reference = GREATEST(dt_reference, _zone_address_to_now.dt_reference)
             WHERE co_cea_za = _zone_address_to_now.co_cea;
 
             --MAJ du code INSEE commune dénormalisé sur les voies de la ZA
@@ -1272,26 +1272,26 @@ $func$ LANGUAGE plpgsql;
 /* TEST
 
 INSERT INTO fr.wikipedia_municipality_event (
-    millesime
-    , cn_nom
-    , cn_code_insee
-    , ac_noms
-    , ac_codes_insee
-    , dt_effet
+    millesime,
+    cn_nom,
+    cn_code_insee,
+    ac_noms,
+    ac_codes_insee,
+    dt_effet
 )
 VALUES (
     '2020'
-    , 'Bordignac'
-    , '33063'
-    , ARRAY['Bordeaux', 'Mérignac']
-    , ARRAY['33063', '33281']
-    , '14/02/2020'::DATE
+    'Bordignac'
+    '33063'
+    ARRAY['Bordeaux', 'Mérignac']
+    ARRAY['33063', '33281']
+    '14/02/2020'::DATE
 );
 
 SELECT * FROM fr.wikipedia_municipality_event;
 SELECT public.get_municipality_to_date(
-    code => '33281'
-    , date_geography_from => '01/01/2019'::DATE
+    code => '33281',
+    date_geography_from => '01/01/2019'::DATE
 );
 
 SELECT dt_fin_donnees FROM public.historique_import
@@ -1326,10 +1326,10 @@ BEGIN
     PERFORM fr.set_address_area_to_now();
     --à faire régulièrement ?
     PERFORM fr.set_territory_to_date(
-        table_name => 'territoire_has_insee'
-        , set_supra => TRUE
+        table_name => 'territoire_has_insee',
+        set_supra => TRUE,
         -- pas nécessaire, on fait confiance à l'INSEE ? et pour garder l'indépendance avec la table territory ?
-        , check_exists => FALSE
+        check_exists => FALSE
     );
 
     PERFORM public.setTerritoireGeoToNow();
@@ -1346,10 +1346,10 @@ $func$ LANGUAGE plpgsql;
  */
 SELECT drop_all_functions_if_exists('fr', 'exists_data_with_level');
 CREATE OR REPLACE FUNCTION fr.exists_data_with_level(
-    table_name VARCHAR
-    , levels VARCHAR[]
-    , schema_name VARCHAR DEFAULT 'public'
-    , where_in VARCHAR DEFAULT NULL
+    table_name VARCHAR,
+    levels VARCHAR[],
+    schema_name VARCHAR DEFAULT 'public',
+    where_in VARCHAR DEFAULT NULL
 )
 RETURNS BOOLEAN AS
 $func$
@@ -1385,19 +1385,19 @@ $func$ LANGUAGE plpgsql;
  */
 SELECT drop_all_functions_if_exists('fr', 'set_territory_to_date');
 CREATE OR REPLACE FUNCTION fr.set_territory_to_date(
-    table_name VARCHAR
-    , columns_agg TEXT[] DEFAULT NULL                -- NULL for all else list of column(s)
-    , columns_groupby TEXT[] DEFAULT NULL            -- idem
-    , where_in TEXT DEFAULT NULL
-    , set_supra BOOLEAN DEFAULT TRUE
-    , schema_name VARCHAR DEFAULT 'public'
-    , check_exists BOOLEAN DEFAULT TRUE
-    , date_geography_to DATE DEFAULT NOW()
-    , date_geography_default_from DATE DEFAULT NULL  -- for first time update
-    , upsert_mode BOOLEAN DEFAULT FALSE
-    , simulation BOOLEAN DEFAULT FALSE
-    , base_level VARCHAR DEFAULT 'COM'
-    , date_geography_metadata VARCHAR DEFAULT 'dtrgeo'
+    table_name VARCHAR,
+    columns_agg TEXT[] DEFAULT NULL,                -- NULL for all else list of column(s)
+    columns_groupby TEXT[] DEFAULT NULL,            -- idem
+    where_in TEXT DEFAULT NULL,
+    set_supra BOOLEAN DEFAULT TRUE,
+    schema_name VARCHAR DEFAULT 'public',
+    check_exists BOOLEAN DEFAULT TRUE,
+    date_geography_to DATE DEFAULT NOW(),
+    date_geography_default_from DATE DEFAULT NULL,  -- for first time update
+    upsert_mode BOOLEAN DEFAULT FALSE,
+    simulation BOOLEAN DEFAULT FALSE,
+    base_level VARCHAR DEFAULT 'COM',
+    date_geography_metadata VARCHAR DEFAULT 'dtrgeo'
 )
 RETURNS BOOLEAN AS                                      -- FALSE if nothing to do
 $func$
@@ -1510,17 +1510,17 @@ BEGIN
     END LOOP;
 
     _levels = public.get_levels(
-        country => 'fr'
-        , order_in => 'ASC'
-        , among_levels => _levels --en cas de self use, on ordonne les niveaux
-        , subfilter => base_level
+        country => 'fr',
+        order_in => 'ASC',
+        among_levels => _levels, --en cas de self use, on ordonne les niveaux
+        subfilter => base_level
     );
 
     IF NOT fr.exists_data_with_level(
-        schema_name => schema_name
-        , table_name => table_name
-        , levels => ARRAY[base_level]
-        , where_in => _query_where
+        schema_name => schema_name,
+        table_name => table_name,
+        levels => ARRAY[base_level],
+        where_in => _query_where
     )
     THEN
         RAISE NOTICE 'Traitement GEO TO NOW % de %.% inutile (aucune donnée GEO)', base_level, schema_name, table_name;
@@ -1561,9 +1561,9 @@ BEGIN
         _query := CONCAT(
             'CREATE TEMPORARY TABLE IF NOT EXISTS ', _tmp_table_name, ' AS (
                 SELECT
-                    NULL::VARCHAR[] AS anciens_codgeo
-                    , NULL::NUMERIC AS sum_repartition
-                    , ', _columns_insert, ' FROM ', _full_table_name, ' LIMIT 0
+                    NULL::VARCHAR[] AS anciens_codgeo,
+                    NULL::NUMERIC AS sum_repartition,
+                    ', _columns_insert, ' FROM ', _full_table_name, ' LIMIT 0
             ) WITH NO DATA;
             TRUNCATE TABLE ', _tmp_table_name, ';
             --DROP INDEX IF EXISTS idx_', _tmp_table_name, '_pk;
@@ -1577,21 +1577,21 @@ BEGIN
                     FROM ', _full_table_name, ' AS source
                     ', CASE WHEN _query_where IS NOT NULL THEN CONCAT('WHERE ', _query_where) END, '
                     GROUP BY source.codgeo
-                )
-                , commune_to_now AS (
+                ),
+                commune_to_now AS (
                     SELECT
-                        commune_to_now.codgeo
-                        , commune_to_now.libgeo
-                        , commune_to_now.repartition
-                        , distinct_commune.old_codgeo_com AS old_codgeo
+                        commune_to_now.codgeo,
+                        commune_to_now.libgeo,
+                        commune_to_now.repartition,
+                        distinct_commune.old_codgeo_com AS old_codgeo
                     FROM distinct_commune
                     INNER JOIN fr.get_municipality_to_date(
-                        code => distinct_commune.old_codgeo_com
-                        , date_geography_from => $3
-                        , name => ', CASE WHEN _exists_libgeo THEN 'distinct_commune.libgeo' ELSE 'NULL' END, '
-                        , check_exists => $1
-                        , with_deleted => $4 --Besoin des suppressions pour le mode UPSERT
-                        , date_geography_to => $2
+                        code => distinct_commune.old_codgeo_com,
+                        date_geography_from => $3,
+                        name => ', CASE WHEN _exists_libgeo THEN 'distinct_commune.libgeo' ELSE 'NULL' END, ',
+                        check_exists => $1,
+                        with_deleted => $4, --Besoin des suppressions pour le mode UPSERT
+                        date_geography_to => $2
                     ) AS commune_to_now
                     ON (NOT $4 OR commune_to_now.is_new) --Uniquement ce qui est nouveau si on est en mode UPSERT
                 )')
@@ -1601,21 +1601,21 @@ BEGIN
                     FROM ', _full_table_name, ' AS source
                     ', CASE WHEN _query_where IS NOT NULL THEN CONCAT('WHERE ', _query_where) END, '
                     GROUP BY LEFT(source.codgeo, 5)
-                )
-                , commune_to_now AS (
+                ),
+                commune_to_now AS (
                     SELECT
-                        CONCAT(commune_to_now.codgeo, ''-'', RIGHT(UNNEST(distinct_commune.old_codgeos_subcom), 5))::VARCHAR AS codgeo
-                        , commune_to_now.libgeo --TODO : REPLACE [0-9]{5}
-                        , commune_to_now.repartition
-                        , UNNEST(distinct_commune.old_codgeos_subcom) AS old_codgeo
+                        CONCAT(commune_to_now.codgeo, ''-'', RIGHT(UNNEST(distinct_commune.old_codgeos_subcom), 5))::VARCHAR AS codgeo,
+                        commune_to_now.libgeo, --TODO : REPLACE [0-9]{5}
+                        commune_to_now.repartition,
+                        UNNEST(distinct_commune.old_codgeos_subcom) AS old_codgeo
                     FROM distinct_commune
                     INNER JOIN fr.get_municipality_to_date(
-                        code => distinct_commune.old_codgeo_com
-                        , date_geography_from => $3
-                        --TODO, name => ', CASE WHEN _exists_libgeo THEN 'distinct_commune.libgeo' ELSE 'NULL' END, '
-                        , check_exists => $1
-                        , with_deleted => $4 --Besoin des suppressions pour le mode UPSERT
-                        , date_geography_to => $2
+                        code => distinct_commune.old_codgeo_com,
+                        date_geography_from => $3,
+                        --TODO, name => ', CASE WHEN _exists_libgeo THEN 'distinct_commune.libgeo' ELSE 'NULL' END, ',
+                        check_exists => $1,
+                        with_deleted => $4, --Besoin des suppressions pour le mode UPSERT
+                        date_geography_to => $2
                     ) AS commune_to_now
                     ON (NOT $4 OR commune_to_now.is_new) --Uniquement ce qui est nouveau si on est en mode UPSERT
                 )')
@@ -1725,10 +1725,10 @@ BEGIN
                     _level != base_level
                 THEN
                     IF NOT fr.exists_data_with_level(
-                            schema_name => schema_name
-                            , table_name => table_name
-                            , levels => ARRAY[_level]
-                            , where_in => where_in
+                            schema_name => schema_name,
+                            table_name => table_name,
+                            levels => ARRAY[_level],
+                            where_in => where_in
                     )
                     THEN
                         RAISE NOTICE 'GEO SUPRA % inexistant', _level;
@@ -1747,13 +1747,13 @@ BEGIN
             RETURN FALSE;
         ELSE
             PERFORM fr.set_territory_supra(
-                table_name => table_name
-                , columns_agg => columns_agg
-                , columns_groupby => columns_groupby
-                , where_in => where_in
-                , schema_name => schema_name
-                , base_level => base_level
-                , simulation => simulation
+                table_name => table_name,
+                columns_agg => columns_agg,
+                columns_groupby => columns_groupby,
+                where_in => where_in,
+                schema_name => schema_name,
+                base_level => base_level,
+                simulation => simulation
             );
         END IF;
     END IF;

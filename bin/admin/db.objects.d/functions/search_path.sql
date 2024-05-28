@@ -6,7 +6,7 @@
 SELECT public.drop_all_functions_if_exists('public', 'set_search_path');
 CREATE OR REPLACE FUNCTION public.set_search_path(
     search_path VARCHAR
-    )
+)
 RETURNS BOOLEAN AS
 $func$
 DECLARE
@@ -26,7 +26,7 @@ $func$ LANGUAGE plpgsql;
 SELECT public.drop_all_functions_if_exists('public', 'add_to_search_path');
 CREATE OR REPLACE FUNCTION public.add_to_search_path(
     schema_name TEXT
-    )
+)
 RETURNS BOOLEAN AS
 $func$
 DECLARE
@@ -45,7 +45,7 @@ $func$ LANGUAGE plpgsql;
 SELECT public.drop_all_functions_if_exists('public', 'remove_from_search_path');
 CREATE OR REPLACE FUNCTION public.remove_from_search_path(
     schema_name TEXT
-    )
+)
 RETURNS BOOLEAN AS
 $func$
 DECLARE

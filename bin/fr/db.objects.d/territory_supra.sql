@@ -7,17 +7,17 @@
 
 SELECT drop_all_functions_if_exists('fr', 'set_territory_supra');
 CREATE OR REPLACE FUNCTION fr.set_territory_supra(
-    table_name VARCHAR
-    , columns_agg TEXT[] DEFAULT NULL            -- NULL for all else list of column(s)
-    , columns_agg_func JSONB DEFAULT NULL::JSONB -- specify function other than default for column(s)
-    , columns_groupby TEXT[] DEFAULT NULL        -- idem
-    , where_in TEXT DEFAULT NULL
-    , base_level VARCHAR DEFAULT 'COM'
-    , supra_level_filter VARCHAR DEFAULT NULL    -- reduce SUPRA to this level only
-    , schema_name VARCHAR DEFAULT 'public'
-    , update_mode BOOLEAN DEFAULT FALSE          -- only update columns defined by columns_agg (w/ existing levels)
-    , simulation BOOLEAN DEFAULT FALSE
-    , drop_temporary BOOLEAN DEFAULT TRUE
+    table_name VARCHAR,
+    columns_agg TEXT[] DEFAULT NULL,            -- NULL for all else list of column(s)
+    columns_agg_func JSONB DEFAULT NULL::JSONB, -- specify function other than default for column(s)
+    columns_groupby TEXT[] DEFAULT NULL,        -- idem
+    where_in TEXT DEFAULT NULL,
+    base_level VARCHAR DEFAULT 'COM',
+    supra_level_filter VARCHAR DEFAULT NULL,    -- reduce SUPRA to this level only
+    schema_name VARCHAR DEFAULT 'public',
+    update_mode BOOLEAN DEFAULT FALSE,          -- only update columns defined by columns_agg (w/ existing levels)
+    simulation BOOLEAN DEFAULT FALSE,
+    drop_temporary BOOLEAN DEFAULT TRUE
 )
 RETURNS BOOLEAN AS
 $func$
@@ -51,8 +51,8 @@ DECLARE
 BEGIN
     CALL public.log_info(
         message => CONCAT(
-            'Début ', _notice, ' ', CONCAT_WS('/', base_level, supra_level_filter)
-            , ' de ', schema_name, '.', table_name
+            'Début ', _notice, ' ', CONCAT_WS('/', base_level, supra_level_filter),
+            ' de ', schema_name, '.', table_name
         )
     );
 
@@ -133,10 +133,10 @@ BEGIN
     END IF;
 
     _levels = public.get_levels(
-        country => 'fr'
-        , order_in => 'ASC'
-        , among_levels => _levels --en cas de self use, on ordonne les niveaux
-        , subfilter => base_level
+        country => 'fr',
+        order_in => 'ASC',
+        among_levels => _levels, --en cas de self use, on ordonne les niveaux
+        subfilter => base_level
     );
 
     /* NOTE
@@ -201,8 +201,8 @@ BEGIN
         (
             SELECT nivgeo, codgeo, ', _columns_insert, '
             FROM ', schema_name, '.', table_name, ' AS source
-            WHERE source.nivgeo = $1'
-            , CASE WHEN _query_where IS NOT NULL THEN CONCAT(' AND ', _query_where) END,
+            WHERE source.nivgeo = $1',
+            CASE WHEN _query_where IS NOT NULL THEN CONCAT(' AND ', _query_where) END,
         ');
         CREATE UNIQUE INDEX iux_', _tmp_table_name, '_base_pk ON ', _tmp_table_name, '_base(', _columns_onconflict, ')'
     );
@@ -215,9 +215,9 @@ BEGIN
 
     FOREACH _level IN ARRAY _levels LOOP
         _bigger_sublevel := public.get_bigger_sublevel(
-            country => 'fr'
-            , level_in => _level
-            , among_levels => ARRAY_APPEND(_levels, base_level)
+            country => 'fr',
+            level_in => _level,
+            among_levels => ARRAY_APPEND(_levels, base_level)
         );
         IF simulation THEN
             RAISE NOTICE ' _level : %', _level;
@@ -228,9 +228,9 @@ BEGIN
             _query := CONCAT(
                 '(
                     SELECT
-                        $2::VARCHAR AS nivgeo
-                        , LEFT(source.codgeo, 5) AS codgeo
-                        , ', _columns_select, '
+                        $2::VARCHAR AS nivgeo,
+                        LEFT(source.codgeo, 5) AS codgeo,
+                        ', _columns_select, '
                     FROM ', _tmp_table_name, CASE WHEN _bigger_sublevel = base_level THEN '_base' END, ' AS source
                     WHERE source.nivgeo = $1
                     GROUP BY LEFT(source.codgeo, 5)
@@ -245,9 +245,9 @@ BEGIN
             _query := CONCAT(
                 '(
                     SELECT
-                        $2::VARCHAR AS nivgeo
-                        , za.co_insee_commune AS codgeo
-                        , ', _columns_select, '
+                        $2::VARCHAR AS nivgeo,
+                        za.co_insee_commune AS codgeo,
+                        ', _columns_select, '
                     FROM ', _tmp_table_name, CASE WHEN _bigger_sublevel = base_level THEN '_base' END, ' AS source
                     JOIN fr.laposte_address_area za ON source.codgeo = za.co_cea AND za.fl_active
                     WHERE source.nivgeo = $1
@@ -274,8 +274,8 @@ BEGIN
                                 --deuxième test plus précis et plus couteux : dans le cas du calcul de DEP à partir du niveau CV, comparé au niveau de base COM : toutes les communes de chaque canton ville sont sur le même département, et toutes les communes sont représentées dans les cantons ville
                                 AND COUNT(source.codgeo_', _level, '_parent) = (
                                     SELECT SUM(CASE WHEN unique_codgeo_', _level, '_parent IS NOT NULL THEN nb ELSE 0 END) FROM (
-                                        SELECT codgeo_', _level2, '_parent, UNIQUE_AGG(codgeo_', _level, '_parent) AS unique_codgeo_', _level, '_parent
-                                            , COUNT(codgeo_', _level, '_parent) AS nb
+                                        SELECT codgeo_', _level2, '_parent, UNIQUE_AGG(codgeo_', _level, '_parent) AS unique_codgeo_', _level, '_parent,
+                                        COUNT(codgeo_', _level, '_parent) AS nb
                                         FROM ', CASE WHEN _self_use THEN CONCAT(_tmp_table_name, '_base WHERE 1=1') ELSE 'fr.territory WHERE nivgeo = $2' END, '
                                         AND codgeo_', _level, '_parent IS NOT NULL
                                         AND codgeo_', _level2, '_parent IS NOT NULL
@@ -293,12 +293,12 @@ BEGIN
                     IF _level2 != _bigger_sublevel THEN
                         CALL public.log_info(
                             message => CONCAT(
-                                _notice
-                                , _bigger_sublevel, ' -> ', _level
-                                , ' remplacé par '
-                                , _level2, ' -> ', _level
-                                , ' "', LEFT(_query, 30), '" : '
-                                , TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS')
+                                _notice,
+                                _bigger_sublevel, ' -> ', _level,
+                                ' remplacé par ',
+                                _level2, ' -> ', _level,
+                                ' "', LEFT(_query, 30), '" : ',
+                                TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS')
                             )
                         );
                         -- ALL IS HERE!
@@ -320,9 +320,9 @@ BEGIN
                         SELECT nivgeo, codgeo, ', _columns_select_on_groupby, '
                         FROM (
                             SELECT
-                                $2::VARCHAR AS nivgeo
-                                , source.codgeo_', _level, '_parent AS codgeo
-                                , ', _columns_select, '
+                                $2::VARCHAR AS nivgeo,
+                                source.codgeo_', _level, '_parent AS codgeo,
+                                ', _columns_select, '
                             FROM ', _tmp_table_name, CASE WHEN _bigger_sublevel = base_level THEN '_base' END, ' AS source
                             WHERE source.nivgeo = $1 AND source.codgeo_', _level, '_parent IS NOT NULL
                             GROUP BY source.codgeo_', _level, '_parent
@@ -334,9 +334,9 @@ BEGIN
                 _query := CONCAT(
                     '(
                         SELECT
-                            $2::VARCHAR AS nivgeo
-                            , territory.codgeo_', _level, '_parent AS codgeo
-                            , ', _columns_select, '
+                            $2::VARCHAR AS nivgeo,
+                            territory.codgeo_', _level, '_parent AS codgeo,
+                            ', _columns_select, '
                         FROM ', _tmp_table_name, CASE WHEN _bigger_sublevel = base_level THEN '_base' END, ' AS source
                         INNER JOIN fr.territory ON (territory.nivgeo, territory.codgeo) = (source.nivgeo, source.codgeo)
                         WHERE territory.nivgeo = $1 AND territory.codgeo_', _level, '_parent IS NOT NULL
@@ -348,9 +348,9 @@ BEGIN
         END IF;
         _query := CONCAT(
             'INSERT INTO ', _tmp_table_name, ' (
-                nivgeo
-                , codgeo
-                , ', _columns_insert, '
+                nivgeo,
+                codgeo,
+                ', _columns_insert, '
             )', _query
         );
         IF NOT simulation THEN
@@ -359,11 +359,11 @@ BEGIN
             GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
             CALL public.log_info(
                 message => CONCAT(
-                    _notice
-                    , _bigger_sublevel, ' -> ', _level
-                    , ' "', LEFT(_query, 30), '" : '
-                    , TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS')
-                    , ' ', _nrows_affected, ' inserted'
+                    _notice,
+                    _bigger_sublevel, ' -> ', _level,
+                    ' "', LEFT(_query, 30), '" : ',
+                    TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS'),
+                    ' ', _nrows_affected, ' inserted'
                 )
             );
 
@@ -388,9 +388,9 @@ BEGIN
             AND ', _query_row_equal, '
             /* plus lent ?
             AND isEqual(
-                in_rec_a => destination
-                , in_rec_b => source
-                , in_att_ignore => array[''id_histo'', ''nb_histo_use'']
+                in_rec_a => destination,
+                in_rec_b => source,
+                in_att_ignore => array[''id_histo'', ''nb_histo_use'']
             )
             */'
         );
@@ -400,10 +400,10 @@ BEGIN
             GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
             CALL public.log_info(
                 message => CONCAT(
-                    _notice
-                    , ' "', LEFT(_query, 30), '" : '
-                    , TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS')
-                    , ' ', _nrows_affected, ' updated'
+                    _notice,
+                    ' "', LEFT(_query, 30), '" : ',
+                    TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS'),
+                    ' ', _nrows_affected, ' updated'
                 )
             );
 
@@ -431,10 +431,10 @@ BEGIN
             GET DIAGNOSTICS _nrows_deleted = ROW_COUNT;
             CALL public.log_info(
                 message => CONCAT(
-                    _notice
-                    , ' "', LEFT(_query, 30), '" : '
-                    , TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS')
-                    , ' ', _nrows_deleted, ' deleted'
+                    _notice,
+                    ' "', LEFT(_query, 30), '" : ',
+                    TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS'),
+                    ' ', _nrows_deleted, ' deleted'
                 )
             );
 
@@ -446,15 +446,15 @@ BEGIN
 
         _query := CONCAT(
             'INSERT INTO ', schema_name, '.', table_name, ' (
-                nivgeo
-                , codgeo
-                , ', _columns_insert, '
+                nivgeo,
+                codgeo,
+                ', _columns_insert, '
             )
             (
                 SELECT
-                    nivgeo
-                    , codgeo
-                    , ', _columns_insert, '
+                    nivgeo,
+                    codgeo,
+                    ', _columns_insert, '
                 FROM ', _tmp_table_name, ' AS source
                 WHERE already_exists IS NULL
             )'
@@ -481,10 +481,10 @@ BEGIN
         END IF;
         CALL public.log_info(
             message => CONCAT(
-                _notice
-                , ' "', LEFT(_query, 30), '" : '
-                , TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS')
-                , ' ', _nrows_affected, ' affected'
+                _notice,
+                ' "', LEFT(_query, 30), '" : ',
+                TO_CHAR((clock_timestamp() - _start_time), 'HH24:MI:SS'),
+                ' ', _nrows_affected, ' affected'
             )
         );
 
@@ -495,14 +495,14 @@ BEGIN
 
     CALL public.log_info(
         message => CONCAT(
-            'Fin ', _notice, ' ', CONCAT_WS('/', base_level, supra_level_filter)
-            , ' de ', schema_name, '.', table_name
-            , ' '
-            , CONCAT(
-                CASE WHEN (_nrows_inserted-_nrows_deleted) >=0 THEN '+' ELSE '-' END
-                , ABS(_nrows_inserted-_nrows_deleted)
-            )
-            , ' (', _nrows_inserted, ' inserted - ', _nrows_deleted, ' deleted, ', _nrows_updated, ' updated)'
+            'Fin ', _notice, ' ', CONCAT_WS('/', base_level, supra_level_filter),
+            ' de ', schema_name, '.', table_name,
+            ' ',
+            CONCAT(
+                CASE WHEN (_nrows_inserted-_nrows_deleted) >=0 THEN '+' ELSE '-' END,
+                ABS(_nrows_inserted-_nrows_deleted)
+            ),
+            ' (', _nrows_inserted, ' inserted - ', _nrows_deleted, ' deleted, ', _nrows_updated, ' updated)'
         )
     );
     --RAISE NOTICE '% : Fin traitement GEO SUPRA % de %.% : % (% inserted - % deleted, % updated)', TO_CHAR(clock_timestamp(), 'HH24:MI:SS'), CONCAT_WS('/', base_level, supra_level_filter), schema_name, table_name, CONCAT(CASE WHEN (_nrows_inserted-_nrows_deleted) >=0 THEN '+' ELSE '-' END, ABS(_nrows_inserted-_nrows_deleted)), _nrows_inserted, _nrows_deleted, _nrows_updated;

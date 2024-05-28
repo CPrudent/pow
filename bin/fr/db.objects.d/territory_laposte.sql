@@ -3,12 +3,12 @@
  */
 
 CREATE TABLE IF NOT EXISTS fr.territory_laposte (
-    nivgeo VARCHAR
-    , codgeo VARCHAR
-    , libgeo VARCHAR
-    , codgeo_pdc_ppdc_parent CHARACTER(6)
-    , codgeo_ppdc_pdc_parent CHARACTER(6)
-    , codgeo_dex_parent CHARACTER(6)
+    nivgeo VARCHAR,
+    codgeo VARCHAR,
+    libgeo VARCHAR,
+    codgeo_pdc_ppdc_parent CHARACTER(6),
+    codgeo_ppdc_pdc_parent CHARACTER(6),
+    codgeo_dex_parent CHARACTER(6)
 );
 
 SELECT drop_all_functions_if_exists('fr', 'set_territory_laposte');
@@ -19,46 +19,46 @@ BEGIN
     PERFORM public.drop_table_indexes('fr', 'territory_laposte');
 
     INSERT INTO fr.territory_laposte (
-        nivgeo
-        , codgeo
-        , codgeo_pdc_ppdc_parent
-        , codgeo_ppdc_pdc_parent
-        , codgeo_dex_parent
+        nivgeo,
+        codgeo,
+        codgeo_pdc_ppdc_parent,
+        codgeo_ppdc_pdc_parent,
+        codgeo_dex_parent
     )
     (
         WITH cp_has_site AS (
             SELECT
-                ran.co_postal AS codgeo_postal
-                , rao.co_roc_site AS codgeo_pdc_ppdc
-                , COUNT(*) AS nb_adr_rao
+                ran.co_postal AS codgeo_postal,
+                rao.co_roc_site AS codgeo_pdc_ppdc,
+                COUNT(*) AS nb_adr_rao
             FROM fr.address_view AS ran
             INNER JOIN fr.laposte_delivery_address rao on rao.co_adr = ran.co_adr
             GROUP BY ran.co_postal, rao.co_roc_site
-        )
-        , cp_has_best_site AS (
+        ),
+        cp_has_best_site AS (
             SELECT
-                codgeo_postal
-                , FIRST(codgeo_pdc_ppdc ORDER BY nb_adr_rao DESC) AS codgeo_pdc_ppdc_parent
+                codgeo_postal,
+                FIRST(codgeo_pdc_ppdc ORDER BY nb_adr_rao DESC) AS codgeo_pdc_ppdc_parent
             FROM cp_has_site
             GROUP BY codgeo_postal
-        )
-        , cp AS (
+        ),
+        cp AS (
             SELECT
-                cp_has_best_site.codgeo_postal
-                , cp_has_best_site.codgeo_pdc_ppdc_parent
-                , site_source_orga.code_regate AS codgeo_regate_pdc_ppdc_parent
-                , site_source_orga.code_rattachement_ppdc_pdc AS codgeo_ppdc_pdc_parent
-                , site_source_orga.code_rattachement_dexc AS codgeo_dex_parent
+                cp_has_best_site.codgeo_postal,
+                cp_has_best_site.codgeo_pdc_ppdc_parent,
+                site_source_orga.code_regate AS codgeo_regate_pdc_ppdc_parent,
+                site_source_orga.code_rattachement_ppdc_pdc AS codgeo_ppdc_pdc_parent,
+                site_source_orga.code_rattachement_dexc AS codgeo_dex_parent
             FROM cp_has_best_site
             LEFT OUTER JOIN fr.laposte_organization AS site_source_orga
                 ON site_source_orga.code = cp_has_best_site.codgeo_pdc_ppdc_parent
         )
         SELECT
-            'CP' AS nivgeo
-            , cp.codgeo_postal AS codgeo
-            , cp.codgeo_pdc_ppdc_parent
-            , cp.codgeo_ppdc_pdc_parent
-            , cp.codgeo_dex_parent
+            'CP' AS nivgeo,
+            cp.codgeo_postal AS codgeo,
+            cp.codgeo_pdc_ppdc_parent,
+            cp.codgeo_ppdc_pdc_parent,
+            cp.codgeo_dex_parent
         FROM cp
     );
 
@@ -76,15 +76,15 @@ AS $$
 BEGIN
     /*
     IF public.setTerritoireHasDataGeoToNow(
-        in_table => 'territory_laposte'
-        , in_set_geo_supra => TRUE
-        , in_check_exists => FALSE
+        in_table => 'territory_laposte',
+        in_set_geo_supra => TRUE,
+        in_check_exists => FALSE
     ) THEN
     */
     IF fr.set_territory_supra(
-        table_name => 'territory_laposte'
-        , schema_name => 'fr'
-        , base_level => 'CP'
+        table_name => 'territory_laposte',
+        schema_name => 'fr',
+        base_level => 'CP'
     )
     THEN
         PERFORM fr.update_territory_laposte_supra();

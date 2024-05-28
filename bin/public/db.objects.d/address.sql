@@ -3,12 +3,12 @@
  */
 
 CREATE TABLE IF NOT EXISTS public.address (
-    id SERIAL NOT NULL
-    , id_parent INT
-    , id_territory INT
-    , id_street INT
-    , id_housenumber INT
-    , id_complement INT
+    id SERIAL NOT NULL,
+    id_parent INT,
+    id_territory INT,
+    id_street INT,
+    id_housenumber INT,
+    id_complement INT
 )
 ;
 
@@ -58,8 +58,8 @@ $$;
 
 SELECT drop_all_functions_if_exists('public', 'set_address');
 CREATE OR REPLACE PROCEDURE public.set_address(
-    force BOOLEAN DEFAULT FALSE
-    , drop_temporary BOOLEAN DEFAULT TRUE
+    force BOOLEAN DEFAULT FALSE,
+    drop_temporary BOOLEAN DEFAULT TRUE
 )
 AS
 $proc$
@@ -76,11 +76,11 @@ BEGIN
     LOOP
         IF procedure_exists(_schema_name, _procedure_name) THEN
             _query := CONCAT(
-                'CALL '
-                , _schema_name
-                , '.'
-                , _procedure_name
-                , '($1, $2)'
+                'CALL ',
+                _schema_name,
+                '.',
+                _procedure_name,
+                '($1, $2)'
             );
 
             CALL public.log_info(CONCAT('Pays: ', UPPER(_schema_name)));

@@ -3,9 +3,9 @@
  */
 
 CREATE TABLE IF NOT EXISTS public.address_complement (
-    id SERIAL NOT NULL
-    , name VARCHAR NOT NULL
-    , name_normalized VARCHAR
+    id SERIAL NOT NULL,
+    name VARCHAR NOT NULL,
+    name_normalized VARCHAR
 )
 ;
 

@@ -5,9 +5,9 @@
 -- obtains random number into range
 SELECT public.drop_all_functions_if_exists('public', 'random_between');
 CREATE OR REPLACE FUNCTION random_between(
-    low INT
-    , high INT
-    )
+    low INT,
+    high INT
+)
 RETURNS INT AS
 $$
 BEGIN
@@ -17,10 +17,10 @@ $$ LANGUAGE 'plpgsql' STRICT;
 
 -- obtains n random numbers into range
 CREATE OR REPLACE FUNCTION random_between(
-    n INT
-    , low INT
-    , high INT
-    )
+    n INT,
+    low INT,
+    high INT
+)
 RETURNS INT[] AS
 $$
 DECLARE
@@ -44,7 +44,7 @@ BEGIN
 END;
 $$ LANGUAGE 'plpgsql' STRICT;
 
-/* TESTS
+/* TEST
 SELECT random_between(1, 100) -> 87
 SELECT random_between(1, 100) -> 3
 

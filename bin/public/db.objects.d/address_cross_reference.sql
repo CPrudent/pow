@@ -3,10 +3,10 @@
  */
 
 CREATE TABLE IF NOT EXISTS public.address_cross_reference (
-    id SERIAL NOT NULL
-    , id_address INT
-    , source VARCHAR
-    , id_source VARCHAR
+    id SERIAL NOT NULL,
+    id_address INT,
+    source VARCHAR,
+    id_source VARCHAR
 )
 ;
 

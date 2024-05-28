@@ -3,11 +3,11 @@
  */
 
 CREATE TABLE IF NOT EXISTS public.territory_history (
-    id_territory INT NOT NULL
-    , date_change DATE NOT NULL
-    , change CHAR(1) NOT NULL               -- {-, !} for (DELETE, UPDATE)
-    , kind VARCHAR NOT NULL                 -- {VALUE, LINK} for {old values, old links}
-    , values JSONB
+    id_territory INT NOT NULL,
+    date_change DATE NOT NULL,
+    change CHAR(1) NOT NULL,               -- {-, !} for (DELETE, UPDATE)
+    kind VARCHAR NOT NULL,                 -- {VALUE, LINK} for {old values, old links}
+    values JSONB
 )
 ;
 

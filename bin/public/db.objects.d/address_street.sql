@@ -3,11 +3,11 @@
  */
 
 CREATE TABLE IF NOT EXISTS public.address_street (
-    id SERIAL NOT NULL
-    , name VARCHAR NOT NULL
-    , name_normalized VARCHAR
-    , typeof VARCHAR
-    , descriptors VARCHAR
+    id SERIAL NOT NULL,
+    name VARCHAR NOT NULL,
+    name_normalized VARCHAR,
+    typeof VARCHAR,
+    descriptors VARCHAR
 )
 ;
 

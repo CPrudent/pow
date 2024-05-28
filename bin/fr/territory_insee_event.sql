@@ -6,37 +6,37 @@ TRUNCATE TABLE fr.insee_municipality_event;
 SELECT public.drop_table_indexes('fr', 'insee_municipality_event');
 
 INSERT INTO fr.insee_municipality_event(
-    mod
-    , date_eff
-    , typecom_av
-    , com_av
-    , tncc_av
-    , ncc_av
-    , nccenr_av
-    , libelle_av
-    , typecom_ap
-    , com_ap
-    , tncc_ap
-    , ncc_ap
-    , nccenr_ap
-    , libelle_ap
+    mod,
+    date_eff,
+    typecom_av,
+    com_av,
+    tncc_av,
+    ncc_av,
+    nccenr_av,
+    libelle_av,
+    typecom_ap,
+    com_ap,
+    tncc_ap,
+    ncc_ap,
+    nccenr_ap,
+    libelle_ap
 )
 (
     SELECT DISTINCT -- doubles!, 21, 1977-01-01, COM, 89344 -> 89344
-        mod::SMALLINT
-        , date_eff::DATE
-        , typecom_av
-        , LPAD(com_av, 5, '0')
-        , tncc_av::SMALLINT
-        , ncc_av
-        , nccenr_av
-        , libelle_av
-        , typecom_ap
-        , LPAD(com_ap, 5, '0')
-        , tncc_ap::SMALLINT
-        , ncc_ap
-        , nccenr_ap
-        , libelle_ap
+        mod::SMALLINT,
+        date_eff::DATE,
+        typecom_av,
+        LPAD(com_av, 5, '0'),
+        tncc_av::SMALLINT,
+        ncc_av,
+        nccenr_av,
+        libelle_av,
+        typecom_ap,
+        LPAD(com_ap, 5, '0'),
+        tncc_ap::SMALLINT,
+        ncc_ap,
+        nccenr_ap,
+        libelle_ap
     FROM fr.insee_municipality_event_tmp
 );
 

@@ -7,8 +7,8 @@ DROP AGGREGATE IF EXISTS public.array_agg_distinct(ANYELEMENT) CASCADE;
 -- add new item in an array (if not already present)
 SELECT public.drop_all_functions_if_exists('public', 'array_append_if_not_exists');
 CREATE OR REPLACE FUNCTION public.array_append_if_not_exists(
-    array_in ANYARRAY
-    , item ANYELEMENT
+    array_in ANYARRAY,
+    item ANYELEMENT
 )
 RETURNS ANYARRAY LANGUAGE plpgsql IMMUTABLE STRICT AS
 $$
@@ -29,8 +29,8 @@ SELECT array_append_if_not_exists(ARRAY[1,2,3,4], 5) -> "{1,2,3,4,5}"
 -- return array w/ distincts values
 SELECT public.drop_all_functions_if_exists('public', 'array_distinct');
 CREATE OR REPLACE FUNCTION public.array_distinct(
-    array_in ANYARRAY
-    , remove_nulls BOOLEAN DEFAULT TRUE
+    array_in ANYARRAY,
+    remove_nulls BOOLEAN DEFAULT TRUE
 )
 RETURNS ANYARRAY AS 
 $$
@@ -59,8 +59,8 @@ SELECT array_distinct(ARRAY[1,1,2,3,4]) -> "{1,2,3,4}"
 -- shift(s) array
 SELECT public.drop_all_functions_if_exists('public', 'array_shift');
 CREATE OR REPLACE FUNCTION public.array_shift(
-    array_in ANYARRAY
-    , nvalues_to_shift INTEGER DEFAULT 1
+    array_in ANYARRAY,
+    nvalues_to_shift INTEGER DEFAULT 1
 )
 RETURNS VARCHAR[] AS
 $$
@@ -135,8 +135,8 @@ extension 'intarray' nice but only for int-arrays
  */
 SELECT drop_all_functions_if_exists('public', 'array_remove');
 CREATE OR REPLACE FUNCTION array_remove(
+    ANYARRAY,
     ANYARRAY
-    , ANYARRAY
 )
 RETURNS ANYARRAY AS
 $$
@@ -153,8 +153,8 @@ SELECT array_remove(ARRAY[1, 3, 3, 7], ARRAY[3,8,null]) -> {7,1}
 SELECT drop_all_functions_if_exists('public', 'array_merge');
 /*
 CREATE OR REPLACE FUNCTION array_merge(
-    a1 ANYARRAY
-    , a2 ANYARRAY
+    a1 ANYARRAY,
+    a2 ANYARRAY
 )
 RETURNS ANYARRAY AS
 $$
@@ -169,8 +169,8 @@ but:
 SELECT array_merge(NULL::INT[], ARRAY[2, 4, 8]) -> NULL
  */
 CREATE OR REPLACE FUNCTION array_merge(
-    a1 ANYARRAY
-    , a2 ANYARRAY
+    a1 ANYARRAY,
+    a2 ANYARRAY
 )
 RETURNS ANYARRAY AS
 $$
@@ -206,10 +206,10 @@ SELECT array_merge(ARRAY[2, 4, 8], NULL) -> {2,4,8}
 -- concat items of array[from_ .. to_] to string (w/ separator)
 SELECT drop_all_functions_if_exists('public', 'items_of_array_to_string');
 CREATE OR REPLACE FUNCTION public.items_of_array_to_string(
-    elements ANYARRAY
-    , separator VARCHAR DEFAULT ' '
-    , from_ INT DEFAULT NULL
-    , to_ INT DEFAULT NULL
+    elements ANYARRAY,
+    separator VARCHAR DEFAULT ' ',
+    from_ INT DEFAULT NULL,
+    to_ INT DEFAULT NULL
 )
 RETURNS VARCHAR AS
 $func$
@@ -235,18 +235,18 @@ $func$ LANGUAGE plpgsql;
 
 /* TEST
 SELECT items_of_array_to_string(
-    elements => '{1,2,3}'::VARCHAR[]
-    , from_ => 1
-    , to_ => 2
+    elements => '{1,2,3}'::VARCHAR[],
+    from_ => 1,
+    to_ => 2
 ) => '1 2'
 SELECT items_of_array_to_string(
-    elements => '{1,2,3}'::VARCHAR[]
-    , from_ => 1
-    --, to_ => 2
+    elements => '{1,2,3}'::VARCHAR[],
+    from_ => 1,
+    --to_ => 2
 ) => '1 2 3'
 SELECT items_of_array_to_string(
-    elements => '{1,2,3}'::VARCHAR[]
-    , from_ => 1
-    , to_ => 0
+    elements => '{1,2,3}'::VARCHAR[],
+    from_ => 1,
+    to_ => 0
 ) => NULL
  */

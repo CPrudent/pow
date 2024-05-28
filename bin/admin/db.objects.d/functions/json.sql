@@ -5,10 +5,10 @@
 -- merge field into a JSON data
 SELECT public.drop_all_functions_if_exists('public', 'jsonb_merge');
 CREATE OR REPLACE FUNCTION jsonb_merge(
-    json_a JSONB
-    , json_b JSONB
-    , on_key_exists VARCHAR DEFAULT 'B_REPLACE_A'   -- A_REPLACE_B, CONCAT
-    )
+    json_a JSONB,
+    json_b JSONB,
+    on_key_exists VARCHAR DEFAULT 'B_REPLACE_A'   -- A_REPLACE_B, CONCAT
+)
 RETURNS JSONB AS
 $func$
 DECLARE
@@ -16,8 +16,8 @@ DECLARE
 BEGIN
     SELECT
         JSONB_OBJECT_AGG(
-            COALESCE(ka, kb)
-            , CASE
+            COALESCE(ka, kb),
+            CASE
                 WHEN va IS NULL THEN vb
                 WHEN vb IS NULL THEN va
                 WHEN JSONB_TYPEOF(va) = 'object' AND JSONB_TYPEOF(vb) = 'object' THEN jsonb_merge(va, vb)
@@ -36,7 +36,7 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
-/* TESTS
+/* TEST
 SELECT jsonb_merge(
 '{"a":{"a":"a_a_value1", "b":"b_b_value1", "c":"c_c_value1"}, "b":"b_value_1"}'::JSONB
 ,'{"a":{"a":"a_a_value2", "d":"d_d_value2"}, "b":"b_value_2"}'::JSONB

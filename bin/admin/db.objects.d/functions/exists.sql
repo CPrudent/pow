@@ -56,9 +56,9 @@ $func$ LANGUAGE plpgsql;
 -- test if table exists
 SELECT public.drop_all_functions_if_exists('public', 'table_exists');
 CREATE OR REPLACE FUNCTION public.table_exists(
-    schema_name TEXT
-    , table_name TEXT
-    , temporary_mode BOOLEAN DEFAULT FALSE
+    schema_name TEXT,
+    table_name TEXT,
+    temporary_mode BOOLEAN DEFAULT FALSE
 )
 RETURNS BOOLEAN AS
 $func$
@@ -116,8 +116,8 @@ END $$;
 -- test if view exists
 SELECT public.drop_all_functions_if_exists('public', 'view_exists');
 CREATE FUNCTION public.view_exists(
-    schema_name TEXT
-    , view_name TEXT
+    schema_name TEXT,
+    view_name TEXT
 )
 RETURNS BOOLEAN AS
 $func$
@@ -134,8 +134,8 @@ $func$ LANGUAGE plpgsql;
 -- test if index exists
 SELECT public.drop_all_functions_if_exists('public', 'index_exists');
 CREATE FUNCTION public.index_exists(
-    schema_name TEXT
-    , index_name TEXT
+    schema_name TEXT,
+    index_name TEXT
 )
 RETURNS BOOLEAN AS
 $func$
@@ -152,9 +152,9 @@ $func$ LANGUAGE plpgsql;
 -- test if column exists
 SELECT public.drop_all_functions_if_exists('public', 'column_exists');
 CREATE FUNCTION public.column_exists(
-    schema_name TEXT
-    , table_name TEXT
-    , column_name TEXT
+    schema_name TEXT,
+    table_name TEXT,
+    column_name TEXT
 )
 RETURNS BOOLEAN AS
 $func$
@@ -172,8 +172,8 @@ $func$ LANGUAGE plpgsql;
 -- test if function exists
 SELECT public.drop_all_functions_if_exists('public', 'function_exists');
 CREATE FUNCTION public.function_exists(
-    schema_name TEXT
-    , function_name TEXT
+    schema_name TEXT,
+    function_name TEXT
 )
 RETURNS BOOLEAN AS
 $func$
@@ -190,8 +190,8 @@ $func$ LANGUAGE plpgsql;
 -- test if function exists
 SELECT public.drop_all_functions_if_exists('public', 'procedure_exists');
 CREATE FUNCTION public.procedure_exists(
-    schema_name TEXT
-    , procedure_name TEXT
+    schema_name TEXT,
+    procedure_name TEXT
 )
 RETURNS BOOLEAN AS
 $func$
@@ -207,8 +207,8 @@ $func$ LANGUAGE plpgsql;
 -- test if type exists
 SELECT public.drop_all_functions_if_exists('public', 'type_exists');
 CREATE OR REPLACE FUNCTION public.type_exists(
-    schema_name VARCHAR
-    , type_name VARCHAR
+    schema_name VARCHAR,
+    type_name VARCHAR
 )
 RETURNS BOOLEAN AS
 $func$

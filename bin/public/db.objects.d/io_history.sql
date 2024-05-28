@@ -3,16 +3,16 @@
  */
 
 CREATE TABLE IF NOT EXISTS public.io_history (
-    id SERIAL NOT NULL -- after INSERT, do: SELECT CURRVAL('io_history_id_seq')
-    , name VARCHAR(50) NOT NULL
-    , date_exec_begin TIMESTAMP NOT NULL DEFAULT NOW()
-    , date_exec_end TIMESTAMP
-    , status VARCHAR(10) NOT NULL DEFAULT 'EN_COURS' -- [ERREUR, SUCCES]
-    , date_data_begin TIMESTAMP NOT NULL
-    , date_data_end TIMESTAMP NOT NULL
-    , nb_rows_todo INTEGER NULL
-    , nb_rows_processed INTEGER NULL
-    , attributes VARCHAR
+    id SERIAL NOT NULL, -- after INSERT, do: SELECT CURRVAL('io_history_id_seq')
+    name VARCHAR(50) NOT NULL,
+    date_exec_begin TIMESTAMP NOT NULL DEFAULT NOW(),
+    date_exec_end TIMESTAMP,
+    status VARCHAR(10) NOT NULL DEFAULT 'EN_COURS', -- [ERREUR, SUCCES]
+    date_data_begin TIMESTAMP NOT NULL,
+    date_data_end TIMESTAMP NOT NULL,
+    nb_rows_todo INTEGER NULL,
+    nb_rows_processed INTEGER NULL,
+    attributes VARCHAR
 );
 
 DO $$
@@ -77,9 +77,9 @@ SELECT set_column_comment('public', 'io_history', 'attributes', 'Informations su
 SELECT public.drop_all_functions_if_exists('public', 'get_all_io');
 SELECT public.drop_all_functions_if_exists('public', 'get_io');
 CREATE OR REPLACE FUNCTION public.get_io(
-    name TEXT
-    , date_end TIMESTAMP
-    , status VARCHAR DEFAULT 'SUCCES'
+    name TEXT,
+    date_end TIMESTAMP,
+    status VARCHAR DEFAULT 'SUCCES'
 )
 RETURNS SETOF public.io_history AS
 $func$
@@ -97,8 +97,8 @@ $func$ LANGUAGE plpgsql;
 -- get last IO
 SELECT public.drop_all_functions_if_exists('public', 'get_last_io');
 CREATE OR REPLACE FUNCTION public.get_last_io(
-    name TEXT
-    , status VARCHAR DEFAULT 'SUCCES'
+    name TEXT,
+    status VARCHAR DEFAULT 'SUCCES'
 )
 RETURNS SETOF public.io_history AS
 $func$
@@ -120,10 +120,10 @@ DECLARE
     _io VARCHAR;
     _ios VARCHAR[] :=
         ARRAY[
-            'FR-ADDRESS-LAPOSTE'
-            , 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT'
-            , 'FR-ADDRESS-LAPOSTE-DELIVERY-ORGANIZATION'
-            , 'FR-TERRITORY-LAPOSTE-ORGANIZATION'
+            'FR-ADDRESS-LAPOSTE',
+            'FR-ADDRESS-LAPOSTE-DELIVERY-POINT',
+            'FR-ADDRESS-LAPOSTE-DELIVERY-ORGANIZATION',
+            'FR-TERRITORY-LAPOSTE-ORGANIZATION'
         ];
     _i INT;
     _nb_rows INT[];
@@ -137,17 +137,17 @@ BEGIN
         IF _date_io IS NULL THEN
             _io_history.date_exec_begin := TIMEOFDAY()::TIMESTAMP;
             _io_history.attributes := CONCAT(
-                '{ "import" : '
-                , '{ "from" : "backup" } }'
+                '{ "import" : ',
+                '{ "from" : "backup" } }'
                 );
             IF _io = 'FR-ADDRESS-LAPOSTE' THEN
                 SELECT
                     LEAST(
-                        MIN(dt_reference)
-                        , MIN(dt_reference_l3)
-                        , MIN(dt_reference_numero)
-                        , MIN(dt_reference_voie)
-                        , MIN(dt_reference_za)
+                        MIN(dt_reference),
+                        MIN(dt_reference_l3),
+                        MIN(dt_reference_numero),
+                        MIN(dt_reference_voie),
+                        MIN(dt_reference_za)
                     )
                 INTO
                     _io_history.date_data_begin
@@ -157,11 +157,11 @@ BEGIN
 
                 SELECT
                     GREATEST(
-                        MAX(dt_reference)
-                        , MAX(dt_reference_l3)
-                        , MAX(dt_reference_numero)
-                        , MAX(dt_reference_voie)
-                        , MAX(dt_reference_za)
+                        MAX(dt_reference),
+                        MAX(dt_reference_l3),
+                        MAX(dt_reference_numero),
+                        MAX(dt_reference_voie),
+                        MAX(dt_reference_za)
                     )
                 INTO
                     _io_history.date_data_end
@@ -180,23 +180,23 @@ BEGIN
                     _io_history.nb_rows_todo := _io_history.nb_rows_todo + _nb_rows[_i];
                 END LOOP;
                 _io_history.attributes := CONCAT(
-                    '{ "import" : '
-                    , '{ "from" : "backup", "items" : '
-                    , '{ "address" : { "rows" : ', _nb_rows[1], ' }'
-                    , ', "zone_address" : { "rows" : ', _nb_rows[2], ' }'
-                    , ', "street" : { "rows" : ', _nb_rows[3], ' }'
-                    , ', "housenumber" : { "rows" : ', _nb_rows[4], ' }'
-                    , ', "complement" : { "rows" : ', _nb_rows[5], ' }'
-                    , ' } } }'
+                    '{ "import" : ',
+                    '{ "from" : "backup", "items" : ',
+                    '{ "address" : { "rows" : ', _nb_rows[1], ' }',
+                    ', "zone_address" : { "rows" : ', _nb_rows[2], ' }',
+                    ', "street" : { "rows" : ', _nb_rows[3], ' }',
+                    ', "housenumber" : { "rows" : ', _nb_rows[4], ' }',
+                    ', "complement" : { "rows" : ', _nb_rows[5], ' }',
+                    ' } } }'
                     );
 
             ELSIF _io = 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT' THEN
                 SELECT
-                    MIN(pdi_dt_modification)
-                    , MAX(pdi_dt_modification)
+                    MIN(pdi_dt_modification),
+                    MAX(pdi_dt_modification)
                 INTO
-                    _io_history.date_data_begin
-                    , _io_history.date_data_end
+                    _io_history.date_data_begin,
+                    _io_history.date_data_end
                 FROM
                     fr.laposte_delivery_point
                     ;
@@ -212,12 +212,12 @@ BEGIN
                     TO_DATE(
                         SUBSTR(
                             LEAST(
-                                MIN(date_creation)
-                                , MIN(date_modification)
-                            )
-                            , 3
-                        )
-                        , 'YY-MM-DD'
+                                MIN(date_creation),
+                                MIN(date_modification)
+                            ),
+                            3
+                        ),
+                        'YY-MM-DD'
                     )
                 INTO
                     _io_history.date_data_begin
@@ -227,10 +227,10 @@ BEGIN
                 SELECT
                     TO_DATE(
                         GREATEST(
-                            MAX(date_creation)
-                            , MAX(date_modification)
-                        )
-                        , 'YY-MM-DD'
+                            MAX(date_creation),
+                            MAX(date_modification)
+                        ),
+                        'YY-MM-DD'
                     )
                 INTO
                     _io_history.date_data_end

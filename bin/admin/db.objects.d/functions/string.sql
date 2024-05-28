@@ -4,9 +4,9 @@
 
 SELECT public.drop_all_functions_if_exists('public', 'alias_words');
 CREATE OR REPLACE FUNCTION public.alias_words(
-    words VARCHAR
-    , separator VARCHAR
-    , alias_name VARCHAR
+    words VARCHAR,
+    separator VARCHAR,
+    alias_name VARCHAR
 )
 RETURNS VARCHAR AS
 $func$
@@ -60,9 +60,9 @@ SELECT count_words('ONE MORE TIME!');
 -- extract n words from position in a string
 SELECT public.drop_all_functions_if_exists('public', 'extract_words');
 CREATE OR REPLACE FUNCTION public.extract_words(
-    str IN VARCHAR
-    , n IN INT
-    , from_ IN INT
+    str IN VARCHAR,
+    n IN INT,
+    from_ IN INT
 )
 RETURNS VARCHAR AS
 $func$

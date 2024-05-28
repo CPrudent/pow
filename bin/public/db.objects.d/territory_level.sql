@@ -3,15 +3,14 @@
  */
 
 CREATE TABLE IF NOT EXISTS public.territory_level (
-    country CHAR(2) NOT NULL
-    , level CHARACTER VARYING NOT NULL
-    , name CHARACTER VARYING
-    , name_short CHARACTER VARYING
-    , name_plural CHARACTER VARYING
-    , article CHARACTER VARYING
-    , hierarchy INTEGER
-
-    , sublevels VARCHAR[]                            -- direct sublevels
+    country CHAR(2) NOT NULL,
+    level CHARACTER VARYING NOT NULL,
+    name CHARACTER VARYING,
+    name_short CHARACTER VARYING,
+    name_plural CHARACTER VARYING,
+    article CHARACTER VARYING,
+    hierarchy INTEGER,
+    sublevels VARCHAR[]                            -- direct sublevels
     -- levels_below
     -- levels_above
 );
@@ -42,11 +41,11 @@ BEGIN
     LOOP
         IF procedure_exists(_schema_name, _procedure_name) THEN
             _query := CONCAT(
-                'CALL '
-                , _schema_name
-                , '.'
-                , _procedure_name
-                , '()'
+                'CALL ',
+                _schema_name,
+                '.',
+                _procedure_name,
+                '()'
             );
 
             EXECUTE _query;
@@ -58,11 +57,10 @@ END
 $$;
 
 -- exists level
-SELECT public.drop_all_functions_if_exists('fr', 'exists_level');
 SELECT public.drop_all_functions_if_exists('public', 'exists_level');
 CREATE OR REPLACE FUNCTION public.exists_level(
-    country VARCHAR
-    , level VARCHAR
+    country VARCHAR,
+    level VARCHAR
 )
 RETURNS BOOLEAN AS
 $func$
@@ -76,12 +74,11 @@ END
 $func$ LANGUAGE plpgsql;
 
 -- is level A a sublevel of level B
-SELECT public.drop_all_functions_if_exists('fr', 'is_level_below');
 SELECT public.drop_all_functions_if_exists('public', 'is_level_below');
 CREATE OR REPLACE FUNCTION public.is_level_below(
-    country VARCHAR
-    , level_a VARCHAR
-    , level_b VARCHAR
+    country VARCHAR,
+    level_a VARCHAR,
+    level_b VARCHAR
 )
 RETURNS BOOLEAN AS
 $func$
@@ -99,15 +96,16 @@ BEGIN
         LOOP
             -- level A is a deeper sublevel from leval B (no immediate) : it's a sublevel of a sublevel from level B
             IF (public.is_level_below(
-                country
-                , level_a
-                , _immediate_sublevel_b
+                country,
+                level_a,
+                _immediate_sublevel_b
             )) THEN RETURN TRUE; END IF;
         END LOOP;
     END IF;
     RETURN FALSE;
 END
 $func$ LANGUAGE plpgsql;
+
 /* TEST
 SELECT public.is_level_below('fr', 'COM', 'EPCI'); --> TRUE
 SELECT public.is_level_below('fr', 'EPCI', 'COM'); --> FALSE
@@ -117,9 +115,9 @@ SELECT public.is_level_below('fr', 'CP', 'COM'); --> FALSE
 
 SELECT public.drop_all_functions_if_exists('public', 'get_common_level');
 CREATE OR REPLACE FUNCTION public.get_common_level(
-    country VARCHAR
-    , level_a VARCHAR
-    , level_b VARCHAR
+    country VARCHAR,
+    level_a VARCHAR,
+    level_b VARCHAR
 )
 RETURNS VARCHAR AS
 $func$
@@ -127,14 +125,15 @@ DECLARE
     _level VARCHAR;
 BEGIN
     EXECUTE CONCAT('SELECT ', LOWER(country), '.get_common_level(
-            level_a => $1
-            , level_b => $2
+            level_a => $1,
+            level_b => $2
         )')
         INTO _level
         USING level_a, level_b;
     RETURN _level;
 END
 $func$ LANGUAGE plpgsql;
+
 /* TEST
 SELECT public.get_common_level('fr', 'COM', 'COM') --> COM
 SELECT public.get_common_level('fr', 'EPCI', 'COM') --> COM
@@ -148,8 +147,8 @@ SELECT public.get_common_level('fr', 'DEP', 'DSCC') --> ZA
  */
 -- get common level between a set of levels
 CREATE OR REPLACE FUNCTION public.get_common_level(
-    country VARCHAR
-    , levels VARCHAR[]
+    country VARCHAR,
+    levels VARCHAR[]
 )
 RETURNS VARCHAR AS
 $func$
@@ -168,6 +167,7 @@ BEGIN
     RETURN _common_level;
 END
 $func$ LANGUAGE plpgsql;
+
 /* TEST
 SELECT public.get_common_level('fr', ARRAY['DEP', 'DSCC', 'CP', 'COM']) --> ZA
 SELECT public.get_common_level('fr', ARRAY['DEP', 'EPCI', 'REG']) --> COM
@@ -175,13 +175,12 @@ SELECT public.get_common_level('fr', ARRAY['DEP', 'REG', 'PAYS']) --> DEP
  */
 
 -- get list of levels
-SELECT public.drop_all_functions_if_exists('fr', 'get_levels');
 SELECT public.drop_all_functions_if_exists('public', 'get_levels');
 CREATE OR REPLACE FUNCTION public.get_levels(
-    country VARCHAR
-    , order_in VARCHAR DEFAULT 'ASC'
-    , subfilter VARCHAR DEFAULT NULL         -- result list from this level (smaller one)
-    , among_levels VARCHAR[] DEFAULT NULL    -- list of levels to order
+    country VARCHAR,
+    order_in VARCHAR DEFAULT 'ASC',
+    subfilter VARCHAR DEFAULT NULL,         -- result list from this level (smaller one)
+    among_levels VARCHAR[] DEFAULT NULL     -- list of levels to order
 )
 RETURNS VARCHAR[] AS
 $func$
@@ -226,12 +225,11 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
-SELECT public.drop_all_functions_if_exists('fr', 'get_bigger_sublevel');
 SELECT public.drop_all_functions_if_exists('public', 'get_bigger_sublevel');
 CREATE OR REPLACE FUNCTION public.get_bigger_sublevel(
-    country VARCHAR
-    , level_in VARCHAR
-    , among_levels VARCHAR[] DEFAULT NULL
+    country VARCHAR,
+    level_in VARCHAR,
+    among_levels VARCHAR[] DEFAULT NULL
 )
 RETURNS VARCHAR AS
 $func$
@@ -265,12 +263,11 @@ $func$ LANGUAGE plpgsql;
 SELECT public.get_bigger_sublevel('fr', 'PAYS', ARRAY['DEP', 'EPCI', 'REG']) --> REG
  */
 
-SELECT public.drop_all_functions_if_exists('fr', 'get_smaller_sublevel');
 SELECT public.drop_all_functions_if_exists('public', 'get_smaller_sublevel');
 CREATE OR REPLACE FUNCTION public.get_smaller_sublevel(
-    country VARCHAR
-    , level_in VARCHAR
-    , among_levels VARCHAR[] DEFAULT NULL
+    country VARCHAR,
+    level_in VARCHAR,
+    among_levels VARCHAR[] DEFAULT NULL
 )
 RETURNS VARCHAR AS
 $func$

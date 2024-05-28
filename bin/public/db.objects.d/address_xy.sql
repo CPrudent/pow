@@ -3,11 +3,11 @@
  */
 
 CREATE TABLE IF NOT EXISTS public.address_xy (
-    id SERIAL NOT NULL
-    , id_address INT NOT NULL
-    , kind VARCHAR NOT NULL                     -- INSPIRE style (ENTRANCE, ...)
-    , source VARCHAR NOT NULL
-    , geom GEOMETRY NOT NULL
+    id SERIAL NOT NULL,
+    id_address INT NOT NULL,
+    kind VARCHAR NOT NULL,                     -- INSPIRE style (ENTRANCE, ...)
+    source VARCHAR NOT NULL,
+    geom GEOMETRY NOT NULL
 )
 ;
 

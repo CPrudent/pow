@@ -3,11 +3,11 @@
  */
 
 CREATE TABLE IF NOT EXISTS public.address_history (
-    id INT NOT NULL
-    , date_change DATE NOT NULL
-    , change CHAR(1) NOT NULL               -- {-, !} for (DELETE, UPDATE)
-    , kind VARCHAR NOT NULL                 -- {STREET, HOUSENUMBER, COMPLEMENT, ADDRESS}
-    , values JSONB
+    id INT NOT NULL,
+    date_change DATE NOT NULL,
+    change CHAR(1) NOT NULL,               -- {-, !} for (DELETE, UPDATE)
+    kind VARCHAR NOT NULL,                 -- {STREET, HOUSENUMBER, COMPLEMENT, ADDRESS}
+    values JSONB
 )
 ;
 

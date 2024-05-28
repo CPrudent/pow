@@ -19,11 +19,11 @@ BEGIN
     LOOP
         RAISE NOTICE 'Suppression automatique de la table %.%', _record.table_schema, _record.table_name;
         _query := CONCAT(
-            'DROP TABLE '
-            , _record.table_schema
-            , '.'
-            , _record.table_name
-            , ';'
+            'DROP TABLE ',
+            _record.table_schema,
+            '.',
+            _record.table_name,
+            ';'
         );
         --RAISE NOTICE '%', _query;
         EXECUTE _query;

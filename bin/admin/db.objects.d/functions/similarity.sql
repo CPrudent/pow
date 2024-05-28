@@ -4,8 +4,8 @@
 
 SELECT drop_all_functions_if_exists('public', 'get_metaphone');
 CREATE OR REPLACE FUNCTION public.get_metaphone(
-    str IN VARCHAR
-    , metaphone OUT VARCHAR
+    str IN VARCHAR,
+    metaphone OUT VARCHAR
 )
 AS
 $func$
@@ -17,26 +17,26 @@ BEGIN
         STRING_AGG(
             COALESCE(
                 NULLIF(
-                    METAPHONE(word, 10)
-                    , ''
-                )
-                , word
-            )
+                    METAPHONE(word, 10),
+                    ''
+                ),
+                word
+            ),
             /* FIXME
             w/ space ? will allow to fully match 'RUE O QUIN' w/ 'RUE OQUIN'
              */
-            , ''
+            ''
         )
     INTO metaphone
     FROM (
         SELECT UNNEST(
             STRING_TO_ARRAY(
                 REGEXP_REPLACE(
-                    REGEXP_REPLACE(str, '([0-9])([^0-9 ])', '\1 \2', 'g')
-                    , '([^0-9 ])([0-9])', '\1 \2'
-                    , 'g'
-                )
-                , ' '
+                    REGEXP_REPLACE(str, '([0-9])([^0-9 ])', '\1 \2', 'g'),
+                    '([^0-9 ])([0-9])', '\1 \2',
+                    'g'
+                ),
+                ' '
             )
         ) AS word
     ) t
@@ -55,9 +55,9 @@ SELECT get_similarity('AVENUE DU 18EME R I', 'AVENUE DU 18EME REGIMENT INFANTERI
 
 SELECT drop_all_functions_if_exists('public', 'get_similarity_semantics');
 CREATE OR REPLACE FUNCTION public.get_similarity_semantics(
-    str_a IN VARCHAR
-    , str_b IN VARCHAR
-    , similarity OUT NUMERIC
+    str_a IN VARCHAR,
+    str_b IN VARCHAR,
+    similarity OUT NUMERIC
 )
 AS
 $func$
@@ -81,9 +81,9 @@ $func$ LANGUAGE plpgsql;
 
 SELECT drop_all_functions_if_exists('public', 'get_similarity_phonetics');
 CREATE OR REPLACE FUNCTION public.get_similarity_phonetics(
-    str_a IN VARCHAR
-    , str_b IN VARCHAR
-    , similarity OUT NUMERIC
+    str_a IN VARCHAR,
+    str_b IN VARCHAR,
+    similarity OUT NUMERIC
 )
 RETURNS NUMERIC AS
 $func$
@@ -95,9 +95,9 @@ $func$ LANGUAGE plpgsql;
 
 SELECT drop_all_functions_if_exists('public', 'get_similarity');
 CREATE OR REPLACE FUNCTION public.get_similarity(
-    str_a IN VARCHAR
-    , str_b IN VARCHAR
-    , similarity OUT NUMERIC
+    str_a IN VARCHAR,
+    str_b IN VARCHAR,
+    similarity OUT NUMERIC
 )
 AS
 $func$
@@ -124,11 +124,11 @@ $func$ LANGUAGE plpgsql;
  * eval (sum ou avg) similarity string A w/ each word of string B
  */
 CREATE OR REPLACE FUNCTION public.get_similarity(
-    str_a IN VARCHAR
-    , strs_b IN VARCHAR[]
-    , similarity_min IN REAL DEFAULT NULL
-    , method IN VARCHAR DEFAULT 'SUM'
-    , similarity OUT NUMERIC
+    str_a IN VARCHAR,
+    strs_b IN VARCHAR[],
+    similarity_min IN REAL DEFAULT NULL,
+    method IN VARCHAR DEFAULT 'SUM',
+    similarity OUT NUMERIC
 )
 AS
 $func$
@@ -150,8 +150,8 @@ BEGIN
         SELECT
             SUM(
                 get_similarity(
-                    str_a
-                    , (STRING_TO_ARRAY(_strs_b.str_with_nb, ';'))[1]
+                    str_a,
+                    (STRING_TO_ARRAY(_strs_b.str_with_nb, ';'))[1]
                 )
                 *
                 (STRING_TO_ARRAY(_strs_b.str_with_nb, ';'))[2]::INTEGER
@@ -162,16 +162,16 @@ BEGIN
             similarity_min IS NULL
             OR
             get_similarity(
-                str_a
-                , (STRING_TO_ARRAY(_strs_b.str_with_nb, ';'))[1]
+                str_a,
+                (STRING_TO_ARRAY(_strs_b.str_with_nb, ';'))[1]
             ) >= similarity_min
         ;
     ELSIF method = 'AVG' THEN
         SELECT
             AVG(
                 get_similarity(
-                    str_a
-                    , (STRING_TO_ARRAY(_strs_b.str_with_nb, ';'))[1]
+                    str_a,
+                    (STRING_TO_ARRAY(_strs_b.str_with_nb, ';'))[1]
                 )
                 *
                 (STRING_TO_ARRAY(_strs_b.str_with_nb, ';'))[2]::INTEGER
@@ -182,11 +182,10 @@ BEGIN
             similarity_min IS NULL
             OR
             get_similarity(
-                str_a
-                , (STRING_TO_ARRAY(_strs_b.str_with_nb, ';'))[1]
+                str_a,
+                (STRING_TO_ARRAY(_strs_b.str_with_nb, ';'))[1]
             ) >= similarity_min
         ;
     END IF;
 END
 $func$ LANGUAGE plpgsql;
-

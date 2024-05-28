@@ -3,8 +3,8 @@
  */
 
 CREATE TABLE IF NOT EXISTS public.io_list (
-    id SERIAL NOT NULL
-    , name VARCHAR NOT NULL
+    id SERIAL NOT NULL,
+    name VARCHAR NOT NULL
 );
 
 -- create IO list indexes
@@ -33,8 +33,8 @@ END
 $proc$ LANGUAGE plpgsql;
 
 CREATE TABLE IF NOT EXISTS public.io_relation (
-    id INT NOT NULL
-    , id_child INT NULL
+    id INT NOT NULL,
+    id_child INT NULL
 );
 
 SELECT drop_all_functions_if_exists('public', 'set_io_relation_index');
@@ -48,8 +48,8 @@ $proc$ LANGUAGE plpgsql;
 
 SELECT public.drop_all_functions_if_exists('public', 'io_add_relation_if_not_exists');
 CREATE OR REPLACE PROCEDURE public.io_add_relation_if_not_exists(
-    id1 INT
-    , id2 INT
+    id1 INT,
+    id2 INT
 )
 AS
 $proc$
@@ -63,8 +63,8 @@ $proc$ LANGUAGE plpgsql;
 SELECT public.drop_all_functions_if_exists('public', 'io_get_subscript_from_array_by_name');
 SELECT public.drop_all_functions_if_exists('public', 'io_get_id_from_array_by_name');
 CREATE OR REPLACE FUNCTION public.io_get_id_from_array_by_name(
-    from_array public.io_list[]
-    , name VARCHAR
+    from_array public.io_list[],
+    name VARCHAR
 )
 RETURNS INT AS
 $func$
@@ -87,8 +87,8 @@ $func$ LANGUAGE plpgsql;
 
 SELECT public.drop_all_functions_if_exists('public', 'io_get_subscript_from_array_by_name');
 CREATE OR REPLACE FUNCTION public.io_get_subscript_from_array_by_name(
-    from_array public.io_history[]
-    , name VARCHAR
+    from_array public.io_history[],
+    name VARCHAR
 )
 RETURNS INT AS
 $func$
@@ -153,16 +153,16 @@ BEGIN
             '
                 (
                     SELECT
-                        insee_com AS codgeo
-                        , nom AS libgeo
+                        insee_com AS codgeo,
+                        nom AS libgeo
                     FROM
                         fr.ign_municipality
                     WHERE
                         insee_com NOT IN (''75056'', ''13055'', ''69123'')
                     UNION
                     SELECT
-                        insee_arm
-                        , nom
+                        insee_arm,
+                        nom
                     FROM
                         fr.ign_municipal_district
                 ) x
@@ -171,8 +171,8 @@ BEGIN
 
                 (
                     SELECT
-                        codgeo
-                        , libgeo
+                        codgeo,
+                        libgeo
                     FROM
                         fr.territory
                     WHERE
@@ -195,16 +195,16 @@ BEGIN
             '
                 (
                     SELECT
-                        insee_com AS codgeo
-                        , population
+                        insee_com AS codgeo,
+                        population
                     FROM
                         fr.ign_municipality
                     WHERE
                         insee_com NOT IN (''75056'', ''13055'', ''69123'')
                     UNION
                     SELECT
-                        insee_arm
-                        , population
+                        insee_arm,
+                        population
                     FROM
                         fr.ign_municipal_district
                 ) x
@@ -213,8 +213,8 @@ BEGIN
 
                 (
                     SELECT
-                        codgeo
-                        , population
+                        codgeo,
+                        population
                     FROM
                         fr.territory
                     WHERE
@@ -231,16 +231,16 @@ BEGIN
             '
                 (
                     SELECT
-                        insee_com AS codgeo
-                        , geom
+                        insee_com AS codgeo,
+                        geom
                     FROM
                         fr.ign_municipality
                     WHERE
                         insee_com NOT IN (''75056'', ''13055'', ''69123'')
                     UNION
                     SELECT
-                        insee_arm
-                        , geom
+                        insee_arm,
+                        geom
                     FROM
                         fr.ign_municipal_district
                 ) x
@@ -249,8 +249,8 @@ BEGIN
 
                 (
                     SELECT
-                        codgeo
-                        , gm_contour_natif
+                        codgeo,
+                        gm_contour_natif
                     FROM
                         fr.territory
                     WHERE
@@ -280,18 +280,18 @@ BEGIN
                             fr.ign_municipal_district
                     ) ign
                         CROSS JOIN fr.get_municipality_to_date(
-                            code => ign.insee_com
-                            , code_previous => ign.insee_com
-                            , date_geography_from => '''
-                , _last_io
-                , '''::DATE
-                            , with_deleted => TRUE
-                            , check_exists => FALSE
+                            code => ign.insee_com,
+                            code_previous => ign.insee_com,
+                            date_geography_from => ''',
+                _last_io,
+                '''::DATE,
+                            with_deleted => TRUE,
+                            check_exists => FALSE
                         ) to_now
                 WHERE
-                    to_now.date_geography != '''
-                , _last_io
-                , '''::DATE
+                    to_now.date_geography != ''',
+                _last_io,
+                '''::DATE
                 '
             )
         WHEN 'FR-TERRITORY-INSEE-MUNICIPALITY' THEN
@@ -299,7 +299,6 @@ BEGIN
                 (
                     SELECT
                         codgeo
-                        --, libgeo
                     FROM
                         fr.insee_municipality
                     WHERE
@@ -313,7 +312,6 @@ BEGIN
                 (
                     SELECT
                         codgeo
-                        --, libgeo
                     FROM
                         fr.territory
                     WHERE
@@ -334,9 +332,9 @@ BEGIN
             '
                 (
                     SELECT
-                        nivgeo
-                        , codgeo
-                        , libgeo
+                        nivgeo,
+                        codgeo,
+                        libgeo
                     FROM
                         fr.insee_supra
                     WHERE
@@ -349,9 +347,9 @@ BEGIN
 
                 (
                     SELECT
-                        nivgeo
-                        , codgeo
-                        , libgeo
+                        nivgeo,
+                        codgeo,
+                        libgeo
                     FROM
                         fr.territory
                     WHERE
@@ -377,31 +375,31 @@ BEGIN
                 '
                     fr.insee_municipality insee
                         CROSS JOIN fr.get_municipality_to_date(
-                            code => insee.codgeo
-                            , code_previous => insee.codgeo
-                            , date_geography_from => '''
-                , _last_io
-                , '''::DATE
-                            , with_deleted => TRUE
-                            , check_exists => FALSE
+                            code => insee.codgeo,
+                            code_previous => insee.codgeo,
+                            date_geography_from => ''',
+                _last_io,
+                '''::DATE,
+                            with_deleted => TRUE,
+                            check_exists => FALSE
                         ) to_now
                 WHERE
                     millesime = (
                         SELECT MAX(millesime) FROM fr.insee_municipality
                     )
                     AND
-                    to_now.date_geography != '''
-                , _last_io
-                , '''::DATE
+                    to_now.date_geography != ''',
+                _last_io,
+                '''::DATE,
                 '
             )
         WHEN 'FR-TERRITORY-BANATIC-LIST' THEN
             '
                 (
                     SELECT
-                        n_siren codgeo
-                        , nom_du_groupement libgeo
-                        , nature_juridique typgeo
+                        n_siren codgeo,
+                        nom_du_groupement libgeo,
+                        nature_juridique typgeo
                     FROM
                         fr.banatic_listof_epci
                     WHERE
@@ -412,9 +410,9 @@ BEGIN
 
                 (
                     SELECT
-                        codgeo
-                        , libgeo
-                        , typgeo
+                        codgeo,
+                        libgeo,
+                        typgeo
                     FROM
                         fr.territory
                     WHERE
@@ -435,8 +433,8 @@ BEGIN
             '
                 (
                     SELECT
-                        s.n_siren codgeo_epci
-                        , c.codgeo codgeo_com
+                        s.n_siren codgeo_epci,
+                        c.codgeo codgeo_com
                     FROM
                         fr.banatic_setof_epci s
                             JOIN fr.banatic_siren_insee l ON s.siren_membre = l.siren
@@ -446,8 +444,8 @@ BEGIN
                         s.nature_juridique IN (''MET69'', ''CC'', ''CA'', ''METRO'', ''CU'')
                     UNION
                     SELECT
-                        s.n_siren codgeo_epci
-                        , l.insee codgeo_com
+                        s.n_siren codgeo_epci,
+                        l.insee codgeo_com
                     FROM
                         fr.banatic_setof_epci s
                             JOIN fr.banatic_siren_insee l ON s.siren_membre = l.siren
@@ -462,8 +460,8 @@ BEGIN
 
                 (
                     SELECT
-                        t.codgeo_epci_parent code_epci
-                        , t.codgeo code_com
+                        t.codgeo_epci_parent code_epci,
+                        t.codgeo code_com
                     FROM
                         fr.territory t
                     WHERE
@@ -520,11 +518,11 @@ BEGIN
             '
                 (
                     SELECT
-                        co_cea codgeo
-                        , co_insee_commune codgeo_com
-                        , CASE WHEN co_insee_commune ~ ''^98[78]'' AND lb_l5_nn IS NOT NULL THEN lb_ach_nn ELSE lb_l5_nn END libgeo_l5
-                        , CASE WHEN co_insee_commune ~ ''^98[78]'' THEN COALESCE(lb_l5_nn, lb_ach_nn) ELSE lb_ach_nn END libgeo_l6
-                        , co_postal
+                        co_cea codgeo,
+                        co_insee_commune codgeo_com,
+                        CASE WHEN co_insee_commune ~ ''^98[78]'' AND lb_l5_nn IS NOT NULL THEN lb_ach_nn ELSE lb_l5_nn END libgeo_l5,
+                        CASE WHEN co_insee_commune ~ ''^98[78]'' THEN COALESCE(lb_l5_nn, lb_ach_nn) ELSE lb_ach_nn END libgeo_l6,
+                        co_postal
                     FROM
                         fr.laposte_address_area
                     WHERE
@@ -540,24 +538,24 @@ BEGIN
                     WITH
                     l5_cp_l6 AS (
                         SELECT
-                            codgeo codgeo_za
-                            , codgeo_com_parent codgeo_com
-                            , codgeo_cp_parent codgeo_cp
-                            , STRING_TO_ARRAY(libgeo, ''-'') libs
+                            codgeo codgeo_za,
+                            codgeo_com_parent codgeo_com,
+                            codgeo_cp_parent codgeo_cp,
+                            STRING_TO_ARRAY(libgeo, ''-'') libs
                         FROM
                             fr.territory
                         WHERE
                             nivgeo = ''ZA''
                     )
                     SELECT
-                        codgeo_za
-                        , codgeo_com
-                        , codgeo_cp
-                        , CASE ARRAY_LENGTH(libs, 1)
+                        codgeo_za,
+                        codgeo_com,
+                        codgeo_cp,
+                        CASE ARRAY_LENGTH(libs, 1)
                             WHEN 2 THEN libs[2]
                             WHEN 3 THEN libs[3]
-                            END libgeo_l6
-                        , CASE ARRAY_LENGTH(libs, 1)
+                            END libgeo_l6,
+                        CASE ARRAY_LENGTH(libs, 1)
                             WHEN 2 THEN NULL
                             WHEN 3 THEN libs[1]
                             END libgeo_l5
@@ -582,20 +580,20 @@ BEGIN
                 '
                     fr.laposte_address_area area
                         CROSS JOIN fr.get_municipality_to_date(
-                            code => area.co_insee_commune
-                            , code_previous => COALESCE(area.co_insee_commune_precedente, area.co_insee_commune)
-                            , date_geography_from => '''
-                , _last_io
-                , '''::DATE
-                            , with_deleted => TRUE
-                            , check_exists => FALSE
+                            code => area.co_insee_commune,
+                            code_previous => COALESCE(area.co_insee_commune_precedente, area.co_insee_commune),
+                            date_geography_from => ''',
+                _last_io,
+                '''::DATE,
+                            with_deleted => TRUE,
+                            check_exists => FALSE
                         ) to_now
                 WHERE
                     area.fl_active
                     AND
-                    to_now.date_geography != '''
-                , _last_io
-                , '''::DATE
+                    to_now.date_geography != ''',
+                _last_io,
+                '''::DATE
                 '
             )
         /* NOTE never difference!
@@ -604,10 +602,10 @@ BEGIN
             '
                 (
                     SELECT
-                        codgeo
-                        , NULLIF(codgeo_pdc_ppdc_parent, codgeo) codgeo_pdc_ppdc_parent
-                        , NULLIF(codgeo_ppdc_pdc_parent, codgeo) codgeo_ppdc_pdc_parent
-                        , CASE WHEN nivgeo = ''DEX'' THEN codgeo ELSE codgeo_dex_parent END codgeo_dex_parent
+                        codgeo,
+                        NULLIF(codgeo_pdc_ppdc_parent, codgeo) codgeo_pdc_ppdc_parent,
+                        NULLIF(codgeo_ppdc_pdc_parent, codgeo) codgeo_ppdc_pdc_parent,
+                        CASE WHEN nivgeo = ''DEX'' THEN codgeo ELSE codgeo_dex_parent END codgeo_dex_parent
                     FROM
                         fr.territory_laposte
                     WHERE
@@ -636,10 +634,10 @@ BEGIN
 
                 (
                     SELECT
-                        codgeo
-                        , NULLIF(codgeo_pdc_ppdc_parent, codgeo) codgeo_pdc_ppdc_parent
-                        , NULLIF(codgeo_ppdc_pdc_parent, codgeo) codgeo_ppdc_pdc_parent
-                        , CASE WHEN nivgeo = ''DEX'' THEN codgeo ELSE codgeo_dex_parent END codgeo_dex_parent
+                        codgeo,
+                        NULLIF(codgeo_pdc_ppdc_parent, codgeo) codgeo_pdc_ppdc_parent,
+                        NULLIF(codgeo_ppdc_pdc_parent, codgeo) codgeo_ppdc_pdc_parent,
+                        CASE WHEN nivgeo = ''DEX'' THEN codgeo ELSE codgeo_dex_parent END codgeo_dex_parent
                     FROM
                         fr.territory
                     WHERE
@@ -696,9 +694,9 @@ BEGIN
                     t.nivgeo = ''ZA''
                     AND
                     -- new point from last IO
-                    p.pdi_dt_modification > '''
-                , _last_io
-                , '''::TIMESTAMP
+                    p.pdi_dt_modification > ''',
+                _last_io,
+                '''::TIMESTAMP,
                     AND
                     -- valid point
                     p.fl_active AND p.fl_diffusable AND p.pdi_etat = 1 AND p.pdi_visible
@@ -732,9 +730,9 @@ BEGIN
             SELECT EXISTS(
                 SELECT 1
                 FROM
-            '
-            , _query
-            , ')'
+            ',
+            _query,
+            ')'
         );
         EXECUTE _query INTO _with;
     ELSE
@@ -762,8 +760,8 @@ BEGIN
             '
             SELECT COUNT(*)
             FROM
-            '
-            , _query
+            ',
+            _query
         );
         EXECUTE _query INTO _count;
     ELSE
@@ -859,9 +857,9 @@ BEGIN
             )
     );
 
-    _result := CONCAT_WS(','
-        , _result
-        , FORMAT('"%s"=>"%s"', 'DEPENDS', ARRAY_TO_STRING(_io_depends, ':'))
+    _result := CONCAT_WS(',',
+        _result,
+        FORMAT('"%s"=>"%s"', 'DEPENDS', ARRAY_TO_STRING(_io_depends, ':'))
     );
 
     _io_more_recents := ARRAY[]::BOOLEAN[];
@@ -896,37 +894,37 @@ BEGIN
         END IF;
 
         IF NOT _has_relation THEN
-            _result := CONCAT_WS(','
-                , _result
-                , FORMAT('"%s"=>%s'
-                    , CONCAT(_io_depends[_i], '_t')
-                    , _io_more_recents[_i] AND _io_with_differences[_i]
-                )
-                , FORMAT('"%s"=>%s'
-                    , CONCAT(_io_depends[_i], '_i')
-                    , COALESCE(_io_lasts[_j].id, 0)
+            _result := CONCAT_WS(',',
+                _result,
+                FORMAT('"%s"=>%s',
+                    CONCAT(_io_depends[_i], '_t'),
+                    _io_more_recents[_i] AND _io_with_differences[_i]
+                ),
+                FORMAT('"%s"=>%s',
+                    CONCAT(_io_depends[_i], '_i'),
+                    COALESCE(_io_lasts[_j].id, 0)
                 )
             );
         ELSE
-            _result := CONCAT_WS(','
-                , _result
-                , ((_relation - ARRAY['TODO', 'DEPENDS']) || HSTORE(CONCAT(_io_depends[_i], '_t'), _relation->'TODO') || HSTORE(CONCAT(_io_depends[_i], '_d'), _relation->'DEPENDS'))::TEXT
+            _result := CONCAT_WS(',',
+                _result,
+                ((_relation - ARRAY['TODO', 'DEPENDS']) || HSTORE(CONCAT(_io_depends[_i], '_t'), _relation->'TODO') || HSTORE(CONCAT(_io_depends[_i], '_d'), _relation->'DEPENDS'))::TEXT
             );
         END IF;
 
         -- last history, if defined (IO condition not exists in history, so id=0)
-        _result := CONCAT_WS(','
-            , _result
-            , FORMAT('"%s"=>%s'
-                , CONCAT(_io_depends[_i], '_i')
-                , CASE WHEN (_j > 0) THEN _io_lasts[_j].id ELSE 0 END
+        _result := CONCAT_WS(',',
+            _result,
+            FORMAT('"%s"=>%s',
+                CONCAT(_io_depends[_i], '_i'),
+                CASE WHEN (_j > 0) THEN _io_lasts[_j].id ELSE 0 END
             )
         );
     END LOOP;
 
-    _result := CONCAT_WS(','
-        , _result
-        , FORMAT('"TODO"=>%s', _todo)
+    _result := CONCAT_WS(',',
+        _result,
+        FORMAT('"TODO"=>%s', _todo)
     );
 
     RETURN _result::HSTORE;
@@ -949,11 +947,11 @@ BEGIN
         -- initialize IOs (list and relation)
         IF procedure_exists(_schema_name, _procedure_name) THEN
             _query := CONCAT(
-                'CALL '
-                , _schema_name
-                , '.'
-                , _procedure_name
-                , '()'
+                'CALL ',
+                _schema_name,
+                '.',
+                _procedure_name,
+                '()'
             );
 
             EXECUTE _query;

@@ -5,9 +5,9 @@
 -- get columns of table
 SELECT public.drop_all_functions_if_exists('public', 'get_table_columns');
 CREATE FUNCTION public.get_table_columns(
-    schema_name TEXT
-    , table_name TEXT
-    )
+    schema_name TEXT,
+    table_name TEXT
+)
 RETURNS TEXT[] AS
 $func$
 DECLARE
@@ -25,10 +25,10 @@ $func$ LANGUAGE plpgsql;
 -- get information of column
 SELECT public.drop_all_functions_if_exists('public', 'get_column_information');
 CREATE OR REPLACE FUNCTION public.get_column_information(
-    schema_name TEXT
-    , table_name TEXT
-    , column_name TEXT
-    )
+    schema_name TEXT,
+    table_name TEXT,
+    column_name TEXT
+)
 RETURNS information_schema.columns AS
 $func$
 DECLARE
@@ -47,9 +47,10 @@ $func$ LANGUAGE plpgsql;
 -- add NOTICE with date/hour
 SELECT public.drop_all_functions_if_exists('public', 'log_info');
 CREATE OR REPLACE PROCEDURE public.log_info(
-    message TEXT
-    , stamped BOOLEAN DEFAULT TRUE
-) AS
+    message TEXT,
+    stamped BOOLEAN DEFAULT TRUE
+)
+AS
 $proc$
 BEGIN
     IF stamped THEN
@@ -74,7 +75,7 @@ END $$;
 SELECT public.drop_all_functions_if_exists('public', 'count_estimate');
 CREATE OR REPLACE FUNCTION public.count_estimate(
     query TEXT
-    )
+)
 RETURNS INTEGER AS
 $func$
 DECLARE
@@ -93,9 +94,9 @@ $func$ LANGUAGE plpgsql;
 -- wait if VACUUM
 SELECT public.drop_all_functions_if_exists('public', 'wait_if_vacuum');
 CREATE OR REPLACE FUNCTION public.wait_if_vacuum(
-    table_name TEXT
-    , wait_seconds INTEGER DEFAULT 5
-    )
+    table_name TEXT,
+    wait_seconds INTEGER DEFAULT 5
+)
 RETURNS BOOLEAN AS
 $func$
 DECLARE
@@ -105,9 +106,9 @@ END
 $func$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION public.wait_if_vacuum(
-    table_names TEXT[] DEFAULT NULL
-    , wait_seconds INTEGER DEFAULT 5
-    )
+    table_names TEXT[] DEFAULT NULL,
+    wait_seconds INTEGER DEFAULT 5
+)
 RETURNS BOOLEAN AS
 $func$
 DECLARE
@@ -182,10 +183,10 @@ $func$ LANGUAGE plpgsql;
 
 SELECT public.drop_all_functions_if_exists('public', 'log_table_stat');
 CREATE OR REPLACE PROCEDURE public.log_table_stat(
-    log_name TEXT
-    , schema_name TEXT
-    , table_name TEXT
-    )
+    log_name TEXT,
+    schema_name TEXT,
+    table_name TEXT
+)
 AS
 $proc$
 DECLARE

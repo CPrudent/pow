@@ -6,10 +6,10 @@
 -- https://math.stackexchange.com/questions/349220/is-there-an-algorithm-to-find-all-subsets-of-a-set
 SELECT public.drop_all_functions_if_exists('public', 'subsets');
 CREATE OR REPLACE FUNCTION public.subsets(
-    set IN VARCHAR[]
-    , n IN INT
-    , raise_notice IN BOOLEAN DEFAULT FALSE
-    , subsets OUT VARCHAR[]
+    set IN VARCHAR[],
+    n IN INT,
+    raise_notice IN BOOLEAN DEFAULT FALSE,
+    subsets OUT VARCHAR[]
 )
 AS
 $func$

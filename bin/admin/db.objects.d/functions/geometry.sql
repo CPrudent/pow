@@ -5,9 +5,9 @@
 -- convert '(x, y)' to POINT
 SELECT public.drop_all_functions_if_exists('public', 'convert_xy_to_point');
 CREATE OR REPLACE FUNCTION convert_xy_to_point(
-    coord TEXT
-    , srid INTEGER
-    , inverse BOOLEAN DEFAULT FALSE
+    coord TEXT,
+    srid INTEGER,
+    inverse BOOLEAN DEFAULT FALSE
 )
 RETURNS GEOMETRY(POINT) AS
 $func$
@@ -52,8 +52,8 @@ SELECT convert_point_to_lat_lng(ST_SetSRID(ST_MakePoint(0, 15), 2154))
 -- eval distance between a point and a set of polygons
 SELECT public.drop_all_functions_if_exists('public', 'ST_DistanceExterior');
 CREATE OR REPLACE FUNCTION ST_DistanceExterior(
-    point_in GEOMETRY(POINT)
-    , geoms GEOMETRY(MULTIPOLYGON)
+    point_in GEOMETRY(POINT),
+    geoms GEOMETRY(MULTIPOLYGON)
 )
 RETURNS DOUBLE PRECISION AS
 $func$
@@ -78,8 +78,8 @@ see: https://postgis.net/docs/ST_RemoveRepeatedPoints.html
  */
 SELECT public.drop_all_functions_if_exists('public', 'ST_RemoveRepeatedPoints');
 CREATE OR REPLACE FUNCTION public.ST_RemoveRepeatedPoints(
-    geom GEOMETRY
-    , tolerance FLOAT8
+    geom GEOMETRY,
+    tolerance FLOAT8
 )
 RETURNS GEOMETRY AS
 $$
@@ -92,10 +92,10 @@ BEGIN
 
     --DROP TABLE IF EXISTS tmp_remove_repeated_points_bc2a;
     CREATE TEMPORARY TABLE IF NOT EXISTS tmp_remove_repeated_points_bc2a (
-        point_id SERIAL
-        , geom GEOMETRY
-        , repeated_points_id INTEGER[]
-        , nb_repeated_points INTEGER
+        point_id SERIAL,
+        geom GEOMETRY,
+        repeated_points_id INTEGER[],
+        nb_repeated_points INTEGER
     );
     TRUNCATE TABLE tmp_remove_repeated_points_bc2a;
     DROP INDEX IF EXISTS idx_tmp_remove_repeated_points_bc2a_point_id;
@@ -114,8 +114,8 @@ BEGIN
     CREATE INDEX idx_tmp_remove_repeated_points_bc2a_geom ON tmp_remove_repeated_points_bc2a USING GIST(geom);
 
     WITH point_has_repeated_points AS (
-        SELECT 	point_a.point_id
-                , ARRAY_AGG(point_b.point_id) AS repeated_points_id
+        SELECT 	point_a.point_id,
+                ARRAY_AGG(point_b.point_id) AS repeated_points_id
         FROM tmp_remove_repeated_points_bc2a AS point_a
         INNER JOIN tmp_remove_repeated_points_bc2a AS point_b
             ON point_a.point_id != point_b.point_id
@@ -123,8 +123,8 @@ BEGIN
         GROUP BY point_a.point_id
     )
     UPDATE tmp_remove_repeated_points_bc2a
-    SET repeated_points_id = point_has_repeated_points.repeated_points_id
-        , nb_repeated_points = ARRAY_LENGTH(point_has_repeated_points.repeated_points_id, 1)
+    SET repeated_points_id = point_has_repeated_points.repeated_points_id,
+        nb_repeated_points = ARRAY_LENGTH(point_has_repeated_points.repeated_points_id, 1)
     FROM point_has_repeated_points
     WHERE tmp_remove_repeated_points_bc2a.point_id = point_has_repeated_points.point_id;
 
@@ -132,11 +132,11 @@ BEGIN
     Alternative: alone query, but slower
     WITH repeated_points AS
     (
-        SELECT 	point_id
-                --, repeated_points_id
-                --, nb_repeated_points
-                --, ARRAY_LENGTH(ARRAY_AGG(point_id) OVER (ORDER BY nb_repeated_points DESC, point_id), 1)
-                , (ARRAY_REMOVE(repeated_points_id, ARRAY_AGG(point_id) OVER (ORDER BY nb_repeated_points DESC, point_id)) != '{}') AS doublon
+        SELECT 	point_id,
+                --repeated_points_id
+                --nb_repeated_points
+                --ARRAY_LENGTH(ARRAY_AGG(point_id) OVER (ORDER BY nb_repeated_points DESC, point_id), 1)
+                (ARRAY_REMOVE(repeated_points_id, ARRAY_AGG(point_id) OVER (ORDER BY nb_repeated_points DESC, point_id)) != '{}') AS doublon
         FROM tmp_remove_repeated_points_bc2a
         WHERE nb_repeated_points > 0
     )
@@ -167,7 +167,7 @@ BEGIN
 
         UPDATE tmp_remove_repeated_points_bc2a
         SET nb_repeated_points = nb_repeated_points - 1
-            --, repeated_points_id = ARRAY_REMOVE(repeated_points_id, _repeated_point_id)
+            --repeated_points_id = ARRAY_REMOVE(repeated_points_id, _repeated_point_id)
         WHERE repeated_points_id @> ARRAY[_repeated_point_id];
 
         DELETE FROM tmp_remove_repeated_points_bc2a
@@ -205,8 +205,8 @@ SELECT COUNT(*) FROM
 (
     SELECT ST_Dump(
         public.ST_RemoveRepeatedPoints(
-            (SELECT ST_Collect(pdi_coord) FROM tmp_remove_repeated_points_bc2a_test)
-            , 10
+            (SELECT ST_Collect(pdi_coord) FROM tmp_remove_repeated_points_bc2a_test),
+            10
         )
     )
 ) AS sous_requete
@@ -217,10 +217,10 @@ SELECT COUNT(*) FROM
     SELECT ST_Dump(
         public.ST_RemoveRepeatedPoints(
             public.ST_RemoveRepeatedPoints(
-                (SELECT ST_Collect(pdi_coord) FROM tmp_remove_repeated_points_bc2a_test)
-                , 1
-            )
-            , 1
+                (SELECT ST_Collect(pdi_coord) FROM tmp_remove_repeated_points_bc2a_test),
+                1
+            ),
+            1
         )
     )
 ) AS sous_requete
@@ -231,10 +231,10 @@ SELECT COUNT(*) FROM
     SELECT ST_Dump(
         ext_postgis.ST_RemoveRepeatedPoints(
             public.ST_RemoveRepeatedPoints(
-                (SELECT ST_Collect(pdi_coord) FROM tmp_remove_repeated_points_bc2a_test)
-                , 1
-            )
-            , 1
+                (SELECT ST_Collect(pdi_coord) FROM tmp_remove_repeated_points_bc2a_test),
+                1
+            ),
+            1
         )
     )
 ) AS sous_requete
@@ -244,8 +244,8 @@ SELECT COUNT(*) FROM
 (
     SELECT ST_Dump(
         ext_postgis.ST_RemoveRepeatedPoints(
-            (SELECT ST_Collect(pdi_coord) FROM tmp_remove_repeated_points_bc2a_test)
-            , 1
+            (SELECT ST_Collect(pdi_coord) FROM tmp_remove_repeated_points_bc2a_test),
+            1
         )
     )
 ) AS sous_requete
@@ -256,10 +256,10 @@ SELECT COUNT(*) FROM
     SELECT ST_Dump(
         public.ST_RemoveRepeatedPoints(
             ext_postgis.ST_RemoveRepeatedPoints(
-                (SELECT ST_Collect(pdi_coord) FROM tmp_remove_repeated_points_bc2a_test)
-                , 1
-            )
-            , 1
+                (SELECT ST_Collect(pdi_coord) FROM tmp_remove_repeated_points_bc2a_test),
+                1
+            ),
+            1
         )
     )
 ) AS sous_requete
@@ -272,9 +272,9 @@ see: https://postgis.net/docs/ST_VoronoiPolygons.html
  */
 SELECT public.drop_all_functions_if_exists('public', 'ST_VoronoiPolygons');
 CREATE OR REPLACE FUNCTION public.ST_VoronoiPolygons(
-    geom GEOMETRY
-    , tolerance FLOAT8 DEFAULT 0.0
-    , extent_to GEOMETRY DEFAULT NULL
+    geom GEOMETRY,
+    tolerance FLOAT8 DEFAULT 0.0,
+    extent_to GEOMETRY DEFAULT NULL
 )
 RETURNS GEOMETRY AS
 $$
@@ -310,8 +310,8 @@ and pdi_coord && (SELECT ST_Extent(ST_Buffer(pdi_coord, 100)) AS etendue FROM pd
 "MULTIPOINT(-63253.3450261578 5594962.51544104, -63271.5486856941 5594944.27784429, -63191.5734537447 5594986.17027418, -63297.4352173579 5594863.01255549, -63199.1264087256 5594959.79775379, -63282.4652754374 5594913.00271138, -63284.8539325727 5594905.23957568, -63193.9994300911 5594977.43074089, -63189.9845864334 5595010.97347389, -63247.8695433356 5594960.79310534, -63242.5402863549 5594958.98832436, -63211.9331526595 5594951.04092278, -63205.6629276841 5594949.54801208, -63236.3391333885 5594957.36927429, -63219.3894128038 5594952.88571149, -63281.2316461463 5594917.89939258, -63295.223126976 5594872.66379689, -63293.1330519852 5594881.02409689, -63291.341559133 5594885.20424689, -63196.6940807819 5594968.39609319, -63289.8051149571 5594893.32266988, -63230.0431787094 5594954.43404958, -63188.3923232157 5594996.92461198, -63287.7150399663 5594897.20423768, -63203.9775051001 5595041.63594279, -63192.4463657884 5595052.10939418, -63211.9226896531 5595046.77448668, -63218.5499548308 5595053.06924768, -63215.0058706188 5595050.64437503, -63375.6762362089 5594965.17663068, -63329.9330894873 5594959.88201743, -63307.4392187397 5594960.54196022, -63322.9907332408 5594981.29019635, -63341.2042439009 5594987.2618392, -63285.8936065736 5594957.98298803, -63297.4604537968 5594958.06215068, -63285.8936065736 5594957.98298799, -63338.3307661722 5594961.23932542, -63316.468824146 5594963.81033297, -63355.6402629755 5594963.43228987, -63318.8027404329 5594937.39166409, -63296.5634203015 5594936.42779418, -63313.1745760223 5594918.24209028, -63304.814323293 5594916.74916288, -63294.4394276426 5594914.48712498, -63369.5319381467 5594940.57433299, -63282.870112603 5594914.91212849, -63384.7280818929 5594941.83908529, -63377.2593591148 5594941.47096808, -63358.8542225811 5594917.34555519, -63312.3114263472 5594937.26184079, -63287.305623792 5594936.13309789, -63350.4433394722 5594921.11868718, -63310.1932656081 5594937.30731209, -63348.2965453199 5594941.01755039, -63362.3299059813 5594940.12180409, -63342.0263203445 5594939.52463978, -63355.4625167228 5594939.82322189, -63326.8339777026 5594917.21968868, -63334.5994443262 5594939.38397809, -63246.2058125544 5595016.28916134, -63305.178804347 5594972.95213598, -63221.7220769387 5595015.99057931, -63338.2518471012 5595045.65322709, -63253.8741515894 5595029.60353281, -63250.3625421301 5595045.07111436, -63187.1668418323 5595009.02581003, -63270.8586490836 5595050.75069549, -63239.069470903 5595042.6789575, -63291.8505058461 5595053.16374468, -63299.2495412629 5595054.98177668, -63200.3989985858 5595012.54818926, -63218.7362555261 5594991.20826149, -63260.4612062723 5595047.46316294, -63366.9280537885 5595045.85381899, -63306.3499948413 5595057.69539748, -63193.9868345441 5595010.73726616, -63208.3615355024 5595013.19730956, -63321.8612034277 5594912.84117959, -63341.6966298838 5594895.01419768, -63348.2944240921 5594869.07960118, -63344.8200421118 5594881.11195329, -63324.4665458438 5594902.65692398, -63339.0946457902 5594912.13863189, -63332.5568641996 5594858.60212498, -63347.7246007132 5594900.99657149, -63342.3501556252 5594902.48948729, -63324.6648989615 5594892.88734639, -63328.8450489461 5594882.13838928, -63339.9975142334 5594907.14635468, -63369.0899373486 5594908.01859688, -63373.1606237021 5594863.32637829, -63371.0032928117 5594893.56114748, -63368.3469175231 5594916.19898899, -63369.9309570505 5594880.29789899, -63384.6285080346 5594918.27708968, -63370.3513935265 5594873.30504269)"
 
 SELECT ROUND(ST_Distance(
-    ST_PointFromText('POINT(-63285.8936065736 5594957.98298803)', 3857)
-    , ST_PointFromText('POINT(-63285.8936065736 5594957.98298799)', 3857)
+    ST_PointFromText('POINT(-63285.8936065736 5594957.98298803)', 3857),
+    ST_PointFromText('POINT(-63285.8936065736 5594957.98298799)', 3857)
 )::NUMERIC, 10)
 --> Ces deux points sont à 0.0000000400 mètres de distance
 
@@ -321,14 +321,14 @@ WITH points_test AS (
     UNION ALL
     SELECT 'point_b' AS id, ST_PointFromText('POINT(-63285.8936065736 5594957.98298799)', 3857) AS geom
 )
-, multipoint_50m AS (
+multipoint_50m AS (
     SELECT ST_GeomFromText('MULTIPOINT(-63253.3450261578 5594962.51544104, -63271.5486856941 5594944.27784429, -63282.4652754374 5594913.00271138, -63247.8695433356 5594960.79310534, -63242.5402863549 5594958.98832436, -63236.3391333885 5594957.36927429, -63281.2316461463 5594917.89939258, -63329.9330894873 5594959.88201743, -63307.4392187397 5594960.54196022, -63322.9907332408 5594981.29019635, -63285.8936065736 5594957.98298803, -63297.4604537968 5594958.06215068, -63285.8936065736 5594957.98298799, -63316.468824146 5594963.81033297, -63318.8027404329 5594937.39166409, -63296.5634203015 5594936.42779418, -63313.1745760223 5594918.24209028, -63304.814323293 5594916.74916288, -63294.4394276426 5594914.48712498, -63282.870112603 5594914.91212849, -63312.3114263472 5594937.26184079, -63287.305623792 5594936.13309789, -63310.1932656081 5594937.30731209, -63326.8339777026 5594917.21968868, -63334.5994443262 5594939.38397809, -63305.178804347 5594972.95213598, -63321.8612034277 5594912.84117959)', 3857) AS geom
 )
-, voronoi_polygons_50m AS (
+voronoi_polygons_50m AS (
     SELECT (ST_Dump(ST_VoronoiPolygons(multipoint_50m.geom, 1))).*
     FROM multipoint_50m
 )
-, multipoint_100m AS (
+multipoint_100m AS (
 SELECT ST_Collect(pdi_coord) AS geom FROM pdi_view
 WHERE co_insee_commune = '33063'
 AND fl_active = true
@@ -340,16 +340,16 @@ AND pdi_no_type_localisation_coord > 4
 and pdi_coord && (SELECT ST_Extent(ST_Buffer(pdi_coord, 200)) AS etendue FROM pdi_view WHERE pdi_id = 10652325)
     --SELECT ST_GeomFromText('MULTIPOINT(-63253.3450261578 5594962.51544104, -63271.5486856941 5594944.27784429, -63191.5734537447 5594986.17027418, -63297.4352173579 5594863.01255549, -63199.1264087256 5594959.79775379, -63282.4652754374 5594913.00271138, -63284.8539325727 5594905.23957568, -63193.9994300911 5594977.43074089, -63189.9845864334 5595010.97347389, -63247.8695433356 5594960.79310534, -63242.5402863549 5594958.98832436, -63211.9331526595 5594951.04092278, -63205.6629276841 5594949.54801208, -63236.3391333885 5594957.36927429, -63219.3894128038 5594952.88571149, -63281.2316461463 5594917.89939258, -63295.223126976 5594872.66379689, -63293.1330519852 5594881.02409689, -63291.341559133 5594885.20424689, -63196.6940807819 5594968.39609319, -63289.8051149571 5594893.32266988, -63230.0431787094 5594954.43404958, -63188.3923232157 5594996.92461198, -63287.7150399663 5594897.20423768, -63203.9775051001 5595041.63594279, -63192.4463657884 5595052.10939418, -63211.9226896531 5595046.77448668, -63218.5499548308 5595053.06924768, -63215.0058706188 5595050.64437503, -63375.6762362089 5594965.17663068, -63329.9330894873 5594959.88201743, -63307.4392187397 5594960.54196022, -63322.9907332408 5594981.29019635, -63341.2042439009 5594987.2618392, -63285.8936065736 5594957.98298803, -63297.4604537968 5594958.06215068, -63285.8936065736 5594957.98298799, -63338.3307661722 5594961.23932542, -63316.468824146 5594963.81033297, -63355.6402629755 5594963.43228987, -63318.8027404329 5594937.39166409, -63296.5634203015 5594936.42779418, -63313.1745760223 5594918.24209028, -63304.814323293 5594916.74916288, -63294.4394276426 5594914.48712498, -63369.5319381467 5594940.57433299, -63282.870112603 5594914.91212849, -63384.7280818929 5594941.83908529, -63377.2593591148 5594941.47096808, -63358.8542225811 5594917.34555519, -63312.3114263472 5594937.26184079, -63287.305623792 5594936.13309789, -63350.4433394722 5594921.11868718, -63310.1932656081 5594937.30731209, -63348.2965453199 5594941.01755039, -63362.3299059813 5594940.12180409, -63342.0263203445 5594939.52463978, -63355.4625167228 5594939.82322189, -63326.8339777026 5594917.21968868, -63334.5994443262 5594939.38397809, -63246.2058125544 5595016.28916134, -63305.178804347 5594972.95213598, -63221.7220769387 5595015.99057931, -63338.2518471012 5595045.65322709, -63253.8741515894 5595029.60353281, -63250.3625421301 5595045.07111436, -63187.1668418323 5595009.02581003, -63270.8586490836 5595050.75069549, -63239.069470903 5595042.6789575, -63291.8505058461 5595053.16374468, -63299.2495412629 5595054.98177668, -63200.3989985858 5595012.54818926, -63218.7362555261 5594991.20826149, -63260.4612062723 5595047.46316294, -63366.9280537885 5595045.85381899, -63306.3499948413 5595057.69539748, -63193.9868345441 5595010.73726616, -63208.3615355024 5595013.19730956, -63321.8612034277 5594912.84117959, -63341.6966298838 5594895.01419768, -63348.2944240921 5594869.07960118, -63344.8200421118 5594881.11195329, -63324.4665458438 5594902.65692398, -63339.0946457902 5594912.13863189, -63332.5568641996 5594858.60212498, -63347.7246007132 5594900.99657149, -63342.3501556252 5594902.48948729, -63324.6648989615 5594892.88734639, -63328.8450489461 5594882.13838928, -63339.9975142334 5594907.14635468, -63369.0899373486 5594908.01859688, -63373.1606237021 5594863.32637829, -63371.0032928117 5594893.56114748, -63368.3469175231 5594916.19898899, -63369.9309570505 5594880.29789899, -63384.6285080346 5594918.27708968, -63370.3513935265 5594873.30504269)', 3857) AS geom
 )
-, voronoi_polygons_100m AS (
+voronoi_polygons_100m AS (
     SELECT (ST_Dump(ST_VoronoiPolygons(multipoint_100m.geom, 1))).*
     FROM multipoint_100m
 )
 SELECT
-    points_test.id
-    , (SELECT ARRAY_AGG(voronoi_polygons_50m.path) FROM voronoi_polygons_50m WHERE ST_Within(points_test.geom, voronoi_polygons_50m.geom))
-    , (SELECT ARRAY_AGG(voronoi_polygons_100m.path) FROM voronoi_polygons_100m WHERE ST_Within(points_test.geom, voronoi_polygons_100m.geom))
-    , (SELECT COUNT(*) FROM voronoi_polygons_50m WHERE ST_Within(points_test.geom, voronoi_polygons_50m.geom))
-    , (SELECT COUNT(*) FROM voronoi_polygons_100m WHERE ST_Within(points_test.geom, voronoi_polygons_100m.geom))
+    points_test.id,
+    (SELECT ARRAY_AGG(voronoi_polygons_50m.path) FROM voronoi_polygons_50m WHERE ST_Within(points_test.geom, voronoi_polygons_50m.geom)),
+    (SELECT ARRAY_AGG(voronoi_polygons_100m.path) FROM voronoi_polygons_100m WHERE ST_Within(points_test.geom, voronoi_polygons_100m.geom)),
+    (SELECT COUNT(*) FROM voronoi_polygons_50m WHERE ST_Within(points_test.geom, voronoi_polygons_50m.geom)),
+    (SELECT COUNT(*) FROM voronoi_polygons_100m WHERE ST_Within(points_test.geom, voronoi_polygons_100m.geom))
 FROM points_test
 
 --> Mais si on augmente l'étendue à 100m, ST_VoronoiPolygons génère deux polygones pour ces 2 points qui sont proches
@@ -417,8 +417,8 @@ WITH split16 AS (
     )) AS bbox
 )
 SELECT
-    split16.*
-    , (
+    split16.*,
+    (
         SELECT COUNT(*)
         FROM territory WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94'
         AND gm_contour && split16.bbox
@@ -445,8 +445,8 @@ SELECT  ST_SplitFour(
                 ST_ExteriorRing(
                     (SELECT ST_Extent(gm_contour) AS geom FROM territory WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94')
                 )
-            )
-            , 3857
+            ),
+            3857
         )
     )
  */
@@ -456,9 +456,9 @@ SELECT public.drop_all_functions_if_exists('public', 'coordIsInSridBounds');
 SELECT public.drop_all_functions_if_exists('public', 'is_valid_geometry_in_SRID_bounds');
 -- from (x, y, SRID)
 CREATE OR REPLACE FUNCTION is_valid_geometry_in_SRID_bounds(
-    x DOUBLE PRECISION
-    , y DOUBLE PRECISION
-    , srid INTEGER
+    x DOUBLE PRECISION,
+    y DOUBLE PRECISION,
+    srid INTEGER
 )
 RETURNS BOOLEAN
 IMMUTABLE
@@ -543,37 +543,37 @@ SELECT
     ST_Collect(ARRAY[
         ST_Transform(
             ST_SetSRID(
-                ST_MakePoint(adresse_x, adresse_y)
-                , getSridCoordRanFromCodeInseeDepartement(getCodeInseeDepartementFromCodeInseeCommune(COALESCE(adresse_id)))
-            )
-            , 4326
-        )
-        , ST_MakeLine(
+                ST_MakePoint(adresse_x, adresse_y),
+                getSridCoordRanFromCodeInseeDepartement(getCodeInseeDepartementFromCodeInseeCommune(COALESCE(adresse_id)))
+            ),
+            4326
+        ),
+        ST_MakeLine(
             ST_Transform(
                 ST_SetSRID(
-                    ST_MakePoint(adresse_x, adresse_y)
-                    , getSridCoordRanFromCodeInseeDepartement(getCodeInseeDepartementFromCodeInseeCommune(COALESCE(adresse_id, agg_adresse_id)))
-                )
-                , 4326
-            )
-            , ST_Transform(
+                    ST_MakePoint(adresse_x, adresse_y),
+                    getSridCoordRanFromCodeInseeDepartement(getCodeInseeDepartementFromCodeInseeCommune(COALESCE(adresse_id, agg_adresse_id)))
+                ),
+                4326
+            ),
+            ST_Transform(
                 ST_SetSRID(
-                    ST_MakePoint(adresse_x, adresse_y)
-                    , 2154
-                )
-                , 4326
+                    ST_MakePoint(adresse_x, adresse_y),
+                    2154
+                ),
+                4326
             )
         )
-    ]) AS geom
-    , pdi_id
-    , adresse_id
-    , adresse_geocode
-    , agg_adresse_id
-    , getCodeInseeDepartementFromCodeInseeCommune(COALESCE(adresse_id, agg_adresse_id))
-    , getSridCoordRanFromCodeInseeDepartement(
+    ]) AS geom,
+    pdi_id,
+    adresse_id,
+    adresse_geocode,
+    agg_adresse_id,
+    getCodeInseeDepartementFromCodeInseeCommune(COALESCE(adresse_id, agg_adresse_id)),
+    getSridCoordRanFromCodeInseeDepartement(
         getCodeInseeDepartementFromCodeInseeCommune(COALESCE(adresse_id, agg_adresse_id))
-    )
-    , (
+    ),
+    (
         SELECT CONCAT_WS('<br>', no_numero, lb_extension_numero, lb_voie, co_postal, lb_acheminement)
         FROM adresse_ran_view WHERE co_adr = COALESCE(adresse_id, agg_adresse_id)
     ) AS lb_adresse
@@ -584,10 +584,10 @@ WHERE NOT
     is_valid_geometry_in_SRID_bounds(
         ST_Transform(
             ST_SetSRID(
-                ST_MakePoint(adresse_x, adresse_y)
-                , 2154
-            )
-            , getSridCoordRanFromCodeInseeDepartement(
+                ST_MakePoint(adresse_x, adresse_y),
+                2154
+            ),
+            getSridCoordRanFromCodeInseeDepartement(
                 getCodeInseeDepartementFromCodeInseeCommune(COALESCE(adresse_id, agg_adresse_id))
             )
         )
@@ -599,8 +599,8 @@ SELECT pdi_id
 FROM geopad.pdi
 WHERE
     ST_Astext(ST_SetSRID(
-        ST_MakePoint(adresse_x, adresse_y)
-        , getSridCoordRanFromCodeInseeDepartement(getCodeInseeDepartementFromCodeInseeCommune(adresse_id))
+        ST_MakePoint(adresse_x, adresse_y),
+        getSridCoordRanFromCodeInseeDepartement(getCodeInseeDepartementFromCodeInseeCommune(adresse_id))
     )) = 'POINT(inf inf)'
 AND adresse_id LIKE '97%'
 LIMIT 1;
@@ -619,14 +619,14 @@ SELECT COUNT(*) FROM geopad.pdi WHERE adresse_id IS NULL AND agg_adresse_id IS N
 -- extend line
 SELECT public.drop_all_functions_if_exists('public', 'ST_ExtendLine');
 CREATE OR REPLACE FUNCTION public.ST_ExtendLine(
-    line_in GEOMETRY(LINESTRING)
-    , length_in FLOAT
+    line_in GEOMETRY(LINESTRING),
+    length_in FLOAT,
     /*
      BOTH : extend 2 sides
      START : extend in direction of start of line
      END : extend in direction of end of line
      */
-    , direction VARCHAR DEFAULT 'BOTH'
+    direction VARCHAR DEFAULT 'BOTH'
 )
 RETURNS GEOMETRY(LINESTRING)
 AS $$
@@ -646,16 +646,16 @@ BEGIN
     -- extend 2 sides or at start only
     IF direction != 'END' THEN -- equiv to: IN ('BOTH', 'START') THEN
         line_in := ST_AddPoint(
-            line_in
-            , ST_Translate(_start_point, sin(_azimuth) * length_in, cos(_azimuth) * length_in)
-            , 0
+            line_in,
+            ST_Translate(_start_point, sin(_azimuth) * length_in, cos(_azimuth) * length_in),
+            0
         );
     END IF;
     -- extend 2 sides or at end only
     IF direction != 'START' THEN -- equiv to IN ('BOTH', 'END') THEN
         line_in := ST_AddPoint(
-            line_in
-            , ST_Translate(_end_point, sin(_azimuth) * length_in * -1, cos(_azimuth) * length_in * -1)
+            line_in,
+            ST_Translate(_end_point, sin(_azimuth) * length_in * -1, cos(_azimuth) * length_in * -1)
         );
     END IF;
     RETURN line_in;
@@ -665,20 +665,23 @@ $$ LANGUAGE plpgsql;
 /* TEST
 SELECT
     ST_Transform(
-        ST_Collect(ARRAY[
-            pdi.pdi_coord
-            , parcelle1.geom
-            , ST_ApproximateMedialAxis(parcelle1.geom)
-            , extend_line.geom
-            --, ST_Intersection(extend_line.geom, parcelle1.geom)
-            , parcelle2.geom
-        ])
-    , 4326) AS geom
-    , pdi.no_numero
-    , parcelle1.id
-    , isParcelleBatie(parcelle1.geom)
-    , parcelle2.id
-    , isParcelleBatie(parcelle1.geom)
+        ST_Collect(
+            ARRAY[
+                pdi.pdi_coord,
+                parcelle1.geom,
+                ST_ApproximateMedialAxis(parcelle1.geom),
+                extend_line.geom,
+                --ST_Intersection(extend_line.geom, parcelle1.geom)
+                parcelle2.geom
+            ]
+        ),
+        4326
+    ) AS geom,
+    pdi.no_numero,
+    parcelle1.id,
+    isParcelleBatie(parcelle1.geom),
+    parcelle2.id,
+    isParcelleBatie(parcelle1.geom)
 FROM pdi_view AS pdi
 LEFT OUTER JOIN LATERAL (
     SELECT parcelle.*
@@ -690,16 +693,22 @@ LEFT OUTER JOIN LATERAL (
 LEFT OUTER JOIN LATERAL (
     SELECT ST_ExtendLine(
                 ST_MakeLine(
-                    ST_ClosestPoint(ST_Buffer(parcelle1.geom, 100),
-                    ST_ClosestPoint(getContourNonMitoyenParcelle(parcelle1.geom), pdi.pdi_coord))
-                    , ST_ClosestPoint(
-                        ST_ApproximateMedialAxis(parcelle1.geom)
-                        --, pdi.pdi_coord
-                        , ST_ClosestPoint(getContourNonMitoyenParcelle(parcelle1.geom), pdi.pdi_coord)
+                    ST_ClosestPoint(
+                        ST_Buffer(parcelle1.geom, 100),
+                        ST_ClosestPoint(
+                            getContourNonMitoyenParcelle(parcelle1.geom), pdi.pdi_coord)
+                    ),
+                    ST_ClosestPoint(
+                        ST_ApproximateMedialAxis(parcelle1.geom),
+                        --pdi.pdi_coord
+                        ST_ClosestPoint(
+                            getContourNonMitoyenParcelle(parcelle1.geom),
+                            pdi.pdi_coord
+                        )
                     )
-                )
-                , 100
-                , 'END'
+                ),
+                100,
+                'END'
             ) as geom
         where isParcelleEnclavee(parcelle1.geom) = false
         and isParcelleBatie(parcelle1.geom) = false
@@ -710,18 +719,18 @@ LEFT OUTER JOIN LATERAL (
     WHERE isParcelleBatie(parcelle1.geom) = FALSE
     AND ST_DWithin(parcelle.geom, parcelle1.geom, 15)
     AND ST_Intersects(
-            parcelle.geom
-            , (
+            parcelle.geom,
+            (
                 ST_ExtendLine(
                     ST_MakeLine(
-                        pdi.pdi_coord
-                        , ST_ClosestPoint(
-                            ST_ApproximateMedialAxis(parcelle1.geom)
-                            , pdi.pdi_coord
+                        pdi.pdi_coord,
+                        ST_ClosestPoint(
+                            ST_ApproximateMedialAxis(parcelle1.geom),
+                            pdi.pdi_coord
                         )
-                    )
-                    , 100
-                    , 'END'
+                    ),
+                    100,
+                    'END'
                 )
             )
         )
@@ -736,9 +745,9 @@ AND pdi.lb_voie IN ('RUE MICHEL DE MONTAIGNE', 'RUE ADRIEN PLANQUE')
 -- correct bad geometry
 SELECT public.drop_all_functions_if_exists('public', 'ST_MakeValid2');
 CREATE OR REPLACE FUNCTION public.ST_MakeValid2(
-    geom GEOMETRY
+    geom GEOMETRY,
     -- supply if known, to avoid new verification
-    , is_valid BOOLEAN DEFAULT NULL
+    is_valid BOOLEAN DEFAULT NULL
 )
 RETURNS GEOMETRY
 AS $$
@@ -771,11 +780,11 @@ select * from divers.data_gouv_cadastre_parcelles where ST_GeometryType(geom) !=
 select ST_GeometryType(ST_MakeValid2(geom)) from divers.data_gouv_cadastre_parcelles limit 1
 
 select ST_Area(geom) = ST_Area(ST_MakeValid2(geom, false)), geom
-, ST_MakeValid2(geom)
-, ST_GeometryType(ST_MakeValid2(geom))
-, (select st_collect(geom) from divers.data_gouv_cadastre_parcelles as p where p.geom && i.geom )
-, (select st_collect(geom) from divers.data_gouv_cadastre_batiments as p where p.geom && i.geom )
-, *
+ST_MakeValid2(geom)
+ST_GeometryType(ST_MakeValid2(geom))
+(select st_collect(geom) from divers.data_gouv_cadastre_parcelles as p where p.geom && i.geom )
+(select st_collect(geom) from divers.data_gouv_cadastre_batiments as p where p.geom && i.geom )
+*
 from divers.data_gouv_cadastre_parcelles_invalid as i
 
 select geom
@@ -815,8 +824,8 @@ select st_intersection(
                 where id = '59291000BA0352'
             )
                 and id != '59291000BA0352'
-        )
-        , 1
+        ),
+        1
     ), 0)
     ,
     (
@@ -832,16 +841,16 @@ select st_intersection(
 )
 
 select
-    p1.geom, p2.geom
-    , ST_Collect(array[st_buffer(p1.geom, -0.01), st_buffer(p2.geom, -0.01)])
-    , ST_MakeValid2(p1.geom, false)
-    , st_snap(p1.geom, p2.geom, 0.1)
-    , ST_Collect(array[st_buffer(st_snap(p1.geom, p2.geom, 1), 0), p2.geom])
-    , st_buffer(p1.geom, 0)
-    , st_intersection(p1.geom, p2.geom)
-    , st_intersection(st_buffer(st_snap(p1.geom, p2.geom, 1), 0), p2.geom)
+    p1.geom, p2.geom,
+    ST_Collect(array[st_buffer(p1.geom, -0.01), st_buffer(p2.geom, -0.01)]),
+    ST_MakeValid2(p1.geom, false),
+    st_snap(p1.geom, p2.geom, 0.1),
+    ST_Collect(array[st_buffer(st_snap(p1.geom, p2.geom, 1), 0), p2.geom]),
+    st_buffer(p1.geom, 0),
+    st_intersection(p1.geom, p2.geom),
+    st_intersection(st_buffer(st_snap(p1.geom, p2.geom, 1), 0), p2.geom)
 from divers.data_gouv_cadastre_parcelles as p1
-, divers.data_gouv_cadastre_parcelles as p2
+divers.data_gouv_cadastre_parcelles as p2
 --where p1.id = '594670000A0183' and p2.id = '594670000A0184'
 where p1.id = '59291000BA0352'
 
@@ -933,8 +942,7 @@ SELECT * FROM divers.data_gouv_cadastre_batiments AS batiment WHERE ST_IsValid(g
 
 select * from divers.data_gouv_cadastre_batiments AS batiment WHERE ST_IsValid(geom) = FALSE
 
-SELECT ST_Transform((ST_Dump(ST_MakeValid(parcelle.geom))).geom
-    , 4326)
+SELECT ST_Transform((ST_Dump(ST_MakeValid(parcelle.geom))).geom, 4326)
 from divers.data_gouv_cadastre_parcelles AS parcelle
 WHERE ST_IsValid(geom) = FALSE
 AND ST_GeometryType(ST_MakeValid(geom)) = 'ST_MultiPolygon'
@@ -969,10 +977,10 @@ $func$ LANGUAGE plpgsql;
  */
 SELECT public.drop_all_functions_if_exists('public', 'ST_Equals_with_Threshold');
 CREATE OR REPLACE FUNCTION public.ST_Equals_with_Threshold(
-    geom1 GEOMETRY
-    , geom2 GEOMETRY
-    , distance NUMERIC DEFAULT 0.001
-    , reference VARCHAR DEFAULT 'ONE'           -- 'TWO' if second
+    geom1 GEOMETRY,
+    geom2 GEOMETRY,
+    distance NUMERIC DEFAULT 0.001,
+    reference VARCHAR DEFAULT 'ONE'           -- 'TWO' if second
 )
 RETURNS BOOLEAN AS
 $func$
