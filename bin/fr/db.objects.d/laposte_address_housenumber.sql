@@ -51,15 +51,15 @@ BEGIN
     _query := '
         SELECT
             -- HOUSENUMBER
-              dict.id
-            , dict.number
-            , dict.extension
-            , dict.occurs
+            dict.id,
+            dict.number,
+            dict.extension,
+            dict.occurs,
 
             -- ADDRESS
-            , address.co_cea_determinant AS co_adr
-            , address.co_cea_za AS co_adr_za
-            , address.co_cea_voie AS co_adr_voie
+            address.co_cea_determinant AS co_adr,
+            address.co_cea_za AS co_adr_za,
+            address.co_cea_voie AS co_adr_voie
         FROM
             fr.laposte_address_housenumber_uniq dict
                 JOIN fr.laposte_address_housenumber_reference ref ON dict.id = ref.number_id
@@ -67,9 +67,9 @@ BEGIN
     ';
     DROP VIEW IF EXISTS fr.housenumber_dict_view CASCADE;
     EXECUTE CONCAT_WS(
-        ' '
-        , 'CREATE VIEW fr.housenumber_dict_view AS'
-        , _query
+        ' ',
+        'CREATE VIEW fr.housenumber_dict_view AS',
+        _query
     );
 END
 $$;

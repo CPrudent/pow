@@ -9,14 +9,14 @@ initialization will be done w/ constant
 DO $$
 BEGIN
     IF table_exists(
-            schema_name => 'fr'
-            , table_name => 'laposte_address_street_uniq'
+            schema_name => 'fr',
+            table_name => 'laposte_address_street_uniq'
         )
         AND
         NOT column_exists(
-            schema_name => 'fr'
-            , table_name => 'laposte_address_street_uniq'
-            , column_name => 'as_words'
+            schema_name => 'fr',
+            table_name => 'laposte_address_street_uniq',
+            column_name => 'as_words'
         ) THEN
         DROP TABLE fr.laposte_address_street_uniq;
     END IF;
@@ -24,16 +24,16 @@ END $$;
 
 -- to store uniq name (as dictionary of street)
 CREATE TABLE IF NOT EXISTS fr.laposte_address_street_uniq (
-    id SERIAL NOT NULL
-    , name VARCHAR NOT NULL
-    , descriptors VARCHAR
-    , as_words INT[]
-    , name_normalized VARCHAR
-    , descriptors_normalized VARCHAR
-    , as_words_normalized INT[]
-    , occurs INT
-    , words TEXT[]
-    , nwords INT
+    id SERIAL NOT NULL,
+    name VARCHAR NOT NULL,
+    descriptors VARCHAR,
+    as_words INT[],
+    name_normalized VARCHAR,
+    descriptors_normalized VARCHAR,
+    as_words_normalized INT[],
+    occurs INT,
+    words TEXT[],
+    nwords INT
 )
 ;
 
@@ -86,14 +86,14 @@ BEGIN
         CALL public.log_info(' Initialisation');
         -- reminder: words, nwords are initiated by trigger
         INSERT INTO fr.laposte_address_street_uniq(
-            name
-            , occurs
+            name,
+            occurs
         )
         WITH
         name_uniq AS (
             SELECT
-                lb_voie name
-                , COUNT(*) occurs
+                lb_voie name,
+                COUNT(*) occurs
             FROM
                 fr.laposte_address_street s
             WHERE
@@ -119,12 +119,12 @@ BEGIN
         WITH
         name_attributs AS (
             SELECT
-                u.id
-                , nn.descriptors_as_words
-                , nn.name_normalized_as_words
-                , nn.descriptors_normalized_as_words
-                , nn.as_words
-                , CASE
+                u.id,
+                nn.descriptors_as_words,
+                nn.name_normalized_as_words,
+                nn.descriptors_normalized_as_words,
+                nn.as_words,
+                CASE
                     WHEN nn.name_normalized_as_words IS NOT NULL THEN
                         fr.get_as_words_from_splited_value(
                             property_as_words => nn.name_normalized_as_words
@@ -135,17 +135,17 @@ BEGIN
                     CROSS JOIN fr.normalize_street_name(u.name) nn
         )
         UPDATE fr.laposte_address_street_uniq u SET
-            descriptors = ARRAY_TO_STRING(na.descriptors_as_words, '')
-            , as_words = na.as_words
-            , name_normalized = CASE
+            descriptors = ARRAY_TO_STRING(na.descriptors_as_words, ''),
+            as_words = na.as_words,
+            name_normalized = CASE
                 WHEN na.name_normalized_as_words IS NOT NULL THEN
                     ARRAY_TO_STRING(na.name_normalized_as_words, ' ')
-                END
-            , descriptors_normalized = CASE
+                END,
+            descriptors_normalized = CASE
                 WHEN na.name_normalized_as_words IS NOT NULL THEN
                     ARRAY_TO_STRING(na.descriptors_normalized_as_words, '')
-                END
-            , as_words_normalized = na.as_words_normalized
+                END,
+            as_words_normalized = na.as_words_normalized
             FROM
                 name_attributs na
             WHERE

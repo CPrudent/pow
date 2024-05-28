@@ -11,28 +11,28 @@ END $$;
 
 -- to store keywords
 CREATE TABLE IF NOT EXISTS fr.laposte_address_keyword (
-    "group" VARCHAR NOT NULL
-    , name VARCHAR NOT NULL
-    , name_abbreviated VARCHAR
-    , first_word VARCHAR
-    , occurs INT
+    "group" VARCHAR NOT NULL,
+    name VARCHAR NOT NULL,
+    name_abbreviated VARCHAR,
+    first_word VARCHAR,
+    occurs INT
 )
 ;
 
 -- find keyword (at given position) into a name
 SELECT drop_all_functions_if_exists('fr', 'get_keyword_from_name');
 CREATE OR REPLACE FUNCTION fr.get_keyword_from_name(
-    name IN VARCHAR
-    , words IN TEXT[] DEFAULT NULL
-    , at_ IN INT DEFAULT 1
-    , groups IN VARCHAR DEFAULT 'ALL'
-    , with_abbreviation IN BOOLEAN DEFAULT TRUE
-    , raise_notice IN BOOLEAN DEFAULT FALSE
-    , kw_group OUT VARCHAR
-    , kw OUT VARCHAR
-    , kw_abbreviated OUT VARCHAR
-    , kw_is_abbreviated OUT BOOLEAN
-    , kw_nwords OUT INT
+    name IN VARCHAR,
+    words IN TEXT[] DEFAULT NULL,
+    at_ IN INT DEFAULT 1,
+    groups IN VARCHAR DEFAULT 'ALL',
+    with_abbreviation IN BOOLEAN DEFAULT TRUE,
+    raise_notice IN BOOLEAN DEFAULT FALSE,
+    kw_group OUT VARCHAR,
+    kw OUT VARCHAR,
+    kw_abbreviated OUT VARCHAR,
+    kw_is_abbreviated OUT BOOLEAN,
+    kw_nwords OUT INT
 )
 AS
 $func$
@@ -112,9 +112,9 @@ BEGIN
             FROM fr.laposte_address_keyword k
             WHERE --k.name_abbreviated = words[at_]
             k.name_abbreviated = items_of_array_to_string(
-                elements => words
-                , from_ => at_
-                , to_ => (at_ + count_words(k.name_abbreviated) -1)
+                elements => words,
+                from_ => at_,
+                to_ => (at_ + count_words(k.name_abbreviated) -1)
             )
             AND LENGTH(k.name_abbreviated) > 1
             AND k.name_abbreviated != COALESCE(k.first_word, k.name)
@@ -149,9 +149,9 @@ BEGIN
     _begin :=
         CASE WHEN at_ = 1 THEN NULL
         ELSE items_of_array_to_string(
-                elements => words
-                , from_ => 1
-                , to_ => at_ -1
+                elements => words,
+                from_ => 1,
+                to_ => at_ -1
             )
         END;
     IF _begin IS NOT NULL THEN
@@ -188,8 +188,8 @@ BEGIN
                 )
             -- keyword composed by many words (decreasing order)
             ORDER BY
-                count_words(k.name) DESC
-                , CASE
+                count_words(k.name) DESC,
+                CASE
                     WHEN _with_complement AND k.group ~ '^GROUP' THEN 3
                     WHEN at_ = 1 THEN
                         CASE WHEN k.group = 'TYPE' THEN 2
@@ -201,8 +201,8 @@ BEGIN
                             WHEN k.group = 'TITLE' THEN 1
                             ELSE 0
                             END
-                    END DESC
-                , k.occurs DESC
+                    END DESC,
+                k.occurs DESC
         )
         LOOP
             IF raise_notice THEN RAISE NOTICE ' kw=%', _kw; END IF;

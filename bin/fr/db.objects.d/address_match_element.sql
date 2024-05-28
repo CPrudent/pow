@@ -11,11 +11,11 @@ BEGIN
     THEN
         DROP TYPE IF EXISTS fr.matched_element CASCADE;
         CREATE TYPE fr.matched_element AS (
-              codes_address CHAR(10)[]
-            , elapsed_time INTERVAL
-            , status VARCHAR
-            , similarity_1 NUMERIC
-            , similarity_2 NUMERIC              -- AREA (municipality_name AND old_name)
+            codes_address CHAR(10)[],
+            elapsed_time INTERVAL,
+            status VARCHAR,
+            similarity_1 NUMERIC,
+            similarity_2 NUMERIC              -- AREA (municipality_name AND old_name)
         );
     END IF;
 
@@ -26,11 +26,11 @@ BEGIN
     THEN
         DROP TYPE IF EXISTS fr.match_parameters CASCADE;
         CREATE TYPE fr.match_parameters AS (
-              codes_address CHAR(10)[]
-            , word VARCHAR
-            , "limit" INT
-            , abbreviated_extension VARCHAR
-            , uncommon_id INT
+            codes_address CHAR(10)[],
+            word VARCHAR,
+            "limit" INT,
+            abbreviated_extension VARCHAR,
+            uncommon_id INT
         );
     END IF;
 END $$;
@@ -44,10 +44,10 @@ BEGIN
 END $$;
 
 CREATE TABLE IF NOT EXISTS fr.address_match_element (
-      id SERIAL NOT NULL
-    , level VARCHAR
-    , match_code VARCHAR
-    , matched_element fr.matched_element
+    id SERIAL NOT NULL,
+    level VARCHAR,
+    match_code VARCHAR,
+    matched_element fr.matched_element
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS iux_address_match_element_id ON fr.address_match_element(id);
@@ -56,8 +56,8 @@ CREATE INDEX IF NOT EXISTS ix_address_match_element_match_code ON fr.address_mat
 -- match each element of address (of a matching request)
 SELECT drop_all_functions_if_exists('fr', 'set_match_element');
 CREATE OR REPLACE PROCEDURE fr.set_match_element(
-      id IN INT
-    , force IN BOOLEAN DEFAULT FALSE
+    id IN INT,
+    force IN BOOLEAN DEFAULT FALSE
 )
 AS
 $proc$
@@ -98,23 +98,25 @@ BEGIN
                 _query := CONCAT(
                     '
                     SELECT
-                        mc.level
-                        , mc.match_code_element
-                        , '
-                    , CASE _step
+                        mc.level,
+                        mc.match_code_element,
+                    ',
+                    CASE _step
                         WHEN 1 THEN
-                            CONCAT('(SELECT
-                                ARRAY[
-                                      (standardized_address).match_code_area
-                                    , (standardized_address).match_code_street
-                                    , (standardized_address).match_code_housenumber
-                                    , (standardized_address).match_code_complement
-                                ]
+                            CONCAT('(
+                                SELECT
+                                    ARRAY[
+                                        (standardized_address).match_code_area,
+                                        (standardized_address).match_code_street,
+                                        (standardized_address).match_code_housenumber,
+                                        (standardized_address).match_code_complement
+                                    ]
                                 FROM fr.address_match_result
-                                WHERE id_request = $1
-                                AND
-                                (standardized_address).match_code_', LOWER(_level), ' =
-                                mc.match_code_element
+                                WHERE
+                                    id_request = $1
+                                    AND
+                                    (standardized_address).match_code_', LOWER(_level), ' =
+                                    mc.match_code_element
                                 LIMIT 1
                             )')
                         ELSE
@@ -122,12 +124,13 @@ BEGIN
                                 WHEN 'AREA' THEN 'ARRAY[NULL]::VARCHAR[]'
                                 ELSE 'ARRAY[mc.match_code_parent]'
                                 END
-                        END, ' match_code_parents, '
-                    , CASE _level
+                        END, ' match_code_parents, ',
+                    CASE _level
                         WHEN 'AREA' THEN 'NULL::fr.matched_element'
                         ELSE 'me.matched_element'
-                        END, ' matched_parent
-                        , (SELECT standardized_address
+                        END, ' matched_parent,
+                        (
+                            SELECT standardized_address
                             FROM fr.address_match_result
                             WHERE id_request = $1
                             AND
@@ -147,8 +150,8 @@ BEGIN
                         '
                     );
                 END IF;
-                _query := CONCAT(_query
-                    , '
+                _query := CONCAT(_query,
+                    '
                     WHERE
                         mc.id_request = $1
                         AND
@@ -162,11 +165,11 @@ BEGIN
                     '
                 );
                 IF _step = 1 THEN
-                    _query := CONCAT(_query
-                        , '
+                    _query := CONCAT(_query,
+                        '
                         AND (
-                            (SELECT (standardized_address).'
-                        , CASE _level
+                            (SELECT (standardized_address).',
+                        CASE _level
                             WHEN 'STREET' THEN 'street_uncommon_value'
                             WHEN 'HOUSENUMBER' THEN 'housenumber_uncommon_id'
                             WHEN 'COMPLEMENT' THEN 'complement_uncommon_value'
@@ -189,23 +192,23 @@ BEGIN
                 LOOP
                     -- match element
                     _record := fr.match_element(
-                          level => _element.level
-                        , step => _step
-                        , standardized_address => _element.standardized_address
-                        , matched_parent => _element.matched_parent
-                        , parameters => _parameters
+                        level => _element.level,
+                        step => _step,
+                        standardized_address => _element.standardized_address,
+                        matched_parent => _element.matched_parent,
+                        parameters => _parameters
                     );
 
                     -- matched element
                     INSERT INTO fr.address_match_element(
-                          level
-                        , match_code
-                        , matched_element
+                        level,
+                        match_code,
+                        matched_element
                     )
                     VALUES(
-                          _element.level
-                        , _element.match_code_element
-                        , _record.matched_element
+                        _element.level,
+                        _element.match_code_element,
+                        _record.matched_element
                     )
                     ;
 
@@ -234,14 +237,14 @@ BEGIN
                                 WHERE match_code = _element.match_code_parents[_i]
                             ) THEN
                                 INSERT INTO fr.address_match_element(
-                                    level
-                                    , match_code
-                                    , matched_element
+                                    level,
+                                    match_code,
+                                    matched_element
                                 )
                                 VALUES(
-                                    _levels[_i]
-                                    , _element.match_code_parents[_i]
-                                    , _record.matched_parents[_i]
+                                    _levels[_i],
+                                    _element.match_code_parents[_i],
+                                    _record.matched_parents[_i]
                                 )
                                 ;
                             END IF;

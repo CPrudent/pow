@@ -8,8 +8,8 @@ initialization will be done w/ constant
 
 -- to store references
 CREATE TABLE IF NOT EXISTS fr.laposte_address_housenumber_reference (
-    number_id INT NOT NULL
-    , address_id CHAR(10) NOT NULL
+    number_id INT NOT NULL,
+    address_id CHAR(10) NOT NULL
 )
 ;
 
@@ -43,12 +43,12 @@ BEGIN
 
     CALL public.log_info(' Initialisation');
     INSERT INTO fr.laposte_address_housenumber_reference(
-        number_id
-        , address_id
+        number_id,
+        address_id
     )
     SELECT
-          u.id
-        , h.co_cea
+        u.id,
+        h.co_cea
     FROM
         fr.laposte_address_housenumber_uniq u
             JOIN fr.laposte_address_housenumber h ON u.number = h.no_voie AND COALESCE(u.extension, '') = COALESCE(h.lb_ext, '')

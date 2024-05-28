@@ -121,10 +121,10 @@ $func$ LANGUAGE plpgsql;
 -- remove article(s) from name
 SELECT drop_all_functions_if_exists('fr', 'get_street_name_without_article');
 CREATE OR REPLACE FUNCTION fr.get_street_name_without_article(
-    words IN TEXT[]
-    , nwords IN INT
-    , descriptors IN VARCHAR DEFAULT NULL
-    , without_article OUT TEXT[]
+    words IN TEXT[],
+    nwords IN INT,
+    descriptors IN VARCHAR DEFAULT NULL,
+    without_article OUT TEXT[]
 )
 AS
 $func$
@@ -157,10 +157,10 @@ words here must be the result of fr.get_descriptors_of_street(), splited w/ desc
  */
 SELECT drop_all_functions_if_exists('fr', 'split_descriptors_as_array');
 CREATE OR REPLACE FUNCTION fr.split_descriptors_as_array(
-    descriptors IN VARCHAR
-    , words IN TEXT[]
-    , nwords IN INT
-    , as_array OUT TEXT[]
+    descriptors IN VARCHAR,
+    words IN TEXT[],
+    nwords IN INT,
+    as_array OUT TEXT[]
 )
 AS
 $func$
@@ -183,35 +183,35 @@ $func$ LANGUAGE plpgsql;
 /* TEST
 SELECT
     -- VVATPAN
-    ds.descriptors
+    ds.descriptors,
     -- {"ANCIENNE ROUTE", DE, SAINT, LAURENT, DES, ARBRES}
-    , ds.words_by_descriptor
+    ds.words_by_descriptor,
     -- {"ANCI ROUTE", NULL, ST}
-    , ds.words_abbreviated_by_descriptor
+    ds.words_abbreviated_by_descriptor,
     -- {-, NULL, -}
-    , ds.words_todo_by_descriptor
+    ds.words_todo_by_descriptor
 FROM
     fr.get_descriptors_of_street(
-        name => 'ANCIENNE ROUTE DE SAINT LAURENT DES ARBRES'
-        , with_abbreviation => TRUE
+        name => 'ANCIENNE ROUTE DE SAINT LAURENT DES ARBRES',
+        with_abbreviation => TRUE
     ) ds;
 
 SELECT fr.split_descriptors_as_array(
-    descriptors => 'VVATPAN'
-    , words => '{"ANCIENNE ROUTE", DE, SAINT, LAURENT, DES, ARBRES}'
-    , nwords => 6
+    descriptors => 'VVATPAN',
+    words => '{"ANCIENNE ROUTE", DE, SAINT, LAURENT, DES, ARBRES}',
+    nwords => 6
 ) => {VV, A, T, P, A, N}
  */
 
 -- get property item (from as_words array)
 SELECT drop_all_functions_if_exists('fr', 'get_property_ordinal_item');
 CREATE OR REPLACE FUNCTION fr.get_property_ordinal_item(
-    property_key IN VARCHAR
-    , property_value IN VARCHAR
-    , as_words IN INT[]
-    , ordinal IN INT
-    , ordinal_as_words IN INT DEFAULT 1     -- useful for type of street (1st item)
-    , property_ordinal_item OUT VARCHAR
+    property_key IN VARCHAR,
+    property_value IN VARCHAR,
+    as_words IN INT[],
+    ordinal IN INT,
+    ordinal_as_words IN INT DEFAULT 1,    -- useful for type of street (1st item)
+    property_ordinal_item OUT VARCHAR
 )
 AS
 $func$
@@ -221,9 +221,9 @@ BEGIN
             SUBSTR(property_value, ordinal_as_words, as_words[ordinal])
         WHEN property_key = 'NAME' THEN
             extract_words(
-                str => property_value
-                , n => as_words[ordinal]
-                , from_ => ordinal_as_words
+                str => property_value,
+                n => as_words[ordinal],
+                from_ => ordinal_as_words
             )
         END
     ;
@@ -233,10 +233,10 @@ $func$ LANGUAGE plpgsql;
 -- split property as words
 SELECT drop_all_functions_if_exists('fr', 'split_property_as_words');
 CREATE OR REPLACE FUNCTION fr.split_property_as_words(
-    property_key IN VARCHAR
-    , property_value IN VARCHAR
-    , as_words IN INT[]
-    , property_as_words OUT TEXT[]
+    property_key IN VARCHAR,
+    property_value IN VARCHAR,
+    as_words IN INT[],
+    property_as_words OUT TEXT[]
 )
 AS
 $func$
@@ -249,10 +249,10 @@ BEGIN
     FOR _i IN 1 .. _nwords
     LOOP
         _item := fr.get_property_ordinal_item(
-            property_key => property_key
-            , property_value => property_value
-            , ordinal => _i
-            , ordinal_as_words => _j
+            property_key => property_key,
+            property_value => property_value,
+            ordinal => _i,
+            ordinal_as_words => _j
         );
         property_as_words := ARRAY_APPEND(property_as_words, _item);
         _j := _j + as_words[_i];
@@ -263,8 +263,8 @@ $func$ LANGUAGE plpgsql;
 -- define as_words array from splitted value (name or descriptors)
 SELECT drop_all_functions_if_exists('fr', 'get_as_words_from_splited_value');
 CREATE OR REPLACE FUNCTION fr.get_as_words_from_splited_value(
-    property_as_words IN TEXT[]
-    , as_words OUT INT[]
+    property_as_words IN TEXT[],
+    as_words OUT INT[]
 )
 AS
 $func$
@@ -282,32 +282,32 @@ $func$ LANGUAGE plpgsql;
 -- get type of street (from full name)
 SELECT drop_all_functions_if_exists('fr', 'get_type_of_street');
 CREATE OR REPLACE FUNCTION fr.get_type_of_street(
-    name IN VARCHAR                   -- name of street
-    , words IN TEXT[] DEFAULT NULL
-    , with_abbreviation IN BOOLEAN DEFAULT FALSE
-    , raise_notice IN BOOLEAN DEFAULT FALSE
-    , kw_group OUT VARCHAR
-    , kw OUT VARCHAR
-    , kw_abbreviated OUT VARCHAR
-    , kw_is_abbreviated OUT BOOLEAN
-    , kw_nwords OUT INT
+    name IN VARCHAR,                  -- name of street
+    words IN TEXT[] DEFAULT NULL,
+    with_abbreviation IN BOOLEAN DEFAULT FALSE,
+    raise_notice IN BOOLEAN DEFAULT FALSE,
+    kw_group OUT VARCHAR,
+    kw OUT VARCHAR,
+    kw_abbreviated OUT VARCHAR,
+    kw_is_abbreviated OUT BOOLEAN,
+    kw_nwords OUT INT
 )
 AS
 $func$
 BEGIN
     SELECT ks.kw_group, ks.kw, ks.kw_abbreviated, ks.kw_is_abbreviated, ks.kw_nwords
     INTO
-        get_type_of_street.kw_group
-        , get_type_of_street.kw
-        , get_type_of_street.kw_abbreviated
-        , get_type_of_street.kw_is_abbreviated
-        , get_type_of_street.kw_nwords
+        get_type_of_street.kw_group,
+        get_type_of_street.kw,
+        get_type_of_street.kw_abbreviated,
+        get_type_of_street.kw_is_abbreviated,
+        get_type_of_street.kw_nwords
     FROM fr.get_keyword_from_name(
-        name => name
-        , words => words
-        , groups => 'TYPE'
-        , with_abbreviation => with_abbreviation
-        , raise_notice => raise_notice
+        name => name,
+        words => words,
+        groups => 'TYPE',
+        with_abbreviation => with_abbreviation,
+        raise_notice => raise_notice
     ) ks
     ;
 END
@@ -324,12 +324,12 @@ SELECT * FROM fr.get_type_of_street('ZA DES GRANDS CHAMPS');
 -- get descriptor of word taking into account exceptions
 SELECT drop_all_functions_if_exists('fr', 'get_descriptor_from_exception');
 CREATE OR REPLACE FUNCTION fr.get_descriptor_from_exception(
-    words IN TEXT[]
-    , nwords IN INT
-    , at_ IN INT
-    , as_descriptor IN VARCHAR
-    , is_exception OUT BOOLEAN
-    , descriptor OUT VARCHAR
+    words IN TEXT[],
+    nwords IN INT,
+    at_ IN INT,
+    as_descriptor IN VARCHAR,
+    is_exception OUT BOOLEAN,
+    descriptor OUT VARCHAR
 )
 AS
 $func$
@@ -365,9 +365,9 @@ BEGIN
         nwords >= (at_ + count_words(x.followed_by))
         AND
         x.followed_by = items_of_array_to_string(
-            elements => words
-            , from_ => (at_ +1)
-            , to_ => (at_ + count_words(x.followed_by))
+            elements => words,
+            from_ => (at_ +1),
+            to_ => (at_ + count_words(x.followed_by))
         )
         ;
 
@@ -400,18 +400,18 @@ $func$ LANGUAGE plpgsql;
 -- one word after
 -- VNN
 SELECT * FROM fr.get_descriptor_from_exception(
-    words => '{JETEE, ALBERT, EDOUARD}'::TEXT[]
-    , nwords => 3
-    , at_ => 2
-    , as_descriptor => 'P'
+    words => '{JETEE, ALBERT, EDOUARD}'::TEXT[],
+    nwords => 3,
+    at_ => 2,
+    as_descriptor => 'P'
 ) => N
 -- many words after
 -- VNAN
 SELECT * FROM fr.get_descriptor_from_exception(
-    words => '{QUAI, AGENOR, DE, GASPARIN}'::TEXT[]
-    , nwords => 4
-    , at_ => 2
-    , as_descriptor => 'N'
+    words => '{QUAI, AGENOR, DE, GASPARIN}'::TEXT[],
+    nwords => 4,
+    at_ => 2,
+    as_descriptor => 'N'
 ) => N
  */
 
@@ -477,14 +477,14 @@ and sometimes N & E for same
 /*
 SELECT drop_all_functions_if_exists('fr', 'get_descriptors_of_street');
 CREATE OR REPLACE FUNCTION fr.get_descriptors_of_street(
-    name IN VARCHAR                   -- name of street
-    , with_abbreviation IN BOOLEAN DEFAULT FALSE
-    , raise_notice IN BOOLEAN DEFAULT FALSE
-    , descriptors OUT VARCHAR
-    , words_by_descriptor OUT TEXT[]
-    , words_abbreviated_by_descriptor OUT TEXT[]
-    , words_todo_by_descriptor OUT TEXT[]
-    , as_words OUT INT[]
+    name IN VARCHAR,                  -- name of street
+    with_abbreviation IN BOOLEAN DEFAULT FALSE,
+    raise_notice IN BOOLEAN DEFAULT FALSE,
+    descriptors OUT VARCHAR,
+    words_by_descriptor OUT TEXT[],
+    words_abbreviated_by_descriptor OUT TEXT[],
+    words_todo_by_descriptor OUT TEXT[],
+    as_words OUT INT[]
 )
 AS
 $func$
@@ -555,11 +555,11 @@ BEGIN
                 SELECT kw_group, kw, kw_abbreviated, kw_is_abbreviated, kw_nwords
                 INTO _kw_group, _kw, _kw_abbreviated, _kw_is_abbreviated, _kw_nwords
                 FROM fr.get_keyword_from_name(
-                    name => name
-                    , at_ => _i
-                    , words => _words
-                    , groups => 'STREET'
-                    , with_abbreviation => with_abbreviation
+                    name => name,
+                    at_ => _i,
+                    words => _words,
+                    groups => 'STREET',
+                    with_abbreviation => with_abbreviation
                 );
                 IF _kw IS NOT NULL THEN
                     _words_d := REPEAT(
@@ -570,8 +570,8 @@ BEGIN
                         WHEN _i = 1 AND _kw_group = 'TYPE' THEN 'V'
                         -- title
                         ELSE 'T'
-                        END
-                        , _kw_nwords
+                        END,
+                        _kw_nwords
                     );
                     words_by_descriptor := ARRAY_APPEND(words_by_descriptor, _kw);
                     words_abbreviated_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] := _kw_abbreviated;
@@ -604,8 +604,8 @@ BEGIN
                             LA PLANCHE A 4 PIEDS
                         */
                         IF _words[_i] ~ '^A|D|N$' AND fr.is_normalized_number(
-                            word => _words[_i +1]
-                            , only_digit => 'ARABIC'
+                            word => _words[_i +1],
+                            only_digit => 'ARABIC'
                         ) AND _words_len = (_i +1) THEN
                             _words_d := 'N';
                         ELSE
@@ -633,10 +633,10 @@ BEGIN
                     SELECT is_exception, descriptor
                     INTO _is_exception, _exception
                     FROM fr.get_descriptor_from_exception(
-                        words => _words
-                        , nwords => _words_len
-                        , at_ => _i
-                        , as_descriptor => SUBSTR(_words_d, 1, 1)
+                        words => _words,
+                        nwords => _words_len,
+                        at_ => _i,
+                        as_descriptor => SUBSTR(_words_d, 1, 1)
                     );
                     IF _is_exception THEN
                         IF ((_words_d ~ 'T')
@@ -656,10 +656,10 @@ BEGIN
                 SELECT kw_abbreviated
                 INTO _abbr_e
                 FROM fr.get_keyword_from_name(
-                    name => name
-                    , at_ => _i
-                    , words => _words
-                    , with_abbreviation => FALSE
+                    name => name,
+                    at_ => _i,
+                    words => _words,
+                    with_abbreviation => FALSE
                 );
             END IF;
         END IF;
@@ -708,11 +708,11 @@ BEGIN
         -- replace all T
         IF count_words(words_by_descriptor[_last_t]) = LENGTH(_descriptors_t) THEN
             IF raise_notice THEN RAISE NOTICE ' replace all'; END IF;
-            descriptors := REGEXP_REPLACE(descriptors
-                , 'T+(C*)$'
-                , CONCAT(
-                    REPEAT('N', LENGTH(_descriptors_t))
-                    , '\1'
+            descriptors := REGEXP_REPLACE(descriptors,
+                'T+(C*)$',
+                CONCAT(
+                    REPEAT('N', LENGTH(_descriptors_t)),
+                    '\1'
                 )
             );
         -- replace only last T
@@ -734,11 +734,11 @@ BEGIN
     -- GRANDE RUE PROLONGEE
     ELSIF descriptors ~ 'V+[CE]*$' THEN
         _descriptors_v := (REGEXP_MATCHES(descriptors, '(V+)[CE]*$'))[1];
-        descriptors := REGEXP_REPLACE(descriptors
-            , 'V+([CE]*)$'
-            , CONCAT(
-                REPEAT('N', LENGTH(_descriptors_v))
-                , '\1'
+        descriptors := REGEXP_REPLACE(descriptors,
+            'V+([CE]*)$',
+            CONCAT(
+                REPEAT('N', LENGTH(_descriptors_v)),
+                '\1'
             )
         );
     /* neither firstname nor title
@@ -759,16 +759,16 @@ $func$ LANGUAGE plpgsql;
 
 -- difference from RAN !
 SELECT
-    descriptors_pow
-    , descriptors_laposte
-    , code
-    , name
+    descriptors_pow,
+    descriptors_laposte,
+    code,
+    name
 FROM (
     SELECT
-        ds.descriptors descriptors_pow
-        , lb_desc descriptors_laposte
-        , co_cea code
-        , lb_voie name
+        ds.descriptors descriptors_pow,
+        lb_desc descriptors_laposte,
+        co_cea code,
+        lb_voie name
     FROM
         fr.laposte_address_street
             CROSS JOIN fr.get_descriptors_of_street(lb_voie) ds
@@ -785,9 +785,9 @@ WHERE
 -- fix address faults from list (manual corrections)
 SELECT drop_all_functions_if_exists('fr', 'get_query_to_fix_from_manual_correction');
 CREATE OR REPLACE FUNCTION fr.get_query_to_fix_from_manual_correction(
-    element IN VARCHAR
-    , fault IN VARCHAR
-    , query_fix OUT TEXT
+    element IN VARCHAR,
+    fault IN VARCHAR,
+    query_fix OUT TEXT
 )
 AS
 $func$
@@ -796,8 +796,8 @@ DECLARE
     _nrows INT;
 BEGIN
     _exists := table_exists(
-        schema_name => 'fr'
-        , table_name => 'laposte_address_fault_correction'
+        schema_name => 'fr',
+        table_name => 'laposte_address_fault_correction'
     );
     IF _exists THEN
         _nrows := (
@@ -828,22 +828,22 @@ $func$ LANGUAGE plpgsql;
 
 SELECT drop_all_functions_if_exists('fr', 'get_table_name');
 CREATE OR REPLACE FUNCTION fr.get_table_name(
-    element IN VARCHAR
-    , usecase IN VARCHAR
-    , table_name OUT VARCHAR
+    element IN VARCHAR,
+    usecase IN VARCHAR,
+    table_name OUT VARCHAR
 )
 AS
 $func$
 BEGIN
     table_name := CASE
         WHEN UPPER(usecase) ~ 'UNIQ|MEMBERSHIP|REFERENCE' THEN
-            FORMAT('laposte_address_%s_%s'
-                , LOWER(element)
-                , LOWER(usecase)
+            FORMAT('laposte_address_%s_%s',
+                LOWER(element),
+                LOWER(usecase)
             )
         WHEN UPPER(usecase) ~ 'ADDRESS' THEN
-            FORMAT('laposte_address_%s'
-                , LOWER(element)
+            FORMAT('laposte_address_%s',
+                LOWER(element)
             )
         END
     ;
@@ -853,8 +853,8 @@ $func$ LANGUAGE plpgsql;
 -- level-address subscript
 SELECT drop_all_functions_if_exists('fr', 'get_subscript_of_level_address');
 CREATE OR REPLACE FUNCTION fr.get_subscript_of_level_address(
-    level IN VARCHAR
-    , subscript OUT INT
+    level IN VARCHAR,
+    subscript OUT INT
 )
 AS
 $func$
@@ -872,8 +872,8 @@ $func$ LANGUAGE plpgsql;
 -- complement-descriptors subscript of group : [G1, G2, G3]
 SELECT drop_all_functions_if_exists('fr', 'get_subscript_of_descriptor');
 CREATE OR REPLACE FUNCTION fr.get_subscript_of_descriptor(
-    descriptor IN VARCHAR
-    , subscript OUT INT
+    descriptor IN VARCHAR,
+    subscript OUT INT
 )
 AS
 $func$
@@ -886,8 +886,8 @@ $func$ LANGUAGE plpgsql;
 -- complement-group (keyword) from associated descriptor
 SELECT drop_all_functions_if_exists('fr', 'get_group_of_descriptor');
 CREATE OR REPLACE FUNCTION fr.get_group_of_descriptor(
-    descriptor IN VARCHAR
-    , group_ OUT VARCHAR
+    descriptor IN VARCHAR,
+    group_ OUT VARCHAR
 )
 AS
 $func$
@@ -905,10 +905,10 @@ $func$ LANGUAGE plpgsql;
 -- complement-descriptor for group (of a word)
 SELECT drop_all_functions_if_exists('fr', 'get_descriptor_of_group');
 CREATE OR REPLACE FUNCTION fr.get_descriptor_of_group(
-    group_ IN VARCHAR
-    , descriptors IN VARCHAR[]
-    , raise_notice IN BOOLEAN DEFAULT FALSE
-    , descriptor OUT VARCHAR
+    group_ IN VARCHAR,
+    descriptors IN VARCHAR[],
+    raise_notice IN BOOLEAN DEFAULT FALSE,
+    descriptor OUT VARCHAR
 )
 AS
 $func$
@@ -956,9 +956,9 @@ $func$ LANGUAGE plpgsql;
 -- get default of word
 SELECT drop_all_functions_if_exists('fr', 'get_default_of_word');
 CREATE OR REPLACE FUNCTION fr.get_default_of_word(
-    element IN VARCHAR                  -- STREET | COMPLEMENT
-    , word IN VARCHAR
-    , as_default OUT VARCHAR
+    element IN VARCHAR,                 -- STREET | COMPLEMENT
+    word IN VARCHAR,
+    as_default OUT VARCHAR
 )
 AS
 $func$
@@ -980,16 +980,16 @@ $func$ LANGUAGE plpgsql;
 -- get descriptors from name (street, complement)
 SELECT drop_all_functions_if_exists('fr', 'get_descriptors_from_name');
 CREATE OR REPLACE FUNCTION fr.get_descriptors_from_name(
-    element IN VARCHAR                  -- STREET | COMPLEMENT
-    , name IN VARCHAR
-    , with_abbreviation IN BOOLEAN DEFAULT FALSE
-    , raise_notice IN BOOLEAN DEFAULT FALSE
-    , descriptors OUT VARCHAR
-    , words_by_descriptor OUT TEXT[]
-    , words_abbreviated_by_descriptor OUT TEXT[]
-    , words_todo_by_descriptor OUT TEXT[]
-    , as_words OUT INT[]
-    , as_groups OUT TEXT[]
+    element IN VARCHAR,                 -- STREET | COMPLEMENT
+    name IN VARCHAR,
+    with_abbreviation IN BOOLEAN DEFAULT FALSE,
+    raise_notice IN BOOLEAN DEFAULT FALSE,
+    descriptors OUT VARCHAR,
+    words_by_descriptor OUT TEXT[],
+    words_abbreviated_by_descriptor OUT TEXT[],
+    words_todo_by_descriptor OUT TEXT[],
+    as_words OUT INT[],
+    as_groups OUT TEXT[]
 )
 AS
 $func$
@@ -1042,8 +1042,8 @@ BEGIN
         IF fr.is_normalized_number(_words[_i])
             AND NOT fr.is_normalized_article(_words[_i]) THEN
             _word_default := fr.get_default_of_word(
-                element => element
-                , word => _words[_i]
+                element => element,
+                word => _words[_i]
             );
             _words_d := CASE
                 WHEN element = 'STREET' AND _word_default != 'C' THEN
@@ -1065,11 +1065,11 @@ BEGIN
                 SELECT kw_group, kw, kw_abbreviated, kw_is_abbreviated, kw_nwords
                 INTO _kw_group, _kw, _kw_abbreviated, _kw_is_abbreviated, _kw_nwords
                 FROM fr.get_keyword_from_name(
-                    name => name
-                    , at_ => _i
-                    , words => _words
-                    , groups => element
-                    , with_abbreviation => with_abbreviation
+                    name => name,
+                    at_ => _i,
+                    words => _words,
+                    groups => element,
+                    with_abbreviation => with_abbreviation
                 );
                 IF _kw IS NOT NULL THEN
                     _words_d := REPEAT(
@@ -1089,17 +1089,17 @@ BEGIN
                             WHEN _kw_group ~ '^GROUP' AND descriptors IS NOT NULL AND RIGHT(descriptors, 1) = 'A' THEN 'V'
                             WHEN _kw_group ~ '^GROUP' THEN
                                 fr.get_descriptor_of_group(
-                                    group_ => _kw_group
-                                    , descriptors => as_groups
-                                    , raise_notice => raise_notice
+                                    group_ => _kw_group,
+                                    descriptors => as_groups,
+                                    raise_notice => raise_notice
                                 )
                             -- up to last word, extension as name
                             WHEN ((_i + _kw_nwords -1) = _words_len) OR _kw_group = ANY('{NAME,EXT}') THEN 'N'
                             WHEN _kw_group = 'TYPE' THEN 'V'
                             ELSE 'T'
                             END
-                        END
-                        , _kw_nwords
+                        END,
+                        _kw_nwords
                     );
                     words_by_descriptor := ARRAY_APPEND(words_by_descriptor, _kw);
                     words_abbreviated_by_descriptor[ARRAY_UPPER(words_by_descriptor, 1)] := _kw_abbreviated;
@@ -1134,8 +1134,8 @@ BEGIN
                             _words[_i] ~ '^(A|D|N)$'
                             AND
                             fr.is_normalized_number(
-                                word => _words[_i +1]
-                                , only_digit => 'ARABIC'
+                                word => _words[_i +1],
+                                only_digit => 'ARABIC'
                             )
                             AND
                             _words_len = (_i +1)
@@ -1162,23 +1162,23 @@ BEGIN
                             descriptors ~ '[GHI]$'
                             AND (
                                     fr.is_normalized_number(
-                                        word => _words[_i +1]
-                                        , only_digit => 'ARABIC'
+                                        word => _words[_i +1],
+                                        only_digit => 'ARABIC'
                                     )
                                 OR (
                                     fr.get_descriptor_of_group(
                                         group_ => (
                                             SELECT kw_group
                                             FROM fr.get_keyword_from_name(
-                                                name => name
-                                                , at_ => _i +1
-                                                , words => _words
-                                                , groups => element
-                                                , with_abbreviation => with_abbreviation
+                                                name => name,
+                                                at_ => _i +1,
+                                                words => _words,
+                                                groups => element,
+                                                with_abbreviation => with_abbreviation
                                             )
-                                        )
-                                        , descriptors => as_groups
-                                        , raise_notice => raise_notice
+                                        ),
+                                        descriptors => as_groups,
+                                        raise_notice => raise_notice
                                     ) ~ '[GHI]'
                                 )
                                 OR (
@@ -1187,8 +1187,8 @@ BEGIN
                                     _words[_i +1] = 'ET'
                                     AND
                                     fr.get_default_of_word(
-                                        element => element
-                                        , word => _words[_i +2]
+                                        element => element,
+                                        word => _words[_i +2]
                                     ) = 'N'
                                 )
                             )
@@ -1219,10 +1219,10 @@ BEGIN
                     SELECT is_exception, descriptor
                     INTO _is_exception, _exception
                     FROM fr.get_descriptor_from_exception(
-                        words => _words
-                        , nwords => _words_len
-                        , at_ => _i
-                        , as_descriptor => SUBSTR(_words_d, 1, 1)
+                        words => _words,
+                        nwords => _words_len,
+                        at_ => _i,
+                        as_descriptor => SUBSTR(_words_d, 1, 1)
                     );
                     IF _is_exception THEN
                         IF ((_words_d ~ 'T')
@@ -1241,8 +1241,8 @@ BEGIN
                 _words_d := CASE
                     WHEN fr.is_normalized_reserved_word(_words[_i]) THEN 'E'
                     WHEN (element = 'COMPLEMENT') AND fr.is_normalized_title(
-                        word => _words[_i]
-                        , groups => 'TYPE'
+                        word => _words[_i],
+                        groups => 'TYPE'
                     ) THEN 'V'
                     ELSE 'N'
                     END
@@ -1252,10 +1252,10 @@ BEGIN
                     SELECT kw_abbreviated
                     INTO _abbr
                     FROM fr.get_keyword_from_name(
-                        name => name
-                        , at_ => _i
-                        , words => _words
-                        , with_abbreviation => FALSE
+                        name => name,
+                        at_ => _i,
+                        words => _words,
+                        with_abbreviation => FALSE
                     );
                 END IF;
             END IF;
@@ -1279,13 +1279,13 @@ BEGIN
                 );
             END IF;
             as_groups[COALESCE(_groups_i, 1)] := CONCAT(
-                as_groups[COALESCE(_groups_i, 1)]
-                , _words_d
+                as_groups[COALESCE(_groups_i, 1)],
+                _words_d
             );
             IF raise_notice THEN
-                RAISE NOTICE ' group=%, descriptors=%'
-                    , COALESCE(_groups_i, 1)
-                    , as_groups[COALESCE(_groups_i, 1)]
+                RAISE NOTICE ' group=%, descriptors=%',
+                    COALESCE(_groups_i, 1),
+                    as_groups[COALESCE(_groups_i, 1)]
                 ;
             END IF;
         END IF;
@@ -1326,11 +1326,11 @@ BEGIN
             -- replace all T
             IF count_words(words_by_descriptor[_last_t]) = LENGTH(_descriptors_t) THEN
                 IF raise_notice THEN RAISE NOTICE ' replace all'; END IF;
-                descriptors := REGEXP_REPLACE(descriptors
-                    , 'T+(C*)$'
-                    , CONCAT(
-                        REPEAT('N', LENGTH(_descriptors_t))
-                        , '\1'
+                descriptors := REGEXP_REPLACE(descriptors,
+                    'T+(C*)$',
+                    CONCAT(
+                        REPEAT('N', LENGTH(_descriptors_t)),
+                        '\1'
                     )
                 );
             -- replace only last T
@@ -1353,11 +1353,11 @@ BEGIN
          */
         ELSIF descriptors ~ 'V+[CE]*$' THEN
             _descriptors_v := (REGEXP_MATCHES(descriptors, '(V+)[CE]*$'))[1];
-            descriptors := REGEXP_REPLACE(descriptors
-                , 'V+([CE]*)$'
-                , CONCAT(
-                    REPEAT('N', LENGTH(_descriptors_v))
-                    , '\1'
+            descriptors := REGEXP_REPLACE(descriptors,
+                'V+([CE]*)$',
+                CONCAT(
+                    REPEAT('N', LENGTH(_descriptors_v)),
+                    '\1'
                 )
             );
         /* neither firstname nor title
@@ -1382,10 +1382,10 @@ $func$ LANGUAGE plpgsql;
 -- analyze differences of descriptors
 SELECT drop_all_functions_if_exists('fr', 'get_differences_between_descriptors');
 CREATE OR REPLACE FUNCTION fr.get_differences_between_descriptors(
-    reference VARCHAR
-    , other VARCHAR
-    , raise_notice IN BOOLEAN DEFAULT FALSE
-    , differences OUT VARCHAR[]
+    reference VARCHAR,
+    other VARCHAR,
+    raise_notice IN BOOLEAN DEFAULT FALSE,
+    differences OUT VARCHAR[]
 )
 AS
 $func$
@@ -1399,9 +1399,9 @@ DECLARE
     _descriptor VARCHAR;
 BEGIN
     IF _ref_len != _other_len THEN
-        differences := ARRAY_APPEND(differences, CONCAT_WS('-'
-            , 'LEN'
-            , CASE
+        differences := ARRAY_APPEND(differences, CONCAT_WS('-',
+            'LEN',
+            CASE
                 WHEN _ref_len > _other_len THEN 'GT'
                 ELSE 'LT'
                 END
@@ -1425,10 +1425,10 @@ BEGIN
             WHEN (_ref_i != _other_i) AND (_ref_i = 'N') THEN _other_i
             END
             ;
-        differences := ARRAY_APPEND(differences, CONCAT_WS('-'
-            , _usecase
-            , _descriptor
-            , _i
+        differences := ARRAY_APPEND(differences, CONCAT_WS('-',
+            _usecase,
+            _descriptor,
+            _i
             )
         );
     END LOOP;
@@ -1442,15 +1442,15 @@ view test_normalize.sh : option DESCRIPTORS_DIFF
 -- analyze differences of normalized name
 SELECT drop_all_functions_if_exists('fr', 'get_differences_between_normalized_name');
 CREATE OR REPLACE FUNCTION fr.get_differences_between_normalized_name(
-    name_as_words IN TEXT[]
-    , descriptors_as_words IN TEXT[]
-    , nwords IN INT
-    , reference_name_normalized_as_words IN TEXT[]
-    , reference_descriptors_normalized_as_words IN TEXT[]
-    , other_name_normalized_as_words IN TEXT[]
-    , other_descriptors_normalized_as_words IN TEXT[]
-    , raise_notice IN BOOLEAN DEFAULT FALSE
-    , differences OUT VARCHAR[]
+    name_as_words IN TEXT[],
+    descriptors_as_words IN TEXT[],
+    nwords IN INT,
+    reference_name_normalized_as_words IN TEXT[],
+    reference_descriptors_normalized_as_words IN TEXT[],
+    other_name_normalized_as_words IN TEXT[],
+    other_descriptors_normalized_as_words IN TEXT[],
+    raise_notice IN BOOLEAN DEFAULT FALSE,
+    differences OUT VARCHAR[]
 )
 AS
 $func$
@@ -1494,10 +1494,10 @@ BEGIN
             IF _usecase = 'OK' THEN CONTINUE; END IF;
         END IF;
 
-        differences := ARRAY_APPEND(differences, CONCAT_WS('-'
-            , _descriptor
-            , _usecase
-            , _i
+        differences := ARRAY_APPEND(differences, CONCAT_WS('-',
+            _descriptor,
+            _usecase,
+            _i
             )
         );
     END LOOP;
@@ -1506,10 +1506,10 @@ BEGIN
     _reference_descriptors := ARRAY_TO_STRING(reference_descriptors_normalized_as_words, '');
     _other_descriptors := ARRAY_TO_STRING(other_descriptors_normalized_as_words, '');
     IF LENGTH(_reference_descriptors) != LENGTH(_other_descriptors) THEN
-        differences := ARRAY_APPEND(differences, CONCAT_WS('-'
-                , 'D'
-                , _reference_descriptors
-                , _other_descriptors
+        differences := ARRAY_APPEND(differences, CONCAT_WS('-',
+                'D',
+                _reference_descriptors,
+                _other_descriptors
             )
         );
     END IF;
@@ -1528,9 +1528,9 @@ old functions built to help, but useful now ?
 -- get title(s) from name of street
 SELECT drop_all_functions_if_exists('fr', 'get_titles_from_name');
 CREATE OR REPLACE FUNCTION fr.get_titles_from_name(
-    name IN VARCHAR
-    , descriptors IN VARCHAR
-    , titles OUT TEXT[]
+    name IN VARCHAR,
+    descriptors IN VARCHAR,
+    titles OUT TEXT[]
 )
 AS
 $func$
@@ -1564,8 +1564,8 @@ $func$ LANGUAGE plpgsql;
 -- count potential number of words (w/ descriptors)
 SELECT drop_all_functions_if_exists('fr', 'count_potential_nof_words');
 CREATE OR REPLACE FUNCTION fr.count_potential_nof_words(
-    descriptors IN VARCHAR
-    , nof OUT INT
+    descriptors IN VARCHAR,
+    nof OUT INT
 )
 AS
 $func$
@@ -1590,13 +1590,14 @@ $func$ LANGUAGE plpgsql;
 -- split name of street as words, descriptors (w/ same descriptor)
 SELECT drop_all_functions_if_exists('fr', 'split_name_of_street_as_descriptor');
 CREATE OR REPLACE FUNCTION fr.split_name_of_street_as_descriptor(
-    name IN VARCHAR
-    , descriptors_in IN VARCHAR
-    , is_normalized IN BOOLEAN DEFAULT FALSE
-    , split_only IN VARCHAR DEFAULT NULL        -- specific descriptor: A, C, E, N, P, T, V
-    , raise_notice IN BOOLEAN DEFAULT FALSE
-    , words OUT TEXT[]
-    , descriptors OUT TEXT[])
+    name IN VARCHAR,
+    descriptors_in IN VARCHAR,
+    is_normalized IN BOOLEAN DEFAULT FALSE,
+    split_only IN VARCHAR DEFAULT NULL,       -- specific descriptor: A, C, E, N, P, T, V
+    raise_notice IN BOOLEAN DEFAULT FALSE,
+    words OUT TEXT[],
+    descriptors OUT TEXT[]
+)
 AS
 $func$
 DECLARE
@@ -1637,44 +1638,44 @@ BEGIN
 
     -- deleted article (one)
     AVENUE DE LA 9E DIVISION INFANTERIE DE CAVALERIE
-        name => 'AV LA 9E DIV INFANT DE CAVALERIE'
-        , descriptors_in => 'VAACTTAN'
+        name => 'AV LA 9E DIV INFANT DE CAVALERIE',
+        descriptors_in => 'VAACTTAN'
     -- deleted article (all)
     CHEMIN D EXPLOITATION DU MAS SAINT PAUL
-        name => 'CHEMIN EXPLOITATION MAS ST PAUL'
-        , descriptors_in => 'VANATTN'
+        name => 'CHEMIN EXPLOITATION MAS ST PAUL',
+        descriptors_in => 'VANATTN'
     CHEMIN DE NOTRE DAME DES CHAMPS ET DES VIGNES
-        name => 'CHEMIN ND CHAMPS ET DES VIGNES'
-        , descriptors_in => 'VATTANAAN'
+        name => 'CHEMIN ND CHAMPS ET DES VIGNES',
+        descriptors_in => 'VATTANAAN'
     -- not an article!
     PARC D ACTIVITES NURIEUX CROIX CHALON'
-        name => 'PARC A NURIEUX CRX CHALON'
-        , descriptors_in => 'VANNTN'
+        name => 'PARC A NURIEUX CRX CHALON',
+        descriptors_in => 'VANNTN'
     AVENUE DES ANCIENS COMBATTANTS FRANCAIS D INDOCHINE
-        name => 'AV A COMBATTANTS FR INDOCHINE'
-        , descriptors_in => 'VANNTAN'
+        name => 'AV A COMBATTANTS FR INDOCHINE',
+        descriptors_in => 'VANNTAN'
 
     -- deleted (word of) title
     CHEMIN RURAL DIT ANCIEN CHEMIN DE BRISON A THUET
-        name => 'CHEM R DIT ANCIEN BRISON THUET'
-        , descriptors_in => 'VNNTTANAN'
+        name => 'CHEM R DIT ANCIEN BRISON THUET',
+        descriptors_in => 'VNNTTANAN'
 
     -- abbreviated title
     ZONE ARTISANALE CENTRE COMMERCIAL BEAUGE
-        name => 'ZONE ARTISANALE CCIAL BEAUGE'
-        , descriptors_in => 'VVTTN'
+        name => 'ZONE ARTISANALE CCIAL BEAUGE',
+        descriptors_in => 'VVTTN'
     PLACE NOTRE DAME DE LA LEGION D HONNEUR
-        name => 'PL ND DE LA LEGION D HONNEUR'
-        , descriptors_in => 'VTTAANAN'
+        name => 'PL ND DE LA LEGION D HONNEUR',
+        descriptors_in => 'VTTAANAN'
     -- w/ deleted article (prev='T')
     CHEMIN DE NOTRE DAME DES CHAMPS ET DES VIGNES
-        name => 'CHEMIN ND CHAMPS ET DES VIGNES'
-        , descriptors_in => 'VATTANAAN'
+        name => 'CHEMIN ND CHAMPS ET DES VIGNES',
+        descriptors_in => 'VATTANAAN'
 
     -- abbreviated type
     LIEU DIT LE GRAND BOIS DE LA DURANDIERE
-        name => 'LD LE GD BOIS DE LA DURANDIERE'
-        , descriptors_in => 'VVATTAAN'
+        name => 'LD LE GD BOIS DE LA DURANDIERE',
+        descriptors_in => 'VVATTAAN'
      */
 
     _n := ARRAY_LENGTH(_words, 1);
@@ -1828,8 +1829,8 @@ BEGIN
             SELECT kw, kw_is_abbreviated, kw_nwords
             INTO _kw, _kw_is_abbreviated, _kw_nwords
             FROM fr.get_type_of_street(
-                name => name
-                , with_abbreviation => is_normalized
+                name => name,
+                with_abbreviation => is_normalized
             )
             ;
             -- abbreviated ?
@@ -2001,13 +2002,13 @@ BEGIN
                 -- last item already w/ same descriptors_in
                 IF (descriptors[ARRAY_UPPER(descriptors, 1)] ~ SUBSTR(_descriptor_same, 1, 1)) THEN
                     words[ARRAY_UPPER(words, 1)] := CONCAT(
-                        words[ARRAY_UPPER(words, 1)]
-                        , ' '
-                        , _descriptor_word
+                        words[ARRAY_UPPER(words, 1)],
+                        ' ',
+                        _descriptor_word
                     );
                     descriptors[ARRAY_UPPER(descriptors, 1)] := CONCAT(
-                        descriptors[ARRAY_UPPER(descriptors, 1)]
-                        , _descriptor_same
+                        descriptors[ARRAY_UPPER(descriptors, 1)],
+                        _descriptor_same
                     );
                 ELSE
                     words := ARRAY_APPEND(words, _descriptor_word);
@@ -2029,13 +2030,13 @@ BEGIN
         -- last item already w/ same descriptors_in
         IF (descriptors[ARRAY_UPPER(descriptors, 1)] ~ SUBSTR(_descriptor_same, 1, 1)) THEN
             words[ARRAY_UPPER(words, 1)] := CONCAT(
-                words[ARRAY_UPPER(words, 1)]
-                , ' '
-                , _descriptor_word
+                words[ARRAY_UPPER(words, 1)],
+                ' ',
+                _descriptor_word
             );
             descriptors[ARRAY_UPPER(descriptors, 1)] := CONCAT(
-                descriptors[ARRAY_UPPER(descriptors, 1)]
-                , _descriptor_same
+                descriptors[ARRAY_UPPER(descriptors, 1)],
+                _descriptor_same
             );
         ELSE
             words := ARRAY_APPEND(words, _descriptor_word);
@@ -2049,11 +2050,11 @@ $func$ LANGUAGE plpgsql;
 -- get keyword(s) from name of street
 SELECT drop_all_functions_if_exists('fr', 'get_keywords_from_name');
 CREATE OR REPLACE FUNCTION fr.get_keywords_from_name(
-    descriptor IN VARCHAR
-    , descriptors IN VARCHAR
-    , name IN VARCHAR DEFAULT NULL
-    , words IN TEXT[] DEFAULT NULL
-    , keywords OUT TEXT[]
+    descriptor IN VARCHAR,
+    descriptors IN VARCHAR,
+    name IN VARCHAR DEFAULT NULL,
+    words IN TEXT[] DEFAULT NULL,
+    keywords OUT TEXT[]
 )
 AS
 $func$

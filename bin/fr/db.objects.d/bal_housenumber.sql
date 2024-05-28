@@ -3,16 +3,16 @@
  */
 
 CREATE TABLE IF NOT EXISTS fr.bal_housenumber (
-    id_bal_numero VARCHAR NOT NULL
-    , numero INTEGER NOT NULL
-    , suffixe VARCHAR
-    , id_bal_voie VARCHAR NOT NULL
-    , libelle_ancienne_commune VARCHAR
-    , parcelles VARCHAR[]
-    , coordonnees FLOAT[]
-    , co_postal VARCHAR NOT NULL
-    , type_position VARCHAR
-    , dt_derniere_maj TIMESTAMP WITHOUT TIME ZONE NOT NULL
+    id_bal_numero VARCHAR NOT NULL,
+    numero INTEGER NOT NULL,
+    suffixe VARCHAR,
+    id_bal_voie VARCHAR NOT NULL,
+    libelle_ancienne_commune VARCHAR,
+    parcelles VARCHAR[],
+    coordonnees FLOAT[],
+    co_postal VARCHAR NOT NULL,
+    type_position VARCHAR,
+    dt_derniere_maj TIMESTAMP WITHOUT TIME ZONE NOT NULL
 );
 
 SELECT drop_all_functions_if_exists('fr', 'set_bal_housenumber_index');

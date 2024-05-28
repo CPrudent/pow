@@ -8,10 +8,10 @@ initialization will be done w/ constant
 
 -- to store keyword exceptions
 CREATE TABLE IF NOT EXISTS fr.laposte_address_street_kw_exception (
-    keyword VARCHAR NOT NULL
-    , as_default VARCHAR
-    , as_except VARCHAR
-    , followed_by VARCHAR
+    keyword VARCHAR NOT NULL,
+    as_default VARCHAR,
+    as_except VARCHAR,
+    followed_by VARCHAR
 )
 ;
 
@@ -50,30 +50,30 @@ BEGIN
     CALL public.log_info(' Initialisation');
     TRUNCATE TABLE fr.laposte_address_street_kw_exception;
     INSERT INTO fr.laposte_address_street_kw_exception(
-        keyword
-        , as_default
-        , as_except
-        , followed_by
+        keyword,
+        as_default,
+        as_except,
+        followed_by
     )
     WITH
     split_as_word AS (
         SELECT
-            s.name
-            , w.word
-            , w.i::INT
-            , s.words
-            , s.descriptors
-            , s.nwords
+            s.name,
+            w.word,
+            w.i::INT,
+            s.words,
+            s.descriptors,
+            s.nwords
         FROM
             fr.laposte_address_street_uniq s
                 INNER JOIN LATERAL UNNEST(s.words) WITH ORDINALITY AS w(word, i) ON TRUE
-    )
-    , word_firstname AS (
+    ),
+    word_firstname AS (
         SELECT
-            name
-            , word
-            , i
-            , SUBSTR(descriptors, i, 1) descriptor
+            name,
+            word,
+            i,
+            SUBSTR(descriptors, i, 1) descriptor
         FROM
             split_as_word sw
         WHERE
@@ -84,32 +84,32 @@ BEGIN
             AND
             -- not followed by a number
             NOT fr.is_normalized_number(words[i +1])
-    )
+    ),
     -- #123016
     --SELECT * FROM word_firstname ORDER BY 2
-    , word_exception AS (
+    word_exception AS (
         SELECT
-            o.word
-            , w.as_default
-            , o.descriptor as_except
-            , CASE
+            o.word,
+            w.as_default,
+            o.descriptor as_except,
+            CASE
                 WHEN s.nwords >= (i+3) AND fr.is_normalized_article(s.words[i+1]) AND fr.is_normalized_article(s.words[i+2]) THEN
                     items_of_array_to_string(
-                        elements => s.words
-                        , from_ => (i+1)
-                        , to_ => (i+3)
+                        elements => s.words,
+                        from_ => (i+1),
+                        to_ => (i+3)
                     )
                 WHEN s.nwords >= (i+2) AND fr.is_normalized_article(s.words[i+1]) THEN
                     items_of_array_to_string(
-                        elements => s.words
-                        , from_ => (i+1)
-                        , to_ => (i+2)
+                        elements => s.words,
+                        from_ => (i+1),
+                        to_ => (i+2)
                     )
                 ELSE s.words[i+1]
-                END followed_by
-            , o.i
-            , o.name
-            , s.descriptors
+                END followed_by,
+            o.i,
+            o.name,
+            s.descriptors
         FROM
             word_firstname o
                 JOIN fr.laposte_address_street_uniq s ON o.name = s.name
@@ -126,14 +126,14 @@ BEGIN
                     (o.descriptor = ANY('{N,P}'))
                 )
             )
-    )
+    ),
     --SELECT * FROM word_exception ORDER BY 1, 4
-    , word_usecase AS (
+    word_usecase AS (
         SELECT
-            x.word
-            , x.followed_by
-            , SUBSTR(s.descriptors, ARRAY_POSITION(s.words, x.word), 1) as_usecase
-            , x.as_except
+            x.word,
+            x.followed_by,
+            SUBSTR(s.descriptors, ARRAY_POSITION(s.words, x.word), 1) as_usecase,
+            x.as_except
         FROM
             word_exception x
                 JOIN fr.laposte_address_street_membership m ON x.word = m.word
@@ -142,33 +142,33 @@ BEGIN
             (ARRAY_POSITION(s.words, x.word) + count_words(x.followed_by)) <= s.nwords
             AND
             -- and followed too
-            s.words[(ARRAY_POSITION(s.words, x.word) + count_words(x.followed_by))]= REGEXP_REPLACE(x.followed_by, '^.* ', '')
-    )
+            s.words[(ARRAY_POSITION(s.words, x.word) + count_words(x.followed_by))] = REGEXP_REPLACE(x.followed_by, '^.* ', '')
+    ),
     -- #37448
     --SELECT * FROM word_usecase ORDER BY 1, 2
-    , count_usecase AS (
+    count_usecase AS (
         SELECT
-            word
-            , followed_by
-            , SUM(CASE WHEN as_usecase = as_except THEN 1 ELSE 0 END) ok_except
-            , SUM(CASE WHEN as_usecase != as_except THEN 1 ELSE 0 END) ko_except
+            word,
+            followed_by,
+            SUM(CASE WHEN as_usecase = as_except THEN 1 ELSE 0 END) ok_except,
+            SUM(CASE WHEN as_usecase != as_except THEN 1 ELSE 0 END) ko_except
         FROM
             word_usecase
         GROUP BY
-            word
-            , followed_by
-    )
+            word,
+            followed_by
+    ),
     --SELECT * FROM count_usecase ORDER BY 1, 2
-    , with_exception AS (
+    with_exception AS (
         SELECT
             x.*
         FROM
             (
                 SELECT DISTINCT
-                    word
-                    , as_default
-                    , as_except
-                    , followed_by
+                    word,
+                    as_default,
+                    as_except,
+                    followed_by
                 FROM
                     word_exception
             ) x
@@ -183,25 +183,25 @@ BEGIN
     CALL public.log_info(CONCAT(' Exceptions (prénom): ', _nrows));
 
     INSERT INTO fr.laposte_address_street_kw_exception(
-        keyword
-        , as_default
-        , as_except
-        , followed_by
+        keyword,
+        as_default,
+        as_except,
+        followed_by
     )
     VALUES
-    ('SOUS', 'A', 'T', 'LIEUTENANT')
-    , ('SOUS', 'A', 'N', 'MARIN')
-    , ('SOUS', 'A', 'N', 'PREFECTURE')
-    , ('SOUS', 'A', 'N', 'STATION')
+        ('SOUS', 'A', 'T', 'LIEUTENANT'),
+        ('SOUS', 'A', 'N', 'MARIN'),
+        ('SOUS', 'A', 'N', 'PREFECTURE'),
+        ('SOUS', 'A', 'N', 'STATION')
     ;
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Exceptions (article): ', _nrows));
 
     INSERT INTO fr.laposte_address_street_kw_exception(
-        keyword
-        , as_default
-        , as_except
-        , followed_by
+        keyword,
+        as_default,
+        as_except,
+        followed_by
     )
     WITH
     name_as_abbr_kw AS (
@@ -219,44 +219,44 @@ BEGIN
                 FROM fr.laposte_address_keyword k
                 WHERE k.name_abbreviated = w.word
             )
-    )
-    , split_as_word AS (
+    ),
+    split_as_word AS (
         SELECT
-            u.name
-            , w.word
-            , w.i::INT
-            , u.nwords
+            u.name,
+            w.word,
+            w.i::INT,
+            u.nwords
         FROM
             fr.laposte_address_street_uniq u
                 INNER JOIN LATERAL UNNEST(u.words) WITH ORDINALITY AS w(word, i) ON TRUE
-    )
-    , word_as_abbr_kw AS (
+    ),
+    word_as_abbr_kw AS (
         SELECT
-            sw.name
-            , nakw.word
-            , sw.i
+            sw.name,
+            nakw.word,
+            sw.i
         FROM
             split_as_word sw
                 JOIN name_as_abbr_kw nakw ON sw.word = nakw.word
         WHERE
             -- not last word (name!)
             sw.i < sw.nwords
-    )
-    , word_exception AS (
+    ),
+    word_exception AS (
         SELECT
-            o.word
-            , CASE
+            o.word,
+            CASE
                 WHEN u.nwords >= (i+3) AND fr.is_normalized_article(u.words[i+1]) AND fr.is_normalized_article(u.words[i+2]) THEN
                     items_of_array_to_string(
-                        elements => u.words
-                        , from_ => (i+1)
-                        , to_ => (i+3)
+                        elements => u.words,
+                        from_ => (i+1),
+                        to_ => (i+3)
                     )
                 WHEN u.nwords >= (i+2) AND fr.is_normalized_article(u.words[i+1]) THEN
                     items_of_array_to_string(
-                        elements => u.words
-                        , from_ => (i+1)
-                        , to_ => (i+2)
+                        elements => u.words,
+                        from_ => (i+1),
+                        to_ => (i+2)
                     )
                 ELSE u.words[i+1]
                 END followed_by

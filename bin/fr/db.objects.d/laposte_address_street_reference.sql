@@ -8,8 +8,8 @@ initialization will be done w/ constant
 
 -- to store references
 CREATE TABLE IF NOT EXISTS fr.laposte_address_street_reference (
-    name_id INT NOT NULL
-    , address_id CHAR(10) NOT NULL
+    name_id INT NOT NULL,
+    address_id CHAR(10) NOT NULL
 )
 ;
 
@@ -44,12 +44,12 @@ BEGIN
     CALL public.log_info(' Initialisation');
     -- reminder: words, nwords are initiated by trigger
     INSERT INTO fr.laposte_address_street_reference(
-        name_id
-        , address_id
+        name_id,
+        address_id
     )
     SELECT
-        u.id
-        , s.co_cea
+        u.id,
+        s.co_cea
     FROM
         fr.laposte_address_street_uniq u
             JOIN fr.laposte_address_street s ON u.name = s.lb_voie

@@ -3,10 +3,10 @@
  */
 
 CREATE TABLE IF NOT EXISTS fr.address_match_code (
-      id_request INTEGER NOT NULL
-    , level VARCHAR
-    , match_code_element VARCHAR
-    , match_code_parent VARCHAR
+    id_request INTEGER NOT NULL,
+    level VARCHAR,
+    match_code_element VARCHAR,
+    match_code_parent VARCHAR
 );
 
 DO $$
@@ -21,48 +21,48 @@ CREATE INDEX IF NOT EXISTS iux_address_match_code_element_parent ON fr.address_m
 
 SELECT drop_all_functions_if_exists('fr', 'get_match_code');
 CREATE OR REPLACE FUNCTION fr.get_match_code(
-    level IN VARCHAR
-    , standardized_address IN fr.standardized_address
-    , match_code OUT VARCHAR
+    level IN VARCHAR,
+    standardized_address IN fr.standardized_address,
+    match_code OUT VARCHAR
 )
 AS $$
 BEGIN
     match_code := MD5(CASE level
         WHEN 'AREA' THEN
             CONCAT(
-                  (standardized_address).municipality_old_name
-                , (standardized_address).postcode
-                , (standardized_address).municipality_code
-                , (standardized_address).municipality_name
+                (standardized_address).municipality_old_name,
+                (standardized_address).postcode,
+                (standardized_address).municipality_code,
+                (standardized_address).municipality_name
             )
         WHEN 'STREET' THEN
             CONCAT(
-                  (standardized_address).municipality_old_name
-                , (standardized_address).postcode
-                , (standardized_address).municipality_code
-                , (standardized_address).municipality_name
-                , (standardized_address).street_name
+                (standardized_address).municipality_old_name,
+                (standardized_address).postcode,
+                (standardized_address).municipality_code,
+                (standardized_address).municipality_name,
+                (standardized_address).street_name
             )
         WHEN 'HOUSENUMBER' THEN
             CONCAT(
-                  (standardized_address).municipality_old_name
-                , (standardized_address).postcode
-                , (standardized_address).municipality_code
-                , (standardized_address).municipality_name
-                , (standardized_address).street_name
-                , (standardized_address).housenumber
-                , (standardized_address).extension
+                (standardized_address).municipality_old_name,
+                (standardized_address).postcode,
+                (standardized_address).municipality_code,
+                (standardized_address).municipality_name,
+                (standardized_address).street_name,
+                (standardized_address).housenumber,
+                (standardized_address).extension
             )
         WHEN 'COMPLEMENT' THEN
             CONCAT(
-                  (standardized_address).municipality_old_name
-                , (standardized_address).postcode
-                , (standardized_address).municipality_code
-                , (standardized_address).municipality_name
-                , (standardized_address).street_name
-                , (standardized_address).housenumber
-                , (standardized_address).extension
-                , (standardized_address).complement_name
+                (standardized_address).municipality_old_name,
+                (standardized_address).postcode,
+                (standardized_address).municipality_code,
+                (standardized_address).municipality_name,
+                (standardized_address).street_name,
+                (standardized_address).housenumber,
+                (standardized_address).extension,
+                (standardized_address).complement_name
             )
         END
     );
@@ -71,8 +71,8 @@ END $$ LANGUAGE plpgsql;
 -- eval distinct match codes (of a matching request)
 SELECT drop_all_functions_if_exists('fr', 'set_match_code');
 CREATE OR REPLACE PROCEDURE fr.set_match_code(
-      id IN INT
-    , force IN BOOLEAN DEFAULT FALSE
+    id IN INT,
+    force IN BOOLEAN DEFAULT FALSE
 )
 AS
 $proc$
@@ -104,27 +104,27 @@ BEGIN
             WITH
             match_codes AS (
                 SELECT DISTINCT
-                      ''AREA'' level
-                    , (standardized_address).match_code_area match_code_element
-                    , NULL match_code_parent
+                    ''AREA'' level,
+                    (standardized_address).match_code_area match_code_element,
+                    NULL match_code_parent
                 FROM
                     fr.address_match_result
                 WHERE
                     id_request = $1
                 UNION
                 SELECT DISTINCT
-                      ''STREET'' level
-                    , (standardized_address).match_code_street match_code_element
-                    , (standardized_address).match_code_area match_code_parent
+                    ''STREET'' level,
+                    (standardized_address).match_code_street match_code_element,
+                    (standardized_address).match_code_area match_code_parent
                 FROM
                     fr.address_match_result
                 WHERE
                     id_request = $1
                 UNION
                 SELECT DISTINCT
-                      ''HOUSENUMBER'' level
-                    , (standardized_address).match_code_housenumber match_code_element
-                    , (standardized_address).match_code_street match_code_parent
+                    ''HOUSENUMBER'' level,
+                    (standardized_address).match_code_housenumber match_code_element,
+                    (standardized_address).match_code_street match_code_parent
                 FROM
                     fr.address_match_result
                 WHERE
@@ -133,9 +133,9 @@ BEGIN
                     (standardized_address).housenumber IS NOT NULL
                 UNION
                 SELECT DISTINCT
-                      ''COMPLEMENT'' level
-                    , (standardized_address).match_code_complement match_code_element
-                    , (standardized_address).match_code_housenumber match_code_parent
+                    ''COMPLEMENT'' level,
+                    (standardized_address).match_code_complement match_code_element,
+                    (standardized_address).match_code_housenumber match_code_parent
                 FROM
                     fr.address_match_result
                 WHERE
@@ -146,9 +146,9 @@ BEGIN
                     (standardized_address).housenumber IS NOT NULL
                 UNION
                 SELECT DISTINCT
-                      ''COMPLEMENT'' level
-                    , (standardized_address).match_code_complement match_code_element
-                    , (standardized_address).match_code_street match_code_parent
+                    ''COMPLEMENT'' level,
+                    (standardized_address).match_code_complement match_code_element,
+                    (standardized_address).match_code_street match_code_parent
                 FROM
                     fr.address_match_result
                 WHERE
@@ -159,17 +159,17 @@ BEGIN
                     (standardized_address).housenumber IS NULL
             )
             INSERT INTO fr.address_match_code(
-                  id_request
-                , level
-                , match_code_element
-                , match_code_parent
+                id_request,
+                level,
+                match_code_element,
+                match_code_parent
             )
             (
                 SELECT
-                      $1
-                    , level
-                    , match_code_element
-                    , match_code_parent
+                    $1,
+                    level,
+                    match_code_element,
+                    match_code_parent
                 FROM
                     match_codes
             )

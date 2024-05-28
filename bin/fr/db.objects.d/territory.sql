@@ -3,31 +3,31 @@
  */
 
 CREATE TABLE IF NOT EXISTS fr.territory (
-    nivgeo CHARACTER VARYING NOT NULL
-    , codgeo CHARACTER VARYING NOT NULL
-    , dt_reference_geo DATE /*NOT*/ NULL
-    , libgeo CHARACTER VARYING
-    , typgeo CHARACTER VARYING
-    , population BIGINT
-    , superficie BIGINT
-    , z_min INT
-    , z_max INT
-    , gm_contour_natif GEOMETRY --Géographie native (non simplifiée, projetée dans un système local)
-    , gm_contour GEOMETRY(MULTIPOLYGON, 4326) --Géographie simplifiée et reprojetée en 4326
-    , codgeo_com_parent CHARACTER(5)
-    , codgeo_com_globale_arm_parent CHARACTER(5)
-    , codgeo_cv_parent CHARACTER VARYING
-    , codgeo_arr_parent CHARACTER VARYING
-    , codgeo_epci_parent CHARACTER VARYING
-    , codgeo_dep_parent CHARACTER VARYING
-    , codgeo_reg_parent CHARACTER VARYING
-    , codgeo_metropole_dom_tom_parent CHARACTER(3) DEFAULT 'FRM'
-    , codgeo_pays_parent CHARACTER(2) DEFAULT 'FR'
-    , codgeo_cp_parent CHARACTER(5)
-    , codgeo_pdc_ppdc_parent CHARACTER(6)
-    , codgeo_ppdc_pdc_parent CHARACTER(6)
-    , codgeo_dex_parent CHARACTER(6)
-    , codgeo_voisins VARCHAR[]
+    nivgeo CHARACTER VARYING NOT NULL,
+    codgeo CHARACTER VARYING NOT NULL,
+    dt_reference_geo DATE /*NOT*/ NULL,
+    libgeo CHARACTER VARYING,
+    typgeo CHARACTER VARYING,
+    population BIGINT,
+    superficie BIGINT,
+    z_min INT,
+    z_max INT,
+    gm_contour_natif GEOMETRY, --Géographie native (non simplifiée, projetée dans un système local)
+    gm_contour GEOMETRY(MULTIPOLYGON, 4326), --Géographie simplifiée et reprojetée en 4326
+    codgeo_com_parent CHARACTER(5),
+    codgeo_com_globale_arm_parent CHARACTER(5),
+    codgeo_cv_parent CHARACTER VARYING,
+    codgeo_arr_parent CHARACTER VARYING,
+    codgeo_epci_parent CHARACTER VARYING,
+    codgeo_dep_parent CHARACTER VARYING,
+    codgeo_reg_parent CHARACTER VARYING,
+    codgeo_metropole_dom_tom_parent CHARACTER(3) DEFAULT 'FRM',
+    codgeo_pays_parent CHARACTER(2) DEFAULT 'FR',
+    codgeo_cp_parent CHARACTER(5),
+    codgeo_pdc_ppdc_parent CHARACTER(6),
+    codgeo_ppdc_pdc_parent CHARACTER(6),
+    codgeo_dex_parent CHARACTER(6),
+    codgeo_voisins VARCHAR[]
 );
 
 ALTER TABLE fr.territory SET (
@@ -102,10 +102,10 @@ BEGIN
     IF set_case = ANY('{ALL,ONLY_INFRA}') THEN
         CALL public.log_info('Création Index (' || _infra || ')');
         EXECUTE CONCAT(
-            'CREATE UNIQUE INDEX IF NOT EXISTS iux_territory_codgeo_'
-            , LOWER(_infra)
-            , ' ON fr.territory (codgeo) WHERE nivgeo = '
-            , quote_literal(_infra)
+            'CREATE UNIQUE INDEX IF NOT EXISTS iux_territory_codgeo_',
+            LOWER(_infra),
+            ' ON fr.territory (codgeo) WHERE nivgeo = ',
+            quote_literal(_infra)
         );
     END IF;
 
@@ -133,9 +133,9 @@ $proc$ LANGUAGE plpgsql;
 
 SELECT drop_all_functions_if_exists('fr', 'set_territory');
 CREATE OR REPLACE FUNCTION fr.set_territory(
-    io_infos HSTORE
-    , municipality_subsection VARCHAR DEFAULT 'ZA'
-    , simulation BOOLEAN DEFAULT FALSE
+    io_infos HSTORE,
+    municipality_subsection VARCHAR DEFAULT 'ZA',
+    simulation BOOLEAN DEFAULT FALSE
 )
 RETURNS BOOLEAN
 AS $$
@@ -150,8 +150,8 @@ DECLARE
     _level VARCHAR;
 BEGIN
     CALL fr.check_municipality_subsection(
-        municipality_subsection => municipality_subsection
-        , check_territory => FALSE
+        municipality_subsection => municipality_subsection,
+        check_territory => FALSE
     );
 
     IF NOT io_infos ?& ARRAY['TODO', 'DEPENDS', _key] THEN
@@ -171,10 +171,10 @@ BEGIN
         _drop_index := 'EXCEPT_LEVEL_CODE';
     END IF;
     _message_end := ' (niveau de base: ' || municipality_subsection || ')';
-    CALL public.log_info(CONCAT_WS(' '
-        , _message_begin
-        , 'des Territoires'
-        , _message_end
+    CALL public.log_info(CONCAT_WS(' ',
+        _message_begin,
+        'des Territoires',
+        _message_end
     ));
 
     IF simulation THEN
@@ -193,45 +193,46 @@ BEGIN
 
         CALL public.log_info('Insertion Données');
         INSERT INTO fr.territory (
-            nivgeo
-            , codgeo
-            , dt_reference_geo
-            , libgeo
-            , codgeo_com_parent
-            , codgeo_com_globale_arm_parent
-            , codgeo_arr_parent
-            , codgeo_cv_parent
-            , codgeo_epci_parent
-            , codgeo_dep_parent
-            , codgeo_reg_parent
-            , codgeo_metropole_dom_tom_parent
-            , codgeo_pays_parent
-            , codgeo_cp_parent
-            , codgeo_pdc_ppdc_parent
-            , codgeo_ppdc_pdc_parent
-            , codgeo_dex_parent
+            nivgeo,
+            codgeo,
+            dt_reference_geo,
+            libgeo,
+            codgeo_com_parent,
+            codgeo_com_globale_arm_parent,
+            codgeo_arr_parent,
+            codgeo_cv_parent,
+            codgeo_epci_parent,
+            codgeo_dep_parent,
+            codgeo_reg_parent,
+            codgeo_metropole_dom_tom_parent,
+            codgeo_pays_parent,
+            codgeo_cp_parent,
+            codgeo_pdc_ppdc_parent,
+            codgeo_ppdc_pdc_parent,
+            codgeo_dex_parent
         )
         (
             WITH
             set_of_subsection AS (
                 SELECT
-                    CONCAT_WS('-'
-                        , co_insee_commune
-                        , co_postal
-                    ) AS codgeo
-                    , MAX(dt_reference) AS dt_reference_geo
-                    , CONCAT_WS(' '
-                        , co_postal
+                    CONCAT_WS('-',
+                        co_insee_commune,
+                        co_postal
+                    ) AS codgeo,
+                    MAX(dt_reference) AS dt_reference_geo,
+                    CONCAT_WS(' ',
+                        co_postal,
                         /* NOTE
                         L5/L6 are inverted for Polynésie & Nouvelle Calédonie (98)
                         */
-                        , STRING_AGG(
-                            DISTINCT CASE WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN lb_l5_nn ELSE lb_ach_nn END
-                            , ', '
-                            ORDER BY CASE WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN lb_l5_nn ELSE lb_ach_nn END)
-                    ) AS libgeo
-                    , co_postal
-                    , co_insee_commune
+                        STRING_AGG(
+                            DISTINCT CASE WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN lb_l5_nn ELSE lb_ach_nn END,
+                            ', '
+                            ORDER BY CASE WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN lb_l5_nn ELSE lb_ach_nn END
+                        )
+                    ) AS libgeo,
+                    co_postal,
+                    co_insee_commune
                 FROM fr.laposte_address_area
                 WHERE
                     municipality_subsection = 'COM_CP'
@@ -240,15 +241,15 @@ BEGIN
                 UNION
 
                 SELECT
-                    co_cea
-                    , dt_reference
-                    , CONCAT_WS('-'
-                        , CASE WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN lb_ach_nn ELSE lb_l5_nn END
-                        , co_postal
-                        , CASE WHEN co_insee_commune ~ '^98[78]' THEN COALESCE(lb_l5_nn, lb_ach_nn) ELSE lb_ach_nn END
-                    )
-                    , co_postal
-                    , co_insee_commune
+                    co_cea,
+                    dt_reference,
+                    CONCAT_WS('-',
+                        CASE WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN lb_ach_nn ELSE lb_l5_nn END,
+                        co_postal,
+                        CASE WHEN co_insee_commune ~ '^98[78]' THEN COALESCE(lb_l5_nn, lb_ach_nn) ELSE lb_ach_nn END
+                    ),
+                    co_postal,
+                    co_insee_commune
                 FROM fr.laposte_address_area
                 WHERE
                     municipality_subsection = 'ZA'
@@ -263,27 +264,27 @@ BEGIN
             on met la valeur Z... là où la parenté n'est pas connue, mais où elle devrait toujours l'être. cela est aussi utile à la remontée de données où on ne souhaite pas exclure les données dont la parenté n'est pas connue
             */
             SELECT
-                municipality_subsection AS nivgeo
-                , subsection.codgeo
-                , subsection.dt_reference_geo
-                , COALESCE(
-                    subsection.libgeo
-                    , CASE
+                municipality_subsection AS nivgeo,
+                subsection.codgeo,
+                subsection.dt_reference_geo,
+                COALESCE(
+                    subsection.libgeo,
+                    CASE
                         WHEN commune_ign.codgeo IS NOT NULL THEN
                             CONCAT(subsection.co_postal, ' ', REPLACE(REPLACE(commune_ign.libgeo, 'œ', 'oe'), 'Œ', 'Oe'))
-                    END) AS libgeo
-                , subsection.co_insee_commune AS codgeo_com_parent
-                , commune_insee.com AS codgeo_com_globale_arm_parent
-                , COALESCE(
-                    commune_insee.arr
-                    , RPAD(dep_parent.codgeo, 4, 'Z') --arrondissement fictif dans le département pour les communes n'ayant pas d'arrondissement pour faciliter la remontée de données
-                    --, 'ZZZZ'
-                ) AS codgeo_arr_parent
-                , COALESCE(
-                    commune_insee.cv
-                    , RPAD(dep_parent.codgeo, 5, 'Z') --canton ville fictif dans le département pour les communes n'ayant pas d'arrondissement pour faciliter la remontée de données
-                    --, 'ZZZZZ'
-                ) AS codgeo_cv_parent
+                    END) AS libgeo,
+                subsection.co_insee_commune AS codgeo_com_parent,
+                commune_insee.com AS codgeo_com_globale_arm_parent,
+                COALESCE(
+                    commune_insee.arr,
+                    RPAD(dep_parent.codgeo, 4, 'Z') --arrondissement fictif dans le département pour les communes n'ayant pas d'arrondissement pour faciliter la remontée de données
+                    --'ZZZZ'
+                ) AS codgeo_arr_parent,
+                COALESCE(
+                    commune_insee.cv,
+                    RPAD(dep_parent.codgeo, 5, 'Z') --canton ville fictif dans le département pour les communes n'ayant pas d'arrondissement pour faciliter la remontée de données
+                    --'ZZZZZ'
+                ) AS codgeo_cv_parent,
                 --EPCI DGCL BANATIC
                 /* NOTE
                 Seules quatre communes ne sont pas membres d’un EPCI à fiscalité propre. Il s'agit des quatre îles mono-communales qui bénéficient d'une dérogation :
@@ -292,19 +293,19 @@ BEGIN
                 22016 Île-de-Bréhat
                 85113 L'Île-d'Yeu
                 */
-                , banatic_setof_epci.n_siren AS codgeo_epci_parent
-                , /*COALESCE(*/dep_parent.codgeo/*, 'ZZZ')*/ AS codgeo_dep_parent
-                , /*COALESCE(*/reg_parent.codgeo/*, 'ZZ')*/ AS codgeo_reg_parent
-                , CASE
+                banatic_setof_epci.n_siren AS codgeo_epci_parent,
+                /*COALESCE(*/dep_parent.codgeo/*, 'ZZZ')*/ AS codgeo_dep_parent,
+                /*COALESCE(*/reg_parent.codgeo/*, 'ZZ')*/ AS codgeo_reg_parent,
+                CASE
                     WHEN LEFT(dep_parent.codgeo, 2) IN ('97', '98'/* MONACO , '99'*/) THEN 'FRO' --Note : DOM + autres RAN (98) + Monaco (99) (faut-il créer le code MCO ?)
                     WHEN dep_parent.codgeo IS NOT NULL THEN 'FRM'
                     /*ELSE 'ZZZ'*/
-                END AS codgeo_metropole_dom_tom_parent
-                , 'FR' AS codgeo_pays_parent
-                , subsection.co_postal AS codgeo_cp_parent
-                , territory_laposte.codgeo_pdc_ppdc_parent
-                , territory_laposte.codgeo_ppdc_pdc_parent
-                , territory_laposte.codgeo_dex_parent
+                END AS codgeo_metropole_dom_tom_parent,
+                'FR' AS codgeo_pays_parent,
+                subsection.co_postal AS codgeo_cp_parent,
+                territory_laposte.codgeo_pdc_ppdc_parent,
+                territory_laposte.codgeo_ppdc_pdc_parent,
+                territory_laposte.codgeo_dex_parent
             FROM set_of_subsection subsection
                 -- INSEE municipalities
                 LEFT OUTER JOIN fr.insee_municipality
@@ -313,20 +314,20 @@ BEGIN
                 -- IGN municipalities
                 LEFT OUTER JOIN (
                     SELECT
-                        insee_com AS codgeo
-                        , nom AS libgeo
-                        , insee_dep AS codgeo_dep_parent
-                        , insee_reg AS codgeo_reg_parent
+                        insee_com AS codgeo,
+                        nom AS libgeo,
+                        insee_dep AS codgeo_dep_parent,
+                        insee_reg AS codgeo_reg_parent
                     FROM
                         fr.ign_municipality
                     WHERE
                         insee_com NOT IN ('75056', '13055', '69123')
                     UNION
                     SELECT
-                        arm.insee_arm
-                        , arm.nom
-                        , com.insee_dep
-                        , com.insee_reg
+                        arm.insee_arm,
+                        arm.nom,
+                        com.insee_dep,
+                        com.insee_reg
                     FROM
                         fr.ign_municipal_district AS arm
                         INNER JOIN fr.ign_municipality AS com
@@ -351,11 +352,11 @@ BEGIN
                 LEFT OUTER JOIN LATERAL (
                     SELECT
                         COALESCE(
-                            commune_ign.codgeo_dep_parent --source à priori la plus à jour
-                            , commune_insee.dep --source alternative
-                            , fr.get_department_code_from_municipality_code(subsection.co_insee_commune) --génère des départements fictifs pour les communes fictives (collectivités d'outre mer)
-                        ) AS codgeo
-                        , CASE
+                            commune_ign.codgeo_dep_parent, --source à priori la plus à jour
+                            commune_insee.dep, --source alternative
+                            fr.get_department_code_from_municipality_code(subsection.co_insee_commune) --génère des départements fictifs pour les communes fictives (collectivités d'outre mer)
+                        ) AS codgeo,
+                        CASE
                             WHEN commune_ign.codgeo_dep_parent IS NOT NULL THEN 'IGN'
                             WHEN commune_insee.dep IS NOT NULL THEN 'INSEE'
                             ELSE 'CALCUL'
@@ -367,18 +368,18 @@ BEGIN
                 LEFT OUTER JOIN LATERAL (
                     SELECT
                         COALESCE(
-                            commune_ign.codgeo_reg_parent --source à priori la plus à jour
-                            , commune_insee.reg --source alternative
-                            , (
+                            commune_ign.codgeo_reg_parent, --source à priori la plus à jour
+                            commune_insee.reg, --source alternative
+                            (
                                 -- région IGN du département retenu
                                 SELECT insee_reg
                                 FROM fr.ign_department
                                 WHERE insee_dep = dep_parent.codgeo
-                            )
+                            ),
                             -- c'est un département fictif, on créé une région fictive pour ce/ces départements (97/98/99)
-                            , LEFT(dep_parent.codgeo, 2)
-                        ) AS codgeo
-                        , CASE
+                            LEFT(dep_parent.codgeo, 2)
+                        ) AS codgeo,
+                        CASE
                             WHEN commune_ign.codgeo_reg_parent IS NOT NULL THEN 'IGN'
                             WHEN commune_insee.reg IS NOT NULL THEN 'INSEE'
                             ELSE 'CALCUL'
@@ -391,8 +392,8 @@ BEGIN
         RAISE NOTICE 'LAPOSTE: insertion #% infra-commune(s)', _nrows;
 
         CALL fr.set_territory_exceptions(
-            usecase => 'RELATION'
-            , municipality_subsection => municipality_subsection
+            usecase => 'RELATION',
+            municipality_subsection => municipality_subsection
         );
     ELSE
         -- update base level, delete others
@@ -405,15 +406,15 @@ BEGIN
         -- LAPOSTE : name, SUPRA COM/CP
         IF (io_infos -> 'FR-TERRITORY-LAPOSTE-AREA_t')::BOOLEAN THEN
             UPDATE fr.territory t SET
-                dt_reference_geo = TIMEOFDAY()::DATE
+                dt_reference_geo = TIMEOFDAY()::DATE,
                 -- TODO: for ZA only (modify if COM_CP)
-                , libgeo = CONCAT_WS('-'
-                    , CASE WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN lb_ach_nn ELSE lb_l5_nn END
-                    , co_postal
-                    , CASE WHEN co_insee_commune ~ '^98[78]' THEN COALESCE(lb_l5_nn, lb_ach_nn) ELSE lb_ach_nn END
-                )
-                , codgeo_com_parent = area.co_insee_commune
-                , codgeo_cp_parent = area.co_postal
+                libgeo = CONCAT_WS('-',
+                    CASE WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN lb_ach_nn ELSE lb_l5_nn END,
+                    co_postal,
+                    CASE WHEN co_insee_commune ~ '^98[78]' THEN COALESCE(lb_l5_nn, lb_ach_nn) ELSE lb_ach_nn END
+                ),
+                codgeo_com_parent = area.co_insee_commune,
+                codgeo_cp_parent = area.co_postal
             FROM fr.laposte_address_area area
             WHERE
                 (
@@ -424,10 +425,10 @@ BEGIN
                 AND
                 (
                     t.libgeo IS DISTINCT FROM
-                        CONCAT_WS('-'
-                            , CASE WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN lb_ach_nn ELSE lb_l5_nn END
-                            , co_postal
-                            , CASE WHEN co_insee_commune ~ '^98[78]' THEN COALESCE(lb_l5_nn, lb_ach_nn) ELSE lb_ach_nn END
+                        CONCAT_WS('-',
+                            CASE WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN lb_ach_nn ELSE lb_l5_nn END,
+                            co_postal,
+                            CASE WHEN co_insee_commune ~ '^98[78]' THEN COALESCE(lb_l5_nn, lb_ach_nn) ELSE lb_ach_nn END
                         )
                     OR
                     t.codgeo_com_parent IS DISTINCT FROM area.co_insee_commune
@@ -442,10 +443,10 @@ BEGIN
         -- LAPOSTE : SUPRA CP
         IF (io_infos -> 'FR-TERRITORY-LAPOSTE-SUPRA_t')::BOOLEAN THEN
             UPDATE fr.territory t SET
-                dt_reference_geo = TIMEOFDAY()::DATE
-                , codgeo_pdc_ppdc_parent = laposte.codgeo_pdc_ppdc_parent
-                , codgeo_ppdc_pdc_parent = laposte.codgeo_ppdc_pdc_parent
-                , codgeo_dex_parent = laposte.codgeo_dex_parent
+                dt_reference_geo = TIMEOFDAY()::DATE,
+                codgeo_pdc_ppdc_parent = laposte.codgeo_pdc_ppdc_parent,
+                codgeo_ppdc_pdc_parent = laposte.codgeo_ppdc_pdc_parent,
+                codgeo_dex_parent = laposte.codgeo_dex_parent
             FROM fr.territory_laposte laposte
             WHERE
                 (
@@ -471,11 +472,11 @@ BEGIN
         -- INSEE : SUPRA
         IF (io_infos -> 'FR-TERRITORY-INSEE-SUPRA_t')::BOOLEAN THEN
             UPDATE fr.territory t SET
-                dt_reference_geo = TIMEOFDAY()::DATE
-                , codgeo_cv_parent = insee.cv
-                , codgeo_arr_parent = insee.arr
-                , codgeo_dep_parent = insee.dep
-                , codgeo_reg_parent = insee.reg
+                dt_reference_geo = TIMEOFDAY()::DATE,
+                codgeo_cv_parent = insee.cv,
+                codgeo_arr_parent = insee.arr,
+                codgeo_dep_parent = insee.dep,
+                codgeo_reg_parent = insee.reg
             FROM fr.insee_municipality insee
             WHERE
                 (
@@ -503,8 +504,8 @@ BEGIN
         -- BANATIC : SUPRA
         IF (io_infos -> 'FR-TERRITORY-BANATIC-SET_t')::BOOLEAN THEN
             UPDATE fr.territory t SET
-                dt_reference_geo = TIMEOFDAY()::DATE
-                , codgeo_epci_parent = s.n_siren
+                dt_reference_geo = TIMEOFDAY()::DATE,
+                codgeo_epci_parent = s.n_siren
             FROM
                 fr.banatic_setof_epci s
                     JOIN fr.banatic_siren_insee l ON s.siren_membre = l.siren
@@ -527,9 +528,9 @@ BEGIN
 
     -- initialize SUPRA levels
     PERFORM fr.set_territory_supra(
-        table_name => 'territory'
-        , schema_name => 'fr'
-        , base_level => municipality_subsection
+        table_name => 'territory',
+        schema_name => 'fr',
+        base_level => municipality_subsection
     );
 
     -- update name, population, ...
@@ -543,8 +544,8 @@ END $$ LANGUAGE plpgsql;
 -- deal w/ exceptions (as overseas territories)
 SELECT drop_all_functions_if_exists('fr', 'set_territory_exceptions');
 CREATE OR REPLACE PROCEDURE fr.set_territory_exceptions(
-    usecase VARCHAR
-    , municipality_subsection VARCHAR DEFAULT 'ZA'
+    usecase VARCHAR,
+    municipality_subsection VARCHAR DEFAULT 'ZA'
 )
 AS
 $proc$
@@ -553,8 +554,8 @@ DECLARE
 BEGIN
     IF usecase = 'RELATION' THEN
         UPDATE fr.territory t SET
-            codgeo_cv_parent = RPAD(c.key, 5, 'Z')
-            , codgeo_arr_parent = RPAD(c.key, 4, 'Z')
+            codgeo_cv_parent = RPAD(c.key, 5, 'Z'),
+            codgeo_arr_parent = RPAD(c.key, 4, 'Z')
         FROM fr.constant c
         WHERE
             t.nivgeo = municipality_subsection
@@ -610,16 +611,16 @@ BEGIN
         SET population = commune_ign.population
         FROM (
                 SELECT
-                    insee_com AS codgeo
-                    , population
+                    insee_com AS codgeo,
+                    population
                 FROM
                     fr.ign_municipality
                 WHERE
                     insee_com NOT IN ('75056', '13055', '69123')
                 UNION
                 SELECT
-                    insee_arm
-                    , population
+                    insee_arm,
+                    population
                 FROM
                     fr.ign_municipal_district
             )
@@ -629,25 +630,25 @@ BEGIN
     -- set population (SUPRA levels)
     CALL public.log_info('Mise à jour SUPRA : (Population)');
     PERFORM fr.set_territory_supra(
-        table_name => 'territory'
-        , schema_name => 'fr'
-        , base_level => 'COM'
-        , update_mode => TRUE
-        , columns_agg => ARRAY['population']
+        table_name => 'territory',
+        schema_name => 'fr',
+        base_level => 'COM',
+        update_mode => TRUE,
+        columns_agg => ARRAY['population']
     );
 
     -- set link for EPCI level w/ majority DEP & REG levels
     CALL public.log_info('Mise à jour EPCI : département/région majoritaire (calcul)');
     WITH com_groupby_epci AS (
         SELECT
-            codgeo_epci_parent AS codgeo
-            , (
+            codgeo_epci_parent AS codgeo,
+            (
                 WITH dep_by_nb_com AS (
                     SELECT dep, COUNT(*) AS nb_com FROM UNNEST(ARRAY_AGG(codgeo_dep_parent)) AS dep GROUP BY dep
                 )
                 SELECT dep FROM dep_by_nb_com ORDER BY nb_com DESC LIMIT 1
-            ) AS codgeo_dep_majoritaire
-            , (
+            ) AS codgeo_dep_majoritaire,
+            (
                 WITH reg_by_nb_com AS (
                     SELECT reg, COUNT(*) AS nb_com FROM UNNEST(ARRAY_AGG(codgeo_reg_parent)) AS reg GROUP BY reg
                 )
@@ -658,8 +659,8 @@ BEGIN
         GROUP BY codgeo_epci_parent
     )
     UPDATE fr.territory
-    SET codgeo_dep_parent = com_groupby_epci.codgeo_dep_majoritaire
-        , codgeo_reg_parent = com_groupby_epci.codgeo_reg_majoritaire
+    SET codgeo_dep_parent = com_groupby_epci.codgeo_dep_majoritaire,
+        codgeo_reg_parent = com_groupby_epci.codgeo_reg_majoritaire
     FROM com_groupby_epci
     WHERE com_groupby_epci.codgeo = territory.codgeo AND territory.nivgeo = 'EPCI';
 
@@ -669,25 +670,25 @@ BEGIN
     SET libgeo = commune_ign.libgeo
     FROM (
             SELECT
-                'COM' AS nivgeo
-                , insee_com AS codgeo
-                , nom AS libgeo
+                'COM' AS nivgeo,
+                insee_com AS codgeo,
+                nom AS libgeo
             FROM
                 fr.ign_municipality
             WHERE
                 insee_com NOT IN ('75056', '13055', '69123')
             UNION
             SELECT
-                'COM' AS nivgeo
-                , insee_arm
-                , nom
+                'COM' AS nivgeo,
+                insee_arm,
+                nom
             FROM
                 fr.ign_municipal_district
             UNION
             SELECT
-                'COM_GLOBALE_ARM' AS nivgeo
-                , insee_com AS codgeo
-                , nom AS libgeo
+                'COM_GLOBALE_ARM' AS nivgeo,
+                insee_com AS codgeo,
+                nom AS libgeo
             FROM
                 fr.ign_municipality
             WHERE
@@ -702,8 +703,8 @@ BEGIN
     SET libgeo = commune_ran.libgeo
     FROM (
         SELECT DISTINCT
-            za.co_insee_commune codgeo
-            , CASE
+            za.co_insee_commune codgeo,
+            CASE
                 WHEN lb_l5_nn IS NOT NULL THEN INITCAP(lb_l5_nn)
                 ELSE INITCAP(lb_ach_nn)
             END libgeo
@@ -717,8 +718,8 @@ BEGIN
     -- set name, type (EPCI level) from DGCL/BANATIC
     CALL public.log_info('Mise à jour EPCI : Nommage (source BANATIC)');
     UPDATE fr.territory
-    SET libgeo = epci.nom_du_groupement
-        , typgeo = epci.nature_juridique
+    SET libgeo = epci.nom_du_groupement,
+        typgeo = epci.nature_juridique
     FROM fr.banatic_listof_epci epci
     WHERE territory.nivgeo = 'EPCI'
     AND territory.codgeo = epci.n_siren;
@@ -749,8 +750,8 @@ BEGIN
     CALL public.log_info('Mise à jour CP : Nommage (source POW)');
     WITH name_of_CP AS (
         SELECT
-            za.codgeo_cp_parent AS codgeo
-            , STRING_AGG(DISTINCT com.libgeo, ', ' ORDER BY com.libgeo) AS libgeo
+            za.codgeo_cp_parent AS codgeo,
+            STRING_AGG(DISTINCT com.libgeo, ', ' ORDER BY com.libgeo) AS libgeo
         FROM fr.territory AS com
         INNER JOIN fr.territory AS za
             ON za.nivgeo = 'ZA'
@@ -796,11 +797,11 @@ BEGIN
             AND gm_contour IS NOT NULL
             -- to avoid backup-levels (as COM_A_XXXXXX)
             AND nivgeo = ANY(public.get_levels('fr'))
-        )
-        , extend_territory AS (
+        ),
+        extend_territory AS (
             SELECT DISTINCT
-                UNNEST(ARRAY[next_territory.codgeo, territory.codgeo]) AS codgeo
-                , next_territory.nivgeo
+                UNNEST(ARRAY[next_territory.codgeo, territory.codgeo]) AS codgeo,
+                next_territory.nivgeo
             FROM initial_territory AS territory
             INNER JOIN fr.territory AS next_territory
                 ON next_territory.nivgeo = territory.nivgeo
@@ -921,10 +922,10 @@ OR (nivgeo = 'DEC' and (
 
 --Comparaison RAN - INSEE - IGN
 SELECT
-    COALESCE(millesime_a.nivgeo, millesime_b.nivgeo, millesime_c.nivgeo) AS nivgeo
-    , COALESCE(millesime_a.codgeo, millesime_b.codgeo, millesime_c.codgeo) AS codgeo
-    , COALESCE(millesime_a.libgeo, millesime_b.libgeo, millesime_c.libgeo) AS libgeo
-    , CASE
+    COALESCE(millesime_a.nivgeo, millesime_b.nivgeo, millesime_c.nivgeo) AS nivgeo,
+    COALESCE(millesime_a.codgeo, millesime_b.codgeo, millesime_c.codgeo) AS codgeo,
+    COALESCE(millesime_a.libgeo, millesime_b.libgeo, millesime_c.libgeo) AS libgeo,
+    CASE
         WHEN millesime_a.codgeo IS NOT NULL AND millesime_b.codgeo IS NOT NULL AND millesime_c.codgeo IS NOT NULL THEN 'RAN+INSEE+IGN'
         WHEN millesime_a.codgeo IS NOT NULL AND millesime_b.codgeo IS NOT NULL THEN 'RAN+INSEE'
         WHEN millesime_a.codgeo IS NOT NULL AND millesime_c.codgeo IS NOT NULL THEN 'RAN+IGN'
@@ -962,42 +963,42 @@ BEGIN
         WITH
         territory_public AS (
             SELECT
-                level
-                , code
-                , name
-                , attributs
-                , population
-                , area
-                , z_min
-                , z_max
-                , codes_adjoining
-                , geom_native
-                , geom_world
+                level,
+                code,
+                name,
+                attributs,
+                population,
+                area,
+                z_min,
+                z_max,
+                codes_adjoining,
+                geom_native,
+                geom_world
             FROM public.territory
             WHERE country = 'FR'
-        )
-        , territory_fr AS (
+        ),
+        territory_fr AS (
             SELECT
-                nivgeo
-                , codgeo
-                , libgeo
-                , CASE
+                nivgeo,
+                codgeo,
+                libgeo,
+                CASE
                     WHEN nivgeo = 'EPCI' AND typgeo IS NOT NULL THEN (CONCAT('"TYPE" => "', typgeo, '"'))::HSTORE
                     WHEN nivgeo = 'COM' AND z.l6_norm IS NOT NULL THEN (CONCAT('"L6_NORM" => "', z.l6_norm, '"'))::HSTORE
                     WHEN nivgeo = 'ZA' AND y.l5_norm IS NOT NULL THEN (CONCAT('"L5_NORM" => "', y.l5_norm, '"'))::HSTORE
-                END attributs
-                , population
-                , superficie
-                , z_min
-                , z_max
-                , codgeo_voisins
-                , gm_contour_natif
-                , gm_contour
+                END attributs,
+                population,
+                superficie,
+                z_min,
+                z_max,
+                codgeo_voisins,
+                gm_contour_natif,
+                gm_contour
             FROM fr.territory t
                 LEFT OUTER JOIN LATERAL (
                     SELECT DISTINCT
-                        co_insee_commune
-                        , CASE WHEN co_insee_commune ~ '^98' THEN lb_l5_nn ELSE lb_ach_nn END l6_norm
+                        co_insee_commune,
+                        CASE WHEN co_insee_commune ~ '^98' THEN lb_l5_nn ELSE lb_ach_nn END l6_norm
                     FROM fr.laposte_address_area
                     WHERE
                         -- avoid duplicate code !
@@ -1007,8 +1008,8 @@ BEGIN
                 ) z ON t.nivgeo = 'COM' AND t.codgeo = z.co_insee_commune
                 LEFT OUTER JOIN LATERAL (
                     SELECT DISTINCT
-                        co_cea
-                        , CASE
+                        co_cea,
+                        CASE
                             WHEN co_insee_commune ~ '^98' AND lb_ach_nn IS NOT NULL AND lb_l5_nn != lb_ach_nn THEN lb_ach_nn
                             WHEN co_insee_commune !~ '^98' AND lb_l5_nn IS NOT NULL THEN lb_l5_nn
                         END l5_norm
@@ -1017,8 +1018,8 @@ BEGIN
             WHERE
                 -- exclude MONACO !
                 codgeo !~ '^99'
-        )
-        , changes AS (
+        ),
+        changes AS (
             (
                 SELECT '-' change, level, code FROM territory_public
                 EXCEPT
@@ -1083,18 +1084,18 @@ BEGIN
 
         -- insert/update territories
         SELECT
-            c.change
-            , c.level
-            , c.code
-            , territory_fr.libgeo name
-            , attributs
-            , population
-            , superficie area
-            , z_min
-            , z_max
-            , codgeo_voisins codes_adjoining
-            , gm_contour_natif geom_native
-            , gm_contour geom_world
+            c.change,
+            c.level,
+            c.code,
+            territory_fr.libgeo name,
+            attributs,
+            population,
+            superficie area,
+            z_min,
+            z_max,
+            codgeo_voisins codes_adjoining,
+            gm_contour_natif geom_native,
+            gm_contour geom_world
         FROM
             changes c
                 JOIN territory_fr ON (c.level, c.code) = (territory_fr.nivgeo, territory_fr.codgeo)
@@ -1105,18 +1106,18 @@ BEGIN
 
         -- delete old territories
         SELECT
-            c.change
-            , c.level
-            , c.code
-            , tp.name
-            , tp.attributs
-            , tp.population
-            , tp.area
-            , tp.z_min
-            , tp.z_max
-            , tp.codes_adjoining
-            , tp.geom_native
-            , tp.geom_world
+            c.change,
+            c.level,
+            c.code,
+            tp.name,
+            tp.attributs,
+            tp.population,
+            tp.area,
+            tp.z_min,
+            tp.z_max,
+            tp.codes_adjoining,
+            tp.geom_native,
+            tp.geom_world
         FROM
             changes c
                 JOIN territory_public tp ON (c.level, c.code) = (tp.level, tp.code)
@@ -1129,18 +1130,18 @@ BEGIN
 
     CALL public.log_info('Historique des modifications/suppressions (valeurs)');
     INSERT INTO public.territory_history (
-            id_territory
-            , date_change
-            , change
-            , kind
-            , values
+            id_territory,
+            date_change,
+            change,
+            kind,
+            values
         )
         SELECT
-            t.id
-            , TIMEOFDAY()::DATE
-            , c.change
-            , 'VALUE'
-            , ROW_TO_JSON(t.*)::JSONB
+            t.id,
+            TIMEOFDAY()::DATE,
+            c.change,
+            'VALUE',
+            ROW_TO_JSON(t.*)::JSONB
         FROM
             tmp_fr_territory_changes c
                 JOIN public.territory t ON t.country = 'FR' AND (c.level, c.code) = (t.level, t.code)
@@ -1149,18 +1150,18 @@ BEGIN
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('UPDATE: ', _nrows_affected));
     INSERT INTO public.territory_history (
-            id_territory
-            , date_change
-            , change
-            , kind
-            , values
+            id_territory,
+            date_change,
+            change,
+            kind,
+            values
         )
         SELECT
-            t.id
-            , TIMEOFDAY()::DATE
-            , c.change
-            , 'VALUE'
-            , ROW_TO_JSON(t.*)::JSONB
+            t.id,
+            TIMEOFDAY()::DATE,
+            c.change,
+            'VALUE',
+            ROW_TO_JSON(t.*)::JSONB
         FROM
             tmp_fr_territory_changes c
                 JOIN public.territory t ON t.country = 'FR' AND (c.level, c.code) = (t.level, t.code)
@@ -1171,34 +1172,34 @@ BEGIN
 
     CALL public.log_info('Mise à jour des ajouts/modifications');
     INSERT INTO public.territory (
-            country
-            , level
-            , code
-            , name
-            , attributs
-            , population
-            , area
-            , z_min
-            , z_max
-            , codes_adjoining
-            , date_last
-            , geom_native
-            , geom_world
+            country,
+            level,
+            code,
+            name,
+            attributs,
+            population,
+            area,
+            z_min,
+            z_max,
+            codes_adjoining,
+            date_last,
+            geom_native,
+            geom_world
         )
         SELECT
-            'FR' country
-            , c.level
-            , c.code
-            , c.name
-            , c.attributs
-            , c.population
-            , c.area
-            , c.z_min
-            , c.z_max
-            , c.codes_adjoining
-            , TIMEOFDAY()::DATE
-            , c.geom_native
-            , c.geom_world
+            'FR' country,
+            c.level,
+            c.code,
+            c.name,
+            c.attributs,
+            c.population,
+            c.area,
+            c.z_min,
+            c.z_max,
+            c.codes_adjoining,
+            TIMEOFDAY()::DATE,
+            c.geom_native,
+            c.geom_world
         FROM
             tmp_fr_territory_changes c
                 JOIN public.territory_level l ON l.country = 'FR' AND c.level = l.level
@@ -1208,16 +1209,16 @@ BEGIN
             l.hierarchy
     ON CONFLICT(country, level, code) DO UPDATE
         SET
-            name = EXCLUDED.name
-            , attributs = EXCLUDED.attributs
-            , population = EXCLUDED.population
-            , area = EXCLUDED.area
-            , z_min = EXCLUDED.z_min
-            , z_max = EXCLUDED.z_max
-            , codes_adjoining = EXCLUDED.codes_adjoining
-            , date_last = EXCLUDED.date_last
-            , geom_native = EXCLUDED.geom_native
-            , geom_world = EXCLUDED.geom_world
+            name = EXCLUDED.name,
+            attributs = EXCLUDED.attributs,
+            population = EXCLUDED.population,
+            area = EXCLUDED.area,
+            z_min = EXCLUDED.z_min,
+            z_max = EXCLUDED.z_max,
+            codes_adjoining = EXCLUDED.codes_adjoining,
+            date_last = EXCLUDED.date_last,
+            geom_native = EXCLUDED.geom_native,
+            geom_world = EXCLUDED.geom_world
     ;
     GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
     CALL public.log_info(CONCAT('INSERT/UPDATE: ', _nrows_affected));
@@ -1255,23 +1256,23 @@ BEGIN
         WITH
         territory_public AS (
             SELECT
-                t.level
-                , t.code
-                , tp.level level_parent
-                , tp.code code_parent
+                t.level,
+                t.code,
+                tp.level level_parent,
+                tp.code code_parent
             FROM public.territory t
                 JOIN public.territory_parent p ON t.id = p.id_territory
                 JOIN public.territory tp ON tp.id = p.id_parent
             WHERE
                 t.country = 'FR'
-        )
-        , territory_fr AS (
+        ),
+        territory_fr AS (
             -- ZA/COM
             SELECT
-                nivgeo
-                , codgeo
-                , 'COM' nivgeo_parent
-                , codgeo_com_parent codgeo_parent
+                nivgeo,
+                codgeo,
+                'COM' nivgeo_parent,
+                codgeo_com_parent codgeo_parent
             FROM
                 fr.territory t
             WHERE
@@ -1283,10 +1284,10 @@ BEGIN
 
             -- COM/COM_GLOBALE_ARM
             SELECT
-                nivgeo
-                , codgeo
-                , 'COM_GLOBALE_ARM' nivgeo_parent
-                , codgeo_com_globale_arm_parent codgeo_parent
+                nivgeo,
+                codgeo,
+                'COM_GLOBALE_ARM' nivgeo_parent,
+                codgeo_com_globale_arm_parent codgeo_parent
             FROM
                 fr.territory t
             WHERE
@@ -1298,10 +1299,10 @@ BEGIN
 
             -- COM/ARR
             SELECT
-                nivgeo
-                , codgeo
-                , 'ARR' nivgeo_parent
-                , codgeo_arr_parent codgeo_parent
+                nivgeo,
+                codgeo,
+                'ARR' nivgeo_parent,
+                codgeo_arr_parent codgeo_parent
             FROM
                 fr.territory t
             WHERE
@@ -1313,10 +1314,10 @@ BEGIN
 
             -- COM/CV
             SELECT
-                nivgeo
-                , codgeo
-                , 'CV' nivgeo_parent
-                , codgeo_cv_parent codgeo_parent
+                nivgeo,
+                codgeo,
+                'CV' nivgeo_parent,
+                codgeo_cv_parent codgeo_parent
             FROM
                 fr.territory t
             WHERE
@@ -1328,10 +1329,10 @@ BEGIN
 
             -- COM/EPCI
             SELECT
-                nivgeo
-                , codgeo
-                , 'EPCI' nivgeo_parent
-                , codgeo_epci_parent codgeo_parent
+                nivgeo,
+                codgeo,
+                'EPCI' nivgeo_parent,
+                codgeo_epci_parent codgeo_parent
             FROM
                 fr.territory t
             WHERE
@@ -1343,10 +1344,10 @@ BEGIN
 
             -- ARR/DEP
             SELECT
-                nivgeo
-                , codgeo
-                , 'DEP' nivgeo_parent
-                , codgeo_dep_parent codgeo_parent
+                nivgeo,
+                codgeo,
+                'DEP' nivgeo_parent,
+                codgeo_dep_parent codgeo_parent
             FROM
                 fr.territory t
             WHERE
@@ -1358,10 +1359,10 @@ BEGIN
 
             -- CV/DEP
             SELECT
-                nivgeo
-                , codgeo
-                , 'DEP' nivgeo_parent
-                , codgeo_dep_parent codgeo_parent
+                nivgeo,
+                codgeo,
+                'DEP' nivgeo_parent,
+                codgeo_dep_parent codgeo_parent
             FROM
                 fr.territory t
             WHERE
@@ -1373,10 +1374,10 @@ BEGIN
 
             -- DEP/REG
             SELECT
-                nivgeo
-                , codgeo
-                , 'REG' nivgeo_parent
-                , codgeo_reg_parent codgeo_parent
+                nivgeo,
+                codgeo,
+                'REG' nivgeo_parent,
+                codgeo_reg_parent codgeo_parent
             FROM
                 fr.territory t
             WHERE
@@ -1388,10 +1389,10 @@ BEGIN
 
             -- REG/METROPOLE_DOM_TOM
             SELECT DISTINCT
-                'REG' nivgeo
-                , codgeo_reg_parent codgeo
-                , 'METROPOLE_DOM_TOM' nivgeo_parent
-                , codgeo_metropole_dom_tom_parent codgeo_parent
+                'REG' nivgeo,
+                codgeo_reg_parent codgeo,
+                'METROPOLE_DOM_TOM' nivgeo_parent,
+                codgeo_metropole_dom_tom_parent codgeo_parent
             FROM
                 fr.territory t
             WHERE
@@ -1403,10 +1404,10 @@ BEGIN
 
             --METROPOLE_DOM_TOM/PAYS
             SELECT
-                nivgeo
-                , codgeo
-                , 'PAYS' nivgeo_parent
-                , codgeo_pays_parent codgeo_parent
+                nivgeo,
+                codgeo,
+                'PAYS' nivgeo_parent,
+                codgeo_pays_parent codgeo_parent
             FROM
                 fr.territory t
             WHERE
@@ -1418,10 +1419,10 @@ BEGIN
 
             -- ZA/CP
             SELECT
-                nivgeo
-                , codgeo
-                , 'CP' nivgeo_parent
-                , codgeo_cp_parent codgeo_parent
+                nivgeo,
+                codgeo,
+                'CP' nivgeo_parent,
+                codgeo_cp_parent codgeo_parent
             FROM
                 fr.territory t
             WHERE
@@ -1433,10 +1434,10 @@ BEGIN
 
             -- CP/PDC_PPDC
             SELECT
-                nivgeo
-                , codgeo
-                , 'PDC_PPDC' nivgeo_parent
-                , codgeo_pdc_ppdc_parent codgeo_parent
+                nivgeo,
+                codgeo,
+                'PDC_PPDC' nivgeo_parent,
+                codgeo_pdc_ppdc_parent codgeo_parent
             FROM
                 fr.territory t
             WHERE
@@ -1448,10 +1449,10 @@ BEGIN
 
             -- PDC_PPDC/PPDC_PDC
             SELECT
-                nivgeo
-                , codgeo
-                , 'PPDC_PDC' nivgeo_parent
-                , codgeo_ppdc_pdc_parent codgeo_parent
+                nivgeo,
+                codgeo,
+                'PPDC_PDC' nivgeo_parent,
+                codgeo_ppdc_pdc_parent codgeo_parent
             FROM
                 fr.territory t
             WHERE
@@ -1463,18 +1464,18 @@ BEGIN
 
             -- PPDC_PDC/DEX
             SELECT
-                nivgeo
-                , codgeo
-                , 'DEX' nivgeo_parent
-                , codgeo_dex_parent codgeo_parent
+                nivgeo,
+                codgeo,
+                'DEX' nivgeo_parent,
+                codgeo_dex_parent codgeo_parent
             FROM
                 fr.territory t
             WHERE
                 nivgeo = 'PPDC_PDC'
                 AND
                 codgeo_dex_parent IS NOT NULL
-        )
-        , changes AS (
+        ),
+        changes AS (
             (
                 SELECT '-' change, level, code, level_parent, code_parent FROM territory_public
                 EXCEPT
@@ -1541,16 +1542,16 @@ BEGIN
         WITH
         from_territory AS (
             SELECT
-                c.id
-                , t.id id_territory
+                c.id,
+                t.id id_territory
             FROM tmp_fr_territory_changes c
                 JOIN public.territory t ON t.country = 'FR' AND (c.level, c.code) = (t.level, t.code)
             WHERE change = '+'
-        )
-        , to_territory AS (
+        ),
+        to_territory AS (
             SELECT
-                c.id
-                , t.id id_parent
+                c.id,
+                t.id id_parent
             FROM tmp_fr_territory_changes c
                 JOIN public.territory t ON t.country = 'FR' AND (c.level_parent, c.code_parent) = (t.level, t.code)
             WHERE change = '+'
@@ -1564,18 +1565,18 @@ BEGIN
 
     CALL public.log_info('Historique des suppressions (liens)');
     INSERT INTO public.territory_history (
-            id_territory
-            , date_change
-            , change
-            , kind
-            , values
+            id_territory,
+            date_change,
+            change,
+            kind,
+            values
         )
         SELECT
-            t.id
-            , TIMEOFDAY()::DATE
-            , c.change
-            , 'LINK'
-            , ROW_TO_JSON(tp.*)::JSONB
+            t.id,
+            TIMEOFDAY()::DATE,
+            c.change,
+            'LINK',
+            ROW_TO_JSON(tp.*)::JSONB
         FROM
             tmp_fr_territory_changes c
                 JOIN public.territory t ON t.country = 'FR' AND (c.level, c.code) = (t.level, t.code)
@@ -1590,16 +1591,16 @@ BEGIN
     WITH
     from_territory AS (
         SELECT
-            c.id
-            , t.id id_territory
+            c.id,
+            t.id id_territory
         FROM tmp_fr_territory_changes c
             JOIN public.territory t ON t.country = 'FR' AND (c.level, c.code) = (t.level, t.code)
         WHERE change = '-'
-    )
-    , to_territory AS (
+    ),
+    to_territory AS (
         SELECT
-            c.id
-            , t.id id_parent
+            c.id,
+            t.id id_parent
         FROM tmp_fr_territory_changes c
             JOIN public.territory t ON t.country = 'FR' AND (c.level_parent, c.code_parent) = (t.level, t.code)
         WHERE change = '-'

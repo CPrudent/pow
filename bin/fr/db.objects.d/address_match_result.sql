@@ -11,40 +11,40 @@ BEGIN
     THEN
         DROP TYPE IF EXISTS fr.standardized_address CASCADE;
         CREATE TYPE fr.standardized_address AS (
-              id VARCHAR                        -- client ID
-            , level VARCHAR                     -- AREA|STREET|HOUSENUMBER|COMPLEMENT
-            , elapsed_time INTERVAL             -- running time
-            , match_code_area VARCHAR
-            , match_code_street VARCHAR
-            , match_code_housenumber VARCHAR
-            , match_code_complement VARCHAR
-            , complement_name VARCHAR           -- address complement (known as L3)
-            , complement_descriptors VARCHAR    -- LAPOSTE/RAN classified words
-            , complement_as_words INT[]         -- array of length of each item
-            , complement_words TEXT[]           -- array of each words
-            , complement_uncommon_value VARCHAR
-            , complement_uncommon_occur INT
-            , housenumber INTEGER
-            , extension VARCHAR                 -- housenumber extension (BIS, ...)
-            , housenumber_uncommon_id INT
-            , housenumber_uncommon_occur INT
-            , street_name VARCHAR               -- full name of street (w/o abbr)
-            , street_descriptors VARCHAR        -- LAPOSTE/RAN classified words
-            , street_as_words INT[]             -- array of length of each item
-            , street_words TEXT[]               -- array of each words
-            , street_uncommon_value VARCHAR
-            , street_uncommon_occur INT
+            id VARCHAR,                       -- client ID
+            level VARCHAR,                    -- AREA|STREET|HOUSENUMBER|COMPLEMENT
+            elapsed_time INTERVAL,            -- running time
+            match_code_area VARCHAR,
+            match_code_street VARCHAR,
+            match_code_housenumber VARCHAR,
+            match_code_complement VARCHAR,
+            complement_name VARCHAR,          -- address complement (known as L3)
+            complement_descriptors VARCHAR,   -- LAPOSTE/RAN classified words
+            complement_as_words INT[],        -- array of length of each item
+            complement_words TEXT[],          -- array of each words
+            complement_uncommon_value VARCHAR,
+            complement_uncommon_occur INT,
+            housenumber INT,
+            extension VARCHAR,                -- housenumber extension (BIS, ...)
+            housenumber_uncommon_id INT,
+            housenumber_uncommon_occur INT,
+            street_name VARCHAR,              -- full name of street (w/o abbr)
+            street_descriptors VARCHAR,       -- LAPOSTE/RAN classified words
+            street_as_words INT[],            -- array of length of each item
+            street_words TEXT[],              -- array of each words
+            street_uncommon_value VARCHAR,
+            street_uncommon_occur INT,
             /* useful ?
-            , street_normalized VARCHAR         -- normalized name of street
-            , street_descriptors_normalized VARCHAR
-            , street_as_words_normalized INT[]
+            street_normalized VARCHAR,        -- normalized name of street
+            street_descriptors_normalized VARCHAR,
+            street_as_words_normalized INT[],
              */
-            , postcode VARCHAR                  -- postal code
-            , municipality_code VARCHAR         -- INSEE code (municipality)
-            , municipality_name VARCHAR         -- normalized name of municipality
-            , municipality_old_code VARCHAR     -- old municipality (known as L5)
-            , municipality_old_name VARCHAR
-            , geom GEOMETRY(POINT, 3857)        -- WGS84-proj geometry
+            postcode VARCHAR,                 -- postal code
+            municipality_code VARCHAR,        -- INSEE code (municipality)
+            municipality_name VARCHAR,        -- normalized name of municipality
+            municipality_old_code VARCHAR,    -- old municipality (known as L5)
+            municipality_old_name VARCHAR,
+            geom GEOMETRY(POINT, 3857)        -- WGS84-proj geometry
         );
 
         -- has to be rebuild!
@@ -59,20 +59,20 @@ BEGIN
     THEN
         DROP TYPE IF EXISTS fr.address_matched CASCADE;
         CREATE TYPE fr.address_matched AS (
-            code_area CHAR(10)
-            , codes_area_possible CHAR(10)[]
-            , code_street CHAR(10)
-            , code_housenumber CHAR(10)
-            , code_complement CHAR(10)
-            , elapsed_time INTERVAL
-            , search_area INT
-            , search_street INT
-            , search_housenumber INT
-            , search_complement INT
-            , similarity NUMERIC
-            , similarity_semantic NUMERIC
-            , similarity_phonetic NUMERIC
-            , similarity_geometry NUMERIC
+            code_area CHAR(10),
+            codes_area_possible CHAR(10)[],
+            code_street CHAR(10),
+            code_housenumber CHAR(10),
+            code_complement CHAR(10),
+            elapsed_time INTERVAL,
+            search_area INT,
+            search_street INT,
+            search_housenumber INT,
+            search_complement INT,
+            similarity NUMERIC,
+            similarity_semantic NUMERIC,
+            similarity_phonetic NUMERIC,
+            similarity_geometry NUMERIC
         );
     END IF;
 
@@ -84,11 +84,11 @@ END $$;
  */
 
 CREATE TABLE IF NOT EXISTS fr.address_match_result (
-    id SERIAL NOT NULL
-    , id_request INTEGER NOT NULL
-    , id_address INT NOT NULL
-    , standardized_address fr.standardized_address
-    , code_address CHAR(10)
+    id SERIAL NOT NULL,
+    id_request INTEGER NOT NULL,
+    id_address INT NOT NULL,
+    standardized_address fr.standardized_address,
+    code_address CHAR(10)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS iux_address_match_normalize_id ON fr.address_match_result(id);
@@ -97,9 +97,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS ix_address_match_result_ids ON fr.address_matc
 -- get value from standardized_address record
 SELECT drop_all_functions_if_exists('fr', '_get_value_from_standardized_address');
 CREATE OR REPLACE FUNCTION fr._get_value_from_standardized_address(
-      standardized_address IN fr.standardized_address
-    , key IN VARCHAR
-    , value OUT VARCHAR
+    standardized_address IN fr.standardized_address,
+    key IN VARCHAR,
+    value OUT VARCHAR
 )
 AS
 $func$
@@ -117,10 +117,10 @@ not really obtain normalized name, by example, for street
  */
 SELECT drop_all_functions_if_exists('fr', 'set_match_standardize');
 CREATE OR REPLACE PROCEDURE fr.set_match_standardize(
-    file_path IN VARCHAR
-    , mapping IN HSTORE
-    , force IN BOOLEAN DEFAULT FALSE
-    , raise_notice IN BOOLEAN DEFAULT FALSE
+    file_path IN VARCHAR,
+    mapping IN HSTORE,
+    force IN BOOLEAN DEFAULT FALSE,
+    raise_notice IN BOOLEAN DEFAULT FALSE
 )
 AS
 $proc$
@@ -195,8 +195,8 @@ $proc$ LANGUAGE plpgsql;
 -- match addresses
 SELECT drop_all_functions_if_exists('fr', 'set_match');
 CREATE OR REPLACE PROCEDURE fr.set_match(
-    file_path IN VARCHAR
-    , force IN BOOLEAN DEFAULT FALSE
+    file_path IN VARCHAR,
+    force IN BOOLEAN DEFAULT FALSE
 )
 AS
 $proc$
@@ -229,15 +229,15 @@ BEGIN
                 FROM
                     fr.address_match_result mr
                         CROSS JOIN fr.match_address(
-                                standardized_address => mr.standardized_address
-                            ) ma
+                            standardized_address => mr.standardized_address
+                        ) ma
                 WHERE
                     mr.id_request = $1
                 ORDER BY
-                      (mr.standardized_address).match_code_area
-                    , (mr.standardized_address).match_code_street
-                    , (mr.standardized_address).match_code_housenumber
-                    , (mr.standardized_address).match_code_complement
+                    (mr.standardized_address).match_code_area,
+                    (mr.standardized_address).match_code_street,
+                    (mr.standardized_address).match_code_housenumber,
+                    (mr.standardized_address).match_code_complement
 
             )
             UPDATE fr.address_match_result mr SET

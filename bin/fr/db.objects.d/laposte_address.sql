@@ -130,57 +130,57 @@ BEGIN
     _query := '
         SELECT
             -- ADDRESS
-              adresse.co_cea_determinant AS co_adr
-            , adresse.dt_reference AS dt_reference_adr
-            , adresse.co_niveau
-            , adresse.co_cea_parent AS co_adr_parent
-            , adresse.co_cea_l3 AS co_adr_l3
-            , adresse.co_cea_numero AS co_adr_numero
-            , adresse.co_cea_voie AS co_adr_voie
-            , adresse.co_cea_za AS co_adr_za
-            , adresse.fl_diffusable
-            , adresse.fl_active
+            adresse.co_cea_determinant AS co_adr,
+            adresse.dt_reference AS dt_reference_adr,
+            adresse.co_niveau,
+            adresse.co_cea_parent AS co_adr_parent,
+            adresse.co_cea_l3 AS co_adr_l3,
+            adresse.co_cea_numero AS co_adr_numero,
+            adresse.co_cea_voie AS co_adr_voie,
+            adresse.co_cea_za AS co_adr_za,
+            adresse.fl_diffusable,
+            adresse.fl_active,
 
             -- COMPLEMENT
-            , cdict.name AS lb_ligne3
-            , cdict.name_normalized AS lb_ligne3_normalise
-            , cdict.descriptors AS lb_ligne3_desc
+            cdict.name AS lb_ligne3,
+            cdict.name_normalized AS lb_ligne3_normalise,
+            cdict.descriptors AS lb_ligne3_desc,
 
             -- HOUSENUMBER
-            , numero.no_voie AS no_numero
-            , numero.lb_ext AS lb_extension_numero
-            --, numero.lb_abr_nn AS lb_extension_numero_abrege
+            numero.no_voie AS no_numero,
+            numero.lb_ext AS lb_extension_numero,
+            --numero.lb_abr_nn AS lb_extension_numero_abrege,
 
             -- STREET
-            , sdict.name AS lb_voie
-            , sdict.name_normalized AS lb_voie_normalise
-            , sdict.descriptors AS lb_voie_desc
+            sdict.name AS lb_voie,
+            sdict.name_normalized AS lb_voie_normalise,
+            sdict.descriptors AS lb_voie_desc,
 
             -- AREA
-            , za.co_postal AS co_postal
-            , za.lb_l5_nn AS lb_ligne5
-            , za.lb_ach_nn AS lb_acheminement
-            , za.co_insee_commune
-            , za.co_insee_commune_precedente
-            , za.co_insee_departement
-            , za.fl_active AS fl_active_za
+            za.co_postal AS co_postal,
+            za.lb_l5_nn AS lb_ligne5,
+            za.lb_ach_nn AS lb_acheminement,
+            za.co_insee_commune,
+            za.co_insee_commune_precedente,
+            za.co_insee_departement,
+            za.fl_active AS fl_active_za,
 
             -- XY
-            , coord.co_cea AS co_coord
-            , ''RAN''::VARCHAR AS co_source_coord
-            , coord.dt_reference AS dt_reference_coord
-            , coord.no_type_localisation AS no_type_localisation_coord
-            , coord.va_x AS x_natif_coord
-            , coord.va_y AS y_natif_coord
-            , coord.gm_coord
+            coord.co_cea AS co_coord,
+            ''RAN''::VARCHAR AS co_source_coord,
+            coord.dt_reference AS dt_reference_coord,
+            coord.no_type_localisation AS no_type_localisation_coord,
+            coord.va_x AS x_natif_coord,
+            coord.va_y AS y_natif_coord,
+            coord.gm_coord,
 
             -- DELIVERY
-            , rao.co_type AS rao_co_type
-            , rao.lb_libelle AS rao_lb_libelle
-            , rao.co_roc_site
-            , source_orga.code_regate AS rao_co_regate
-            , source_orga.libelle AS rao_libelle_site
-            , NULLIF(CONCAT(rao.co_type, rao.lb_libelle), '''') AS rao_co_tournee
+            rao.co_type AS rao_co_type,
+            rao.lb_libelle AS rao_lb_libelle,
+            rao.co_roc_site,
+            source_orga.code_regate AS rao_co_regate,
+            source_orga.libelle AS rao_libelle_site,
+            NULLIF(CONCAT(rao.co_type, rao.lb_libelle), '''') AS rao_co_tournee
         FROM
             fr.laposte_address adresse
                 LEFT OUTER JOIN fr.laposte_address_area za ON za.co_cea = adresse.co_cea_za
@@ -203,16 +203,16 @@ BEGIN
 
     DROP VIEW IF EXISTS fr.address_all_view CASCADE;
     EXECUTE CONCAT_WS(
-        ' '
-        , 'CREATE VIEW fr.address_all_view AS'
-        , _query
+        ' ',
+        'CREATE VIEW fr.address_all_view AS',
+        _query
     );
 
     DROP VIEW IF EXISTS fr.address_view CASCADE;
     EXECUTE CONCAT_WS(
-        ' '
-        , 'CREATE VIEW fr.address_view AS'
-        , _query
-        , 'WHERE adresse.fl_active AND adresse.fl_diffusable'
+        ' ',
+        'CREATE VIEW fr.address_view AS',
+        _query,
+        'WHERE adresse.fl_active AND adresse.fl_diffusable'
     );
 END $$;

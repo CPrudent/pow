@@ -4,8 +4,8 @@
 
 -- to store words, counters by descriptor, default descriptor, ranks
 CREATE TABLE IF NOT EXISTS fr.laposte_address_complement_membership (
-    word VARCHAR NOT NULL
-    , name_id INT NOT NULL
+    word VARCHAR NOT NULL,
+    name_id INT NOT NULL
 )
 ;
 
@@ -21,8 +21,8 @@ $proc$ LANGUAGE plpgsql;
 -- build membership of all words
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_complement_membership');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_complement_membership(
-    set_case IN VARCHAR DEFAULT 'CREATION'                  -- CREATION | CORRECTION
-    , listof IN INT[] DEFAULT NULL
+    set_case IN VARCHAR DEFAULT 'CREATION',                 -- CREATION | CORRECTION
+    listof IN INT[] DEFAULT NULL
 )
 AS
 $proc$
@@ -56,14 +56,14 @@ BEGIN
     CALL public.log_info(CONCAT(' ', _info));
     _query := '
         INSERT INTO fr.laposte_address_complement_membership(
-            word
-            , name_id
+            word,
+            name_id
         )
         WITH
         split_as_word AS (
             SELECT
-                w.word
-                , u.id
+                w.word,
+                u.id
             FROM
                 fr.laposte_address_complement_uniq u
                     INNER JOIN LATERAL UNNEST(u.words) AS w(word) ON TRUE
@@ -71,15 +71,15 @@ BEGIN
         '
         ;
     IF set_case = 'CORRECTION' THEN
-        _query := CONCAT(_query
-            , '
+        _query := CONCAT(_query,
+            '
             u.id = ANY($1)
             AND
             '
         );
     END IF;
-    _query := CONCAT(_query
-        , '
+    _query := CONCAT(_query,
+        '
             -- except: article
             NOT fr.is_normalized_article(w.word)
         )

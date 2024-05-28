@@ -90,43 +90,43 @@ BEGIN
     _query := '
         SELECT
             -- STREET
-              street.co_cea AS co_adr
-            , street.dt_reference AS dt_reference_adr
-            , street.co_voie
-            , dict.name lb_voie
-            , dict.name_normalized lb_voie_normalise
-            , dict.descriptors lb_voie_desc
-            , street.fl_active
+            street.co_cea AS co_adr,
+            street.dt_reference AS dt_reference_adr,
+            street.co_voie,
+            dict.name lb_voie,
+            dict.name_normalized lb_voie_normalise,
+            dict.descriptors lb_voie_desc,
+            street.fl_active,
 
             -- ADDRESS
-            , area.co_cea AS co_adr_za
-            , area.co_postal
-            , area.lb_l5_nn AS lb_ligne5
-            , area.lb_ach_nn AS lb_acheminement
-            , area.co_insee_commune
-            , area.co_insee_commune_precedente
-            , area.co_insee_departement
-            , area.fl_active AS fl_active_za
+            area.co_cea AS co_adr_za,
+            area.co_postal,
+            area.lb_l5_nn AS lb_ligne5,
+            area.lb_ach_nn AS lb_acheminement,
+            area.co_insee_commune,
+            area.co_insee_commune_precedente,
+            area.co_insee_departement,
+            area.fl_active AS fl_active_za,
 
             -- XY
-            , xy.dt_reference AS dt_reference_coord
-            , xy.gm_coord
-            , xy.no_type_localisation AS no_type_localisation_coord
-            , xy.va_x AS x_natif_coord
-            , xy.va_y AS y_natif_coord
-            , fr.get_srid_from_department_code(fr.get_department_code_from_municipality_code(xy.co_insee)) AS srid_natif_coord
-            , ST_SetSRID(
-                ST_MakePoint(xy.va_x, xy.va_y)
-                , fr.get_srid_from_department_code(fr.get_department_code_from_municipality_code(xy.co_insee))
-            ) AS gm_coord_native_ran
+            xy.dt_reference AS dt_reference_coord,
+            xy.gm_coord,
+            xy.no_type_localisation AS no_type_localisation_coord,
+            xy.va_x AS x_natif_coord,
+            xy.va_y AS y_natif_coord,
+            fr.get_srid_from_department_code(fr.get_department_code_from_municipality_code(xy.co_insee)) AS srid_natif_coord,
+            ST_SetSRID(
+                ST_MakePoint(xy.va_x, xy.va_y),
+                fr.get_srid_from_department_code(fr.get_department_code_from_municipality_code(xy.co_insee))
+            ) AS gm_coord_native_ran,
 
             -- DELIVERY
-            , delivery.co_type AS rao_co_type
-            , delivery.lb_libelle AS rao_lb_libelle
-            , delivery.co_roc_site
-            , org.code_regate AS rao_co_regate
-            , org.libelle AS rao_libelle_site
-            , NULLIF(CONCAT(delivery.co_type, delivery.lb_libelle), '''') AS rao_co_tournee
+            delivery.co_type AS rao_co_type,
+            delivery.lb_libelle AS rao_lb_libelle,
+            delivery.co_roc_site,
+            org.code_regate AS rao_co_regate,
+            org.libelle AS rao_libelle_site,
+            NULLIF(CONCAT(delivery.co_type, delivery.lb_libelle), '''') AS rao_co_tournee
         FROM
             fr.laposte_address_street street
                 JOIN fr.laposte_address address ON address.co_cea_determinant = street.co_cea
@@ -140,35 +140,35 @@ BEGIN
 
     DROP VIEW IF EXISTS fr.street_all_view CASCADE;
     EXECUTE CONCAT_WS(
-        ' '
-        , 'CREATE VIEW fr.street_all_view AS'
-        , _query
+        ' ',
+        'CREATE VIEW fr.street_all_view AS',
+        _query
     );
     DROP VIEW IF EXISTS fr.street_view CASCADE;
     EXECUTE CONCAT_WS(
-        ' '
-        , 'CREATE VIEW fr.street_view AS'
-        , _query
-        , 'WHERE street.fl_active AND street.fl_diffusable'
+        ' ',
+        'CREATE VIEW fr.street_view AS',
+        _query,
+        'WHERE street.fl_active AND street.fl_diffusable'
     );
 
     _query := '
         SELECT
             -- STREET
-              dict.id
-            , dict.name
-            , dict.descriptors
-            , dict.as_words
-            , dict.name_normalized
-            , dict.descriptors_normalized
-            , dict.as_words_normalized
-            , dict.occurs
-            , dict.words
-            , dict.nwords
+            dict.id,
+            dict.name,
+            dict.descriptors,
+            dict.as_words,
+            dict.name_normalized,
+            dict.descriptors_normalized,
+            dict.as_words_normalized,
+            dict.occurs,
+            dict.words,
+            dict.nwords,
 
             -- ADDRESS
-            , address.co_cea_determinant AS co_adr
-            , address.co_cea_za AS co_adr_za
+            address.co_cea_determinant AS co_adr,
+            address.co_cea_za AS co_adr_za
         FROM
             fr.laposte_address_street_uniq dict
                 JOIN fr.laposte_address_street_reference ref ON dict.id = ref.name_id
@@ -176,9 +176,9 @@ BEGIN
     ';
     DROP VIEW IF EXISTS fr.street_dict_view CASCADE;
     EXECUTE CONCAT_WS(
-        ' '
-        , 'CREATE VIEW fr.street_dict_view AS'
-        , _query
+        ' ',
+        'CREATE VIEW fr.street_dict_view AS',
+        _query
     );
 END
 $$;

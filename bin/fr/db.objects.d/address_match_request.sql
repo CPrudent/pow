@@ -3,15 +3,15 @@
  */
 
 CREATE TABLE IF NOT EXISTS fr.address_match_request (
-    id SERIAL NOT NULL
-    , file_path VARCHAR NOT NULL
-    , date_create TIMESTAMP NOT NULL
-    , suffix VARCHAR NOT NULL
-    , is_normalized BOOLEAN DEFAULT FALSE
-    , is_match_code BOOLEAN DEFAULT FALSE
-    , is_match_element BOOLEAN DEFAULT FALSE
-    , is_match_address BOOLEAN DEFAULT FALSE
-    , parameters HSTORE
+    id SERIAL NOT NULL,
+    file_path VARCHAR NOT NULL,
+    date_create TIMESTAMP NOT NULL,
+    suffix VARCHAR NOT NULL,
+    is_normalized BOOLEAN DEFAULT FALSE,
+    is_match_code BOOLEAN DEFAULT FALSE,
+    is_match_element BOOLEAN DEFAULT FALSE,
+    is_match_address BOOLEAN DEFAULT FALSE,
+    parameters HSTORE
 );
 
 DO $$
@@ -41,11 +41,11 @@ CREATE UNIQUE INDEX IF NOT EXISTS iux_address_match_request_id ON fr.address_mat
 -- add request (if not exists)
 SELECT drop_all_functions_if_exists('fr', 'add_match_request');
 CREATE OR REPLACE FUNCTION fr.add_match_request(
-    file_path IN VARCHAR
-    , parameters IN HSTORE DEFAULT NULL
-    , suffix INOUT VARCHAR DEFAULT NULL     -- loaded data, as address_match_<SUFFIX>
-    , id OUT INT                            -- ID request
-    , new_request OUT BOOLEAN
+    file_path IN VARCHAR,
+    parameters IN HSTORE DEFAULT NULL,
+    suffix INOUT VARCHAR DEFAULT NULL,    -- loaded data, as address_match_<SUFFIX>
+    id OUT INT,                           -- ID request
+    new_request OUT BOOLEAN
 )
 AS $$
 DECLARE
@@ -53,11 +53,11 @@ DECLARE
     _suffix VARCHAR;
 BEGIN
     SELECT
-          mr.id
-        , mr.suffix
+        mr.id,
+        mr.suffix
     INTO
-          _id
-        , _suffix
+        _id,
+        _suffix
     FROM
         fr.address_match_request mr
     WHERE
@@ -70,23 +70,23 @@ BEGIN
         new_request := FALSE;
     ELSE
         INSERT INTO fr.address_match_request(
-              file_path
-            , parameters
-            , date_create
-            , suffix
+            file_path,
+            parameters,
+            date_create,
+            suffix
         )
         VALUES(
-              add_match_request.file_path
-            , add_match_request.parameters
-            , NOW()
-            , COALESCE(add_match_request.suffix, MD5(file_path))
+            add_match_request.file_path,
+            add_match_request.parameters,
+            NOW(),
+            COALESCE(add_match_request.suffix, MD5(file_path))
         )
         RETURNING
-              address_match_request.id
-            , address_match_request.suffix
+            address_match_request.id,
+            address_match_request.suffix
         INTO
-              add_match_request.id
-            , add_match_request.suffix
+            add_match_request.id,
+            add_match_request.suffix
             ;
         new_request := TRUE;
     END IF;

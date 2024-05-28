@@ -8,14 +8,14 @@ DROP TABLE IF EXISTS fr.laposte_address_street_word;
 DO $$
 BEGIN
     IF table_exists(
-            schema_name => 'fr'
-            , table_name => 'laposte_address_street_word_descriptor'
+            schema_name => 'fr',
+            table_name => 'laposte_address_street_word_descriptor'
         )
         AND
         NOT column_exists(
-            schema_name => 'fr'
-            , table_name => 'laposte_address_street_word_descriptor'
-            , column_name => 'as_last'
+            schema_name => 'fr',
+            table_name => 'laposte_address_street_word_descriptor',
+            column_name => 'as_last'
         ) THEN
         DROP TABLE fr.laposte_address_street_word_descriptor;
     END IF;
@@ -24,18 +24,18 @@ END $$;
 -- to store words, counters by descriptor, default descriptor, ranks
 -- Query returned successfully in 11 secs 584 msec.
 CREATE TABLE IF NOT EXISTS fr.laposte_address_street_word_descriptor (
-    word VARCHAR NOT NULL
-    , as_default CHAR(1)
-    , as_article INT            -- A
-    , as_number INT             -- C
-    , as_reserved INT           -- E
-    , as_name INT               -- N
-    , as_last INT               -- N (at end of name)
-    , as_fname INT              -- P
-    , as_title INT              -- T
-    , as_type INT               -- V
-    , rank_0 INT                -- for all
-    , rank_1 INT                -- partition by descriptor
+    word VARCHAR NOT NULL,
+    as_default CHAR(1),
+    as_article INT,            -- A
+    as_number INT,             -- C
+    as_reserved INT,           -- E
+    as_name INT,               -- N
+    as_last INT,               -- N (at end of name)
+    as_fname INT,              -- P
+    as_title INT,              -- T
+    as_type INT,               -- V
+    rank_0 INT,                -- for all
+    rank_1 INT                 -- partition by descriptor
 )
 ;
 
@@ -75,42 +75,41 @@ BEGIN
 
     CALL public.log_info(' Initialisation');
     INSERT INTO fr.laposte_address_street_word_descriptor(
-        word
-        , as_article
-        , as_number
-        , as_reserved
-        , as_name
-        , as_last
-        , as_fname
-        , as_title
-        , as_type
+        word,
+        as_article,
+        as_number,
+        as_reserved,
+        as_name,
+        as_last,
+        as_fname,
+        as_title,
+        as_type
     )
     -- #371536
     WITH
     split_as_word AS (
         SELECT
-            w.word
-            , SUBSTR(u.descriptors, w.i::INT, 1) descriptor
-            , w.i::INT
-            , u.nwords
+            w.word,
+            SUBSTR(u.descriptors, w.i::INT, 1) descriptor,
+            w.i::INT,
+            u.nwords
         FROM
             fr.laposte_address_street_uniq u
                 INNER JOIN LATERAL UNNEST(u.words) WITH ORDINALITY AS w(word, i) ON TRUE
-    )
-    , word_with_descriptor AS (
+    ),
+    word_with_descriptor AS (
         SELECT
-            word
-            , SUM(CASE WHEN descriptor = 'A' THEN 1 ELSE 0 END) as_article
-            , SUM(CASE WHEN descriptor = 'C' THEN 1 ELSE 0 END) as_number
-            , SUM(CASE WHEN descriptor = 'E' THEN 1 ELSE 0 END) as_reserved
-            , SUM(CASE WHEN descriptor = 'N' AND i < nwords THEN 1 ELSE 0 END) as_name
-            , SUM(CASE WHEN descriptor = 'N' AND i = nwords THEN 1 ELSE 0 END) as_last
-            , SUM(CASE WHEN descriptor = 'P' THEN 1 ELSE 0 END) as_fname
-            , SUM(CASE WHEN descriptor = 'T' THEN 1 ELSE 0 END) as_title
-            , SUM(CASE WHEN descriptor = 'V' THEN 1 ELSE 0 END) as_type
+            word,
+            SUM(CASE WHEN descriptor = 'A' THEN 1 ELSE 0 END) as_article,
+            SUM(CASE WHEN descriptor = 'C' THEN 1 ELSE 0 END) as_number,
+            SUM(CASE WHEN descriptor = 'E' THEN 1 ELSE 0 END) as_reserved,
+            SUM(CASE WHEN descriptor = 'N' AND i < nwords THEN 1 ELSE 0 END) as_name,
+            SUM(CASE WHEN descriptor = 'N' AND i = nwords THEN 1 ELSE 0 END) as_last,
+            SUM(CASE WHEN descriptor = 'P' THEN 1 ELSE 0 END) as_fname,
+            SUM(CASE WHEN descriptor = 'T' THEN 1 ELSE 0 END) as_title,
+            SUM(CASE WHEN descriptor = 'V' THEN 1 ELSE 0 END) as_type
         FROM
             split_as_word
-
         WHERE
             -- to exclude row created w/ empty word
             LENGTH(word) > 0
@@ -139,8 +138,8 @@ BEGIN
     WITH
     word_rank AS (
         SELECT
-            word
-            , ROW_NUMBER() OVER (ORDER BY (
+            word,
+            ROW_NUMBER() OVER (ORDER BY (
                 as_name
                 + as_last
                 + as_reserved
@@ -149,8 +148,8 @@ BEGIN
                 + as_fname
                 + as_title
                 + as_type
-            ) DESC) rank_0
-            , ROW_NUMBER() OVER (PARTITION BY as_default ORDER BY (
+            ) DESC) rank_0,
+            ROW_NUMBER() OVER (PARTITION BY as_default ORDER BY (
                 CASE
                 WHEN as_default = 'A' THEN as_article
                 WHEN as_default = 'C' THEN as_number
@@ -165,8 +164,8 @@ BEGIN
            fr.laposte_address_street_word_descriptor
     )
     UPDATE fr.laposte_address_street_word_descriptor w SET
-        rank_0 = r.rank_0
-        , rank_1 = r.rank_1
+        rank_0 = r.rank_0,
+        rank_1 = r.rank_1
         FROM word_rank r
         WHERE
             w.word = r.word
@@ -219,8 +218,8 @@ ORDER BY
 SELECT drop_all_functions_if_exists('fr', 'fr.get_default_of_word');
 SELECT drop_all_functions_if_exists('fr', 'fr.get_default_of_street_word');
 CREATE OR REPLACE FUNCTION fr.get_default_of_street_word(
-    word IN VARCHAR
-    , as_default OUT VARCHAR
+    word IN VARCHAR,
+    as_default OUT VARCHAR
 )
 AS
 $func$

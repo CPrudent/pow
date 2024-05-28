@@ -5,10 +5,10 @@
 -- get value of similarity parameters (threshold, ratio)
 SELECT drop_all_functions_if_exists('fr', 'get_similarity_property');
 CREATE OR REPLACE FUNCTION fr.get_similarity_property(
-      similarity IN HSTORE
-    , level IN VARCHAR
-    , key IN VARCHAR
-    , value OUT REAL
+    similarity IN HSTORE,
+    level IN VARCHAR,
+    key IN VARCHAR,
+    value OUT REAL
 )
 AS
 $func$
@@ -20,11 +20,11 @@ BEGIN
         /* NOTE
         get from global variables (defined in constant.sql)
          */
-        _property := CONCAT_WS('.'
-            , 'fr'
-            , 'similarity'
-            , LOWER(level)
-            , LOWER(key)
+        _property := CONCAT_WS('.',
+            'fr',
+            'similarity',
+            LOWER(level),
+            LOWER(key)
         );
         _value := (SELECT (CURRENT_SETTING(_property)));
         IF LENGTH(TRIM(_value)) > 0 THEN
@@ -34,9 +34,9 @@ BEGIN
         /* NOTE
         HSTORE property as LEVEL_KEY => VALUE
          */
-        value := (similarity -> CONCAT_WS('_'
-            , UPPER(level)
-            , UPPER(key)
+        value := (similarity -> CONCAT_WS('_',
+            UPPER(level),
+            UPPER(key)
         ))::REAL;
     END IF;
 END
@@ -45,8 +45,8 @@ $func$ LANGUAGE plpgsql;
 -- weighted factor to differentiate word (with its descriptor)
 SELECT drop_all_functions_if_exists('fr', 'get_descriptor_factor');
 CREATE OR REPLACE FUNCTION fr.get_descriptor_factor(
-      descriptor IN VARCHAR
-    , descriptor_factor OUT REAL
+    descriptor IN VARCHAR,
+    descriptor_factor OUT REAL
 )
 AS
 $func$
@@ -64,12 +64,12 @@ $func$ LANGUAGE plpgsql;
 -- find better word according to (similarity, rarity and descriptor)
 SELECT drop_all_functions_if_exists('fr', 'get_better_word_with_similarity_criteria');
 CREATE OR REPLACE FUNCTION fr.get_better_word_with_similarity_criteria(
-      level IN VARCHAR
-    , words IN TEXT[]
-    , zone IN VARCHAR
-    , codes IN VARCHAR[]
-    , raise_notice IN BOOLEAN DEFAULT FALSE
-    , better_word OUT TEXT
+    level IN VARCHAR,
+    words IN TEXT[],
+    zone IN VARCHAR,
+    codes IN VARCHAR[],
+    raise_notice IN BOOLEAN DEFAULT FALSE,
+    better_word OUT TEXT
 )
 AS
 $func$
@@ -105,11 +105,11 @@ BEGIN
         WITH
         similarity_word(i, word, similarity, rank, descriptor_factor) AS (
             SELECT
-                  w.i
-                , wl.word
-                , get_similarity(wl.word, w.word)
-                , wl.rank
-                , fr.get_descriptor_factor(wd.as_default)
+                w.i,
+                wl.word,
+                get_similarity(wl.word, w.word),
+                wl.rank,
+                fr.get_descriptor_factor(wd.as_default)
             FROM
                 fr.laposte_address_', _level_low, '_word_level wl
                     -- remember: w/o article
@@ -143,11 +143,11 @@ https://stackoverflow.com/questions/40078047/sql-weighted-average
  */
 SELECT drop_all_functions_if_exists('fr', 'get_similarity_words');
 CREATE OR REPLACE FUNCTION fr.get_similarity_words(
-      words_a IN TEXT[]
-    , words_b IN TEXT[]
-    , descriptors_a IN VARCHAR
-    , descriptors_b IN VARCHAR
-    , similarity OUT NUMERIC
+    words_a IN TEXT[],
+    words_b IN TEXT[],
+    descriptors_a IN VARCHAR,
+    descriptors_b IN VARCHAR,
+    similarity OUT NUMERIC
 )
 AS
 $func$
@@ -158,15 +158,15 @@ BEGIN
     FROM (
         SELECT
             -- rename other than similarity (else error?)
-            get_similarity(word1, word2) sim
-            , RANK() OVER (PARTITION BY i1 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_1
-            , RANK() OVER (PARTITION BY i2 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_2
+            get_similarity(word1, word2) sim,
+            RANK() OVER (PARTITION BY i1 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_1,
+            RANK() OVER (PARTITION BY i2 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_2
         FROM (
             SELECT
-                a.word word1
-                , a.i i1
-                , b.word word2
-                , b.i i2
+                a.word word1,
+                a.i i1,
+                b.word word2,
+                b.i i2
             FROM (
                     UNNEST(words_a) WITH ORDINALITY AS w1(word, i)
                         JOIN LATERAL UNNEST(STRING_TO_ARRAY(descriptors_a, NULL))
@@ -193,21 +193,21 @@ BEGIN
         similarity_streets AS (
             SELECT
                 /*
-                word1
-                , i1
-                , word2
-                , i2
+                word1,
+                i1,
+                word2,
+                i2
 
-                , */
-                get_similarity(word1, word2) similarity
-                , RANK() OVER (PARTITION BY i1 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_1
-                , RANK() OVER (PARTITION BY i2 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_2
+                */
+                get_similarity(word1, word2) similarity,
+                RANK() OVER (PARTITION BY i1 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_1,
+                RANK() OVER (PARTITION BY i2 ORDER BY get_similarity(word1, word2) DESC) best_order_similarity_2
             FROM (
                 SELECT
-                    a.word word1
-                    , a.i i1
-                    , b.word word2
-                    , b.i i2
+                    a.word word1,
+                    a.i i1,
+                    b.word word2,
+                    b.i i2
                 FROM
                 (
                     UNNEST(words_a) WITH ORDINALITY AS w1(word, i)
@@ -236,10 +236,10 @@ $func$ LANGUAGE plpgsql;
 /* FROM BCAA
 SELECT drop_all_functions_if_exists('fr', 'get_similarity_street_with_rarity');
 CREATE OR REPLACE FUNCTION fr.get_similarity_street_with_rarity(
-    name IN VARCHAR
-    , code_address_compare_to IN CHAR(10)
-    , municipality_code IN CHAR(5) DEFAULT NULL
-    , similarity OUT NUMERIC
+    name IN VARCHAR,
+    code_address_compare_to IN CHAR(10),
+    municipality_code IN CHAR(5) DEFAULT NULL,
+    similarity OUT NUMERIC
 )
 SET client_min_messages = error
 AS
@@ -258,8 +258,8 @@ BEGIN
 
     --DROP TABLE IF EXISTS tmp_municipality_words;
     CREATE TEMPORARY TABLE IF NOT EXISTS tmp_municipality_words (
-        municipality_code CHAR(5) NOT NULL
-        , words TEXT[]
+        municipality_code CHAR(5) NOT NULL,
+        words TEXT[]
     );
     CREATE UNIQUE INDEX IF NOT EXISTS ix_tmp_municipality_words_code ON tmp_municipality_words(municipality_code);
     BEGIN
@@ -278,8 +278,8 @@ BEGIN
             FROM
             (
                 SELECT
-                    sw.word
-                    , COUNT(*) nb
+                    sw.word,
+                    COUNT(*) nb
                 FROM fr.street_view s
                     JOIN fr.laposte_address_street_reference sr ON sr.address_id = s.co_adr
                     -- TODO: add number!
@@ -320,8 +320,8 @@ BEGIN
                 mot
                 ,ordre
                 ,rarete AS rarete
-                ,COALESCE(proportion_rarete
-                    , (rarete / (SUM(rarete) OVER ())) - (SUM(proportion_rarete) OVER ())
+                ,COALESCE(proportion_rarete,
+                    (rarete / (SUM(rarete) OVER ())) - (SUM(proportion_rarete) OVER ())
                 ) AS proportion_rarete
             FROM
             (
@@ -389,11 +389,11 @@ $func$ LANGUAGE plpgsql;
 
 SELECT drop_all_functions_if_exists('fr', 'get_similarity_street');
 CREATE OR REPLACE FUNCTION fr.get_similarity_street(
-    name IN VARCHAR
-    , code_address_compare_to IN CHAR(10)
-    , name_compare_to IN VARCHAR
-    , municipality_code IN CHAR(5) DEFAULT NULL
-    , similarity OUT NUMERIC
+    name IN VARCHAR,
+    code_address_compare_to IN CHAR(10),
+    name_compare_to IN VARCHAR,
+    municipality_code IN CHAR(5) DEFAULT NULL,
+    similarity OUT NUMERIC
 )
 AS
 $func$

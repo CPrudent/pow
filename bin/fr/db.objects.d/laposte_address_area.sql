@@ -18,21 +18,21 @@ END $AREA$;
 
 -- address-area with history (date & type of last change)
 CREATE TABLE IF NOT EXISTS fr.laposte_address_area (
-    co_cea CHAR(10) NOT NULL
-    , dt_reference DATE NOT NULL
-    , co_mouvement CHAR(1) NOT NULL
-    , fl_active BOOLEAN NOT NULL
-    , co_postal CHARACTER VARYING(5) NOT NULL
-    , co_insee_commune CHAR(5) NOT NULL
-    , co_insee_commune_precedente CHAR(5)
-    , lb_in_ext_loc CHARACTER VARYING(72) NOT NULL
-    , lb_nn CHARACTER VARYING(38) NOT NULL
-    , lb_l5_nn CHARACTER VARYING(38) NULL
-    , lb_ach_nn CHARACTER VARYING(38) NOT NULL
-    , dt_reference_commune DATE NOT NULL
-    , co_insee_commune_ran CHAR(5) NOT NULL
-    , co_insee_commune_precedente_ran CHAR(5)
-    , co_insee_departement VARCHAR(3) NOT NULL
+    co_cea CHAR(10) NOT NULL,
+    dt_reference DATE NOT NULL,
+    co_mouvement CHAR(1) NOT NULL,
+    fl_active BOOLEAN NOT NULL,
+    co_postal CHARACTER VARYING(5) NOT NULL,
+    co_insee_commune CHAR(5) NOT NULL,
+    co_insee_commune_precedente CHAR(5),
+    lb_in_ext_loc CHARACTER VARYING(72) NOT NULL,
+    lb_nn CHARACTER VARYING(38) NOT NULL,
+    lb_l5_nn CHARACTER VARYING(38) NULL,
+    lb_ach_nn CHARACTER VARYING(38) NOT NULL,
+    dt_reference_commune DATE NOT NULL,
+    co_insee_commune_ran CHAR(5) NOT NULL,
+    co_insee_commune_precedente_ran CHAR(5),
+    co_insee_departement VARCHAR(3) NOT NULL
 );
 
 -- manual VACUUM
@@ -125,32 +125,32 @@ BEGIN
     -- create views
     _query := '
         SELECT
-              area.co_cea AS co_adr
-            , area.dt_reference AS dt_reference_adr
-            , area.co_postal
-            , area.lb_l5_nn AS lb_ligne5
-            , area.lb_ach_nn AS lb_acheminement
-            , area.co_insee_commune
-            , area.co_insee_commune_precedente
-            , area.co_insee_departement
-            , area.fl_active
-            , area.dt_reference_commune
+            area.co_cea AS co_adr,
+            area.dt_reference AS dt_reference_adr,
+            area.co_postal,
+            area.lb_l5_nn AS lb_ligne5,
+            area.lb_ach_nn AS lb_acheminement,
+            area.co_insee_commune,
+            area.co_insee_commune_precedente,
+            area.co_insee_departement,
+            area.fl_active,
+            area.dt_reference_commune
         FROM
             fr.laposte_address_area area
     ';
 
     DROP VIEW IF EXISTS fr.area_all_view CASCADE;
     EXECUTE CONCAT_WS(
-          ' '
-        , 'CREATE VIEW fr.area_all_view AS'
-        , _query
+        ' ',
+        'CREATE VIEW fr.area_all_view AS',
+        _query
     );
     DROP VIEW IF EXISTS fr.area_view CASCADE;
     EXECUTE CONCAT_WS(
-          ' '
-        , 'CREATE VIEW fr.area_view AS'
-        , _query
-        , 'WHERE area.fl_active'
+        ' ',
+        'CREATE VIEW fr.area_view AS',
+        _query,
+        'WHERE area.fl_active'
     );
 END
 $$;

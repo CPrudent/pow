@@ -8,10 +8,10 @@ initialization will be done w/ constant
 
 -- to store uniq number (as dictionary of housenumber)
 CREATE TABLE IF NOT EXISTS fr.laposte_address_housenumber_uniq (
-    id SERIAL NOT NULL
-    , number INT NOT NULL
-    , extension VARCHAR
-    , occurs INT
+    id SERIAL NOT NULL,
+    number INT NOT NULL,
+    extension VARCHAR,
+    occurs INT
 )
 ;
 
@@ -48,23 +48,23 @@ BEGIN
 
     CALL public.log_info(' Initialisation');
     INSERT INTO fr.laposte_address_housenumber_uniq(
-          number
-        , extension
-        , occurs
+        number,
+        extension,
+        occurs
     )
     WITH
     number_uniq AS (
         SELECT
-              no_voie
-            , lb_ext
-            , COUNT(*) occurs
+            no_voie,
+            lb_ext,
+            COUNT(*) occurs
         FROM
             fr.laposte_address_housenumber
         WHERE
             fl_active
         GROUP BY
-              no_voie
-            , lb_ext
+            no_voie,
+            lb_ext
     )
     SELECT * FROM number_uniq
     ;

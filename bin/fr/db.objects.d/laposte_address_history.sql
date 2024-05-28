@@ -3,11 +3,11 @@
  */
 
 CREATE TABLE IF NOT EXISTS fr.laposte_address_history (
-    code_address CHAR(10) NOT NULL          -- address ID
-    , date_change DATE NOT NULL
-    , change VARCHAR NOT NULL               -- defined into fr.constant (LAPOSTE_ADDRESS_CORRECTION)
-    , kind VARCHAR NOT NULL                 -- {ADDRESS, AREA, STREET, HOUSENUMBER, COMPLEMENT}
-    , values JSONB
+    code_address CHAR(10) NOT NULL,   -- address ID
+    date_change DATE NOT NULL,
+    change VARCHAR NOT NULL,          -- defined into fr.constant (LAPOSTE_ADDRESS_CORRECTION)
+    kind VARCHAR NOT NULL,            -- {ADDRESS, AREA, STREET, HOUSENUMBER, COMPLEMENT}
+    values JSONB
 )
 ;
 
@@ -23,18 +23,18 @@ $proc$ LANGUAGE plpgsql;
 -- add history for address faults
 SELECT drop_all_functions_if_exists('fr', 'add_history_address_fault');
 CREATE OR REPLACE FUNCTION fr.add_history_address_fault(
-    element IN VARCHAR                        -- AREA|STREET|HOUSENUMBER|COMPLEMENT
-    , column_update IN VARCHAR                -- column to change
-    , fault_name IN VARCHAR                   -- fault name
-    , fault_id IN INT                         -- fault ID
-    , column_with_new_value IN VARCHAR DEFAULT 'name'
-    , key_address IN VARCHAR DEFAULT 'co_cea'
-    , alias_address IN VARCHAR DEFAULT 'a'
-    , alias_fault IN VARCHAR DEFAULT 'f'
-    , alias_uniq IN VARCHAR DEFAULT 'u'
-    , alias_reference IN VARCHAR DEFAULT 'r'
-    , simulation IN BOOLEAN DEFAULT FALSE
-    , nrows OUT INT
+    element IN VARCHAR,                      -- AREA|STREET|HOUSENUMBER|COMPLEMENT
+    column_update IN VARCHAR,                -- column to change
+    fault_name IN VARCHAR,                   -- fault name
+    fault_id IN INT,                         -- fault ID
+    column_with_new_value IN VARCHAR DEFAULT 'name',
+    key_address IN VARCHAR DEFAULT 'co_cea',
+    alias_address IN VARCHAR DEFAULT 'a',
+    alias_fault IN VARCHAR DEFAULT 'f',
+    alias_uniq IN VARCHAR DEFAULT 'u',
+    alias_reference IN VARCHAR DEFAULT 'r',
+    simulation IN BOOLEAN DEFAULT FALSE,
+    nrows OUT INT
 )
 AS
 $func$
@@ -74,46 +74,46 @@ BEGIN
 
     _query := CONCAT('
         INSERT INTO fr.laposte_address_history (
-                code_address
-                , date_change
-                , change
-                , kind
-                , values
+                code_address,
+                date_change,
+                change,
+                kind,
+                values
             )
             SELECT
-            ', _key_address, '
-                , TIMEOFDAY()::DATE
-                , ', quote_literal(fault_name), '
-                , ', quote_literal(element), '
-                , ROW_TO_JSON(', alias_address, '.*)::JSONB
+            ', _key_address, ',
+                TIMEOFDAY()::DATE,
+                ', quote_literal(fault_name), ',
+                ', quote_literal(element), ',
+                ROW_TO_JSON(', alias_address, '.*)::JSONB
             FROM
             ', _table_address, ' ', alias_address, '
                 JOIN ', _table_reference, ' ', alias_reference, ' ON ', _key_address, ' = ', _key_reference, '
                 JOIN ', _table_uniq, ' ', alias_uniq, ' ON ', _join_uniq_reference
     );
     IF fault_id >= 0 THEN
-        _query := CONCAT(_query
-            , '
+        _query := CONCAT(_query,
+            '
                 JOIN fr.laposte_address_fault ', alias_fault, ' ON ', _join_uniq_fault
         );
     END IF;
-    _query := CONCAT(_query
-            , '
+    _query := CONCAT(_query,
+            '
             WHERE
             '
     );
     IF fault_id >= 0 THEN
-        _query := CONCAT(_query
-            , alias_fault, '.element = ', quote_literal(element), '
+        _query := CONCAT(_query,
+            alias_fault, '.element = ', quote_literal(element), '
                 AND
-                '
-            , alias_fault, '.fault_id = ', fault_id, '
+                ',
+            alias_fault, '.fault_id = ', fault_id, '
                 AND
                 '
         );
     END IF;
-    _query := CONCAT(_query
-            , _column_update, ' IS DISTINCT FROM ', _column_with_new_value, '
+    _query := CONCAT(_query,
+            _column_update, ' IS DISTINCT FROM ', _column_with_new_value, '
             AND
             -- not already exists
             NOT EXISTS(

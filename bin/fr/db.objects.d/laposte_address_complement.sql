@@ -91,23 +91,23 @@ BEGIN
     _query := '
         SELECT
             -- COMPLEMENT
-              complement.co_cea AS co_adr
-            , complement.dt_reference AS dt_reference_adr
-            , dict.name lb_ligne3
-            , dict.name_normalized lb_l3_normalise
-            , dict.descriptors lb_l3_desc
-            , complement.fl_active
+            complement.co_cea AS co_adr,
+            complement.dt_reference AS dt_reference_adr,
+            dict.name lb_ligne3,
+            dict.name_normalized lb_l3_normalise,
+            dict.descriptors lb_l3_desc,
+            complement.fl_active,
 
             -- ADDRESS
-            , address.co_cea_za AS co_adr_za
-            , address.co_cea_voie AS co_adr_voie
-            , address.co_cea_numero AS co_adr_numero
+            address.co_cea_za AS co_adr_za,
+            address.co_cea_voie AS co_adr_voie,
+            address.co_cea_numero AS co_adr_numero,
 
             -- AREA
-            , area.co_postal
-            , area.lb_l5_nn AS lb_ligne5
-            , area.lb_ach_nn AS lb_acheminement
-            , area.co_insee_commune
+            area.co_postal,
+            area.lb_l5_nn AS lb_ligne5,
+            area.lb_ach_nn AS lb_acheminement,
+            area.co_insee_commune
         FROM
             fr.laposte_address_complement complement
                 JOIN fr.laposte_address address ON address.co_cea_determinant = complement.co_cea
@@ -118,38 +118,38 @@ BEGIN
 
     DROP VIEW IF EXISTS fr.complement_all_view CASCADE;
     EXECUTE CONCAT_WS(
-        ' '
-        , 'CREATE VIEW fr.complement_all_view AS'
-        , _query
+        ' ',
+        'CREATE VIEW fr.complement_all_view AS',
+        _query
     );
     DROP VIEW IF EXISTS fr.complement_view CASCADE;
     EXECUTE CONCAT_WS(
-        ' '
-        , 'CREATE VIEW fr.complement_view AS'
-        , _query
-        , 'WHERE complement.fl_active AND complement.fl_diffusable'
+        ' ',
+        'CREATE VIEW fr.complement_view AS',
+        _query,
+        'WHERE complement.fl_active AND complement.fl_diffusable'
     );
 
     _query := '
         SELECT
             -- COMPLEMENT
-              dict.id
-            , dict.name
-            , dict.descriptors
-            , dict.as_words
-            , dict.as_groups
-            , dict.name_normalized
-            , dict.descriptors_normalized
-            , dict.as_words_normalized
-            , dict.occurs
-            , dict.words
-            , dict.nwords
+            dict.id,
+            dict.name,
+            dict.descriptors,
+            dict.as_words,
+            dict.as_groups,
+            dict.name_normalized,
+            dict.descriptors_normalized,
+            dict.as_words_normalized,
+            dict.occurs,
+            dict.words,
+            dict.nwords,
 
             -- ADDRESS
-            , address.co_cea_determinant AS co_adr
-            , address.co_cea_za AS co_adr_za
-            , address.co_cea_voie AS co_adr_voie
-            , address.co_cea_numero AS co_adr_numero
+            address.co_cea_determinant AS co_adr,
+            address.co_cea_za AS co_adr_za,
+            address.co_cea_voie AS co_adr_voie,
+            address.co_cea_numero AS co_adr_numero
         FROM
             fr.laposte_address_complement_uniq dict
                 JOIN fr.laposte_address_complement_reference ref ON dict.id = ref.name_id
@@ -157,9 +157,9 @@ BEGIN
     ';
     DROP VIEW IF EXISTS fr.complement_dict_view CASCADE;
     EXECUTE CONCAT_WS(
-        ' '
-        , 'CREATE VIEW fr.complement_dict_view AS'
-        , _query
+        ' ',
+        'CREATE VIEW fr.complement_dict_view AS',
+        _query
     );
 END
 $$;

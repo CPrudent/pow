@@ -15,17 +15,17 @@ END $$;
 
 -- to store uniq name (as dictionary of complement)
 CREATE TABLE IF NOT EXISTS fr.laposte_address_complement_uniq (
-    id SERIAL NOT NULL
-    , name VARCHAR NOT NULL
-    , descriptors VARCHAR
-    , as_words INT[]
-    , as_groups VARCHAR[]
-    , name_normalized VARCHAR
-    , descriptors_normalized VARCHAR
-    , as_words_normalized INT[]
-    , occurs INT
-    , words TEXT[]
-    , nwords INT
+    id SERIAL NOT NULL,
+    name VARCHAR NOT NULL,
+    descriptors VARCHAR,
+    as_words INT[],
+    as_groups VARCHAR[],
+    name_normalized VARCHAR,
+    descriptors_normalized VARCHAR,
+    as_words_normalized INT[],
+    occurs INT,
+    words TEXT[],
+    nwords INT
 )
 ;
 
@@ -77,33 +77,33 @@ BEGIN
         CALL public.log_info(' Initialisation');
         -- reminder: words, nwords are initiated by trigger
         INSERT INTO fr.laposte_address_complement_uniq(
-            name
-            , occurs
+            name,
+            occurs
         )
         WITH
         name_uniq AS (
             SELECT
-                CONCAT_WS(' '
-                    , lb_type_groupe1_l3
-                    , lb_groupe1
-                    , lb_type_groupe2_l3
-                    , lb_groupe2
-                    , lb_type_groupe3_l3
-                    , lb_groupe3
-                ) name
-                , COUNT(*) occurs
+                CONCAT_WS(' ',
+                    lb_type_groupe1_l3,
+                    lb_groupe1,
+                    lb_type_groupe2_l3,
+                    lb_groupe2,
+                    lb_type_groupe3_l3,
+                    lb_groupe3
+                ) name,
+                COUNT(*) occurs
             FROM
                 fr.laposte_address_complement
             WHERE
                 fl_active
             GROUP BY
-                CONCAT_WS(' '
-                    , lb_type_groupe1_l3
-                    , lb_groupe1
-                    , lb_type_groupe2_l3
-                    , lb_groupe2
-                    , lb_type_groupe3_l3
-                    , lb_groupe3
+                CONCAT_WS(' ',
+                    lb_type_groupe1_l3,
+                    lb_groupe1,
+                    lb_type_groupe2_l3,
+                    lb_groupe2,
+                    lb_type_groupe3_l3,
+                    lb_groupe3
                 )
         )
         SELECT * FROM name_uniq
@@ -123,13 +123,13 @@ BEGIN
         WITH
         name_attributs AS (
             SELECT
-                u.id
-                , nn.descriptors_as_words
-                , nn.name_normalized_as_words
-                , nn.descriptors_normalized_as_words
-                , nn.as_words
-                , nn.as_groups
-                , CASE
+                u.id,
+                nn.descriptors_as_words,
+                nn.name_normalized_as_words,
+                nn.descriptors_normalized_as_words,
+                nn.as_words,
+                nn.as_groups,
+                CASE
                     WHEN nn.name_normalized_as_words IS NOT NULL THEN
                         fr.get_as_words_from_splited_value(
                             property_as_words => nn.name_normalized_as_words
@@ -138,23 +138,23 @@ BEGIN
             FROM
                 fr.laposte_address_complement_uniq u
                     CROSS JOIN fr.normalize_name(
-                        element => 'COMPLEMENT'
-                        , name => u.name
+                        element => 'COMPLEMENT',
+                        name => u.name
                     ) nn
         )
         UPDATE fr.laposte_address_complement_uniq u SET
-            descriptors = ARRAY_TO_STRING(na.descriptors_as_words, '')
-            , as_words = na.as_words
-            , as_groups = na.as_groups
-            , name_normalized = CASE
+            descriptors = ARRAY_TO_STRING(na.descriptors_as_words, ''),
+            as_words = na.as_words,
+            as_groups = na.as_groups,
+            name_normalized = CASE
                 WHEN na.name_normalized_as_words IS NOT NULL THEN
                     ARRAY_TO_STRING(na.name_normalized_as_words, ' ')
-                END
-            , descriptors_normalized = CASE
+                END,
+            descriptors_normalized = CASE
                 WHEN na.name_normalized_as_words IS NOT NULL THEN
                     ARRAY_TO_STRING(na.descriptors_normalized_as_words, '')
-                END
-            , as_words_normalized = na.as_words_normalized
+                END,
+            as_words_normalized = na.as_words_normalized
             FROM
                 name_attributs na
             WHERE

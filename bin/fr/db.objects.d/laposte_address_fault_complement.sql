@@ -8,9 +8,9 @@ initialization will be done w/ constant
 
 -- to store fault
 CREATE TABLE IF NOT EXISTS fr.laposte_address_fault_complement (
-    name_id INT NOT NULL
-    , fault_id INT NOT NULL
-    , help_to_fix VARCHAR
+    name_id INT NOT NULL,
+    fault_id INT NOT NULL,
+    help_to_fix VARCHAR
 )
 ;
 
@@ -26,8 +26,8 @@ $proc$ LANGUAGE plpgsql;
 -- identify complement faults
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_fault_complement');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_fault_complement(
-    fault IN VARCHAR DEFAULT 'ALL'
-    , simulation IN BOOLEAN DEFAULT FALSE
+    fault IN VARCHAR DEFAULT 'ALL',
+    simulation IN BOOLEAN DEFAULT FALSE
 )
 AS
 $proc$
@@ -94,22 +94,22 @@ BEGIN
                             SELECT
                                 u.id
                             FROM
-                                fr.laposte_address_complement_uniq u
-                                , bad_space_in_name(
-                                    name => u.name
-                                    , test_only => TRUE
+                                fr.laposte_address_complement_uniq u,
+                                bad_space_in_name(
+                                    name => u.name,
+                                    test_only => TRUE
                                 ) bs
                             WHERE
                                 bs.to_fix
                         )
                         SELECT
                             u.id
-                            , ', _values[_fault_i]::INT, '
-                            , fix.name
+                            ', _values[_fault_i]::INT, ',
+                            fix.name
                         FROM
                             fr.laposte_address_complement_uniq u
-                                JOIN bad_space bs ON u.id = bs.id
-                            , bad_space_in_name(
+                                JOIN bad_space bs ON u.id = bs.id,
+                            bad_space_in_name(
                                 name => u.name
                             ) fix
                     '
@@ -121,60 +121,60 @@ BEGIN
                         -- true double words!
                         except_dup_words(word) AS (
                             VALUES
-                                  (''AH'')
-                                , (''BADEN'')
-                                , (''BIN'')
-                                , (''BLIN'')
-                                , (''BORA'')
-                                , (''BOUTSI'')
-                                , (''CACHE'')
-                                , (''CASSE'')
-                                , (''COLLES'')
-                                , (''COTTE'')
-                                , (''CRI'')
-                                , (''CUIS'')
-                                , (''FOU'')
-                                , (''FROUS'')
-                                , (''GABA'')
-                                , (''HA'')
-                                , (''JEAN'')
-                                , (''HOURA'')
-                                , (''MOUCOU'')
-                                , (''MOUKOUS'')
-                                , (''NOEL'')
-                                , (''PAUL'')
-                                , (''PEUT'')
-                                , (''PILI'')
-                                , (''PITE'')
-                                , (''PIOU'')
-                                , (''POC'')
-                                , (''POUSSE'')
-                                , (''PRIS'')
-                                , (''RENE'')
-                                , (''SOEURS'')
-                                , (''QUIN'')
-                                , (''TCHA'')
-                                , (''TCHAT'')
-                                , (''TECS'')
-                                , (''TRIN'')
-                                , (''TUIS'')
-                                , (''TUIT'')
-                                , (''TUITS'')
-                                , (''VALA'')
-                                , (''YLANG'')
-                                , (''YLANGS'')
-                        )
-                        , dup_words AS (
+                                (''AH''),
+                                (''BADEN''),
+                                (''BIN''),
+                                (''BLIN''),
+                                (''BORA''),
+                                (''BOUTSI''),
+                                (''CACHE''),
+                                (''CASSE''),
+                                (''COLLES''),
+                                (''COTTE''),
+                                (''CRI''),
+                                (''CUIS''),
+                                (''FOU''),
+                                (''FROUS''),
+                                (''GABA''),
+                                (''HA''),
+                                (''JEAN''),
+                                (''HOURA''),
+                                (''MOUCOU''),
+                                (''MOUKOUS''),
+                                (''NOEL''),
+                                (''PAUL''),
+                                (''PEUT''),
+                                (''PILI''),
+                                (''PITE''),
+                                (''PIOU''),
+                                (''POC''),
+                                (''POUSSE''),
+                                (''PRIS''),
+                                (''RENE''),
+                                (''SOEURS''),
+                                (''QUIN''),
+                                (''TCHA''),
+                                (''TCHAT''),
+                                (''TECS''),
+                                (''TRIN''),
+                                (''TUIS''),
+                                (''TUIT''),
+                                (''TUITS''),
+                                (''VALA''),
+                                (''YLANG''),
+                                (''YLANGS'')
+                        ),
+                        dup_words AS (
                             SELECT
-                                id
-                                , REGEXP_MATCHES(name, ''\m([ A-Z]+)\s+\1\M'') dup
+                                id,
+                                REGEXP_MATCHES(name, ''\m([ A-Z]+)\s+\1\M'') dup
                             FROM
                                 fr.laposte_address_complement_uniq
                         )
                         SELECT
-                            u.id
-                            , ', _values[_fault_i]::INT, '
-                            , d.dup[1]
+                            u.id,
+                            ', _values[_fault_i]::INT, ',
+                            d.dup[1]
                         FROM
                             fr.laposte_address_complement_uniq u
                                 JOIN dup_words d ON u.id = d.id
@@ -197,16 +197,16 @@ BEGIN
                         WITH
                         word_abbreviation(abbr) AS (
                             VALUES
-                                (''ST'')
-                                , (''STE'')
+                                (''ST''),
+                                (''STE'')
                         )
                         SELECT
-                            u.id
-                            , ', _values[_fault_i]::INT, '
-                            , wa.abbr
+                            u.id,
+                            ', _values[_fault_i]::INT, ',
+                            wa.abbr
                         FROM
-                            fr.laposte_address_complement_uniq u
-                            , word_abbreviation wa
+                            fr.laposte_address_complement_uniq u,
+                            word_abbreviation wa
                         WHERE
                             u.words @> ARRAY[wa.abbr]::TEXT[]
                     '
@@ -216,9 +216,9 @@ BEGIN
                 _query := CONCAT(
                     '
                         SELECT DISTINCT
-                            m.name_id
-                            , ', _values[_fault_i]::INT, '
-                            , m.word
+                            m.name_id,
+                            ', _values[_fault_i]::INT, ',
+                            m.word
                         FROM
                             fr.laposte_address_complement_membership m
                                 JOIN fr.laposte_address_complement_uniq u ON m.name_id = u.id
@@ -237,8 +237,8 @@ BEGIN
                 _query := CONCAT(
                     '
                     INSERT INTO fr.laposte_address_fault_complement
-                    '
-                    , _query
+                    ',
+                    _query
                 );
                 IF simulation THEN
                     RAISE NOTICE ' query=%', _query;
@@ -277,9 +277,9 @@ DROP INDEX IF EXISTS fr.iux_laposte_address_fault_complement_id
 -- fix complement-faults from list (manual corrections)
 SELECT drop_all_functions_if_exists('fr', 'fix_laposte_address_fault_complement_from_list');
 CREATE OR REPLACE FUNCTION fr.fix_laposte_address_fault_complement_from_list(
-    fault IN VARCHAR
-    , query_fix OUT TEXT
-    , simulation IN BOOLEAN DEFAULT FALSE
+    fault IN VARCHAR,
+    query_fix OUT TEXT,
+    simulation IN BOOLEAN DEFAULT FALSE
 )
 AS
 $func$
@@ -288,8 +288,8 @@ DECLARE
     _nrows INT;
 BEGIN
     _exists := table_exists(
-        schema_name => 'fr'
-        , table_name => 'laposte_address_fault_complement_correction'
+        schema_name => 'fr',
+        table_name => 'laposte_address_fault_complement_correction'
     );
     IF _exists THEN
         _nrows := (
@@ -314,9 +314,9 @@ $func$ LANGUAGE plpgsql;
 -- fix complement faults
 SELECT drop_all_functions_if_exists('fr', 'fix_laposte_address_fault_complement');
 CREATE OR REPLACE PROCEDURE fr.fix_laposte_address_fault_complement(
-    fault IN VARCHAR DEFAULT 'ALL'
-    , fix IN VARCHAR DEFAULT 'ALL'
-    , simulation IN BOOLEAN DEFAULT FALSE
+    fault IN VARCHAR DEFAULT 'ALL',
+    fix IN VARCHAR DEFAULT 'ALL',
+    simulation IN BOOLEAN DEFAULT FALSE
 )
 AS
 $proc$
@@ -395,11 +395,11 @@ BEGIN
                             fr.laposte_address_fault_complement
                         WHERE
                             fault_id = ', _fault_id, '
-                    )
-                    , not_abbreviated(abbr, name) AS (
+                    ),
+                    not_abbreviated(abbr, name) AS (
                         SELECT
-                            MIN(wa.word)
-                            , MIN(k.name)
+                            MIN(wa.word),
+                            MIN(k.name)
                         FROM
                             fr.laposte_address_keyword k
                                 JOIN word_abbreviation wa ON k.name_abbreviated = wa.word
@@ -416,14 +416,14 @@ BEGIN
                     )
                     UPDATE fr.laposte_address_complement_uniq u SET
                         name = REGEXP_REPLACE(
-                            u.name
-                            , CONCAT(''\m'', fs.help_to_fix, ''\M'')
-                            , na.name
-                            , ''g''
+                            u.name,
+                            CONCAT(''\m'', fs.help_to_fix, ''\M''),
+                            na.name,
+                            ''g''
                         )
                         FROM
-                            fr.laposte_address_fault_complement fs
-                            , not_abbreviated na
+                            fr.laposte_address_fault_complement fs,
+                            not_abbreviated na
                         WHERE
                             fs.fault_id = ', _values[_fault_i]::INT, '
                             AND
@@ -447,10 +447,10 @@ BEGIN
                     _column_with_new_value := 'CASE
                         WHEN u.descriptors ~ ''^V'' THEN
                             fr.get_property_ordinal_item(
-                                property_key => ''NAME''
-                                , property_value => u.name
-                                , as_words => u.as_words
-                                , ordinal => 1
+                                property_key => ''NAME'',
+                                property_value => u.name,
+                                as_words => u.as_words,
+                                ordinal => 1
                             )
                         END';
                 END IF;
@@ -473,12 +473,12 @@ BEGIN
                 SELECT nrows
                 INTO _nrows_history
                 FROM fr.add_history_address_fault(
-                    address_change => _keys[_fault_i]
-                    , address_element => _address_element
-                    , address_update_column => _address_update_column
-                    , fault_id => _fault_id
-                    , column_with_new_value => _column_with_new_value
-                    , simulation => simulation
+                    address_change => _keys[_fault_i],
+                    address_element => _address_element,
+                    address_update_column => _address_update_column,
+                    fault_id => _fault_id,
+                    column_with_new_value => _column_with_new_value,
+                    simulation => simulation
                 );
                 CALL public.log_info(CONCAT(' Insertion Historique (', _keys[_fault_i], '): ', _nrows_history));
 
@@ -486,12 +486,12 @@ BEGIN
                 SELECT nrows
                 INTO _nrows_referential
                 FROM fr.fix_laposte_address_fault(
-                    address_element => _address_element
-                    , address_join_column => _address_join_column
-                    , address_update_column => _address_update_column
-                    , fault_id => _fault_id
-                    , column_with_new_value => _column_with_new_value
-                    , simulation => simulation
+                    address_element => _address_element,
+                    address_join_column => _address_join_column,
+                    address_update_column => _address_update_column,
+                    fault_id => _fault_id,
+                    column_with_new_value => _column_with_new_value,
+                    simulation => simulation
                 );
                 CALL public.log_info(CONCAT(' Mise à jour Référentiel (', _keys[_fault_i], '): ', _nrows_referential));
 
@@ -594,9 +594,9 @@ Query returned successfully in 37 secs 436 msec.
 -- undo fix complement faults
 SELECT drop_all_functions_if_exists('fr', 'undo_laposte_address_fault_complement');
 CREATE OR REPLACE PROCEDURE fr.undo_laposte_address_fault_complement(
-    fault IN VARCHAR DEFAULT 'ALL'
-    , simulation IN BOOLEAN DEFAULT FALSE
-    , raise_notice IN BOOLEAN DEFAULT FALSE
+    fault IN VARCHAR DEFAULT 'ALL',
+    simulation IN BOOLEAN DEFAULT FALSE,
+    raise_notice IN BOOLEAN DEFAULT FALSE
 )
 AS
 $proc$

@@ -3,14 +3,14 @@
  */
 
 CREATE TABLE IF NOT EXISTS fr.bal_street (
-    id_bal_voie VARCHAR NOT NULL
-    , type_voie VARCHAR NOT NULL
-    , libelle_voie VARCHAR NOT NULL
-    , nb_numeros_certifies INTEGER NOT NULL
-    , id_bal_commune VARCHAR NOT NULL
-    , libelle_commune VARCHAR NOT NULL
-    , co_insee_commune VARCHAR NOT NULL
-    , dt_derniere_maj TIMESTAMP WITHOUT TIME ZONE NOT NULL
+    id_bal_voie VARCHAR NOT NULL,
+    type_voie VARCHAR NOT NULL,
+    libelle_voie VARCHAR NOT NULL,
+    nb_numeros_certifies INTEGER NOT NULL,
+    id_bal_commune VARCHAR NOT NULL,
+    libelle_commune VARCHAR NOT NULL,
+    co_insee_commune VARCHAR NOT NULL,
+    dt_derniere_maj TIMESTAMP WITHOUT TIME ZONE NOT NULL
 );
 
 SELECT drop_all_functions_if_exists('fr', 'set_bal_street_index');

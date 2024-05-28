@@ -559,7 +559,7 @@ CREATE OR REPLACE FUNCTION fr.exec_query_match(
     search IN VARCHAR,
     parameters IN INT,
     standardized_address IN fr.standardized_address,
-    , match_parameters IN fr.match_parameters
+    match_parameters IN fr.match_parameters
 )
 RETURNS SETOF RECORD
 AS

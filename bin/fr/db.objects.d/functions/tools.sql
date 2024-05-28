@@ -10,11 +10,11 @@ get value of parameters (threshold, ratio, ...) as real
  */
 SELECT drop_all_functions_if_exists('fr', 'get_parameter_value');
 CREATE OR REPLACE FUNCTION fr.get_parameter_value(
-    parameters IN HSTORE
-    , category IN VARCHAR
-    , level IN VARCHAR
-    , key IN VARCHAR
-    , value OUT REAL
+    parameters IN HSTORE,
+    category IN VARCHAR,
+    level IN VARCHAR,
+    key IN VARCHAR,
+    value OUT REAL
 )
 AS
 $func$
@@ -25,9 +25,9 @@ BEGIN
     /* NOTE
     HSTORE property as LEVEL_KEY => VALUE
      */
-    _property := CONCAT_WS('_'
-        , UPPER(level)
-        , UPPER(key)
+    _property := CONCAT_WS('_',
+        UPPER(level),
+        UPPER(key)
     );
     IF parameters IS NOT NULL AND parameters ? _property THEN
         value := (parameters -> _property)::REAL;
@@ -35,11 +35,11 @@ BEGIN
         /* NOTE
         as default, from global variables (defined in constant.sql)
          */
-        _property := CONCAT_WS('.'
-            , 'fr'
-            , LOWER(category)
-            , LOWER(level)
-            , LOWER(key)
+        _property := CONCAT_WS('.',
+            'fr',
+            LOWER(category),
+            LOWER(level),
+            LOWER(key)
         );
         _value := (SELECT (CURRENT_SETTING(_property)));
         IF _value IS NULL THEN

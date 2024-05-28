@@ -8,8 +8,8 @@ initialization will be done w/ constant
 
 -- to store references
 CREATE TABLE IF NOT EXISTS fr.laposte_address_complement_reference (
-    name_id INT NOT NULL
-    , address_id CHAR(10) NOT NULL
+    name_id INT NOT NULL,
+    address_id CHAR(10) NOT NULL
 )
 ;
 
@@ -43,21 +43,21 @@ BEGIN
 
     CALL public.log_info(' Initialisation');
     INSERT INTO fr.laposte_address_complement_reference(
-        name_id
-        , address_id
+        name_id,
+        address_id
     )
     SELECT
-        u.id
-        , c.co_cea
+        u.id,
+        c.co_cea
     FROM
         fr.laposte_address_complement_uniq u
-            JOIN fr.laposte_address_complement c ON u.name = CONCAT_WS(' '
-                , lb_type_groupe1_l3
-                , lb_groupe1
-                , lb_type_groupe2_l3
-                , lb_groupe2
-                , lb_type_groupe3_l3
-                , lb_groupe3
+            JOIN fr.laposte_address_complement c ON u.name = CONCAT_WS(' ',
+                lb_type_groupe1_l3,
+                lb_groupe1,
+                lb_type_groupe2_l3,
+                lb_groupe2,
+                lb_type_groupe3_l3,
+                lb_groupe3
             )
     WHERE
         c.fl_active

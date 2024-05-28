@@ -4,11 +4,11 @@
 
 -- to store words by level
 CREATE TABLE IF NOT EXISTS fr.laposte_address_complement_word_level (
-    nivgeo VARCHAR NOT NULL
-    , codgeo VARCHAR NOT NULL
-    , word VARCHAR NOT NULL
-    , count INT NOT NULL
-    , rank INT
+    nivgeo VARCHAR NOT NULL,
+    codgeo VARCHAR NOT NULL,
+    word VARCHAR NOT NULL,
+    count INT NOT NULL,
+    rank INT
 )
 ;
 
@@ -41,16 +41,16 @@ BEGIN
 
     CALL public.log_info(' Initialisation');
     INSERT INTO fr.laposte_address_complement_word_level(
-        nivgeo
-        , codgeo
-        , word
-        , count
+        nivgeo,
+        codgeo,
+        word,
+        count
     )
     SELECT
-        'ZA'
-        , a.co_adr_za
-        , sw.word
-        , COUNT(*)
+        'ZA',
+        a.co_adr_za,
+        sw.word,
+        COUNT(*)
     FROM fr.address_view a
         JOIN fr.laposte_address_complement_reference sr ON sr.address_id = a.co_adr
         JOIN fr.laposte_address_complement_membership sm ON sm.name_id = sr.name_id
@@ -58,19 +58,19 @@ BEGIN
     WHERE
         a.co_niveau = 'L3'
     GROUP BY
-        a.co_adr_za
-        , sw.word
+        a.co_adr_za,
+        sw.word
     ;
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info(CONCAT(' Comptage (mot): ', _nrows));
 
     -- generate supra levels
     IF fr.set_territory_supra(
-        table_name => 'laposte_address_complement_word_level'
-        , schema_name => 'fr'
-        , base_level => 'ZA'
-        , columns_groupby => ARRAY['word']
-        , columns_agg => ARRAY['count']
+        table_name => 'laposte_address_complement_word_level',
+        schema_name => 'fr',
+        base_level => 'ZA',
+        columns_groupby => ARRAY['word'],
+        columns_agg => ARRAY['count']
     )
     THEN
         CALL fr.set_laposte_address_complement_word_level_index();
@@ -79,10 +79,10 @@ BEGIN
         WITH
         word_rank AS (
             SELECT
-                nivgeo
-                , codgeo
-                , word
-                , ROW_NUMBER() OVER (PARTITION BY nivgeo, codgeo ORDER BY count DESC) "rank"
+                nivgeo,
+                codgeo,
+                word,
+                ROW_NUMBER() OVER (PARTITION BY nivgeo, codgeo ORDER BY count DESC) "rank"
             FROM
                 fr.laposte_address_complement_word_level
         )

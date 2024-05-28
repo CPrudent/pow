@@ -25,8 +25,8 @@ can't commit dictionary, while address not inserted
 -- push properties of street dictionary (as changes) to public
 SELECT drop_all_functions_if_exists('fr', 'push_dictionary_street_to_public');
 CREATE OR REPLACE PROCEDURE fr.push_dictionary_street_to_public(
-    force BOOLEAN DEFAULT FALSE
-    , drop_temporary BOOLEAN DEFAULT TRUE
+    force BOOLEAN DEFAULT FALSE,
+    drop_temporary BOOLEAN DEFAULT TRUE
 )
 AS
 $proc$
@@ -49,18 +49,18 @@ BEGIN
         WITH
         public_street AS (
             SELECT
-                d.name
-                , d.name_normalized
-                , d.typeof
-                , d.descriptors
+                d.name,
+                d.name_normalized,
+                d.typeof,
+                d.descriptors
             FROM
                 public.address_street d
                     JOIN public.address a ON d.id = a.id_street
                     JOIN public.territory t ON t.id = a.id_territory
             WHERE
                 t.country = 'FR'
-        )
-        , fr_street AS (
+        ),
+        fr_street AS (
             /* NOTE
             367 faults (lb_type NULL) on restored LAPOSTE data (of 12/2022)
             e.g.
@@ -68,18 +68,18 @@ BEGIN
             RESIDENCE DES AJONCS
              */
             SELECT
-                lb_voie name
-                , MIN(lb_voie_normalise) name_normalized
-                , ARRAY_AGG(DISTINCT lb_type) typeof
+                lb_voie name,
+                MIN(lb_voie_normalise) name_normalized,
+                ARRAY_AGG(DISTINCT lb_type) typeof,
                 -- trick to ignore different descriptors if typeof is null (by order)
-                , ARRAY_AGG(DISTINCT lb_desc ORDER BY lb_desc DESC) descriptors
+                ARRAY_AGG(DISTINCT lb_desc ORDER BY lb_desc DESC) descriptors
             FROM fr.laposte_address_street
             -- except MONACO
             WHERE fl_active AND co_insee_commune != '99138'
             GROUP BY
                 lb_voie
-        )
-        , changes AS (
+        ),
+        changes AS (
             (
                 SELECT '-' change, name FROM public_street
                 EXCEPT
@@ -105,11 +105,11 @@ BEGIN
 
         -- insert/update
         SELECT
-            c.change
-            , fr_street.name
-            , fr_street.name_normalized
-            , fr_street.typeof[1] typeof
-            , fr_street.descriptors[1] descriptors
+            c.change,
+            fr_street.name,
+            fr_street.name_normalized,
+            fr_street.typeof[1] typeof,
+            fr_street.descriptors[1] descriptors
         FROM
             changes c
                 JOIN fr_street ON c.name = fr_street.name
@@ -120,11 +120,11 @@ BEGIN
 
         -- delete
         SELECT
-            c.change
-            , public_street.name
-            , public_street.name_normalized
-            , public_street.typeof
-            , public_street.descriptors
+            c.change,
+            public_street.name,
+            public_street.name_normalized,
+            public_street.typeof,
+            public_street.descriptors
         FROM
             changes c
                 JOIN public_street ON c.name = public_street.name
@@ -141,18 +141,18 @@ BEGIN
     --CALL public.log_info('Historique des modifications/suppressions');
     CALL public.log_info('Historique des modifications');
     INSERT INTO public.address_history (
-            id
-            , date_change
-            , change
-            , kind
-            , values
+            id,
+            date_change,
+            change,
+            kind,
+            values
         )
         SELECT
-            a.id
-            , TIMEOFDAY()::DATE
-            , c.change
-            , 'STREET'
-            , ROW_TO_JSON(d.*)::JSONB
+            a.id,
+            TIMEOFDAY()::DATE,
+            c.change,
+            'STREET',
+            ROW_TO_JSON(d.*)::JSONB
         FROM
             tmp_fr_street_changes c
                 JOIN public.address_street d ON d.name = c.name
@@ -166,16 +166,16 @@ BEGIN
 
     CALL public.log_info('Mise à jour des ajouts');
     INSERT INTO public.address_street (
-            name
-            , name_normalized
-            , typeof
-            , descriptors
+            name,
+            name_normalized,
+            typeof,
+            descriptors
         )
         SELECT
-            c.name
-            , c.name_normalized
-            , c.typeof
-            , c.descriptors
+            c.name,
+            c.name_normalized,
+            c.typeof,
+            c.descriptors
         FROM
             tmp_fr_street_changes c
         WHERE
@@ -186,9 +186,9 @@ BEGIN
 
     CALL public.log_info('Mise à jour des modifications');
     UPDATE public.address_street SET
-            name_normalized = c.name_normalized
-            , typeof = c.typeof
-            , descriptors = c.descriptors
+            name_normalized = c.name_normalized,
+            typeof = c.typeof,
+            descriptors = c.descriptors
         FROM
             tmp_fr_street_changes c
         WHERE
@@ -221,8 +221,8 @@ $proc$ LANGUAGE plpgsql;
 -- push properties of housenumber dictionary (as changes) to public
 SELECT drop_all_functions_if_exists('fr', 'push_dictionary_housenumber_to_public');
 CREATE OR REPLACE PROCEDURE fr.push_dictionary_housenumber_to_public(
-    force BOOLEAN DEFAULT FALSE
-    , drop_temporary BOOLEAN DEFAULT TRUE
+    force BOOLEAN DEFAULT FALSE,
+    drop_temporary BOOLEAN DEFAULT TRUE
 )
 AS
 $proc$
@@ -238,23 +238,23 @@ BEGIN
         WITH
         public_housenumber AS (
             SELECT
-                number
-                , extension
+                number,
+                extension
             FROM
                 public.address_housenumber d
                     JOIN public.address a ON d.id = a.id_housenumber
                     JOIN public.territory t ON t.id = a.id_territory
             WHERE
                 t.country = 'FR'
-        )
-        , fr_housenumber AS (
+        ),
+        fr_housenumber AS (
             SELECT DISTINCT
-                no_voie number
-                , lb_ext extension
+                no_voie number,
+                lb_ext extension
             FROM fr.laposte_address_housenumber
             WHERE fl_active
-        )
-        , changes AS (
+        ),
+        changes AS (
             (
                 SELECT '-' change, number, extension FROM public_housenumber
                 EXCEPT
@@ -270,9 +270,9 @@ BEGIN
 
         -- insert
         SELECT
-            c.change
-            , fr_housenumber.number
-            , fr_housenumber.extension
+            c.change,
+            fr_housenumber.number,
+            fr_housenumber.extension
         FROM
             changes c
                 JOIN fr_housenumber ON
@@ -284,9 +284,9 @@ BEGIN
 
         -- delete
         SELECT
-            c.change
-            , public_housenumber.number
-            , public_housenumber.extension
+            c.change,
+            public_housenumber.number,
+            public_housenumber.extension
         FROM
             changes c
                 JOIN public_housenumber ON
@@ -304,18 +304,18 @@ BEGIN
     /*
     CALL public.log_info('Historique des suppressions');
     INSERT INTO public.address_history (
-            id
-            , date_change
-            , change
-            , kind
-            , values
+            id,
+            date_change,
+            change,
+            kind,
+            values
         )
         SELECT
-            a.id
-            , TIMEOFDAY()::DATE
-            , c.change
-            , 'HOUSENUMBER'
-            , ROW_TO_JSON(d.*)::JSONB
+            a.id,
+            TIMEOFDAY()::DATE,
+            c.change,
+            'HOUSENUMBER',
+            ROW_TO_JSON(d.*)::JSONB
         FROM
             tmp_fr_housenumber_changes c
                 JOIN public.address_housenumber d ON
@@ -330,12 +330,12 @@ BEGIN
 
     CALL public.log_info('Mise à jour des ajouts');
     INSERT INTO public.address_housenumber (
-            number
-            , extension
+            number,
+            extension
         )
         SELECT
-            c.number
-            , c.extension
+            c.number,
+            c.extension
         FROM
             tmp_fr_housenumber_changes c
         WHERE
@@ -366,8 +366,8 @@ $proc$ LANGUAGE plpgsql;
 -- push properties of complement dictionary (as changes) to public
 SELECT drop_all_functions_if_exists('fr', 'push_dictionary_complement_to_public');
 CREATE OR REPLACE PROCEDURE fr.push_dictionary_complement_to_public(
-    force BOOLEAN DEFAULT FALSE
-    , drop_temporary BOOLEAN DEFAULT TRUE
+    force BOOLEAN DEFAULT FALSE,
+    drop_temporary BOOLEAN DEFAULT TRUE
 )
 AS
 $proc$
@@ -383,16 +383,16 @@ BEGIN
         WITH
         public_complement AS (
             SELECT
-                d.name
-                , d.name_normalized
+                d.name,
+                d.name_normalized
             FROM
                 public.address_complement d
                     JOIN public.address a ON d.id = a.id_complement
                     JOIN public.territory t ON t.id = a.id_territory
             WHERE
                 t.country = 'FR'
-        )
-        , fr_complement AS (
+        ),
+        fr_complement AS (
             /* NOTE
             7 faults due to name_normalized!
             BATIMENT A RESIDENCE BELLEVUE	    {BATIMENT A RESIDENCE BELLEVUE,BATIMENT A RESIDENCE VILLA BELLEVUE}
@@ -404,38 +404,38 @@ BEGIN
             BATIMENT C RESIDENCE MONTMORENCY	{BAT C RESIDENCE MONTMORENCY,BATIMENT C RESIDENCE MONTMORENCY}
              */
             SELECT
-                name
+                name,
                 -- trick to ignore normalized faults, fortunaly not needed!
-                , CASE
+                CASE
                     -- have to be normalize?
                     WHEN LENGTH(name) > 38 THEN name_normalized[1]
                     ELSE name
                 END name_normalized
             FROM (
                 SELECT
-                    CONCAT_WS(' '
-                        , lb_type_groupe1_l3
-                        , lb_groupe1
-                        , lb_type_groupe2_l3
-                        , lb_groupe2
-                        , lb_type_groupe3_l3
-                        , lb_groupe3
-                    ) name
-                    , ARRAY_AGG(DISTINCT lb_standard_nn /*ORDER BY lb_standard_nn*/) name_normalized
+                    CONCAT_WS(' ',
+                        lb_type_groupe1_l3,
+                        lb_groupe1,
+                        lb_type_groupe2_l3,
+                        lb_groupe2,
+                        lb_type_groupe3_l3,
+                        lb_groupe3
+                    ) name,
+                    ARRAY_AGG(DISTINCT lb_standard_nn /*ORDER BY lb_standard_nn*/), name_normalized
                 FROM fr.laposte_address_complement
                 WHERE fl_active
                 GROUP BY
-                    CONCAT_WS(' '
-                        , lb_type_groupe1_l3
-                        , lb_groupe1
-                        , lb_type_groupe2_l3
-                        , lb_groupe2
-                        , lb_type_groupe3_l3
-                        , lb_groupe3
+                    CONCAT_WS(' ',
+                        lb_type_groupe1_l3,
+                        lb_groupe1,
+                        lb_type_groupe2_l3,
+                        lb_groupe2,
+                        lb_type_groupe3_l3,
+                        lb_groupe3
                     )
             ) t
-        )
-        , changes AS (
+        ),
+        changes AS (
             (
                 SELECT '-' change, name FROM public_complement
                 EXCEPT
@@ -457,9 +457,9 @@ BEGIN
 
         -- insert/update
         SELECT
-            c.change
-            , fr_complement.name
-            , fr_complement.name_normalized
+            c.change,
+            fr_complement.name,
+            fr_complement.name_normalized
         FROM
             changes c
                 JOIN fr_complement ON c.name = fr_complement.name
@@ -470,9 +470,9 @@ BEGIN
 
         -- delete
         SELECT
-            c.change
-            , public_complement.name
-            , public_complement.name_normalized
+            c.change,
+            public_complement.name,
+            public_complement.name_normalized
         FROM
             changes c
                 JOIN public_complement ON c.name = public_complement.name
@@ -489,18 +489,18 @@ BEGIN
     --CALL public.log_info('Historique des modifications/suppressions');
     CALL public.log_info('Historique des modifications');
     INSERT INTO public.address_history (
-            id
-            , date_change
-            , change
-            , kind
-            , values
+            id,
+            date_change,
+            change,
+            kind,
+            values
         )
         SELECT
-            a.id
-            , TIMEOFDAY()::DATE
-            , c.change
-            , 'COMPLEMENT'
-            , ROW_TO_JSON(d.*)::JSONB
+            a.id,
+            TIMEOFDAY()::DATE,
+            c.change,
+            'COMPLEMENT',
+            ROW_TO_JSON(d.*)::JSONB
         FROM
             tmp_fr_complement_changes c
                 JOIN public.address_complement d ON d.name = c.name
@@ -514,12 +514,12 @@ BEGIN
 
     CALL public.log_info('Mise à jour des ajouts');
     INSERT INTO public.address_complement (
-            name
-            , name_normalized
+            name,
+            name_normalized
         )
         SELECT
-            c.name
-            , c.name_normalized
+            c.name,
+            c.name_normalized
         FROM
             tmp_fr_complement_changes c
         WHERE
@@ -563,10 +563,10 @@ $proc$ LANGUAGE plpgsql;
 -- address element
 SELECT drop_all_functions_if_exists('fr', 'push_address_element_to_public');
 CREATE OR REPLACE PROCEDURE fr.push_address_element_to_public(
-    element VARCHAR
-    , table_name_to VARCHAR
-    , table_name_from VARCHAR
-    , simulation BOOLEAN DEFAULT FALSE
+    element VARCHAR,
+    table_name_to VARCHAR,
+    table_name_from VARCHAR,
+    simulation BOOLEAN DEFAULT FALSE
 )
 AS
 $proc$
@@ -641,13 +641,13 @@ DECLARE
             WHERE
                 c1.co_cea = n.code_address
                 AND
-                c2.name = CONCAT_WS('' ''
-                    , c1.lb_type_groupe1_l3
-                    , c1.lb_groupe1
-                    , c1.lb_type_groupe2_l3
-                    , c1.lb_groupe2
-                    , c1.lb_type_groupe3_l3
-                    , c1.lb_groupe3
+                c2.name = CONCAT_WS('' '',
+                    c1.lb_type_groupe1_l3,
+                    c1.lb_groupe1,
+                    c1.lb_type_groupe2_l3,
+                    c1.lb_groupe2,
+                    c1.lb_type_groupe3_l3,
+                    c1.lb_groupe3
                 )
             '
         END;
@@ -673,27 +673,27 @@ BEGIN
     -- prepare addresses of element
     CALL public.log_info(CONCAT(element, ': Préparation'));
     _query := CONCAT(
-        'INSERT INTO ', table_name_to, ' ('
-        , _columns_insert
-        , ')
-        SELECT '
-        , _columns_select
-        , ' FROM ', table_name_from , ' c
+        'INSERT INTO ', table_name_to, ' (',
+        _columns_insert,
+        ')
+        SELECT ',
+        _columns_select,
+        ' FROM ', table_name_from , ' c
             JOIN public.territory t ON t.code = c.code_territory AND t.level = ''ZA'' AND t.country = ''FR''
         '
     );
     -- get IDs from address
     IF _source_parent IS NOT NULL THEN
-        _query := CONCAT(_query
-            , 'JOIN public.address_cross_reference cr ON cr.id_source = '
-            , _source_parent, ' AND cr.source = ''LAPOSTE''
+        _query := CONCAT(_query,
+            'JOIN public.address_cross_reference cr ON cr.id_source = ',
+            _source_parent, ' AND cr.source = ''LAPOSTE''
                 JOIN public.address a ON a.id = cr.id_address
             '
         );
     END IF;
     -- filter creation of element
-    _query := CONCAT(_query
-        , ' WHERE
+    _query := CONCAT(_query,
+        ' WHERE
             c.change = ''+''
             AND
             c.level = $1'
@@ -715,10 +715,10 @@ BEGIN
 
     CALL public.log_info(CONCAT(element, ': Préparation (ID dictionnaire)'));
     _query := CONCAT(
-        'UPDATE ', table_name_to, ' n SET '
-        , _column_id
-        , ' = '
-        , _join_dictionary
+        'UPDATE ', table_name_to, ' n SET ',
+        _column_id,
+        ' = ',
+        _join_dictionary
     );
     IF simulation THEN
         RAISE NOTICE 'query: %', _query;
@@ -807,11 +807,11 @@ BEGIN
     CALL public.log_info(CONCAT(element, ': Adresses (uniques)'));
     _columns_id_aliased := alias_words(_columns_id, ',[ ]*', 'n');
     _query := CONCAT(
-        'INSERT INTO public.address ( '
-        , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id)
-        , ' ) SELECT '
-        , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'n.id_parent' END, _columns_id_aliased)
-        , ' FROM ', table_name_to, ' n
+        'INSERT INTO public.address ( ',
+        CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id),
+        ' ) SELECT ',
+        CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'n.id_parent' END, _columns_id_aliased),
+        ' FROM ', table_name_to, ' n
         WHERE
             n.uniq'
     );
@@ -835,14 +835,14 @@ BEGIN
      */
     _query := CONCAT(
         'INSERT INTO public.address_cross_reference (
-            id_address
-            , source
-            , id_source
+            id_address,
+            source,
+            id_source
         )
         SELECT
-            a.id
-            , ''LAPOSTE''
-            , n.code_address
+            a.id,
+            ''LAPOSTE'',
+            n.code_address
         FROM ', table_name_to, ' n
             JOIN public.address a ON
                 (', _columns_id_aliased, ')
@@ -868,14 +868,14 @@ BEGIN
         _columns_id2_aliased := alias_words(_columns_id2, ',[ ]*', 'n');
         _query := CONCAT(
             'INSERT INTO public.address_cross_reference (
-                id_address
-                , source
-                , id_source
+                id_address,
+                source,
+                id_source
             )
             SELECT
-                a.id
-                , ''LAPOSTE''
-                , n.code_address
+                a.id,
+                ''LAPOSTE'',
+                n.code_address
             FROM ', table_name_to, ' n
                 JOIN public.address a ON
                     (', _columns_id2_aliased, ')
@@ -903,8 +903,8 @@ BEGIN
     CALL public.log_info(CONCAT(element, ': Adresses/Références (multiples)'));
     _nrows_affected := 0;
     _columns_id_array := REGEXP_SPLIT_TO_ARRAY(
-        CONCAT_WS(', ', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id)
-        , ',[ ]*'
+        CONCAT_WS(', ', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id),
+        ',[ ]*'
     );
     -- https://stackoverflow.com/questions/20965882/for-loop-with-dynamic-table-name-in-postgresql-9-1
     FOR _address IN EXECUTE FORMAT('SELECT * FROM %s WHERE NOT uniq', table_name_to)
@@ -916,9 +916,9 @@ BEGIN
             FOR _kv IN SELECT * FROM EACH(HSTORE(_address)) LOOP
                 IF _kv.key != _columns_id_array[_i] THEN CONTINUE; END IF;
                 IF _columns_id_array @> ARRAY[_kv.key] THEN
-                    _columns_id_values := CONCAT_WS(','
-                        , _columns_id_values
-                        , quote_nullable(_kv.value)
+                    _columns_id_values := CONCAT_WS(',',
+                        _columns_id_values,
+                        quote_nullable(_kv.value)
                     );
                     EXIT;
                 END IF;
@@ -926,9 +926,9 @@ BEGIN
          END LOOP;
 
         _query := CONCAT(
-            'INSERT INTO public.address ('
-            , CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id)
-            , ') VALUES (', _columns_id_values, ')
+            'INSERT INTO public.address (',
+            CONCAT_WS(',', CASE WHEN element != 'VOIE' THEN 'id_parent' END, _columns_id),
+            ') VALUES (', _columns_id_values, ')
             RETURNING id'
         );
         IF simulation THEN
@@ -937,14 +937,14 @@ BEGIN
             EXECUTE _query INTO _id;
 
             INSERT INTO public.address_cross_reference (
-                id_address
-                , source
-                , id_source
+                id_address,
+                source,
+                id_source
                 )
             VALUES (
-                _id
-                , 'LAPOSTE'
-                , _address.code_address
+                _id,
+                'LAPOSTE',
+                _address.code_address
             );
 
             _nrows_affected := _nrows_affected +1;
@@ -957,9 +957,9 @@ $proc$ LANGUAGE plpgsql;
 -- push elements of address (as changes) to public
 SELECT drop_all_functions_if_exists('fr', 'push_address_elements_to_public');
 CREATE OR REPLACE PROCEDURE fr.push_address_elements_to_public(
-    force BOOLEAN DEFAULT FALSE
-    , drop_temporary BOOLEAN DEFAULT TRUE
-    , part_todo INT DEFAULT 1 | 2 | 4 | 8 | 16
+    force BOOLEAN DEFAULT FALSE,
+    drop_temporary BOOLEAN DEFAULT TRUE,
+    part_todo INT DEFAULT 1 | 2 | 4 | 8 | 16
 )
 AS
 $proc$
@@ -978,17 +978,17 @@ BEGIN
             WITH
             public_address AS (
                 SELECT
-                    cr1.id_source code_address
-                    , CASE
+                    cr1.id_source code_address,
+                    CASE
                         WHEN id_complement IS NOT NULL THEN 'L3'
                         WHEN id_housenumber IS NOT NULL AND id_complement IS NULL THEN 'NUMERO'
                         ELSE 'VOIE'
-                    END level
-                    , cr2.id_source code_parent
-                    , t.code code_territory
-                    , cr3.id_source code_street
-                    , cr4.id_source code_housenumber
-                    , cr5.id_source code_complement
+                    END level,
+                    cr2.id_source code_parent,
+                    t.code code_territory,
+                    cr3.id_source code_street,
+                    cr4.id_source code_housenumber,
+                    cr5.id_source code_complement
                 FROM
                     public.address a
                         JOIN public.territory t ON t.id = a.id_territory
@@ -999,16 +999,16 @@ BEGIN
                         LEFT OUTER JOIN public.address_cross_reference cr5 ON cr5.id_address = a.id_complement AND cr5.source = 'LAPOSTE'
                 WHERE
                     t.country = 'FR'
-            )
-            , fr_address AS (
+            ),
+            fr_address AS (
                 SELECT
-                    a.co_cea_determinant code_address
-                    , a.co_niveau level
-                    , CASE WHEN a.co_niveau = 'VOIE' THEN NULL ELSE a.co_cea_parent END code_parent
-                    , a.co_cea_za code_territory
-                    , a.co_cea_voie code_street
-                    , a.co_cea_numero code_housenumber
-                    , a.co_cea_l3 code_complement
+                    a.co_cea_determinant code_address,
+                    a.co_niveau level,
+                    CASE WHEN a.co_niveau = 'VOIE' THEN NULL ELSE a.co_cea_parent END code_parent,
+                    a.co_cea_za code_territory,
+                    a.co_cea_voie code_street,
+                    a.co_cea_numero code_housenumber,
+                    a.co_cea_l3 code_complement
                 FROM fr.laposte_address a
                     JOIN fr.laposte_address_area za ON za.co_cea = a.co_cea_za
                 WHERE
@@ -1025,8 +1025,8 @@ BEGIN
                     AND
                     -- except MONACO
                     za.co_insee_commune != '99138'
-            )
-            , changes AS (
+            ),
+            changes AS (
                 (
                     SELECT '-' change, code_address FROM public_address
                     EXCEPT
@@ -1056,14 +1056,14 @@ BEGIN
 
             -- insert/update
             SELECT
-                c.change
-                , fr_address.level
-                , c.code_address
-                , fr_address.code_parent
-                , fr_address.code_territory
-                , fr_address.code_street
-                , fr_address.code_housenumber
-                , fr_address.code_complement
+                c.change,
+                fr_address.level,
+                c.code_address,
+                fr_address.code_parent,
+                fr_address.code_territory,
+                fr_address.code_street,
+                fr_address.code_housenumber,
+                fr_address.code_complement
             FROM
                 changes c
                     JOIN fr_address ON c.code_address = fr_address.code_address
@@ -1074,14 +1074,14 @@ BEGIN
 
             -- delete
             SELECT
-                c.change
-                , public_address.level
-                , c.code_address
-                , public_address.code_parent
-                , public_address.code_territory
-                , public_address.code_street
-                , public_address.code_housenumber
-                , public_address.code_complement
+                c.change,
+                public_address.level,
+                c.code_address,
+                public_address.code_parent,
+                public_address.code_territory,
+                public_address.code_street,
+                public_address.code_housenumber,
+                public_address.code_complement
             FROM
                 changes c
                     JOIN public_address ON c.code_address = public_address.code_address
@@ -1112,18 +1112,18 @@ BEGIN
     IF part_todo & 2 = 2 AND (_nb_rows[2] > 0 OR _nb_rows[3] > 0) THEN
         CALL public.log_info('Historique des modifications/suppressions');
         INSERT INTO public.address_history (
-                id
-                , date_change
-                , change
-                , kind
-                , values
+                id,
+                date_change,
+                change,
+                kind,
+                values
             )
             SELECT
-                a.id
-                , TIMEOFDAY()::DATE
-                , c.change
-                , 'ADDRESS'
-                , ROW_TO_JSON(a.*)::JSONB
+                a.id,
+                TIMEOFDAY()::DATE,
+                c.change,
+                'ADDRESS',
+                ROW_TO_JSON(a.*)::JSONB
             FROM
                 fr.tmp_address_change c
                     JOIN public.address_cross_reference cr ON cr.id_source = c.code_address AND cr.source = 'LAPOSTE'
@@ -1143,8 +1143,8 @@ BEGIN
         CREATE UNLOGGED TABLE fr.tmp_address_new AS
             SELECT * FROM public.address WITH NO DATA;
         ALTER TABLE fr.tmp_address_new
-            ADD COLUMN code_address VARCHAR
-            , ADD COLUMN uniq BOOLEAN DEFAULT TRUE;
+            ADD COLUMN code_address VARCHAR,
+            ADD COLUMN uniq BOOLEAN DEFAULT TRUE;
         ALTER TABLE fr.tmp_address_new DROP COLUMN id;
         ALTER TABLE fr.tmp_address_new SET (autovacuum_enabled = FALSE);
 
@@ -1152,18 +1152,19 @@ BEGIN
         FOREACH _element IN ARRAY _elements
         LOOP
             --RAISE NOTICE 'element: %', _element;
-            EXECUTE FORMAT('CALL fr.push_dictionary_%s_to_public($1, $2)'
-                , CASE _element
-                WHEN 'VOIE' THEN 'street'
-                WHEN 'NUMERO' THEN 'housenumber'
-                WHEN 'L3' THEN 'complement'
-                END
+            EXECUTE FORMAT(
+                    'CALL fr.push_dictionary_%s_to_public($1, $2)',
+                    CASE _element
+                    WHEN 'VOIE' THEN 'street'
+                    WHEN 'NUMERO' THEN 'housenumber'
+                    WHEN 'L3' THEN 'complement'
+                    END
                 )
                 USING force, drop_temporary;
             CALL fr.push_address_element_to_public(
-                element => _element
-                , table_name_to => 'fr.tmp_address_new'
-                , table_name_from => 'fr.tmp_address_change'
+                element => _element,
+                table_name_to => 'fr.tmp_address_new',
+                table_name_from => 'fr.tmp_address_change'
             );
         END LOOP;
     END IF;
@@ -1173,12 +1174,12 @@ BEGIN
         WITH
         address_updates AS (
             SELECT
-                cr1.id_address
-                , cr2.id_address id_parent
-                , t.id id_territory
-                , a3.id_street
-                , a4.id_housenumber
-                , a5.id_complement
+                cr1.id_address,
+                cr2.id_address id_parent,
+                t.id id_territory,
+                a3.id_street,
+                a4.id_housenumber,
+                a5.id_complement
             FROM
                 fr.tmp_address_change c
                     JOIN public.territory t ON t.code = c.code_territory AND t.level = 'ZA' AND t.country = 'FR'
@@ -1194,11 +1195,11 @@ BEGIN
                 c.change = '!'
         )
         UPDATE public.address a SET
-                id_parent = u.id_parent
-                , id_territory = u.id_territory
-                , id_street = u.id_street
-                , id_housenumber = u.id_housenumber
-                , id_complement = u.id_complement
+                id_parent = u.id_parent,
+                id_territory = u.id_territory,
+                id_street = u.id_street,
+                id_housenumber = u.id_housenumber,
+                id_complement = u.id_complement
             FROM address_updates u
             WHERE
                 a.id = u.id_address
@@ -1238,8 +1239,8 @@ $proc$ LANGUAGE plpgsql;
 -- push properties of address xy (as changes) to public
 SELECT drop_all_functions_if_exists('fr', 'push_address_xy_to_public');
 CREATE OR REPLACE PROCEDURE fr.push_address_xy_to_public(
-    force BOOLEAN DEFAULT FALSE
-    , drop_temporary BOOLEAN DEFAULT TRUE
+    force BOOLEAN DEFAULT FALSE,
+    drop_temporary BOOLEAN DEFAULT TRUE
 )
 AS
 $proc$
@@ -1256,24 +1257,24 @@ BEGIN
         WITH
         public_xy AS (
             SELECT
-                cr.id_source code_address
-                , xy.kind
-                , xy.geom
+                cr.id_source code_address,
+                xy.kind,
+                xy.geom
             FROM
                 public.address_xy xy
                     JOIN public.address_cross_reference cr ON cr.id_address = xy.id_address AND cr.source = 'LAPOSTE'
             WHERE
                 xy.source = 'LAPOSTE'
-        )
-        , fr_xy AS (
+        ),
+        fr_xy AS (
             /* TODO
             filter {street, housenumber} geometries
             only if geometry different from parent one
             LAPOSTE/RAN doesn't supply geometry for ZA (and the same as parent for complement)
              */
             SELECT
-                xy.co_cea code_address
-                , CASE xy.no_type_localisation
+                xy.co_cea code_address,
+                CASE xy.no_type_localisation
                     WHEN '1' THEN 'MUNICIPALITY_CENTER'
                     WHEN '2' THEN 'TOWN_HALL'
                     WHEN '3' THEN 'AREA'
@@ -1283,8 +1284,8 @@ BEGIN
                     WHEN '7' THEN 'PARCEL'
                     WHEN '8' THEN 'ENTRANCE'
                     ELSE          'UNKNOWN'
-                END kind
-                , xy.gm_coord geom
+                END kind,
+                xy.gm_coord geom
             FROM fr.laposte_address_xy xy
                 JOIN fr.laposte_address a ON xy.co_cea = a.co_cea_determinant
                 LEFT OUTER JOIN fr.laposte_address_xy xy2 ON xy2.co_cea = a.co_cea_parent
@@ -1306,8 +1307,8 @@ BEGIN
                         a.co_niveau = 'VOIE'
                     )
                 )
-        )
-        , changes AS (
+        ),
+        changes AS (
             (
                 SELECT '-' change, code_address FROM public_xy
                 EXCEPT
@@ -1331,10 +1332,10 @@ BEGIN
 
         -- insert/update addresses
         SELECT
-            c.change
-            , c.code_address
-            , fr_xy.kind
-            , fr_xy.geom
+            c.change,
+            c.code_address,
+            fr_xy.kind,
+            fr_xy.geom
         FROM
             changes c
                 JOIN fr_xy ON c.code_address = fr_xy.code_address
@@ -1345,10 +1346,10 @@ BEGIN
 
         -- delete old addresses
         SELECT
-            c.change
-            , c.code_address
-            , public_xy.kind
-            , public_xy.geom
+            c.change,
+            c.code_address,
+            public_xy.kind,
+            public_xy.geom
         FROM
             changes c
                 JOIN public_xy ON c.code_address = public_xy.code_address
@@ -1366,16 +1367,16 @@ BEGIN
         CALL public.log_info('Mise à jour des ajouts/modifications');
         IF _nb_rows[2] > 0 THEN
             INSERT INTO public.address_xy (
-                    id_address
-                    , kind
-                    , source
-                    , geom
+                    id_address,
+                    kind,
+                    source,
+                    geom
                 )
                 SELECT
-                    cr.id_address
-                    , c.kind
-                    , 'LAPOSTE'
-                    , c.geom
+                    cr.id_address,
+                    c.kind,
+                    'LAPOSTE',
+                    c.geom
                 FROM
                     fr.tmp_xy_change c
                         JOIN public.address_cross_reference cr ON cr.id_source = c.code_address AND cr.source = 'LAPOSTE'
@@ -1388,16 +1389,16 @@ BEGIN
         ELSE
             CALL public.drop_address_xy_index(drop_case => 'ALL');
             INSERT INTO public.address_xy (
-                    id_address
-                    , kind
-                    , source
-                    , geom
+                    id_address,
+                    kind,
+                    source,
+                    geom
                 )
                 SELECT
-                    cr.id_address
-                    , c.kind
-                    , 'LAPOSTE'
-                    , c.geom
+                    cr.id_address,
+                    c.kind,
+                    'LAPOSTE',
+                    c.geom
                 FROM
                     fr.tmp_xy_change c
                         JOIN public.address_cross_reference cr ON cr.id_source = c.code_address AND cr.source = 'LAPOSTE'
@@ -1414,8 +1415,8 @@ BEGIN
         WITH
         xy_deletes AS (
             SELECT
-                cr1.id_address
-                , c.kind
+                cr1.id_address,
+                c.kind
             FROM
                 fr.tmp_xy_change c
                     JOIN public.address_cross_reference cr1 ON cr1.id_source = c.code_address AND cr1.source = 'LAPOSTE'
@@ -1447,8 +1448,8 @@ $proc$ LANGUAGE plpgsql;
 -- push address (as changes) to public
 SELECT drop_all_functions_if_exists('fr', 'push_address_to_public');
 CREATE OR REPLACE PROCEDURE fr.push_address_to_public(
-    force BOOLEAN DEFAULT FALSE
-    , drop_temporary BOOLEAN DEFAULT TRUE
+    force BOOLEAN DEFAULT FALSE,
+    drop_temporary BOOLEAN DEFAULT TRUE
 )
 AS
 $proc$

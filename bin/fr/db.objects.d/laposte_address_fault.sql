@@ -8,10 +8,10 @@ initialization will be done w/ constant
 
 -- to store fault
 CREATE TABLE IF NOT EXISTS fr.laposte_address_fault (
-    element VARCHAR NOT NULL
-    , name_id INT NOT NULL
-    , fault_id INT NOT NULL
-    , help_to_fix VARCHAR
+    element VARCHAR NOT NULL,
+    name_id INT NOT NULL,
+    fault_id INT NOT NULL,
+    help_to_fix VARCHAR
 );
 
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_fault_index');
@@ -26,10 +26,10 @@ $proc$ LANGUAGE plpgsql;
 -- identify element-faults
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_fault');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_fault(
-    element IN VARCHAR
-    , fault IN VARCHAR DEFAULT 'ALL'
-    , simulation IN BOOLEAN DEFAULT FALSE
-    , raise_notice IN BOOLEAN DEFAULT FALSE
+    element IN VARCHAR,
+    fault IN VARCHAR DEFAULT 'ALL',
+    simulation IN BOOLEAN DEFAULT FALSE,
+    raise_notice IN BOOLEAN DEFAULT FALSE
 )
 AS
 $proc$
@@ -57,8 +57,8 @@ BEGIN
     END IF;
 
     CALL public.log_info(
-        CONCAT('Identification des anomalies dans les libellés de '
-            , CASE element
+        CONCAT('Identification des anomalies dans les libellés de ',
+            CASE element
                 WHEN 'STREET' THEN 'voie'
                 ELSE 'complément (L3)'
                 END
@@ -123,23 +123,23 @@ BEGIN
                         SELECT
                             u.id
                         FROM
-                            fr.', _table_uniq, ' u
-                            , bad_space_in_name(
-                                name => u.name
-                                , test_only => TRUE
+                            fr.', _table_uniq, ' u,
+                            bad_space_in_name(
+                                name => u.name,
+                                test_only => TRUE
                             ) bs
                         WHERE
                             bs.to_fix
                     )
                     SELECT
-                        $1
-                        , u.id
-                        , $2::INT
-                        , fix.name
+                        $1,
+                        u.id,
+                        $2::INT,
+                        fix.name
                     FROM
                         fr.', _table_uniq, ' u
-                            JOIN bad_space bs ON u.id = bs.id
-                        , bad_space_in_name(
+                            JOIN bad_space bs ON u.id = bs.id,
+                        bad_space_in_name(
                             name => u.name
                         ) fix
                     '
@@ -150,16 +150,16 @@ BEGIN
                     WITH
                     dup_words AS (
                         SELECT
-                            id
-                            , REGEXP_MATCHES(name, ''\m([ A-Z]+)\s+\1\M'') dup
+                            id,
+                            REGEXP_MATCHES(name, ''\m([ A-Z]+)\s+\1\M'') dup
                         FROM
                             fr.', _table_uniq, '
                     )
                     SELECT
-                        $1
-                        , u.id
-                        , $2::INT
-                        , d.dup[1]
+                        $1,
+                        u.id,
+                        $2::INT,
+                        d.dup[1]
                     FROM
                         fr.', _table_uniq, ' u
                             JOIN dup_words d ON u.id = d.id
@@ -189,17 +189,17 @@ BEGIN
                     WITH
                     word_abbreviation(abbr) AS (
                         VALUES
-                            (''ST'')
-                            , (''STE'')
+                            (''ST''),
+                            (''STE'')
                     )
                     SELECT
-                        $1
-                        , u.id
-                        , $2::INT
-                        , wa.abbr
+                        $1,
+                        u.id,
+                        $2::INT,
+                        wa.abbr
                     FROM
-                        fr.', _table_uniq, ' u
-                        , word_abbreviation wa
+                        fr.', _table_uniq, ' u,
+                        word_abbreviation wa
                     WHERE
                         u.words @> ARRAY[wa.abbr]::TEXT[]
                     '
@@ -213,10 +213,10 @@ BEGIN
                 _query := CONCAT(
                     '
                     SELECT
-                        $1
-                        , m.name_id
-                        , $2::INT
-                        , FIRST(m.word) word
+                        $1,
+                        m.name_id,
+                        $2::INT,
+                        FIRST(m.word) word
                     FROM
                         fr.', _table_membership, ' m
                     WHERE
@@ -238,8 +238,8 @@ BEGIN
                 _query := CONCAT(
                     '
                     INSERT INTO fr.laposte_address_fault
-                    '
-                    , _query
+                    ',
+                    _query
                 );
                 IF simulation THEN
                     RAISE NOTICE ' query=%', _query;
@@ -282,17 +282,17 @@ Query returned successfully in 9 secs 574 msec.
 -- fix element-faults (in referential)
 SELECT drop_all_functions_if_exists('fr', 'fix_laposte_address_fault_referential');
 CREATE OR REPLACE FUNCTION fr.fix_laposte_address_fault_referential(
-    element IN VARCHAR                          -- AREA|STREET|HOUSENUMBER|COMPLEMENT
-    , column_join IN VARCHAR                    -- join ADDRESS to REFERENCE
-    , column_update IN VARCHAR                  -- column to change
-    , fault_id IN INT                           -- fault ID
-    , column_with_new_value IN VARCHAR DEFAULT 'name'
-    , alias_address IN VARCHAR DEFAULT 'a'
-    , alias_fault IN VARCHAR DEFAULT 'f'
-    , alias_uniq IN VARCHAR DEFAULT 'u'
-    , alias_reference IN VARCHAR DEFAULT 'r'
-    , simulation IN BOOLEAN DEFAULT FALSE
-    , nrows OUT INT
+    element IN VARCHAR,                        -- AREA|STREET|HOUSENUMBER|COMPLEMENT
+    column_join IN VARCHAR,                    -- join ADDRESS to REFERENCE
+    column_update IN VARCHAR,                  -- column to change
+    fault_id IN INT,                           -- fault ID
+    column_with_new_value IN VARCHAR DEFAULT 'name',
+    alias_address IN VARCHAR DEFAULT 'a',
+    alias_fault IN VARCHAR DEFAULT 'f',
+    alias_uniq IN VARCHAR DEFAULT 'u',
+    alias_reference IN VARCHAR DEFAULT 'r',
+    simulation IN BOOLEAN DEFAULT FALSE,
+    nrows OUT INT
 )
 AS
 $func$
@@ -325,15 +325,15 @@ BEGIN
     _table_reference := CONCAT('fr.', fr.get_table_name(element, 'REFERENCE'));
 
     _query := CONCAT('UPDATE ', _table_address, ' ', alias_address, ' SET
-        ', column_update, ' = ', _column_with_new_value, '
-        , dt_reference = TIMEOFDAY()::DATE
+        ', column_update, ' = ', _column_with_new_value, ',
+        dt_reference = TIMEOFDAY()::DATE
         FROM
         '
     );
     IF fault_id >= 0 THEN
         -- correction from element-fault (only address w/ fault)
-        _query := CONCAT(_query
-            , _table_fault, ' ', alias_fault, '
+        _query := CONCAT(_query,
+            _table_fault, ' ', alias_fault, '
                 JOIN ', _table_uniq, ' ', alias_uniq, ' ON ', _join_uniq_fault, '
                 JOIN ', _table_reference, ' ', alias_reference, ' ON ', _join_uniq_reference, '
             WHERE
@@ -343,15 +343,15 @@ BEGIN
         );
     ELSE
         -- correction from element-dictionary (all address w/ difference)
-        _query := CONCAT(_query
-            , _table_uniq, ' ', alias_uniq, '
+        _query := CONCAT(_query,
+            _table_uniq, ' ', alias_uniq, '
                 JOIN ', _table_reference, ' ', alias_reference, ' ON ', _join_uniq_reference, '
             WHERE
             '
         );
     END IF;
-    _query := CONCAT(_query
-        , _column_join, ' = ', CONCAT(alias_reference, '.address_id'), '
+    _query := CONCAT(_query,
+        _column_join, ' = ', CONCAT(alias_reference, '.address_id'), '
         AND
         ', _column_update, ' IS DISTINCT FROM ', _column_with_new_value
     );
@@ -379,10 +379,10 @@ fix referential (address) : no!
  */
 SELECT drop_all_functions_if_exists('fr', 'fix_laposte_address_fault');
 CREATE OR REPLACE PROCEDURE fr.fix_laposte_address_fault(
-    element IN VARCHAR
-    , fault IN VARCHAR DEFAULT 'ALL'
-    , fix IN VARCHAR DEFAULT 'ALL'
-    , simulation IN BOOLEAN DEFAULT FALSE
+    element IN VARCHAR,
+    fault IN VARCHAR DEFAULT 'ALL',
+    fix IN VARCHAR DEFAULT 'ALL',
+    simulation IN BOOLEAN DEFAULT FALSE
 )
 AS
 $proc$
@@ -414,8 +414,8 @@ BEGIN
     END IF;
 
     CALL public.log_info(
-        CONCAT('Correction des anomalies dans les libellés de '
-            , CASE element
+        CONCAT('Correction des anomalies dans les libellés de ',
+            CASE element
                 WHEN 'STREET' THEN 'voie'
                 ELSE 'complément (L3)'
                 END
@@ -433,8 +433,8 @@ BEGIN
         ELSE STRING_TO_ARRAY(fault, ',')
         END;
     CALL public.log_info(
-        CONCAT(' Chargement des anomalies de niveau '
-            , CASE element
+        CONCAT(' Chargement des anomalies de niveau ',
+            CASE element
                 WHEN 'STREET' THEN 'Voie'
                 ELSE 'Complément (L3)'
                 END
@@ -457,13 +457,13 @@ BEGIN
                 WHEN 'STREET' THEN 'lb_voie'
                 WHEN 'COMPLEMENT' THEN
                     '
-                    CONCAT_WS('' ''
-                        , lb_type_groupe1_l3
-                        , lb_groupe1
-                        , lb_type_groupe2_l3
-                        , lb_groupe2
-                        , lb_type_groupe3_l3
-                        , lb_groupe3
+                    CONCAT_WS('' '',
+                        lb_type_groupe1_l3,
+                        lb_groupe1,
+                        lb_type_groupe2_l3,
+                        lb_groupe2,
+                        lb_type_groupe3_l3,
+                        lb_groupe3
                     )
                     '
                 END
@@ -486,8 +486,8 @@ BEGIN
             ELSIF _keys[_fault_i] = 'DUPLICATE_WORD' THEN
                 _manual_correction := TRUE;
                 _query := fr.get_query_to_fix_from_manual_correction(
-                    element => element
-                    , fault => _keys[_fault_i]
+                    element => element,
+                    fault => _keys[_fault_i]
                 );
             ELSIF _keys[_fault_i] = 'WITH_ABBREVIATION' THEN
                 _query := CONCAT('
@@ -501,11 +501,11 @@ BEGIN
                             element = $1
                             AND
                             fault_id = $2
-                    )
-                    , not_abbreviated(abbr, name) AS (
+                    ),
+                    not_abbreviated(abbr, name) AS (
                         SELECT
-                            MIN(wa.word)
-                            , MIN(k.name)
+                            MIN(wa.word),
+                            MIN(k.name)
                         FROM
                             fr.laposte_address_keyword k
                                 JOIN word_abbreviation wa ON k.name_abbreviated = wa.word
@@ -517,14 +517,14 @@ BEGIN
                     )
                     UPDATE fr.', _table_uniq, ' u SET
                         name = REGEXP_REPLACE(
-                            u.name
-                            , CONCAT(''\m'', f.help_to_fix, ''\M'')
-                            , na.name
-                            , ''g''
+                            u.name,
+                            CONCAT(''\m'', f.help_to_fix, ''\M''),
+                            na.name,
+                            ''g''
                         )
                         FROM
-                            fr.laposte_address_fault f
-                            , not_abbreviated na
+                            fr.laposte_address_fault f,
+                            not_abbreviated na
                         WHERE
                             f.element = $1
                             AND
@@ -538,8 +538,8 @@ BEGIN
             ELSIF _keys[_fault_i] = 'TYPO_ERROR' THEN
                 _manual_correction := TRUE;
                 _query := fr.get_query_to_fix_from_manual_correction(
-                    element => element
-                    , fault => _keys[_fault_i]
+                    element => element,
+                    fault => _keys[_fault_i]
                 );
             ELSE
                 _fix_dictionary := FALSE;
@@ -550,9 +550,9 @@ BEGIN
                         WHEN 'COMPLEMENT' THEN
                             '
                             CONCAT(
-                                lb_descr_nn_groupe1
-                                , lb_descr_nn_groupe2
-                                , lb_descr_nn_groupe3
+                                lb_descr_nn_groupe1,
+                                lb_descr_nn_groupe2,
+                                lb_descr_nn_groupe3
                             )
                             '
                         END
@@ -563,10 +563,10 @@ BEGIN
                     _column_with_new_value := 'CASE
                         WHEN u.descriptors ~ ''^V'' THEN
                             fr.get_property_ordinal_item(
-                                property_key => ''NAME''
-                                , property_value => u.name
-                                , as_words => u.as_words
-                                , ordinal => 1
+                                property_key => ''NAME'',
+                                property_value => u.name,
+                                as_words => u.as_words,
+                                ordinal => 1
                             )
                         END';
                 END IF;
@@ -594,12 +594,12 @@ BEGIN
                 SELECT nrows
                 INTO _nrows_history
                 FROM fr.add_history_address_fault(
-                    element => element
-                    , column_update => _column_update
-                    , fault_name => _keys[_fault_i]
-                    , fault_id => _fault_id
-                    , column_with_new_value => _column_with_new_value
-                    , simulation => simulation
+                    element => element,
+                    column_update => _column_update,
+                    fault_name => _keys[_fault_i],
+                    fault_id => _fault_id,
+                    column_with_new_value => _column_with_new_value,
+                    simulation => simulation
                 );
                 CALL public.log_info(CONCAT(' Insertion HISTORIQUE (', _keys[_fault_i], '): ', _nrows_history));
 
@@ -608,12 +608,12 @@ BEGIN
                     SELECT nrows
                     INTO _nrows_referential
                     FROM fr.fix_laposte_address_fault_referential(
-                        element => element
-                        , column_join => _column_join
-                        , column_update => _column_update
-                        , fault_id => _fault_id
-                        , column_with_new_value => _column_with_new_value
-                        , simulation => simulation
+                        element => element,
+                        column_join => _column_join,
+                        column_update => _column_update,
+                        fault_id => _fault_id,
+                        column_with_new_value => _column_with_new_value,
+                        simulation => simulation
                     );
                     CALL public.log_info(CONCAT(' Mise à jour REFERENTIEL (', _keys[_fault_i], '): ', _nrows_referential));
 
@@ -636,8 +636,8 @@ $proc$ LANGUAGE plpgsql;
 
 /* TEST
 CALL fr.fix_laposte_address_fault(
-    element => 'COMPLEMENT'
-    , fault => 'DUPLICATE_WORD'
+    element => 'COMPLEMENT',
+    fault => 'DUPLICATE_WORD'
 );
 
 10:44:53.244 Correction des anomalies dans les libellés de complément (L3)
@@ -649,8 +649,8 @@ CALL fr.fix_laposte_address_fault(
 Query returned successfully in 5 secs 772 msec.
 
 CALL fr.fix_laposte_address_fault(
-    element => 'COMPLEMENT'
-    , fault => 'WITH_ABBREVIATION'
+    element => 'COMPLEMENT',
+    fault => 'WITH_ABBREVIATION'
 );
 
 10:54:05.439 Correction des anomalies dans les libellés de complément (L3)
@@ -662,8 +662,8 @@ CALL fr.fix_laposte_address_fault(
 Query returned successfully in 8 secs 622 msec.
 
 CALL fr.fix_laposte_address_fault(
-    element => 'COMPLEMENT'
-    , fault => 'TYPO_ERROR'
+    element => 'COMPLEMENT',
+    fault => 'TYPO_ERROR'
 );
 
 10:55:15.333 Correction des anomalies dans les libellés de complément (L3)
@@ -679,10 +679,10 @@ Query returned successfully in 6 secs 219 msec.
 SELECT drop_all_functions_if_exists('fr', 'undo_laposte_address_fault_street');
 SELECT drop_all_functions_if_exists('fr', 'undo_laposte_address_fault');
 CREATE OR REPLACE PROCEDURE fr.undo_laposte_address_fault(
-    element IN VARCHAR
-    , fault IN VARCHAR DEFAULT 'ALL'
-    , simulation IN BOOLEAN DEFAULT FALSE
-    , raise_notice IN BOOLEAN DEFAULT FALSE
+    element IN VARCHAR,
+    fault IN VARCHAR DEFAULT 'ALL',
+    simulation IN BOOLEAN DEFAULT FALSE,
+    raise_notice IN BOOLEAN DEFAULT FALSE
 )
 AS
 $proc$
@@ -704,8 +704,8 @@ DECLARE
     _nrows_uniq INT;
 BEGIN
     CALL public.log_info(
-        CONCAT('Annulation des corrections des anomalies dans les libellés de '
-            , CASE element
+        CONCAT('Annulation des corrections des anomalies dans les libellés de ',
+            CASE element
                 WHEN 'STREET' THEN 'voie'
                 ELSE 'complément (L3)'
                 END
@@ -729,10 +729,10 @@ BEGIN
     IF NOT simulation THEN
         DROP TABLE IF EXISTS fr.tmp_address_fault_undo;
         CREATE UNLOGGED TABLE fr.tmp_address_fault_undo (
-            code_address CHAR(10) NOT NULL
-            , id INT
-            , date_change DATE
-            , value_before VARCHAR
+            code_address CHAR(10) NOT NULL,
+            id INT,
+            date_change DATE,
+            value_before VARCHAR
         );
     END IF;
 
@@ -767,34 +767,34 @@ BEGIN
                             CONCAT(
                                 CONCAT(
                                     'h.values->>', quote_literal('lb_descr_nn_groupe1')
-                                )
-                                , CONCAT(
+                                ),
+                                CONCAT(
                                     'h.values->>', quote_literal('lb_descr_nn_groupe2')
-                                )
-                                , CONCAT(
+                                ),
+                                CONCAT(
                                     'h.values->>', quote_literal('lb_descr_nn_groupe3')
                                 )
                             )
                         WHEN 'TYPE' THEN
                             NULL
                         ELSE
-                            CONCAT_WS(' '
-                                , CONCAT(
+                            CONCAT_WS(' ',
+                                CONCAT(
                                     'h.values->>', quote_literal('lb_type_groupe1_l3')
-                                )
-                                , CONCAT(
+                                ),
+                                CONCAT(
                                     'h.values->>', quote_literal('lb_groupe1')
-                                )
-                                , CONCAT(
+                                ),
+                                CONCAT(
                                     'h.values->>', quote_literal('lb_type_groupe2_l3')
-                                )
-                                , CONCAT(
+                                ),
+                                CONCAT(
                                     'h.values->>', quote_literal('lb_groupe2')
-                                )
-                                , CONCAT(
+                                ),
+                                CONCAT(
                                     'h.values->>', quote_literal('lb_type_groupe3_l3')
-                                )
-                                , CONCAT(
+                                ),
+                                CONCAT(
                                     'h.values->>', quote_literal('lb_groupe3')
                                 )
                             )
@@ -837,9 +837,9 @@ BEGIN
                 WITH
                 last_change AS (
                     SELECT
-                        h.code_address
-                        , MAX(h.date_change) date_change
-                        , FIRST(r.name_id) id
+                        h.code_address,
+                        MAX(h.date_change) date_change,
+                        FIRST(r.name_id) id
                     FROM
                         fr.laposte_address_history h
                             JOIN ', _table_reference, ' r ON h.code_address = r.address_id
@@ -849,13 +849,13 @@ BEGIN
                         h.change = $2
                     GROUP BY
                         h.code_address
-                )
-                , last_change_with_value AS (
+                ),
+                last_change_with_value AS (
                     SELECT
-                        h.code_address
-                        , lc.id
-                        , lc.date_change
-                        , ', _column_value, ' value_before
+                        h.code_address,
+                        lc.id,
+                        lc.date_change,
+                        ', _column_value, ' value_before
                     FROM
                         fr.laposte_address_history h
                             JOIN last_change lc ON h.code_address = lc.code_address
@@ -959,8 +959,8 @@ BEGIN
             _table_from := 'fr.laposte_address';
             _column_from := 'co_cea_l3';
             _columns_to := 'co_cea_voie = ac.co_cea_voie';
-            _query := CONCAT(_query
-                , '
+            _query := CONCAT(_query,
+                '
                 WITH
                 housenumber_with_multiple_streets AS (
                     SELECT co_cea_numero
@@ -968,8 +968,8 @@ BEGIN
                     WHERE fl_active AND co_cea_numero IS NOT NULL
                     GROUP BY co_cea_numero
                     HAVING COUNT(DISTINCT co_cea_voie) > 1
-                )
-                , good_street_of_housenumber AS (
+                ),
+                good_street_of_housenumber AS (
                     SELECT DISTINCT a.co_cea_numero, a.co_cea_voie
                     FROM fr.laposte_address a
                         JOIN housenumber_with_multiple_streets e ON a.co_cea_numero = e.co_cea_numero
@@ -977,8 +977,8 @@ BEGIN
                         a.fl_active
                         AND
                         a.co_niveau = ''NUMERO''
-                )
-                , good_street_of_complement AS (
+                ),
+                good_street_of_complement AS (
                     SELECT DISTINCT a.co_cea_l3 code_address, s.co_cea_voie
                     FROM fr.laposte_address a
                         JOIN housenumber_with_multiple_streets e ON a.co_cea_numero = e.co_cea_numero
@@ -1002,18 +1002,18 @@ BEGIN
         END IF;
 
         _query := CONCAT('INSERT INTO fr.laposte_address_history (
-                code_address
-                , date_change
-                , change
-                , kind
-                , values
+                code_address,
+                date_change,
+                change,
+                kind,
+                values
             )
             SELECT
-                a.', _column_from, '
-                , TIMEOFDAY()::DATE
-                , ', quote_literal(_set.key)
-                , ', ', quote_literal(_kind), '
-                , ROW_TO_JSON(a.*)::JSONB
+                a.', _column_from, ',
+                TIMEOFDAY()::DATE,
+                ', quote_literal(_set.key),
+                ', ', quote_literal(_kind), ',
+                ROW_TO_JSON(a.*)::JSONB
             FROM ', _table_from, ' a
                 JOIN fr.tmp_address_fault_links ac ON a.', _column_from, ' = ac.code_address
             '

@@ -3,9 +3,9 @@
  */
 
 CREATE TABLE IF NOT EXISTS fr.constant (
-      usecase CHARACTER VARYING NOT NULL
-    , key VARCHAR NOT NULL
-    , value VARCHAR
+    usecase CHARACTER VARYING NOT NULL,
+    key VARCHAR NOT NULL,
+    value VARCHAR
 );
 
 DO $$
@@ -54,31 +54,31 @@ BEGIN
         WITH
         type_with_abbr AS (
             SELECT
-                  lb_type
-                , lb_type_abrege
-                , COUNT(*) n
+                lb_type,
+                lb_type_abrege,
+                COUNT(*) n
             FROM fr.laposte_address_street
             WHERE
                 lb_type IS NOT NULL
                 AND
                 fl_active
             GROUP BY
-                  lb_type
-                , lb_type_abrege
-        )
-        , type_with_larger_value AS (
+                lb_type,
+                lb_type_abrege
+        ),
+        type_with_larger_value AS (
             SELECT
-                  lb_type
-                , FIRST(lb_type_abrege ORDER BY n DESC) lb_type_abrege
+                lb_type,
+                FIRST(lb_type_abrege ORDER BY n DESC) lb_type_abrege
             FROM
                 type_with_abbr
             GROUP BY
-                  lb_type
+                lb_type
         )
         SELECT
-              'TYPE'
-            , lb_type
-            , CASE
+            'TYPE',
+            lb_type,
+            CASE
                 -- no abbreviation !
                 WHEN lb_type = 'ABBAYE' THEN NULL
                 ELSE lb_type_abrege
@@ -117,47 +117,47 @@ BEGIN
         SELECT *
         FROM (
             VALUES
-                  ('ANCIEN CHEMIN', 'ANCI CHEMIN')
-                , ('ANCIENNE ROUTE', 'ANCI ROUTE')
-                , ('CHEMIN VICINAL', 'CHEM VICINAL')
-                , ('MAISON FORESTIERE', 'MAIS FORESTIERE')
-                , ('PASSAGE A NIVEAU', 'PASS A NIVEAU')
-                , ('PETIT CHEMIN', 'PETI CHEMIN')
-                , ('PETITE ROUTE', 'PETI ROUTE')
-                , ('VIEUX CHEMIN', 'VIEU CHEMIN')
-                , ('VIELLE ROUTE', 'VIEL ROUTE')
-                , ('AGGLOMERATION', 'AGGL')
-                , ('AUTOROUTE', 'AUTO')
-                , ('BOUCLE', 'BOUC')
-                , ('CARREFOUR', 'CARR')
-                , ('CHAUSSEE', 'CHAU')
-                --, ('CHAUSSEES', 'CHAU')
-                , ('CHEMIN', 'CHEM')
-                --, ('CHEMINS', 'CHEM')
-                , ('DOMAINE', 'DOMA')
-                --, ('DOMAINES', 'DOMA')
-                , ('ESCALIER', 'ESCA')
-                --, ('ESCALIERS', 'ESCA')
-                , ('ESPLANADE', 'ESPL')
-                , ('GALERIE', 'GALE')
-                , ('MONTEE', 'MONT')
-                --, ('MONTEES', 'MONT')
-                , ('MOULIN', 'MOUL')
-                --, ('MOULINS', 'MOUL')
-                , ('PARVIS', 'PARV')
-                , ('PASSERELLE', 'PASS')
-                , ('QUARTIER', 'QUAR')
-                , ('RACCOURCI', 'RACC')
-                , ('REMPART', 'REMP')
-                , ('RUELLE', 'RUEL')
-                --, ('RUELLES', 'RUEL')
-                , ('SENTE', 'SENT')
-                --, ('SENTES', 'SENT')
-                , ('SENTIER', 'SENT')
-                --, ('SENTIERS', 'SENT')
-                , ('TERRASSE', 'TERR')
-                --, ('TERRASSES', 'TERR')
-                , ('TRAVERSE', 'TRAV')
+                ('ANCIEN CHEMIN', 'ANCI CHEMIN'),
+                ('ANCIENNE ROUTE', 'ANCI ROUTE'),
+                ('CHEMIN VICINAL', 'CHEM VICINAL'),
+                ('MAISON FORESTIERE', 'MAIS FORESTIERE'),
+                ('PASSAGE A NIVEAU', 'PASS A NIVEAU'),
+                ('PETIT CHEMIN', 'PETI CHEMIN'),
+                ('PETITE ROUTE', 'PETI ROUTE'),
+                ('VIEUX CHEMIN', 'VIEU CHEMIN'),
+                ('VIELLE ROUTE', 'VIEL ROUTE'),
+                ('AGGLOMERATION', 'AGGL'),
+                ('AUTOROUTE', 'AUTO'),
+                ('BOUCLE', 'BOUC'),
+                ('CARREFOUR', 'CARR'),
+                ('CHAUSSEE', 'CHAU'),
+                -- ('CHAUSSEES', 'CHAU'),
+                ('CHEMIN', 'CHEM'),
+                -- ('CHEMINS', 'CHEM'),
+                ('DOMAINE', 'DOMA'),
+                -- ('DOMAINES', 'DOMA'),
+                ('ESCALIER', 'ESCA'),
+                -- ('ESCALIERS', 'ESCA'),
+                ('ESPLANADE', 'ESPL'),
+                ('GALERIE', 'GALE'),
+                ('MONTEE', 'MONT'),
+                -- ('MONTEES', 'MONT'),
+                ('MOULIN', 'MOUL'),
+                -- ('MOULINS', 'MOUL'),
+                ('PARVIS', 'PARV'),
+                ('PASSERELLE', 'PASS'),
+                ('QUARTIER', 'QUAR'),
+                ('RACCOURCI', 'RACC'),
+                ('REMPART', 'REMP'),
+                ('RUELLE', 'RUEL'),
+                -- ('RUELLES', 'RUEL'),
+                ('SENTE', 'SENT'),
+                -- ('SENTES', 'SENT'),
+                ('SENTIER', 'SENT'),
+                -- ('SENTIERS', 'SENT'),
+                ('TERRASSE', 'TERR'),
+                -- ('TERRASSES', 'TERR'),
+                ('TRAVERSE', 'TRAV')
         ) AS x(name, name_abbreviated)
     )
     UPDATE fr.laposte_address_keyword st SET
@@ -175,10 +175,10 @@ BEGIN
     WITH
     type_singular_plural AS (
         SELECT
-              k1.name type_singular
-            , k1.name_abbreviated type_abbr_singular
-            , k2.name type_plural
-            , k2.name_abbreviated type_abbr_plural
+            k1.name type_singular,
+            k1.name_abbreviated type_abbr_singular,
+            k2.name type_plural,
+            k2.name_abbreviated type_abbr_plural
         FROM
             fr.laposte_address_keyword k1
                 JOIN fr.laposte_address_keyword k2
@@ -198,18 +198,18 @@ BEGIN
     WITH
     first_word_of_type AS (
         SELECT
-              name
-            , CASE
+            name,
+            CASE
                 WHEN POSITION(' ' IN name) = 0 THEN NULL
                 ELSE SUBSTR(name, 1, POSITION(' ' IN name) -1)
                 END first_word
         FROM fr.laposte_address_keyword
         WHERE "group" = 'TYPE'
-    )
-    , occurs_type AS (
+    ),
+    occurs_type AS (
         SELECT
-              lb_type name
-            , COUNT(*) occurs
+            lb_type name,
+            COUNT(*) occurs
         FROM fr.laposte_address_street
         WHERE lb_type IS NOT NULL
         GROUP BY lb_type
@@ -218,8 +218,8 @@ BEGIN
           first_word = fw.first_word
         , occurs = ot.occurs
         FROM
-              first_word_of_type fw
-            , occurs_type ot
+            first_word_of_type fw,
+            occurs_type ot
         WHERE
             "group" = 'TYPE'
             AND
@@ -252,8 +252,8 @@ BEGIN
     CALL public.log_info(' Initialisation');
     INSERT INTO fr.constant (
         SELECT DISTINCT
-              'LAPOSTE_STREET_FIRSTNAME'
-            , mots.mot
+            'LAPOSTE_STREET_FIRSTNAME',
+            mots.mot
         FROM fr.laposte_address_street AS voie_ran
         INNER JOIN LATERAL UNNEST(REGEXP_SPLIT_TO_ARRAY(voie_ran.lb_voie, '\s+'))
             WITH ORDINALITY AS mots(mot, ordre)
@@ -297,8 +297,8 @@ BEGIN
         SELECT *
         FROM (
             VALUES
-                  ('NAME', 'ANCIENS', 'ANC')
-                , ('NAME', 'COMBATTANTS', 'COMB')
+                ('NAME', 'ANCIENS', 'ANC'),
+                ('NAME', 'COMBATTANTS', 'COMB')
         ) AS x("group", name, name_abbreviated)
         ;
 
@@ -308,11 +308,11 @@ BEGIN
     WITH
     name_occurs AS (
         SELECT
-              k.name
-            , COUNT(*) occurs
+            k.name,
+            COUNT(*) occurs
         FROM
-              fr.laposte_address_street s
-            , fr.laposte_address_keyword k
+            fr.laposte_address_street s,
+            fr.laposte_address_keyword k
         WHERE
             s.fl_active
             AND
@@ -416,234 +416,234 @@ BEGIN
         SELECT *
         FROM (
             VALUES
-                  ('TITLE', 'ABBAYE', 'ABBA')
-                --, ('TITLE', 'ABBE', NULL)
-                , ('TITLE', 'ADJUDANT', 'ADJ')
-                , ('TITLE', 'AERODROME', 'AER')
-                , ('TITLE', 'AEROGARE', NULL)
-                , ('TITLE', 'AERONAUTIQUE', NULL)
-                , ('TITLE', 'AEROPORT', NULL)
-                , ('TITLE', 'AGENCE', NULL)
-                , ('TITLE', 'AGRICOLE', 'AGRIC')
-                --, ('TITLE', 'AMIRAL', NULL)
-                , ('TITLE', 'ANCIEN', 'ANC')
-                , ('TITLE', 'ARMEMENT', NULL)
-                , ('TITLE', 'ARRONDISSEMENT', 'ARR')
-                , ('TITLE', 'ASPIRANT', 'ASP')
-                , ('TITLE', 'ASSOCIATION', NULL)
-                , ('TITLE', 'ATELIER', NULL)
-                --, ('TITLE', 'AUTOROUTE', 'AUTO')
-                , ('TITLE', 'BAS', NULL)
-                , ('TITLE', 'BASSE', 'BAS')
-                , ('TITLE', 'BASSES', 'BAS')
-                , ('TITLE', 'BASTIDE', 'BAST')
-                , ('TITLE', 'BATAILLON', 'BTN')
-                , ('TITLE', 'BATAILLONS', 'BTN')
-                , ('TITLE', 'BATIMENT', NULL)
-                , ('TITLE', 'BATIMENTS', NULL)
-                , ('TITLE', 'BOURG', 'BOUR')
-                , ('TITLE', 'BUTTE', 'BUTT')
-                , ('TITLE', 'CABINET', NULL)
-                , ('TITLE', 'CAMPAGNE', 'CAMP')
-                --, ('TITLE', 'CANAL', NULL)
-                , ('TITLE', 'CANTON', 'CANT')
-                --, ('TITLE', 'CAPITAINE', NULL)
-                , ('TITLE', 'CARDINAL', 'CDL')
-                , ('TITLE', 'CARREAU', 'CARR')
-                --, ('TITLE', 'CARREFOUR', 'CARR')
-                , ('TITLE', 'CARRIERE', 'CARR')
-                , ('TITLE', 'CARRIERES', 'CARR')
-                , ('TITLE', 'CASERNE', 'CASR')
-                , ('TITLE', 'CAVEE', 'CAVE')
-                , ('TITLE', 'CHAMBRE', NULL)
-                --, ('TITLE', 'CHANOINE', NULL)
-                , ('TITLE', 'CHAPELLE', 'CHAP')
-                , ('TITLE', 'CHATEAU', 'CHAT')
-                --, ('TITLE', 'CHEMIN', 'CHEM')
-                , ('TITLE', 'CHEMINS', 'CHEM')
-                , ('TITLE', 'CITADELLE', NULL)
-                , ('TITLE', 'COLLEGE', NULL)
-                , ('TITLE', 'COLLINE', 'COLL')
-                , ('TITLE', 'COLLINES', 'COLL')
-                , ('TITLE', 'COLONEL', 'CNL')
-                , ('TITLE', 'COLONIE', 'COLO')
-                , ('TITLE', 'COMITE', NULL)
-                , ('TITLE', 'COMMANDANT', 'CDT')
-                , ('TITLE', 'COMMERCIAL', 'CIAL')
-                , ('TITLE', 'COMMUNAL', 'COM')
-                , ('TITLE', 'COMMUNAUX', 'COM')
-                , ('TITLE', 'COMMUNE', 'COM')
-                , ('TITLE', 'COMPAGNIE', 'CIE')
-                , ('TITLE', 'COMPAGNON', NULL)
-                , ('TITLE', 'COMPAGNONS', 'COMP')
-                , ('TITLE', 'COOPERATIVE', 'COOP')
-                , ('TITLE', 'COULOIR', NULL)
-                , ('TITLE', 'COUR', 'COUR')
-                , ('TITLE', 'COURS', 'COUR')
-                , ('TITLE', 'CROIX', 'CRX')
-                , ('TITLE', 'DEPARTEMENTAL', 'DEP')
-                , ('TITLE', 'DIGUE', 'DIGU')
-                , ('TITLE', 'DIRECTEUR', NULL)
-                , ('TITLE', 'DIRECTION', 'DIR')
-                , ('TITLE', 'DIVISION', 'DIV')
-                , ('TITLE', 'DOCTEUR', 'DR')
-                --, ('TITLE', 'DOMAINE', 'DOMA')
-                , ('TITLE', 'ECLUSE', 'ECLU')
-                --, ('TITLE', 'ECOLE', NULL)
-                , ('TITLE', 'ECONOMIQUE', 'ECO')
-                , ('TITLE', 'ECRIVAINS', 'ECRIV')
-                , ('TITLE', 'EGLISE', 'EGLI')
-                , ('TITLE', 'ENSEIGNEMENT', NULL)
-                , ('TITLE', 'ENSEMBLE', NULL)
-                , ('TITLE', 'ENTREE', 'ENT')
-                , ('TITLE', 'ENTREES', NULL)
-                , ('TITLE', 'ENTREPRISE', NULL)
-                , ('TITLE', 'EPOUX', NULL)
-                --, ('TITLE', 'ESPLANADE', 'ESPL')
-                , ('TITLE', 'ESPLANADES', 'ESPL')
-                , ('TITLE', 'ETABLISSEMENT', NULL)
-                , ('TITLE', 'ETABLISSEMENTS', NULL)
-                , ('TITLE', 'ETANG', 'ETAN')
-                , ('TITLE', 'EVEQUE', NULL)
-                , ('TITLE', 'FACULTE', NULL)
-                , ('TITLE', 'FAUBOURG', 'FAUB')
-                , ('TITLE', 'FERME', 'FERM')
-                , ('TITLE', 'FONTAINE', 'FONT')
-                , ('TITLE', 'FORESTIER', NULL)
-                , ('TITLE', 'FORET', 'FOR')
-                , ('TITLE', 'FOSSE', 'FOSS')
-                , ('TITLE', 'FOSSES', 'FOSS')
-                , ('TITLE', 'FRANCAIS', 'FR')
-                , ('TITLE', 'FRANCAISE', 'FR')
-                , ('TITLE', 'FUSILIERS', NULL)
-                , ('TITLE', 'GARENNE', 'GARE')
-                , ('TITLE', 'GENDARMERIE', NULL)
-                , ('TITLE', 'GENERAL', 'GAL')
-                , ('TITLE', 'GOUVERNEUR', 'GOUV')
-                , ('TITLE', 'GRAND', 'GD')
-                , ('TITLE', 'GRANDE', 'GDE')
-                , ('TITLE', 'GRANDES', 'GDES')
-                , ('TITLE', 'GRANDS', 'GDS')
-                , ('TITLE', 'GROUPE', 'GROU')
-                --, ('TITLE', 'HALAGE', NULL)
-                , ('TITLE', 'HALLE', 'HALL')
-                , ('TITLE', 'HAMEAU', 'HAME')
-                , ('TITLE', 'HAMEAUX', 'HAME')
-                , ('TITLE', 'HAUT', 'HT')
-                , ('TITLE', 'HAUTE', 'HTE')
-                , ('TITLE', 'HAUTES', 'HTES')
-                , ('TITLE', 'HAUTS', 'HTS')
-                , ('TITLE', 'HIPPODROME', 'HIPP')
-                , ('TITLE', 'HOPITAL', 'HOP')
-                , ('TITLE', 'HOSPICE', NULL)
-                , ('TITLE', 'HOSPITALIER', NULL)
-                , ('TITLE', 'HOTEL', 'HOT')
-                --, ('TITLE', 'ILOT', NULL)
-                , ('TITLE', 'INFANTERIE', 'INFANT')
-                , ('TITLE', 'INFERIEUR', NULL)
-                , ('TITLE', 'INFERIEURE', NULL)
-                , ('TITLE', 'INGENIEUR', 'ING')
-                , ('TITLE', 'INSPECTEUR', NULL)
-                , ('TITLE', 'INSTITUT', NULL)
-                , ('TITLE', 'INTERNATIONAL', NULL)
-                , ('TITLE', 'INTERNATIONALE', 'INTERN')
-                , ('TITLE', 'LIEUTENANT', 'LT')
-                , ('TITLE', 'LIEUTENANT DE VAISSEAU', 'LTDV')
-                , ('TITLE', 'MADAME', 'MME')
-                , ('TITLE', 'MADEMOISELLE', 'MLLE')
-                , ('TITLE', 'MAGASIN', NULL)
-                --, ('TITLE', 'MAIRIE', NULL)
-                , ('TITLE', 'MAISON', 'MAIS')
-                , ('TITLE', 'MAITRE', 'ME')
-                --, ('TITLE', 'MARAIS', NULL)
-                , ('TITLE', 'MARCHE', 'MARC')
-                , ('TITLE', 'MARECHAL', 'MAL')
-                , ('TITLE', 'MARITIME', NULL)
-                , ('TITLE', 'MARTYR', NULL)
-                , ('TITLE', 'MARTYRS', 'MYR')
-                , ('TITLE', 'MEDECIN', 'MED')
-                , ('TITLE', 'MEDICAL', 'MED')
-                , ('TITLE', 'MESDEMOISELLES', NULL)
-                , ('TITLE', 'MESSIEURS', NULL)
-                , ('TITLE', 'MILITAIRE', 'MIL')
-                , ('TITLE', 'MONSEIGNEUR', 'MGR')
-                , ('TITLE', 'MONSIEUR', 'M')
-                --, ('TITLE', 'MONTEE', 'MONT')
-                --, ('TITLE', 'MOULIN', 'MOUL')
-                , ('TITLE', 'MOULINS', 'MOUL')
-                , ('TITLE', 'MUNICIPAL', 'MUN')
-                , ('TITLE', 'MUSEE', 'MUSE')
-                , ('TITLE', 'NATIONAL', 'NAL')
-                , ('TITLE', 'NOTRE DAME', 'ND')
-                , ('TITLE', 'NOUVEAU', 'NOUV')
-                , ('TITLE', 'NOUVELLE', 'NOUV')
-                , ('TITLE', 'OBSERVATOIRE', NULL)
-                , ('TITLE', 'PALAIS', 'PALA')
-                , ('TITLE', 'PARCS', NULL)
-                , ('TITLE', 'PARKING', 'PARK')
-                --, ('TITLE', 'PARVIS', 'PARV')
-                --, ('TITLE', 'PASSERELLE', 'PASS')
-                , ('TITLE', 'PASSERELLES', NULL)
-                , ('TITLE', 'PASSES', NULL)
-                , ('TITLE', 'PASTEUR', 'PAST')
-                , ('TITLE', 'PAVILLONS', 'PAVI')
-                , ('TITLE', 'PETIT', 'PT')
-                , ('TITLE', 'PETITE', 'PTE')
-                , ('TITLE', 'PETITES', 'PTE')
-                , ('TITLE', 'PETITS', 'PT')
-                , ('TITLE', 'PLAINE', 'PLAI')
-                , ('TITLE', 'PLATEAU', 'PLAT')
-                , ('TITLE', 'PLATEAUX', 'PLAT')
-                , ('TITLE', 'POINTE', 'POIN')
-                , ('TITLE', 'POLICE', 'POL')
-                , ('TITLE', 'PORTE', 'PORT')
-                , ('TITLE', 'PREFET', NULL)
-                , ('TITLE', 'PRESIDENT', 'PDT')
-                , ('TITLE', 'PRESQU ILE', 'PRES ILE')
-                , ('TITLE', 'PROFESSEUR', 'PR')
-                , ('TITLE', 'PROLONGE', 'PROL')
-                , ('TITLE', 'PROLONGEE', 'PROL')
-                , ('TITLE', 'PROPRIETE', NULL)
-                --, ('TITLE', 'QUARTIER', 'QUAR')
-                --, ('TITLE', 'RACCOURCI', 'RACC')
-                , ('TITLE', 'RECTEUR', 'RECT')
-                , ('TITLE', 'REGIMENT', 'RGT')
-                , ('TITLE', 'REGIONAL', NULL)
-                , ('TITLE', 'REPUBLIQUE', 'REP')
-                , ('TITLE', 'RESIDENCES', 'RESI')
-                , ('TITLE', 'RESTAURANT', NULL)
-                , ('TITLE', 'ROTONDE', 'ROTO')
-                --, ('TITLE', 'RUELLE', 'RUEL')
-                , ('TITLE', 'SAINT', 'ST')
-                , ('TITLE', 'SAINTE', 'STE')
-                , ('TITLE', 'SAINTES', NULL)
-                , ('TITLE', 'SAINTS', NULL)
-                --, ('TITLE', 'SENTE', 'SENT')
-                --, ('TITLE', 'SENTIER', 'SENT')
-                , ('TITLE', 'SERGENT', 'SGT')
-                , ('TITLE', 'SERVICE', 'SCE')
-                , ('TITLE', 'SOCIETE', NULL)
-                , ('TITLE', 'SOUS PREFET', NULL)
-                , ('TITLE', 'STADE', 'STAD')
-                , ('TITLE', 'STATION', 'STAT')
-                , ('TITLE', 'SUPERIEUR', NULL)
-                , ('TITLE', 'SUPERIEURE', NULL)
-                , ('TITLE', 'SYNDICAT', NULL)
-                , ('TITLE', 'TECHNIQUE', NULL)
-                , ('TITLE', 'TERRAIN', 'TERR')
-                --, ('TITLE', 'TERRASSES', 'TERR')
-                --, ('TITLE', 'TRAVERSE', 'TRAV')
-                , ('TITLE', 'TUNNEL', 'TUN')
-                , ('TITLE', 'UNIVERSITAIRE', 'UNVT')
-                , ('TITLE', 'UNIVERSITE', 'UNIV')
-                , ('TITLE', 'VALLEE', 'VALL')
-                , ('TITLE', 'VALLON', 'VALL')
-                , ('TITLE', 'VELODROME', NULL)
-                , ('TITLE', 'VEUVE', NULL)
-                , ('TITLE', 'VIEILLE', 'VIEL')
-                , ('TITLE', 'VIEILLES', 'VIEL')
-                , ('TITLE', 'VIEUX', 'VX')
-                , ('TITLE', 'VILLAS', 'VILL')
+                ('TITLE', 'ABBAYE', 'ABBA'),
+                --('TITLE', 'ABBE', NULL),
+                ('TITLE', 'ADJUDANT', 'ADJ'),
+                ('TITLE', 'AERODROME', 'AER'),
+                ('TITLE', 'AEROGARE', NULL),
+                ('TITLE', 'AERONAUTIQUE', NULL),
+                ('TITLE', 'AEROPORT', NULL),
+                ('TITLE', 'AGENCE', NULL),
+                ('TITLE', 'AGRICOLE', 'AGRIC'),
+                --('TITLE', 'AMIRAL', NULL),
+                ('TITLE', 'ANCIEN', 'ANC'),
+                ('TITLE', 'ARMEMENT', NULL),
+                ('TITLE', 'ARRONDISSEMENT', 'ARR'),
+                ('TITLE', 'ASPIRANT', 'ASP'),
+                ('TITLE', 'ASSOCIATION', NULL),
+                ('TITLE', 'ATELIER', NULL),
+                --('TITLE', 'AUTOROUTE', 'AUTO'),
+                ('TITLE', 'BAS', NULL),
+                ('TITLE', 'BASSE', 'BAS'),
+                ('TITLE', 'BASSES', 'BAS'),
+                ('TITLE', 'BASTIDE', 'BAST'),
+                ('TITLE', 'BATAILLON', 'BTN'),
+                ('TITLE', 'BATAILLONS', 'BTN'),
+                ('TITLE', 'BATIMENT', NULL),
+                ('TITLE', 'BATIMENTS', NULL),
+                ('TITLE', 'BOURG', 'BOUR'),
+                ('TITLE', 'BUTTE', 'BUTT'),
+                ('TITLE', 'CABINET', NULL),
+                ('TITLE', 'CAMPAGNE', 'CAMP'),
+                --('TITLE', 'CANAL', NULL),
+                ('TITLE', 'CANTON', 'CANT'),
+                --('TITLE', 'CAPITAINE', NULL),
+                ('TITLE', 'CARDINAL', 'CDL'),
+                ('TITLE', 'CARREAU', 'CARR'),
+                --('TITLE', 'CARREFOUR', 'CARR'),
+                ('TITLE', 'CARRIERE', 'CARR'),
+                ('TITLE', 'CARRIERES', 'CARR'),
+                ('TITLE', 'CASERNE', 'CASR'),
+                ('TITLE', 'CAVEE', 'CAVE'),
+                ('TITLE', 'CHAMBRE', NULL),
+                --('TITLE', 'CHANOINE', NULL),
+                ('TITLE', 'CHAPELLE', 'CHAP'),
+                ('TITLE', 'CHATEAU', 'CHAT'),
+                --('TITLE', 'CHEMIN', 'CHEM'),
+                ('TITLE', 'CHEMINS', 'CHEM'),
+                ('TITLE', 'CITADELLE', NULL),
+                ('TITLE', 'COLLEGE', NULL),
+                ('TITLE', 'COLLINE', 'COLL'),
+                ('TITLE', 'COLLINES', 'COLL'),
+                ('TITLE', 'COLONEL', 'CNL'),
+                ('TITLE', 'COLONIE', 'COLO'),
+                ('TITLE', 'COMITE', NULL),
+                ('TITLE', 'COMMANDANT', 'CDT'),
+                ('TITLE', 'COMMERCIAL', 'CIAL'),
+                ('TITLE', 'COMMUNAL', 'COM'),
+                ('TITLE', 'COMMUNAUX', 'COM'),
+                ('TITLE', 'COMMUNE', 'COM'),
+                ('TITLE', 'COMPAGNIE', 'CIE'),
+                ('TITLE', 'COMPAGNON', NULL),
+                ('TITLE', 'COMPAGNONS', 'COMP'),
+                ('TITLE', 'COOPERATIVE', 'COOP'),
+                ('TITLE', 'COULOIR', NULL),
+                ('TITLE', 'COUR', 'COUR'),
+                ('TITLE', 'COURS', 'COUR'),
+                ('TITLE', 'CROIX', 'CRX'),
+                ('TITLE', 'DEPARTEMENTAL', 'DEP'),
+                ('TITLE', 'DIGUE', 'DIGU'),
+                ('TITLE', 'DIRECTEUR', NULL),
+                ('TITLE', 'DIRECTION', 'DIR'),
+                ('TITLE', 'DIVISION', 'DIV'),
+                ('TITLE', 'DOCTEUR', 'DR'),
+                --('TITLE', 'DOMAINE', 'DOMA'),
+                ('TITLE', 'ECLUSE', 'ECLU'),
+                --('TITLE', 'ECOLE', NULL),
+                ('TITLE', 'ECONOMIQUE', 'ECO'),
+                ('TITLE', 'ECRIVAINS', 'ECRIV'),
+                ('TITLE', 'EGLISE', 'EGLI'),
+                ('TITLE', 'ENSEIGNEMENT', NULL),
+                ('TITLE', 'ENSEMBLE', NULL),
+                ('TITLE', 'ENTREE', 'ENT'),
+                ('TITLE', 'ENTREES', NULL),
+                ('TITLE', 'ENTREPRISE', NULL),
+                ('TITLE', 'EPOUX', NULL),
+                --('TITLE', 'ESPLANADE', 'ESPL'),
+                ('TITLE', 'ESPLANADES', 'ESPL'),
+                ('TITLE', 'ETABLISSEMENT', NULL),
+                ('TITLE', 'ETABLISSEMENTS', NULL),
+                ('TITLE', 'ETANG', 'ETAN'),
+                ('TITLE', 'EVEQUE', NULL),
+                ('TITLE', 'FACULTE', NULL),
+                ('TITLE', 'FAUBOURG', 'FAUB'),
+                ('TITLE', 'FERME', 'FERM'),
+                ('TITLE', 'FONTAINE', 'FONT'),
+                ('TITLE', 'FORESTIER', NULL),
+                ('TITLE', 'FORET', 'FOR'),
+                ('TITLE', 'FOSSE', 'FOSS'),
+                ('TITLE', 'FOSSES', 'FOSS'),
+                ('TITLE', 'FRANCAIS', 'FR'),
+                ('TITLE', 'FRANCAISE', 'FR'),
+                ('TITLE', 'FUSILIERS', NULL),
+                ('TITLE', 'GARENNE', 'GARE'),
+                ('TITLE', 'GENDARMERIE', NULL),
+                ('TITLE', 'GENERAL', 'GAL'),
+                ('TITLE', 'GOUVERNEUR', 'GOUV'),
+                ('TITLE', 'GRAND', 'GD'),
+                ('TITLE', 'GRANDE', 'GDE'),
+                ('TITLE', 'GRANDES', 'GDES'),
+                ('TITLE', 'GRANDS', 'GDS'),
+                ('TITLE', 'GROUPE', 'GROU'),
+                --('TITLE', 'HALAGE', NULL),
+                ('TITLE', 'HALLE', 'HALL'),
+                ('TITLE', 'HAMEAU', 'HAME'),
+                ('TITLE', 'HAMEAUX', 'HAME'),
+                ('TITLE', 'HAUT', 'HT'),
+                ('TITLE', 'HAUTE', 'HTE'),
+                ('TITLE', 'HAUTES', 'HTES'),
+                ('TITLE', 'HAUTS', 'HTS'),
+                ('TITLE', 'HIPPODROME', 'HIPP'),
+                ('TITLE', 'HOPITAL', 'HOP'),
+                ('TITLE', 'HOSPICE', NULL),
+                ('TITLE', 'HOSPITALIER', NULL),
+                ('TITLE', 'HOTEL', 'HOT'),
+                --('TITLE', 'ILOT', NULL),
+                ('TITLE', 'INFANTERIE', 'INFANT'),
+                ('TITLE', 'INFERIEUR', NULL),
+                ('TITLE', 'INFERIEURE', NULL),
+                ('TITLE', 'INGENIEUR', 'ING'),
+                ('TITLE', 'INSPECTEUR', NULL),
+                ('TITLE', 'INSTITUT', NULL),
+                ('TITLE', 'INTERNATIONAL', NULL),
+                ('TITLE', 'INTERNATIONALE', 'INTERN'),
+                ('TITLE', 'LIEUTENANT', 'LT'),
+                ('TITLE', 'LIEUTENANT DE VAISSEAU', 'LTDV'),
+                ('TITLE', 'MADAME', 'MME'),
+                ('TITLE', 'MADEMOISELLE', 'MLLE'),
+                ('TITLE', 'MAGASIN', NULL),
+                --('TITLE', 'MAIRIE', NULL),
+                ('TITLE', 'MAISON', 'MAIS'),
+                ('TITLE', 'MAITRE', 'ME'),
+                --('TITLE', 'MARAIS', NULL),
+                ('TITLE', 'MARCHE', 'MARC'),
+                ('TITLE', 'MARECHAL', 'MAL'),
+                ('TITLE', 'MARITIME', NULL),
+                ('TITLE', 'MARTYR', NULL),
+                ('TITLE', 'MARTYRS', 'MYR'),
+                ('TITLE', 'MEDECIN', 'MED'),
+                ('TITLE', 'MEDICAL', 'MED'),
+                ('TITLE', 'MESDEMOISELLES', NULL),
+                ('TITLE', 'MESSIEURS', NULL),
+                ('TITLE', 'MILITAIRE', 'MIL'),
+                ('TITLE', 'MONSEIGNEUR', 'MGR'),
+                ('TITLE', 'MONSIEUR', 'M'),
+                --('TITLE', 'MONTEE', 'MONT'),
+                --('TITLE', 'MOULIN', 'MOUL'),
+                ('TITLE', 'MOULINS', 'MOUL'),
+                ('TITLE', 'MUNICIPAL', 'MUN'),
+                ('TITLE', 'MUSEE', 'MUSE'),
+                ('TITLE', 'NATIONAL', 'NAL'),
+                ('TITLE', 'NOTRE DAME', 'ND'),
+                ('TITLE', 'NOUVEAU', 'NOUV'),
+                ('TITLE', 'NOUVELLE', 'NOUV'),
+                ('TITLE', 'OBSERVATOIRE', NULL),
+                ('TITLE', 'PALAIS', 'PALA'),
+                ('TITLE', 'PARCS', NULL),
+                ('TITLE', 'PARKING', 'PARK'),
+                --('TITLE', 'PARVIS', 'PARV'),
+                --('TITLE', 'PASSERELLE', 'PASS'),
+                ('TITLE', 'PASSERELLES', NULL),
+                ('TITLE', 'PASSES', NULL),
+                ('TITLE', 'PASTEUR', 'PAST'),
+                ('TITLE', 'PAVILLONS', 'PAVI'),
+                ('TITLE', 'PETIT', 'PT'),
+                ('TITLE', 'PETITE', 'PTE'),
+                ('TITLE', 'PETITES', 'PTE'),
+                ('TITLE', 'PETITS', 'PT'),
+                ('TITLE', 'PLAINE', 'PLAI'),
+                ('TITLE', 'PLATEAU', 'PLAT'),
+                ('TITLE', 'PLATEAUX', 'PLAT'),
+                ('TITLE', 'POINTE', 'POIN'),
+                ('TITLE', 'POLICE', 'POL'),
+                ('TITLE', 'PORTE', 'PORT'),
+                ('TITLE', 'PREFET', NULL),
+                ('TITLE', 'PRESIDENT', 'PDT'),
+                ('TITLE', 'PRESQU ILE', 'PRES ILE'),
+                ('TITLE', 'PROFESSEUR', 'PR'),
+                ('TITLE', 'PROLONGE', 'PROL'),
+                ('TITLE', 'PROLONGEE', 'PROL'),
+                ('TITLE', 'PROPRIETE', NULL),
+                --('TITLE', 'QUARTIER', 'QUAR'),
+                --('TITLE', 'RACCOURCI', 'RACC'),
+                ('TITLE', 'RECTEUR', 'RECT'),
+                ('TITLE', 'REGIMENT', 'RGT'),
+                ('TITLE', 'REGIONAL', NULL),
+                ('TITLE', 'REPUBLIQUE', 'REP'),
+                ('TITLE', 'RESIDENCES', 'RESI'),
+                ('TITLE', 'RESTAURANT', NULL),
+                ('TITLE', 'ROTONDE', 'ROTO'),
+                --('TITLE', 'RUELLE', 'RUEL'),
+                ('TITLE', 'SAINT', 'ST'),
+                ('TITLE', 'SAINTE', 'STE'),
+                ('TITLE', 'SAINTES', NULL),
+                ('TITLE', 'SAINTS', NULL),
+                --('TITLE', 'SENTE', 'SENT'),
+                --('TITLE', 'SENTIER', 'SENT'),
+                ('TITLE', 'SERGENT', 'SGT'),
+                ('TITLE', 'SERVICE', 'SCE'),
+                ('TITLE', 'SOCIETE', NULL),
+                ('TITLE', 'SOUS PREFET', NULL),
+                ('TITLE', 'STADE', 'STAD'),
+                ('TITLE', 'STATION', 'STAT'),
+                ('TITLE', 'SUPERIEUR', NULL),
+                ('TITLE', 'SUPERIEURE', NULL),
+                ('TITLE', 'SYNDICAT', NULL),
+                ('TITLE', 'TECHNIQUE', NULL),
+                ('TITLE', 'TERRAIN', 'TERR'),
+                --('TITLE', 'TERRASSES', 'TERR'),
+                --('TITLE', 'TRAVERSE', 'TRAV'),
+                ('TITLE', 'TUNNEL', 'TUN'),
+                ('TITLE', 'UNIVERSITAIRE', 'UNVT'),
+                ('TITLE', 'UNIVERSITE', 'UNIV'),
+                ('TITLE', 'VALLEE', 'VALL'),
+                ('TITLE', 'VALLON', 'VALL'),
+                ('TITLE', 'VELODROME', NULL),
+                ('TITLE', 'VEUVE', NULL),
+                ('TITLE', 'VIEILLE', 'VIEL'),
+                ('TITLE', 'VIEILLES', 'VIEL'),
+                ('TITLE', 'VIEUX', 'VX'),
+                ('TITLE', 'VILLAS', 'VILL')
         ) AS x("group", name, name_abbreviated)
         ;
     GET DIAGNOSTICS _nrows = ROW_COUNT;
@@ -667,11 +667,11 @@ BEGIN
     WITH
     title_occurs AS (
         SELECT
-              k.name
-            , COUNT(*) occurs
+            k.name,
+            COUNT(*) occurs
         FROM
-              fr.laposte_address_street s
-            , fr.laposte_address_keyword k
+            fr.laposte_address_street s,
+            fr.laposte_address_keyword k
         WHERE
             s.fl_active
             AND
@@ -722,10 +722,10 @@ BEGIN
         WITH
         complement_keyword AS (
             SELECT
-                  'GROUP3' "group"
-                , lb_type_groupe3_l3 name
-                , lb_abrev_g3_nn abbr
-                , COUNT(*) nb
+                'GROUP3' "group",
+                lb_type_groupe3_l3 name,
+                lb_abrev_g3_nn abbr,
+                COUNT(*) nb
             FROM
                 fr.laposte_address_complement
             WHERE
@@ -739,14 +739,14 @@ BEGIN
                  */
                 NOT lb_type_groupe3_l3 = ANY('{TOUR,VILLA}')
             GROUP BY
-                  lb_type_groupe3_l3
-                , lb_abrev_g3_nn
+                lb_type_groupe3_l3,
+                lb_abrev_g3_nn
             UNION
             SELECT
-                  'GROUP2' "group"
-                , lb_type_groupe2_l3
-                , lb_abrev_g2_nn
-                , COUNT(*)
+                'GROUP2' "group",
+                lb_type_groupe2_l3,
+                lb_abrev_g2_nn,
+                COUNT(*)
             FROM
                 fr.laposte_address_complement
             WHERE
@@ -754,14 +754,14 @@ BEGIN
                 AND
                 lb_type_groupe2_l3 IS NOT NULL
             GROUP BY
-                  lb_type_groupe2_l3
-                , lb_abrev_g2_nn
+                lb_type_groupe2_l3,
+                lb_abrev_g2_nn
             UNION
             SELECT
-                  'GROUP1' "group"
-                , lb_type_groupe1_l3
-                , lb_abrev_g1_nn
-                , COUNT(*)
+                'GROUP1' "group",
+                lb_type_groupe1_l3,
+                lb_abrev_g1_nn,
+                COUNT(*)
             FROM
                 fr.laposte_address_complement
             WHERE
@@ -769,8 +769,8 @@ BEGIN
                 AND
                 lb_type_groupe1_l3 IS NOT NULL
             GROUP BY
-                  lb_type_groupe1_l3
-                , lb_abrev_g1_nn
+                lb_type_groupe1_l3,
+                lb_abrev_g1_nn
         )
         SELECT "group", name, abbr, nb FROM complement_keyword
         ;
@@ -780,8 +780,8 @@ BEGIN
     WITH
     first_word_of_type AS (
         SELECT
-              name
-            , CASE
+            name,
+            CASE
                 WHEN POSITION(' ' IN name) = 0 THEN NULL
                 ELSE SUBSTR(name, 1, POSITION(' ' IN name) -1)
                 END first_word
@@ -825,12 +825,12 @@ BEGIN
     DELETE FROM fr.constant WHERE usecase = 'LAPOSTE_MUNICIPALITY_EXCEPTION';
     INSERT INTO fr.constant (
         SELECT
-            'LAPOSTE_MUNICIPALITY_EXCEPTION'
-            , t.*
+            'LAPOSTE_MUNICIPALITY_EXCEPTION',
+            t.*
         FROM (
             SELECT
-                  co_insee_commune
-                , lb_ach_nn
+                co_insee_commune,
+                lb_ach_nn
             FROM fr.laposte_address_area
             WHERE
                 fl_active
@@ -848,8 +848,8 @@ BEGIN
             UNION
 
             SELECT
-                  co_insee_commune
-                , lb_ach_nn
+                co_insee_commune,
+                lb_ach_nn
             FROM
                 fr.laposte_address_area
                     JOIN fr.insee_municipality
@@ -876,151 +876,151 @@ $proc$
 BEGIN
     DELETE FROM fr.constant WHERE usecase = 'TERRITORY_OVERSEAS_NAME';
     INSERT INTO fr.constant (usecase, key, value) VALUES
-          ('TERRITORY_OVERSEAS_NAME', '97501', 'Miquelon-Langlade')
-        , ('TERRITORY_OVERSEAS_NAME', '97502', 'Saint-Pierre')
-        , ('TERRITORY_OVERSEAS_NAME', '97701', 'Saint-Barthélemy')
-        , ('TERRITORY_OVERSEAS_NAME', '97801', 'Saint-Martin')
-        , ('TERRITORY_OVERSEAS_NAME', '98714', 'Bora-Bora')
-        , ('TERRITORY_OVERSEAS_NAME', '98718', 'Fatu-Hiva')
-        , ('TERRITORY_OVERSEAS_NAME', '98723', 'Hiva-Oa')
-        , ('TERRITORY_OVERSEAS_NAME', '98729', 'Moorea-Maiao')
-        , ('TERRITORY_OVERSEAS_NAME', '98731', 'Nuku-Hiva')
-        , ('TERRITORY_OVERSEAS_NAME', '98747', 'Taiarapu-Est')
-        , ('TERRITORY_OVERSEAS_NAME', '98748', 'Taiarapu-Ouest')
-        , ('TERRITORY_OVERSEAS_NAME', '98756', 'Ua-Huka')
-        , ('TERRITORY_OVERSEAS_NAME', '98757', 'Ua-Pou')
-        , ('TERRITORY_OVERSEAS_NAME', '98801', 'Bélep')
-        , ('TERRITORY_OVERSEAS_NAME', '98805', 'Dumbéa')
-        , ('TERRITORY_OVERSEAS_NAME', '98807', 'Hienghène')
-        , ('TERRITORY_OVERSEAS_NAME', '98808', 'Houaïlou')
-        , ('TERRITORY_OVERSEAS_NAME', '98809', 'Île des Pins')
-        , ('TERRITORY_OVERSEAS_NAME', '98810', 'Kaala-Gomen')
-        , ('TERRITORY_OVERSEAS_NAME', '98811', 'Koné')
-        , ('TERRITORY_OVERSEAS_NAME', '98815', 'Maré')
-        , ('TERRITORY_OVERSEAS_NAME', '98817', 'Mont-Dore')
-        , ('TERRITORY_OVERSEAS_NAME', '98819', 'Ouégoa')
-        , ('TERRITORY_OVERSEAS_NAME', '98820', 'Ouvéa')
-        , ('TERRITORY_OVERSEAS_NAME', '98821', 'Païta')
-        , ('TERRITORY_OVERSEAS_NAME', '98822', 'Poindimié')
-        , ('TERRITORY_OVERSEAS_NAME', '98823', 'Ponérihouen')
-        , ('TERRITORY_OVERSEAS_NAME', '98824', 'Pouébo')
-        , ('TERRITORY_OVERSEAS_NAME', '98828', 'Sarraméa')
-        , ('TERRITORY_OVERSEAS_NAME', '98832', 'Yaté')
+        ('TERRITORY_OVERSEAS_NAME', '97501', 'Miquelon-Langlade'),
+        ('TERRITORY_OVERSEAS_NAME', '97502', 'Saint-Pierre'),
+        ('TERRITORY_OVERSEAS_NAME', '97701', 'Saint-Barthélemy'),
+        ('TERRITORY_OVERSEAS_NAME', '97801', 'Saint-Martin'),
+        ('TERRITORY_OVERSEAS_NAME', '98714', 'Bora-Bora'),
+        ('TERRITORY_OVERSEAS_NAME', '98718', 'Fatu-Hiva'),
+        ('TERRITORY_OVERSEAS_NAME', '98723', 'Hiva-Oa'),
+        ('TERRITORY_OVERSEAS_NAME', '98729', 'Moorea-Maiao'),
+        ('TERRITORY_OVERSEAS_NAME', '98731', 'Nuku-Hiva'),
+        ('TERRITORY_OVERSEAS_NAME', '98747', 'Taiarapu-Est'),
+        ('TERRITORY_OVERSEAS_NAME', '98748', 'Taiarapu-Ouest'),
+        ('TERRITORY_OVERSEAS_NAME', '98756', 'Ua-Huka'),
+        ('TERRITORY_OVERSEAS_NAME', '98757', 'Ua-Pou'),
+        ('TERRITORY_OVERSEAS_NAME', '98801', 'Bélep'),
+        ('TERRITORY_OVERSEAS_NAME', '98805', 'Dumbéa'),
+        ('TERRITORY_OVERSEAS_NAME', '98807', 'Hienghène'),
+        ('TERRITORY_OVERSEAS_NAME', '98808', 'Houaïlou'),
+        ('TERRITORY_OVERSEAS_NAME', '98809', 'Île des Pins'),
+        ('TERRITORY_OVERSEAS_NAME', '98810', 'Kaala-Gomen'),
+        ('TERRITORY_OVERSEAS_NAME', '98811', 'Koné'),
+        ('TERRITORY_OVERSEAS_NAME', '98815', 'Maré'),
+        ('TERRITORY_OVERSEAS_NAME', '98817', 'Mont-Dore'),
+        ('TERRITORY_OVERSEAS_NAME', '98819', 'Ouégoa'),
+        ('TERRITORY_OVERSEAS_NAME', '98820', 'Ouvéa'),
+        ('TERRITORY_OVERSEAS_NAME', '98821', 'Païta'),
+        ('TERRITORY_OVERSEAS_NAME', '98822', 'Poindimié'),
+        ('TERRITORY_OVERSEAS_NAME', '98823', 'Ponérihouen'),
+        ('TERRITORY_OVERSEAS_NAME', '98824', 'Pouébo'),
+        ('TERRITORY_OVERSEAS_NAME', '98828', 'Sarraméa'),
+        ('TERRITORY_OVERSEAS_NAME', '98832', 'Yaté'),
 
-        , ('TERRITORY_OVERSEAS_NAME', '9871', 'Îles Marquises')
-        , ('TERRITORY_OVERSEAS_NAME', '9872', 'Îles Tuamotu-Gambier')
-        , ('TERRITORY_OVERSEAS_NAME', '9873', 'Îles du Vent')
-        , ('TERRITORY_OVERSEAS_NAME', '9874', 'Îles Sous-le-Vent')
-        , ('TERRITORY_OVERSEAS_NAME', '9875', 'Îles Australes')
-        , ('TERRITORY_OVERSEAS_NAME', '9881', 'Province Sud')
-        , ('TERRITORY_OVERSEAS_NAME', '9882', 'Province Nord')
-        , ('TERRITORY_OVERSEAS_NAME', '9883', 'Îles Loyauté')
+        ('TERRITORY_OVERSEAS_NAME', '9871', 'Îles Marquises'),
+        ('TERRITORY_OVERSEAS_NAME', '9872', 'Îles Tuamotu-Gambier'),
+        ('TERRITORY_OVERSEAS_NAME', '9873', 'Îles du Vent'),
+        ('TERRITORY_OVERSEAS_NAME', '9874', 'Îles Sous-le-Vent'),
+        ('TERRITORY_OVERSEAS_NAME', '9875', 'Îles Australes'),
+        ('TERRITORY_OVERSEAS_NAME', '9881', 'Province Sud'),
+        ('TERRITORY_OVERSEAS_NAME', '9882', 'Province Nord'),
+        ('TERRITORY_OVERSEAS_NAME', '9883', 'Îles Loyauté'),
 
-        , ('TERRITORY_OVERSEAS_NAME', '975', 'Saint-Pierre-et-Miquelon')
-        , ('TERRITORY_OVERSEAS_NAME', '977', 'Saint-Barthélemy')
-        , ('TERRITORY_OVERSEAS_NAME', '978', 'Saint-Martin')
-        , ('TERRITORY_OVERSEAS_NAME', '986', 'Wallis et Futuna')
-        , ('TERRITORY_OVERSEAS_NAME', '987', 'Polynésie française')
-        , ('TERRITORY_OVERSEAS_NAME', '988', 'Nouvelle Calédonie')
-        , ('TERRITORY_OVERSEAS_NAME', '989', 'Île de Clipperton')
+        ('TERRITORY_OVERSEAS_NAME', '975', 'Saint-Pierre-et-Miquelon'),
+        ('TERRITORY_OVERSEAS_NAME', '977', 'Saint-Barthélemy'),
+        ('TERRITORY_OVERSEAS_NAME', '978', 'Saint-Martin'),
+        ('TERRITORY_OVERSEAS_NAME', '986', 'Wallis et Futuna'),
+        ('TERRITORY_OVERSEAS_NAME', '987', 'Polynésie française'),
+        ('TERRITORY_OVERSEAS_NAME', '988', 'Nouvelle Calédonie'),
+        ('TERRITORY_OVERSEAS_NAME', '989', 'Île de Clipperton'),
 
-        , ('TERRITORY_OVERSEAS_NAME', '97', 'Îles en Atlantique')
-        , ('TERRITORY_OVERSEAS_NAME', '98', 'Îles en Pacifique')
+        ('TERRITORY_OVERSEAS_NAME', '97', 'Îles en Atlantique'),
+        ('TERRITORY_OVERSEAS_NAME', '98', 'Îles en Pacifique')
     ;
 
     DELETE FROM fr.constant WHERE usecase = 'TERRITORY_OVERSEAS_RELATION';
     INSERT INTO fr.constant (usecase, key, value) VALUES
         --9871 Îles Marquises
-          ('TERRITORY_OVERSEAS_RELATION', '9871', '98718')
-        , ('TERRITORY_OVERSEAS_RELATION', '9871', '98723')
-        , ('TERRITORY_OVERSEAS_RELATION', '9871', '98731')
-        , ('TERRITORY_OVERSEAS_RELATION', '9871', '98746')
-        , ('TERRITORY_OVERSEAS_RELATION', '9871', '98756')
-        , ('TERRITORY_OVERSEAS_RELATION', '9871', '98757')
+        ('TERRITORY_OVERSEAS_RELATION', '9871', '98718'),
+        ('TERRITORY_OVERSEAS_RELATION', '9871', '98723'),
+        ('TERRITORY_OVERSEAS_RELATION', '9871', '98731'),
+        ('TERRITORY_OVERSEAS_RELATION', '9871', '98746'),
+        ('TERRITORY_OVERSEAS_RELATION', '9871', '98756'),
+        ('TERRITORY_OVERSEAS_RELATION', '9871', '98757'),
         --9872 Îles Tuamotu-Gambier
-        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98711')
-        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98713')
-        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98716')
-        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98717')
-        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98719')
-        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98720')
-        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98721')
-        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98726')
-        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98727')
-        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98730')
-        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98732')
-        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98737')
-        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98740')
-        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98742')
-        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98749')
-        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98751')
-        , ('TERRITORY_OVERSEAS_RELATION', '9872', '98755')
+        ('TERRITORY_OVERSEAS_RELATION', '9872', '98711'),
+        ('TERRITORY_OVERSEAS_RELATION', '9872', '98713'),
+        ('TERRITORY_OVERSEAS_RELATION', '9872', '98716'),
+        ('TERRITORY_OVERSEAS_RELATION', '9872', '98717'),
+        ('TERRITORY_OVERSEAS_RELATION', '9872', '98719'),
+        ('TERRITORY_OVERSEAS_RELATION', '9872', '98720'),
+        ('TERRITORY_OVERSEAS_RELATION', '9872', '98721'),
+        ('TERRITORY_OVERSEAS_RELATION', '9872', '98726'),
+        ('TERRITORY_OVERSEAS_RELATION', '9872', '98727'),
+        ('TERRITORY_OVERSEAS_RELATION', '9872', '98730'),
+        ('TERRITORY_OVERSEAS_RELATION', '9872', '98732'),
+        ('TERRITORY_OVERSEAS_RELATION', '9872', '98737'),
+        ('TERRITORY_OVERSEAS_RELATION', '9872', '98740'),
+        ('TERRITORY_OVERSEAS_RELATION', '9872', '98742'),
+        ('TERRITORY_OVERSEAS_RELATION', '9872', '98749'),
+        ('TERRITORY_OVERSEAS_RELATION', '9872', '98751'),
+        ('TERRITORY_OVERSEAS_RELATION', '9872', '98755'),
         --9873 Îles du Vent
-        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98729')
-        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98712')
-        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98715')
-        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98722')
-        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98725')
-        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98733')
-        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98734')
-        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98735')
-        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98736')
-        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98738')
-        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98747')
-        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98748')
-        , ('TERRITORY_OVERSEAS_RELATION', '9873', '98752')
+        ('TERRITORY_OVERSEAS_RELATION', '9873', '98729'),
+        ('TERRITORY_OVERSEAS_RELATION', '9873', '98712'),
+        ('TERRITORY_OVERSEAS_RELATION', '9873', '98715'),
+        ('TERRITORY_OVERSEAS_RELATION', '9873', '98722'),
+        ('TERRITORY_OVERSEAS_RELATION', '9873', '98725'),
+        ('TERRITORY_OVERSEAS_RELATION', '9873', '98733'),
+        ('TERRITORY_OVERSEAS_RELATION', '9873', '98734'),
+        ('TERRITORY_OVERSEAS_RELATION', '9873', '98735'),
+        ('TERRITORY_OVERSEAS_RELATION', '9873', '98736'),
+        ('TERRITORY_OVERSEAS_RELATION', '9873', '98738'),
+        ('TERRITORY_OVERSEAS_RELATION', '9873', '98747'),
+        ('TERRITORY_OVERSEAS_RELATION', '9873', '98748'),
+        ('TERRITORY_OVERSEAS_RELATION', '9873', '98752'),
         --9874 Îles Sous-le-Vent
-        , ('TERRITORY_OVERSEAS_RELATION', '9874', '98714')
-        , ('TERRITORY_OVERSEAS_RELATION', '9874', '98724')
-        , ('TERRITORY_OVERSEAS_RELATION', '9874', '98728')
-        , ('TERRITORY_OVERSEAS_RELATION', '9874', '98745')
-        , ('TERRITORY_OVERSEAS_RELATION', '9874', '98750')
-        , ('TERRITORY_OVERSEAS_RELATION', '9874', '98754')
-        , ('TERRITORY_OVERSEAS_RELATION', '9874', '98758')
+        ('TERRITORY_OVERSEAS_RELATION', '9874', '98714'),
+        ('TERRITORY_OVERSEAS_RELATION', '9874', '98724'),
+        ('TERRITORY_OVERSEAS_RELATION', '9874', '98728'),
+        ('TERRITORY_OVERSEAS_RELATION', '9874', '98745'),
+        ('TERRITORY_OVERSEAS_RELATION', '9874', '98750'),
+        ('TERRITORY_OVERSEAS_RELATION', '9874', '98754'),
+        ('TERRITORY_OVERSEAS_RELATION', '9874', '98758'),
         --9875 Îles Australes
-        , ('TERRITORY_OVERSEAS_RELATION', '9875', '98739')
-        , ('TERRITORY_OVERSEAS_RELATION', '9875', '98741')
-        , ('TERRITORY_OVERSEAS_RELATION', '9875', '98743')
-        , ('TERRITORY_OVERSEAS_RELATION', '9875', '98744')
-        , ('TERRITORY_OVERSEAS_RELATION', '9875', '98753')
+        ('TERRITORY_OVERSEAS_RELATION', '9875', '98739'),
+        ('TERRITORY_OVERSEAS_RELATION', '9875', '98741'),
+        ('TERRITORY_OVERSEAS_RELATION', '9875', '98743'),
+        ('TERRITORY_OVERSEAS_RELATION', '9875', '98744'),
+        ('TERRITORY_OVERSEAS_RELATION', '9875', '98753'),
 
         --9881 Province Sud
-        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98829')
-        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98832')
-        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98809')
-        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98817')
-        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98818')
-        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98805')
-        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98821')
-        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98802')
-        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98813')
-        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98828')
-        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98806')
-        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98816')
-        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98803')
-        , ('TERRITORY_OVERSEAS_RELATION', '9881', '98827') -- 'SUD'
+        ('TERRITORY_OVERSEAS_RELATION', '9881', '98829'),
+        ('TERRITORY_OVERSEAS_RELATION', '9881', '98832'),
+        ('TERRITORY_OVERSEAS_RELATION', '9881', '98809'),
+        ('TERRITORY_OVERSEAS_RELATION', '9881', '98817'),
+        ('TERRITORY_OVERSEAS_RELATION', '9881', '98818'),
+        ('TERRITORY_OVERSEAS_RELATION', '9881', '98805'),
+        ('TERRITORY_OVERSEAS_RELATION', '9881', '98821'),
+        ('TERRITORY_OVERSEAS_RELATION', '9881', '98802'),
+        ('TERRITORY_OVERSEAS_RELATION', '9881', '98813'),
+        ('TERRITORY_OVERSEAS_RELATION', '9881', '98828'),
+        ('TERRITORY_OVERSEAS_RELATION', '9881', '98806'),
+        ('TERRITORY_OVERSEAS_RELATION', '9881', '98816'),
+        ('TERRITORY_OVERSEAS_RELATION', '9881', '98803'),
+        ('TERRITORY_OVERSEAS_RELATION', '9881', '98827'),  -- 'SUD'
         --9882 Province Nord
-        --, ('TERRITORY_OVERSEAS_RELATION', '9882', '98827') -- 'NORD' !
-        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98825')
-        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98811')
-        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98831')
-        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98810')
-        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98812')
-        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98826')
-        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98801')
-        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98819')
-        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98824')
-        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98807')
-        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98830')
-        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98822')
-        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98823')
-        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98808')
-        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98833')
-        , ('TERRITORY_OVERSEAS_RELATION', '9882', '98804')
+        --('TERRITORY_OVERSEAS_RELATION', '9882', '98827') -- 'NORD' !
+        ('TERRITORY_OVERSEAS_RELATION', '9882', '98825'),
+        ('TERRITORY_OVERSEAS_RELATION', '9882', '98811'),
+        ('TERRITORY_OVERSEAS_RELATION', '9882', '98831'),
+        ('TERRITORY_OVERSEAS_RELATION', '9882', '98810'),
+        ('TERRITORY_OVERSEAS_RELATION', '9882', '98812'),
+        ('TERRITORY_OVERSEAS_RELATION', '9882', '98826'),
+        ('TERRITORY_OVERSEAS_RELATION', '9882', '98801'),
+        ('TERRITORY_OVERSEAS_RELATION', '9882', '98819'),
+        ('TERRITORY_OVERSEAS_RELATION', '9882', '98824'),
+        ('TERRITORY_OVERSEAS_RELATION', '9882', '98807'),
+        ('TERRITORY_OVERSEAS_RELATION', '9882', '98830'),
+        ('TERRITORY_OVERSEAS_RELATION', '9882', '98822'),
+        ('TERRITORY_OVERSEAS_RELATION', '9882', '98823'),
+        ('TERRITORY_OVERSEAS_RELATION', '9882', '98808'),
+        ('TERRITORY_OVERSEAS_RELATION', '9882', '98833'),
+        ('TERRITORY_OVERSEAS_RELATION', '9882', '98804'),
         --9883 Îles Loyauté
-        , ('TERRITORY_OVERSEAS_RELATION', '9883', '98820')
-        , ('TERRITORY_OVERSEAS_RELATION', '9883', '98814')
-        , ('TERRITORY_OVERSEAS_RELATION', '9883', '98815')
+        ('TERRITORY_OVERSEAS_RELATION', '9883', '98820'),
+        ('TERRITORY_OVERSEAS_RELATION', '9883', '98814'),
+        ('TERRITORY_OVERSEAS_RELATION', '9883', '98815')
     ;
 END;
 $proc$ LANGUAGE plpgsql;
@@ -1036,26 +1036,25 @@ BEGIN
 
     DELETE FROM fr.constant WHERE usecase ~ '^LAPOSTE_ADDRESS_FAULT_';
     INSERT INTO fr.constant (usecase, key, value) VALUES
-          ('LAPOSTE_ADDRESS_FAULT_LINK', 'COMPLEMENT_WITH_STREET_ERROR', '0')
+        ('LAPOSTE_ADDRESS_FAULT_LINK', 'COMPLEMENT_WITH_STREET_ERROR', '0'),
 
-        , ('LAPOSTE_ADDRESS_FAULT_AREA', 'BAD_SPACE', '100')
+        ('LAPOSTE_ADDRESS_FAULT_AREA', 'BAD_SPACE', '100'),
 
-        , ('LAPOSTE_ADDRESS_FAULT_STREET', 'BAD_SPACE', '200')
-        , ('LAPOSTE_ADDRESS_FAULT_STREET', 'DUPLICATE_WORD', '201')
-        , ('LAPOSTE_ADDRESS_FAULT_STREET', 'WITH_ABBREVIATION', '202')
-        , ('LAPOSTE_ADDRESS_FAULT_STREET', 'TYPO_ERROR', '203')
-        , ('LAPOSTE_ADDRESS_FAULT_STREET', 'DESCRIPTORS', '204')
-        , ('LAPOSTE_ADDRESS_FAULT_STREET', 'TYPE', '205')
+        ('LAPOSTE_ADDRESS_FAULT_STREET', 'BAD_SPACE', '200'),
+        ('LAPOSTE_ADDRESS_FAULT_STREET', 'DUPLICATE_WORD', '201'),
+        ('LAPOSTE_ADDRESS_FAULT_STREET', 'WITH_ABBREVIATION', '202'),
+        ('LAPOSTE_ADDRESS_FAULT_STREET', 'TYPO_ERROR', '203'),
+        ('LAPOSTE_ADDRESS_FAULT_STREET', 'DESCRIPTORS', '204'),
+        ('LAPOSTE_ADDRESS_FAULT_STREET', 'TYPE', '205'),
 
-        , ('LAPOSTE_ADDRESS_FAULT_HOUSENUMBER', 'BAD_NUMBER', '300')
-        , ('LAPOSTE_ADDRESS_FAULT_HOUSENUMBER', 'BAD_EXTENSION', '301')
+        ('LAPOSTE_ADDRESS_FAULT_HOUSENUMBER', 'BAD_NUMBER', '300'),
+        ('LAPOSTE_ADDRESS_FAULT_HOUSENUMBER', 'BAD_EXTENSION', '301'),
 
-        , ('LAPOSTE_ADDRESS_FAULT_COMPLEMENT', 'BAD_SPACE', '400')
-        , ('LAPOSTE_ADDRESS_FAULT_COMPLEMENT', 'DUPLICATE_WORD', '401')
-        , ('LAPOSTE_ADDRESS_FAULT_COMPLEMENT', 'WITH_ABBREVIATION', '402')
-        , ('LAPOSTE_ADDRESS_FAULT_COMPLEMENT', 'TYPO_ERROR', '403')
-        , ('LAPOSTE_ADDRESS_FAULT_COMPLEMENT', 'DESCRIPTORS', '404')
-
+        ('LAPOSTE_ADDRESS_FAULT_COMPLEMENT', 'BAD_SPACE', '400'),
+        ('LAPOSTE_ADDRESS_FAULT_COMPLEMENT', 'DUPLICATE_WORD', '401'),
+        ('LAPOSTE_ADDRESS_FAULT_COMPLEMENT', 'WITH_ABBREVIATION', '402'),
+        ('LAPOSTE_ADDRESS_FAULT_COMPLEMENT', 'TYPO_ERROR', '403'),
+        ('LAPOSTE_ADDRESS_FAULT_COMPLEMENT', 'DESCRIPTORS', '404')
     ;
 END;
 $proc$ LANGUAGE plpgsql;
@@ -1073,52 +1072,52 @@ BEGIN
         WHERE usecase = 'LAPOSTE_ADDRESS_FAULT_EXCEPTION';
     INSERT INTO fr.constant (usecase, key, value) VALUES
         -- true double words!
-          ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'AH')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'BADEN')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'BIN')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'BLIN')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'BORA')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'BOUTSI')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'CACHE')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'CAI')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'CASSE')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'COLLES')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'COTTE')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'CRI')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'CUIS')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'FOU')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'FROUS')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'GABA')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'HA')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'JEAN')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'HOURA')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'MOUCOU')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'MOUKOUS')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'NOEL')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PAUL')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PEUT')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PHI')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PIC')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PILI')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PITE')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PIOU')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'POC')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'POUET')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'POUSSE')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PRIS')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'RENE')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'SOEURS')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'QUIN')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TCHA')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TCHAT')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TECS')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TRIN')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TUIS')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TUIT')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TUITS')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'VALA')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'YLANG')
-        , ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'YLANGS')
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'AH'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'BADEN'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'BIN'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'BLIN'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'BORA'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'BOUTSI'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'CACHE'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'CAI'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'CASSE'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'COLLES'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'COTTE'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'CRI'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'CUIS'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'FOU'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'FROUS'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'GABA'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'HA'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'JEAN'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'HOURA'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'MOUCOU'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'MOUKOUS'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'NOEL'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PAUL'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PEUT'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PHI'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PIC'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PILI'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PITE'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PIOU'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'POC'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'POUET'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'POUSSE'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'PRIS'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'RENE'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'SOEURS'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'QUIN'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TCHA'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TCHAT'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TECS'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TRIN'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TUIS'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TUIT'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'TUITS'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'VALA'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'YLANG'),
+        ('LAPOSTE_ADDRESS_FAULT_EXCEPTION', 'DUPLICATE_WORD', 'YLANGS')
     ;
 END;
 $proc$ LANGUAGE plpgsql;
@@ -1158,7 +1157,7 @@ BEGIN
     CALL fr.set_laposte_address_fault_list();
     CALL fr.set_laposte_address_fault_exception();
 
-    -- STREET
+    -- STREET -----------------------------------------------------------------
 
     -- build street-dictionary
     CALL fr.set_laposte_address_street_uniq(
@@ -1177,8 +1176,8 @@ BEGIN
     -- street-faults (part/1)
     CALL fr.set_laposte_address_fault(element => 'STREET');
     CALL fr.fix_laposte_address_fault_street(
-          element => 'STREET'
-        , fault => 'BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION,TYPO_ERROR'
+        element => 'STREET',
+        fault => 'BAD_SPACE,DUPLICATE_WORD,WITH_ABBREVIATION,TYPO_ERROR'
     );
 
     -- following street-faults fixes, have to fix membership too!
@@ -1186,8 +1185,8 @@ BEGIN
         SELECT DISTINCT
             f.name_id
         FROM
-              fr.laposte_address_fault f
-            , fr.constant c
+            fr.laposte_address_fault f,
+            fr.constant c
         WHERE
             c.usecase = 'LAPOSTE_ADDRESS_FAULT_STREET'
             AND
@@ -1199,8 +1198,8 @@ BEGIN
     );
     IF _listof IS NOT NULL THEN
         CALL fr.set_laposte_address_street_membership(
-              set_case => 'CORRECTION'
-            , listof => _listof
+            set_case => 'CORRECTION',
+            listof => _listof
         );
     END IF;
 
@@ -1221,18 +1220,18 @@ BEGIN
     );
     -- street-faults (part/2)
     CALL fr.fix_laposte_address_fault(
-          element => 'STREET'
-        , fault => 'DESCRIPTORS,TYPE'
+        element => 'STREET',
+        fault => 'DESCRIPTORS,TYPE'
     );
 
-    -- HOUSENUMBER
+    -- HOUSENUMBER ------------------------------------------------------------
 
     -- build housenumber-dictionary
     CALL fr.set_laposte_address_housenumber_uniq();
     -- and links dictionary w/ referential
     CALL fr.set_laposte_address_housenumber_reference();
 
-    -- COMPLEMENT
+    -- COMPLEMENT -------------------------------------------------------------
 
     -- build complement-dictionary
     CALL fr.set_laposte_address_complement_uniq(
@@ -1257,8 +1256,8 @@ BEGIN
         SELECT DISTINCT
             f.name_id
         FROM
-              fr.laposte_address_fault f
-            , fr.constant c
+            fr.laposte_address_fault f,
+            fr.constant c
         WHERE
             c.usecase = 'LAPOSTE_ADDRESS_FAULT_COMPLEMENT'
             AND
@@ -1270,8 +1269,8 @@ BEGIN
     );
     IF _listof IS NOT NULL THEN
         CALL fr.set_laposte_address_complement_membership(
-              set_case => 'CORRECTION'
-            , listof => _listof
+            set_case => 'CORRECTION',
+            listof => _listof
         );
     END IF;
 
@@ -1288,8 +1287,8 @@ BEGIN
     );
     -- street-faults (part/2)
     CALL fr.fix_laposte_address_fault(
-          element => 'COMPLEMENT'
-        , fault => 'DESCRIPTORS'
+        element => 'COMPLEMENT',
+        fault => 'DESCRIPTORS'
     );
 
     -- OTHER

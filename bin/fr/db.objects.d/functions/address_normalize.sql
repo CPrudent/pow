@@ -22,8 +22,8 @@ complement descriptor items
 -- is number (date, roman, arabic)
 SELECT public.drop_all_functions_if_exists('fr', 'is_normalized_number');
 CREATE OR REPLACE FUNCTION fr.is_normalized_number(
-    word VARCHAR
-    , only_digit VARCHAR DEFAULT 'ALL'   -- ARABIC|COMPLEMENT|DATE|HOUSENUMBER|ROAD_NETWORK|ROMAN
+    word VARCHAR,
+    only_digit VARCHAR DEFAULT 'ALL'   -- ARABIC|COMPLEMENT|DATE|HOUSENUMBER|ROAD_NETWORK|ROMAN
 )
 RETURNS BOOLEAN AS
 $func$
@@ -59,8 +59,8 @@ BEGIN
                         WHEN name = 'QUINQUIES' THEN 5 - .1
                         WHEN name = 'SEXTO'     THEN 6 - .1
                         END
-                    )
-                    , '|'
+                    ),
+                    '|'
                 )
             INTO
                 _re
@@ -179,8 +179,8 @@ $func$ LANGUAGE plpgsql;
 -- is title
 SELECT public.drop_all_functions_if_exists('fr', 'is_normalized_title');
 CREATE OR REPLACE FUNCTION fr.is_normalized_title(
-    word VARCHAR
-    , groups VARCHAR DEFAULT 'ALL'   -- TITLE|TYPE|EXT
+    word VARCHAR,
+    groups VARCHAR DEFAULT 'ALL'   -- TITLE|TYPE|EXT
 )
 RETURNS BOOLEAN AS
 $func$
@@ -264,9 +264,9 @@ $func$ LANGUAGE plpgsql;
 -- abbreviate keyword
 SELECT drop_all_functions_if_exists('fr', 'normalize_abbreviate_keyword');
 CREATE OR REPLACE FUNCTION fr.normalize_abbreviate_keyword(
-    name IN VARCHAR
-    , groups IN VARCHAR DEFAULT 'ALL'
-    , name_abbreviated OUT VARCHAR
+    name IN VARCHAR,
+    groups IN VARCHAR DEFAULT 'ALL',
+    name_abbreviated OUT VARCHAR
 )
 AS
 $func$
@@ -300,8 +300,8 @@ $func$ LANGUAGE plpgsql;
 -- normalize name of municipality
 SELECT public.drop_all_functions_if_exists('fr', 'normalize_municipality_name');
 CREATE OR REPLACE FUNCTION fr.normalize_municipality_name(
-    code VARCHAR
-    , name VARCHAR
+    code VARCHAR,
+    name VARCHAR
 )
 RETURNS CHARACTER VARYING AS
 $func$
@@ -334,10 +334,10 @@ $func$ LANGUAGE plpgsql;
 SELECT *
 FROM (
     SELECT
-        za.co_insee_commune AS municipality_code
-        , c.nom AS name
-        , fr.normalize_municipality_name(c.insee_com, c.nom) AS name_normalized
-        , za.lb_ach_nn AS name_normalized_laposte
+        za.co_insee_commune AS municipality_code,
+        c.nom AS name,
+        fr.normalize_municipality_name(c.insee_com, c.nom) AS name_normalized,
+        za.lb_ach_nn AS name_normalized_laposte
     FROM
         fr.laposte_address_area za
             JOIN fr.ign_municipality c ON za.co_insee_commune = c.insee_com
@@ -356,17 +356,17 @@ ORDER BY
 -- order changes by heuristic method
 SELECT public.drop_all_functions_if_exists('fr', 'normalize_order_changes');
 CREATE OR REPLACE FUNCTION fr.normalize_order_changes(
-    element IN VARCHAR
-    , len IN INT
-    , nchanges IN INT
-    , changes IN VARCHAR[]
-    , earns IN INT[]
-    , positions IN INT[]
-    , words IN VARCHAR[]
-    , raise_notice IN BOOLEAN DEFAULT FALSE
-    , simulation IN BOOLEAN DEFAULT FALSE
-    , heuristic_method IN VARCHAR DEFAULT 'MEmCMN'
-    , ordered_changes OUT VARCHAR
+    element IN VARCHAR,
+    len IN INT,
+    nchanges IN INT,
+    changes IN VARCHAR[],
+    earns IN INT[],
+    positions IN INT[],
+    words IN VARCHAR[],
+    raise_notice IN BOOLEAN DEFAULT FALSE,
+    simulation IN BOOLEAN DEFAULT FALSE,
+    heuristic_method IN VARCHAR DEFAULT 'MEmCMN',
+    ordered_changes OUT VARCHAR
 )
 AS
 $func$
@@ -407,8 +407,8 @@ BEGIN
         -- all subsets
         _subsets := (
             SELECT subsets FROM subsets(
-                set => changes
-                , n => nchanges
+                set => changes,
+                n => nchanges
             )
         );
         IF raise_notice THEN
@@ -427,41 +427,41 @@ BEGIN
                 WITH
                 subsets AS (
                     SELECT
-                        i
-                        , subsets
+                        i,
+                        subsets
                     FROM
                         UNNEST($1) WITH ORDINALITY AS s(subsets, i)
-                )
-                , subsets_as_items AS (
+                ),
+                subsets_as_items AS (
                     SELECT
-                        i
-                        , UNNEST(STRING_TO_ARRAY(subsets, '','')) item
+                        i,
+                        UNNEST(STRING_TO_ARRAY(subsets, '','')) item
                     FROM
                         subsets
-                )
-                , change_and_earn AS (
+                ),
+                change_and_earn AS (
                     SELECT
-                        c.change
-                        , e.earn
-                        , w.word
+                        c.change,
+                        e.earn,
+                        w.word
                     FROM
                         UNNEST($2) WITH ORDINALITY AS c(change, i)
                             JOIN UNNEST($3) WITH ORDINALITY AS e(earn, i) ON c.i = e.i
                             JOIN UNNEST($5) WITH ORDINALITY AS p(position, i) ON c.i = p.i
                             JOIN UNNEST($6) WITH ORDINALITY AS w(word, i) ON w.i = p.position
-                )
-                , earn_by_subset AS (
+                ),
+                earn_by_subset AS (
                     SELECT
-                        s.i
-                        , SUM(ce.earn) earn
-                        , COUNT(*) nchanges
-                        , SUM(CASE WHEN ce.change ~ ''^V'' THEN 1 ELSE 0 END) n_v
-                        , SUM(CASE WHEN ce.change ~ ''^T'' THEN 1 ELSE 0 END) n_t
-                        , SUM(CASE WHEN ce.change ~ ''^P'' THEN 1 ELSE 0 END) n_p
-                        , SUM(CASE WHEN ce.change ~ ''^N'' THEN 1 ELSE 0 END) n_n
-                        , SUM(CASE WHEN ce.change ~ ''^E'' THEN 1 ELSE 0 END) n_e
-                        , SUM(CASE WHEN ce.change ~ ''^A'' THEN 1 ELSE 0 END) n_a
-                        , SUM(CASE WHEN w.word IS NOT NULL THEN w.rank_0 ELSE 0 END) nranks
+                        s.i,
+                        SUM(ce.earn) earn,
+                        COUNT(*) nchanges,
+                        SUM(CASE WHEN ce.change ~ ''^V'' THEN 1 ELSE 0 END) n_v,
+                        SUM(CASE WHEN ce.change ~ ''^T'' THEN 1 ELSE 0 END) n_t,
+                        SUM(CASE WHEN ce.change ~ ''^P'' THEN 1 ELSE 0 END) n_p,
+                        SUM(CASE WHEN ce.change ~ ''^N'' THEN 1 ELSE 0 END) n_n,
+                        SUM(CASE WHEN ce.change ~ ''^E'' THEN 1 ELSE 0 END) n_e,
+                        SUM(CASE WHEN ce.change ~ ''^A'' THEN 1 ELSE 0 END) n_a,
+                        SUM(CASE WHEN w.word IS NOT NULL THEN w.rank_0 ELSE 0 END) nranks
                     FROM
                         subsets_as_items s
                             JOIN change_and_earn ce ON s.item = ce.change
@@ -475,8 +475,8 @@ BEGIN
                 FROM
                     subsets s
                         JOIN earn_by_subset es ON s.i = es.i
-                '
-                , CASE WHEN _i = 1 THEN
+                ',
+                CASE WHEN _i = 1 THEN
                     '
                     WHERE
                         -- normalized name
@@ -488,8 +488,8 @@ BEGIN
                 _query := CONCAT('
                     DROP TABLE IF EXISTS fr.tmp_order_changes;
                     CREATE TABLE fr.tmp_order_changes AS
-                    '
-                    , _query_select
+                    ',
+                    _query_select
                 );
                 EXECUTE _query
                     USING _subsets, changes, earns, len, positions, words
@@ -502,13 +502,13 @@ BEGIN
                     WHEN heuristic_method = 'MNmC' THEN
                         '
                         -- nearest max size
-                        (32 - ($4 - earn))
+                        (32 - ($4 - earn)),
                         -- favour P,A against V,T
-                        , (n_v + n_t + (n_p * 2) + (n_a * 3)) DESC
+                        (n_v + n_t + (n_p * 2) + (n_a * 3)) DESC,
                         -- least change(s)
-                        , (nchanges)
+                        (nchanges),
                         -- respect ascending order of changes (A1 before A2)
-                        , subsets
+                        subsets
                         '
                     WHEN heuristic_method = 'MEmC' THEN
                         /* NOTE
@@ -522,11 +522,11 @@ BEGIN
                         CASE WHEN n_t > 0 AND nranks > 1001 THEN 1
                         ELSE
                             earn::NUMERIC / nchanges
-                        END DESC
+                        END DESC,
                         -- favour P,A against V,T
-                        , (n_v + n_t + (n_p * 2) + (n_a * 3)) DESC
+                        (n_v + n_t + (n_p * 2) + (n_a * 3)) DESC,
                         -- respect ascending order of changes (A1 before A2)
-                        , subsets
+                        subsets
                         '
                     WHEN heuristic_method = 'MEmCMN' THEN
                         '
@@ -582,17 +582,17 @@ $func$ LANGUAGE plpgsql;
 -- normalize name of street
 SELECT public.drop_all_functions_if_exists('fr', 'normalize_street_name');
 CREATE OR REPLACE FUNCTION fr.normalize_street_name(
-    name IN VARCHAR
-    , raise_notice IN BOOLEAN DEFAULT FALSE
-    , simulation IN BOOLEAN DEFAULT FALSE
-    , heuristic_method IN VARCHAR DEFAULT 'MEmCMN'
-    , nwords OUT INT
-    , as_words OUT INT[]
-    , name_as_words OUT TEXT[]
-    , name_abbreviated_as_words OUT TEXT[]
-    , descriptors_as_words OUT TEXT[]
-    , name_normalized_as_words OUT TEXT[]
-    , descriptors_normalized_as_words OUT TEXT[]
+    name IN VARCHAR,
+    raise_notice IN BOOLEAN DEFAULT FALSE,
+    simulation IN BOOLEAN DEFAULT FALSE,
+    heuristic_method IN VARCHAR DEFAULT 'MEmCMN',
+    nwords OUT INT,
+    as_words OUT INT[],
+    name_as_words OUT TEXT[],
+    name_abbreviated_as_words OUT TEXT[],
+    descriptors_as_words OUT TEXT[],
+    name_normalized_as_words OUT TEXT[],
+    descriptors_normalized_as_words OUT TEXT[]
 )
 AS
 $func$
@@ -628,21 +628,21 @@ BEGIN
 
     -- descriptors, words (by descriptor)
     SELECT
-        ds.descriptors
-        , ds.words_by_descriptor
-        , ds.words_abbreviated_by_descriptor
-        --, ds.words_todo_by_descriptor
-        , ds.as_words
+        ds.descriptors,
+        ds.words_by_descriptor,
+        ds.words_abbreviated_by_descriptor,
+        --ds.words_todo_by_descriptor,
+        ds.as_words
     INTO
-        _descriptors
-        , name_as_words
-        , name_abbreviated_as_words
-        --, _words_todo
-        , normalize_street_name.as_words
+        _descriptors,
+        name_as_words,
+        name_abbreviated_as_words,
+        --_words_todo,
+        normalize_street_name.as_words
     FROM
         fr.get_descriptors_of_street(
-            name => _name
-            , with_abbreviation => TRUE
+            name => _name,
+            with_abbreviation => TRUE
         ) ds;
     nwords := ARRAY_LENGTH(name_as_words, 1);
     -- descriptors_as_words as array
@@ -652,9 +652,9 @@ BEGIN
         descriptors_as_words
     FROM
         fr.split_descriptors_as_array(
-            descriptors => _descriptors
-            , words => name_as_words
-            , nwords => nwords
+            descriptors => _descriptors,
+            words => name_as_words,
+            nwords => nwords
         ) da;
 
     _len_normalized := (
@@ -727,16 +727,16 @@ BEGIN
         -- search for better solution (subset) of all change(s)
         _ordered_changes := (
             SELECT fr.normalize_order_changes(
-                element => 'STREET'
-                , len => _len_normalized
-                , nchanges => _nchanges
-                , changes => _changes
-                , earns => _earn_changes
-                , positions => _position_changes
-                , words => name_normalized_as_words
-                , raise_notice => raise_notice
-                , simulation => simulation
-                , heuristic_method => heuristic_method
+                element => 'STREET',
+                len => _len_normalized,
+                nchanges => _nchanges,
+                changes => _changes,
+                earns => _earn_changes,
+                positions => _position_changes,
+                words => name_normalized_as_words,
+                raise_notice => raise_notice,
+                simulation => simulation,
+                heuristic_method => heuristic_method
             )
         );
 
@@ -791,10 +791,10 @@ BEGIN
         ELSE
             -- exists ROAD NETWORK words
             _j := COALESCE(
-                ARRAY_POSITION(name_as_words, 'NATIONALE')
-                , ARRAY_POSITION(name_as_words, 'DEPARTEMENTALE')
-                , ARRAY_POSITION(name_as_words, 'COMMUNALE')
-                , ARRAY_POSITION(name_as_words, 'RURALE')
+                ARRAY_POSITION(name_as_words, 'NATIONALE'),
+                ARRAY_POSITION(name_as_words, 'DEPARTEMENTALE'),
+                ARRAY_POSITION(name_as_words, 'COMMUNALE'),
+                ARRAY_POSITION(name_as_words, 'RURALE')
             );
             IF NOT (_j IS NOT NULL
                 AND
@@ -871,19 +871,19 @@ view test_normalize.sh : option NAME_DIFF, NAME_LIST, NAME_CASE
 -- normalize name of street/complement
 SELECT public.drop_all_functions_if_exists('fr', 'normalize_name');
 CREATE OR REPLACE FUNCTION fr.normalize_name(
-    element IN VARCHAR
-    , name IN VARCHAR
-    , raise_notice IN BOOLEAN DEFAULT FALSE
-    , simulation IN BOOLEAN DEFAULT FALSE
-    , heuristic_method IN VARCHAR DEFAULT 'MEmCMN'
-    , nwords OUT INT
-    , as_words OUT INT[]
-    , as_groups OUT TEXT[]
-    , name_as_words OUT TEXT[]
-    , name_abbreviated_as_words OUT TEXT[]
-    , descriptors_as_words OUT TEXT[]
-    , name_normalized_as_words OUT TEXT[]
-    , descriptors_normalized_as_words OUT TEXT[]
+    element IN VARCHAR,
+    name IN VARCHAR,
+    raise_notice IN BOOLEAN DEFAULT FALSE,
+    simulation IN BOOLEAN DEFAULT FALSE,
+    heuristic_method IN VARCHAR DEFAULT 'MEmCMN',
+    nwords OUT INT,
+    as_words OUT INT[],
+    as_groups OUT TEXT[],
+    name_as_words OUT TEXT[],
+    name_abbreviated_as_words OUT TEXT[],
+    descriptors_as_words OUT TEXT[],
+    name_normalized_as_words OUT TEXT[],
+    descriptors_normalized_as_words OUT TEXT[]
 )
 AS
 $func$
@@ -926,24 +926,24 @@ BEGIN
 
     -- descriptors, words (by descriptor)
     SELECT
-        ds.descriptors
-        , ds.words_by_descriptor
-        , ds.words_abbreviated_by_descriptor
-        , ds.words_todo_by_descriptor
-        , ds.as_words
-        , CASE element WHEN 'COMPLEMENT' THEN ds.as_groups END
+        ds.descriptors,
+        ds.words_by_descriptor,
+        ds.words_abbreviated_by_descriptor,
+        ds.words_todo_by_descriptor,
+        ds.as_words,
+        CASE element WHEN 'COMPLEMENT' THEN ds.as_groups END
     INTO
-        _descriptors
-        , name_as_words
-        , name_abbreviated_as_words
-        , _words_todo
-        , normalize_name.as_words
-        , normalize_name.as_groups
+        _descriptors,
+        name_as_words,
+        name_abbreviated_as_words,
+        _words_todo,
+        normalize_name.as_words,
+        normalize_name.as_groups
     FROM
         fr.get_descriptors_from_name(
-            element => element
-            , name => _name
-            , with_abbreviation => TRUE
+            element => element,
+            name => _name,
+            with_abbreviation => TRUE
         ) ds;
     nwords := ARRAY_LENGTH(name_as_words, 1);
     -- descriptors_as_words as array
@@ -953,9 +953,9 @@ BEGIN
         descriptors_as_words
     FROM
         fr.split_descriptors_as_array(
-            descriptors => _descriptors
-            , words => name_as_words
-            , nwords => nwords
+            descriptors => _descriptors,
+            words => name_as_words,
+            nwords => nwords
         ) da;
 
     _len_normalized := (
@@ -1031,16 +1031,16 @@ BEGIN
         -- search for better solution (subset) of all change(s)
         _ordered_changes := (
             SELECT fr.normalize_order_changes(
-                element => element
-                , len => _len_normalized
-                , nchanges => _nchanges
-                , changes => _changes
-                , earns => _earn_changes
-                , positions => _position_changes
-                , words => name_normalized_as_words
-                , raise_notice => raise_notice
-                , simulation => simulation
-                , heuristic_method => heuristic_method
+                element => element,
+                len => _len_normalized,
+                nchanges => _nchanges,
+                changes => _changes,
+                earns => _earn_changes,
+                positions => _position_changes,
+                words => name_normalized_as_words,
+                raise_notice => raise_notice,
+                simulation => simulation,
+                heuristic_method => heuristic_method
             )
         );
 
@@ -1095,10 +1095,10 @@ BEGIN
         ELSE
             -- exists ROAD NETWORK words
             _j := COALESCE(
-                ARRAY_POSITION(name_as_words, 'NATIONALE')
-                , ARRAY_POSITION(name_as_words, 'DEPARTEMENTALE')
-                , ARRAY_POSITION(name_as_words, 'COMMUNALE')
-                , ARRAY_POSITION(name_as_words, 'RURALE')
+                ARRAY_POSITION(name_as_words, 'NATIONALE'),
+                ARRAY_POSITION(name_as_words, 'DEPARTEMENTALE'),
+                ARRAY_POSITION(name_as_words, 'COMMUNALE'),
+                ARRAY_POSITION(name_as_words, 'RURALE')
             );
             IF NOT (_j IS NOT NULL
                 AND
@@ -1170,14 +1170,14 @@ $func$ LANGUAGE plpgsql;
 -- get normalized (name, descriptors) as words from normalized name w/ (name, descriptors) as words (of complete name)
 SELECT drop_all_functions_if_exists('fr', 'normalize_name_get_as_words');
 CREATE OR REPLACE FUNCTION fr.normalize_name_get_as_words(
-    name_normalized IN VARCHAR
-    , name_as_words IN TEXT[]
-    , name_abbreviated_as_words IN TEXT[]
-    , descriptors_as_words IN TEXT[]
-    , nwords IN INT
-    , raise_notice IN BOOLEAN DEFAULT FALSE
-    , name_normalized_as_words OUT TEXT[]
-    , descriptors_normalized_as_words OUT TEXT[]
+    name_normalized IN VARCHAR,
+    name_as_words IN TEXT[],
+    name_abbreviated_as_words IN TEXT[],
+    descriptors_as_words IN TEXT[],
+    nwords IN INT,
+    raise_notice IN BOOLEAN DEFAULT FALSE,
+    name_normalized_as_words OUT TEXT[],
+    descriptors_normalized_as_words OUT TEXT[]
 )
 AS
 $func$
@@ -1198,9 +1198,9 @@ BEGIN
             RAISE NOTICE ' nwords=% word=%', _nwords, name_as_words[_i];
         END IF;
         IF extract_words(
-            str => name_normalized
-            , n => _nwords
-            , from_ => _j) = name_as_words[_i] THEN
+            str => name_normalized,
+            n => _nwords,
+            from_ => _j) = name_as_words[_i] THEN
             -- same word(s), within the meaning of descriptor
             name_normalized_as_words[_i] := name_as_words[_i];
             descriptors_normalized_as_words[_i] := descriptors_as_words[_i];
@@ -1223,9 +1223,9 @@ BEGIN
             IF (_name_abbreviated IS NOT NULL
                 AND
                 extract_words(
-                    str => name_normalized
-                    , n => _nwords
-                    , from_ => _j) % _name_abbreviated
+                    str => name_normalized,
+                    n => _nwords,
+                    from_ => _j) % _name_abbreviated
             ) THEN
                 -- abbreviated word(s)
                 name_normalized_as_words[_i] := _name_abbreviated;
@@ -1252,10 +1252,10 @@ view test_normalize.sh : option NAME_DIFF
 -- standardize one address
 SELECT drop_all_functions_if_exists('fr', 'standardize_address');
 CREATE OR REPLACE FUNCTION fr.standardize_address(
-    address IN RECORD                   -- address to standardize
-    , mapping IN HSTORE                 -- mapping address(client)/address(reference)
-    , matching IN HSTORE DEFAULT NULL   -- matching parameters
-    , raise_notice IN BOOLEAN DEFAULT FALSE
+    address IN RECORD,                  -- address to standardize
+    mapping IN HSTORE,                  -- mapping address(client)/address(reference)
+    matching IN HSTORE DEFAULT NULL,    -- matching parameters
+    raise_notice IN BOOLEAN DEFAULT FALSE
 )
 RETURNS fr.standardized_address AS
 $func$
@@ -1294,26 +1294,26 @@ BEGIN
                     IF _standardized_address.complement_name IS NOT NULL THEN
                         SELECT
                             /*
-                            ARRAY_TO_STRING(COALESCE(name_normalized_as_words, name_as_words), ' ')
-                            , ARRAY_TO_STRING(COALESCE(descriptors_normalized_as_words, descriptors_as_words), '')
-                            , CASE
+                            ARRAY_TO_STRING(COALESCE(name_normalized_as_words, name_as_words), ' '),
+                            ARRAY_TO_STRING(COALESCE(descriptors_normalized_as_words, descriptors_as_words), ''),
+                            CASE
                                 WHEN name_normalized_as_words IS NULL THEN as_words
                                 ELSE fr.get_as_words_from_splited_value(
                                     property_as_words => descriptors_normalized_as_words
                                 )
                                 END
                             */
-                            ARRAY_TO_STRING(nn.name_as_words, ' ')
-                            , ARRAY_TO_STRING(nn.descriptors_as_words, '')
-                            , nn.as_words
+                            ARRAY_TO_STRING(nn.name_as_words, ' '),
+                            ARRAY_TO_STRING(nn.descriptors_as_words, ''),
+                            nn.as_words
                         INTO
-                            _standardized_address.complement_name
-                            , _standardized_address.complement_descriptors
-                            , _standardized_address.complement_as_words
+                            _standardized_address.complement_name,
+                            _standardized_address.complement_descriptors,
+                            _standardized_address.complement_as_words
                         FROM
                             fr.normalize_name(
-                                element => 'COMPLEMENT'
-                                , name => _standardized_address.complement_name
+                                element => 'COMPLEMENT',
+                                name => _standardized_address.complement_name
                             ) nn
                         ;
                     END IF;
@@ -1325,8 +1325,8 @@ BEGIN
                         (_housenumber IS NOT NULL)
                         AND (
                             (NOT fr.is_normalized_number(
-                                word => _housenumber
-                                , only_digit => 'HOUSENUMBER'
+                                word => _housenumber,
+                                only_digit => 'HOUSENUMBER'
                             ))
                             OR
                             (_housenumber = '0')
@@ -1336,11 +1336,11 @@ BEGIN
                     ELSE
                         IF _housenumber ~ '[^0-9]' THEN
                             SELECT
-                                (REGEXP_MATCHES(_housenumber, '^([0-9]+)([ ]*([^0-9]+))?'))[1]
-                                , (REGEXP_MATCHES(_housenumber, '^([0-9]+)([ ]*([^0-9]+))?'))[2]
+                                (REGEXP_MATCHES(_housenumber, '^([0-9]+)([ ]*([^0-9]+))?'))[1],
+                                (REGEXP_MATCHES(_housenumber, '^([0-9]+)([ ]*([^0-9]+))?'))[2]
                             INTO
-                                _standardized_address.housenumber
-                                , _standardized_address.extension
+                                _standardized_address.housenumber,
+                                _standardized_address.extension
                             ;
                         END IF;
                     END IF;
@@ -1357,26 +1357,26 @@ BEGIN
                     IF _standardized_address.street_name IS NOT NULL THEN
                         SELECT
                             /*
-                            ARRAY_TO_STRING(COALESCE(name_normalized_as_words, name_as_words), ' ')
-                            , ARRAY_TO_STRING(COALESCE(descriptors_normalized_as_words, descriptors_as_words), '')
-                            , CASE
+                            ARRAY_TO_STRING(COALESCE(name_normalized_as_words, name_as_words), ' '),
+                            ARRAY_TO_STRING(COALESCE(descriptors_normalized_as_words, descriptors_as_words), ''),
+                            CASE
                                 WHEN name_normalized_as_words IS NULL THEN as_words
                                 ELSE fr.get_as_words_from_splited_value(
                                     property_as_words => descriptors_normalized_as_words
                                 )
                                 END
                             */
-                            ARRAY_TO_STRING(nn.name_as_words, ' ')
-                            , ARRAY_TO_STRING(nn.descriptors_as_words, '')
-                            , nn.as_words
+                            ARRAY_TO_STRING(nn.name_as_words, ' '),
+                            ARRAY_TO_STRING(nn.descriptors_as_words, ''),
+                            nn.as_words
                         INTO
-                            _standardized_address.street_name
-                            , _standardized_address.street_descriptors
-                            , _standardized_address.street_as_words
+                            _standardized_address.street_name,
+                            _standardized_address.street_descriptors,
+                            _standardized_address.street_as_words
                         FROM
                             fr.normalize_name(
-                                element => 'STREET'
-                                , name => _standardized_address.street_name
+                                element => 'STREET',
+                                name => _standardized_address.street_name
                             ) nn
                         ;
                     END IF;
@@ -1488,8 +1488,8 @@ BEGIN
     END IF;
 
     _standardized_address.municipality_name := fr.normalize_municipality_name(
-        code => _standardized_address.municipality_code
-        , name => _standardized_address.municipality_name
+        code => _standardized_address.municipality_code,
+        name => _standardized_address.municipality_name
     );
     IF _standardized_address.municipality_old_name IS NOT NULL THEN
         _standardized_address.municipality_old_name := fr.normalize_municipality_name(
@@ -1548,24 +1548,24 @@ BEGIN
         OR _standardized_address.municipality_name IS NOT NULL
     ) THEN
         _standardized_address.match_code_area := fr.get_match_code(
-            level => 'AREA'
-            , standardized_address => _standardized_address
+            level => 'AREA',
+            standardized_address => _standardized_address
         );
         IF _standardized_address.street_name IS NOT NULL THEN
             _standardized_address.match_code_street := fr.get_match_code(
-                level => 'STREET'
-                , standardized_address => _standardized_address
+                level => 'STREET',
+                standardized_address => _standardized_address
             );
             IF _standardized_address.housenumber IS NOT NULL THEN
                 _standardized_address.match_code_housenumber := fr.get_match_code(
-                    level => 'HOUSENUMBER'
-                    , standardized_address => _standardized_address
+                    level => 'HOUSENUMBER',
+                    standardized_address => _standardized_address
                 );
             END IF;
             IF _standardized_address.complement_name IS NOT NULL THEN
                 _standardized_address.match_code_complement := fr.get_match_code(
-                    level => 'COMPLEMENT'
-                    , standardized_address => _standardized_address
+                    level => 'COMPLEMENT',
+                    standardized_address => _standardized_address
                 );
             END IF;
         END IF;
@@ -1600,10 +1600,10 @@ BEGIN
             https://stackoverflow.com/questions/12201738/postgresql-error-name-is-not-a-scalar-variable
              */
             _record := fr.contains_uncommon_value(
-                level => _level
-                , standardized_address => _standardized_address
-                , parameters => matching
-                , raise_notice => raise_notice
+                level => _level,
+                standardized_address => _standardized_address,
+                parameters => matching,
+                raise_notice => raise_notice
             );
             IF _record.with_uncommon THEN
                 _standardized_address := _record.standardized_address;

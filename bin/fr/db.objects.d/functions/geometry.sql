@@ -4,14 +4,14 @@
 
 SELECT drop_all_functions_if_exists('fr', 'ST_SimplifyTerritory');
 CREATE OR REPLACE PROCEDURE fr.ST_SimplifyTerritory(
-    levels VARCHAR[]
-    , from_srid INTEGER DEFAULT NULL
-    , to_srid INTEGER DEFAULT 4326
-    , bbox_in box2d DEFAULT NULL
-    , tolerance INTEGER DEFAULT 100
-    , bbox_split_over INTEGER DEFAULT 2000
-    , subcall BOOLEAN DEFAULT FALSE
-    , subcall_name VARCHAR DEFAULT NULL
+    levels VARCHAR[],
+    from_srid INTEGER DEFAULT NULL,
+    to_srid INTEGER DEFAULT 4326,
+    bbox_in box2d DEFAULT NULL,
+    tolerance INTEGER DEFAULT 100,
+    bbox_split_over INTEGER DEFAULT 2000,
+    subcall BOOLEAN DEFAULT FALSE,
+    subcall_name VARCHAR DEFAULT NULL
 )
 AS $$
 DECLARE
@@ -50,14 +50,14 @@ BEGIN
             CALL public.log_info(CONCAT('ST_SimplifyTerritory : traitement SRID ', _split_by_srid.srid));
 
             CALL fr.ST_SimplifyTerritory(
-                levels => levels
-                , from_srid => _split_by_srid.srid
-                , to_srid => to_srid
-                , bbox_in => bbox_in
-                , tolerance => tolerance
-                , bbox_split_over => bbox_split_over
-                , subcall => TRUE
-                , subcall_name => CONCAT_WS('.', subcall_name, _split_by_srid.srid)
+                levels => levels,
+                from_srid => _split_by_srid.srid,
+                to_srid => to_srid,
+                bbox_in => bbox_in,
+                tolerance => tolerance,
+                bbox_split_over => bbox_split_over,
+                subcall => TRUE,
+                subcall_name => CONCAT_WS('.', subcall_name, _split_by_srid.srid)
             );
         END LOOP;
     ELSE
@@ -80,14 +80,14 @@ BEGIN
             )
             LOOP
                 CALL fr.ST_SimplifyTerritory(
-                    levels => levels
-                    , from_srid => from_srid
-                    , to_srid => to_srid
-                    , bbox_in => _split.bbox_territory
-                    , tolerance => tolerance
-                    , bbox_split_over => bbox_split_over
-                    , subcall => TRUE
-                    , subcall_name => CONCAT_WS('.', subcall_name, _split.bbox_number)
+                    levels => levels,
+                    from_srid => from_srid,
+                    to_srid => to_srid,
+                    bbox_in => _split.bbox_territory,
+                    tolerance => tolerance,
+                    bbox_split_over => bbox_split_over,
+                    subcall => TRUE,
+                    subcall_name => CONCAT_WS('.', subcall_name, _split.bbox_number)
                 );
             END LOOP;
         ELSE
@@ -101,8 +101,8 @@ BEGIN
                                 ST_Collect(
                                     ST_Boundary(tmp_polygon_to_simp.geom)
                                 )
-                            )
-                            , tolerance
+                            ),
+                            tolerance
                         ) AS geom
                     --équivalent en résultat, mais 10 fois plus lent :
                     --SELECT ST_SimplifyPreserveTopology(ST_LineMerge(ST_Union(ST_Boundary(polygon_to_simp.geom))), 500) AS geom
@@ -121,13 +121,13 @@ BEGIN
             WITH tmp1 AS (
                 --Possibilités de similitudes entre polygones dans la même étendue
                 SELECT
-                    polygon_to_simp.id AS polygon_to_simp_id
-                    , polygon_simp.id AS polygon_simp_id
-                    , (
+                    polygon_to_simp.id AS polygon_to_simp_id,
+                    polygon_simp.id AS polygon_simp_id,
+                    (
                         ST_Area(
                             ST_Intersection(
-                                ST_Envelope(polygon_simp.geom)
-                                , ST_Envelope(polygon_to_simp.geom)
+                                ST_Envelope(polygon_simp.geom),
+                                ST_Envelope(polygon_to_simp.geom)
                             )
                         ) * 2
                     ) /
@@ -140,33 +140,33 @@ BEGIN
                 --A VOIR : il y a peut être un risque en n'attribuant pas de polygone simplifié au polygones "trous" à simplifier
                 --Le polygone simplifié correspondant pouvant alors
                 WHERE polygon_to_simp.path[1] = 0
-            )
-            , tmp2 AS (
+            ),
+            tmp2 AS (
                 --Meilleur polygone simplifié pour chaque polygone à simplifier
                 SELECT
-                    polygon_to_simp_id
-                    , FIRST(polygon_simp_id ORDER BY sim DESC) AS polygon_simp_id
-                    , FIRST(sim ORDER BY sim DESC) AS sim
+                    polygon_to_simp_id,
+                    FIRST(polygon_simp_id ORDER BY sim DESC) AS polygon_simp_id,
+                    FIRST(sim ORDER BY sim DESC) AS sim
                 FROM tmp1
                 GROUP BY polygon_to_simp_id
-            )
-            , tmp3 AS (
+            ),
+            tmp3 AS (
                 --Meilleur polygone à simplifier pour chaque polygone simplifié
                 SELECT
-                    FIRST(polygon_to_simp_id ORDER BY sim DESC) AS polygon_to_simp_id
-                    , polygon_simp_id
-                    , FIRST(sim ORDER BY sim DESC) AS sim
+                    FIRST(polygon_to_simp_id ORDER BY sim DESC) AS polygon_to_simp_id,
+                    polygon_simp_id,
+                    FIRST(sim ORDER BY sim DESC) AS sim
                 FROM tmp2
                 GROUP BY polygon_simp_id
             )
             UPDATE fr.tmp_polygon_to_simp AS polygon_to_simp
-            SET polygon_simp_id = tmp3.polygon_simp_id
-                , polygon_simp_sim = tmp3.sim
-                , polygon_simp_geom = (
+            SET polygon_simp_id = tmp3.polygon_simp_id,
+                polygon_simp_sim = tmp3.sim,
+                polygon_simp_geom = (
                     SELECT geom FROM fr.tmp_polygon_simp WHERE id = tmp3.polygon_simp_id
-                )
-                , polygon_simp_subcallname = subcall_name
-                , polygon_simp_subcallbbox = bbox_in
+                ),
+                polygon_simp_subcallname = subcall_name,
+                polygon_simp_subcallbbox = bbox_in
             FROM tmp3
             WHERE polygon_to_simp.id = tmp3.polygon_to_simp_id
             --Déjà simplifié sur une passe précédente
@@ -179,7 +179,6 @@ BEGIN
             _message := ' traité';
             IF _nrows_affected > 1 THEN _message := _message || 's'; END IF;
             CALL public.log_info(CONCAT('ST_SimplifyTerritory ', subcall_name, ' : ', _nrows_affected, _message));
-
         END IF;
     END IF;
 
