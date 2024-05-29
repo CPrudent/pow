@@ -74,9 +74,11 @@ DECLARE
     _from VARCHAR := CASE _level_up
         WHEN 'HOUSENUMBER' THEN 'fr.laposte_address_housenumber_uniq u'
         ELSE CONCAT('UNNEST($2::TEXT[]) AS w(word)
-                JOIN fr.laposte_address_', _level_low, '_word_descriptor wd ON w.word = wd.word
+                JOIN fr.laposte_address_', _level_low, '_word_descriptor wd ON w.word = wd.word')
+                /* not useful!
                 JOIN fr.laposte_address_', _level_low, '_membership m ON wd.word = m.word
                 JOIN fr.laposte_address_', _level_low, '_uniq u ON m.name_id = u.id')
+                 */
         END
         ;
     _where VARCHAR := CASE _level_up
@@ -91,12 +93,12 @@ DECLARE
         ELSE
             CONCAT(
                 '
-                as_default = ''N''
+                wd.as_default = ''N''
                 AND
                 ',
                 CASE _level_up
-                    WHEN 'STREET' THEN '(as_name + as_last)'
-                    ELSE 'as_name'
+                    WHEN 'STREET' THEN '(wd.as_name + wd.as_last)'
+                    ELSE 'wd.as_name'
                     END, ' <= $1
                 '
             )
@@ -111,8 +113,13 @@ BEGIN
     _query := CONCAT(
         '
         SELECT
-              u.occurs
-            , ', _column_uncommon, '
+        ',
+        CASE _level_up
+            WHEN 'HOUSENUMBER' THEN 'u.occurs'
+            WHEN 'STREET' THEN '(wd.as_name + wd.as_last)'
+            ELSE 'wd.as_name'
+            END,
+        ', ', _column_uncommon, '
         FROM ', _from, '
         WHERE ', _where, '
         ORDER BY
