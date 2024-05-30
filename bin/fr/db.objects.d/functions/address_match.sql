@@ -434,22 +434,24 @@ BEGIN
         $1 uniq uncommon
          */
         WHEN ((_level_up = 'STREET') OR (_level_up = 'COMPLEMENT')) AND parameters & 2 = 2 THEN
-            '
-            SELECT
-                d.co_adr,
-                d.co_adr_za
-            ',
-            CASE _level_up
-                WHEN 'COMPLEMENT' THEN ', d.co_adr_voie, d.co_adr_numero'
-                END,
-            '
-            FROM
-                fr.laposte_address_', _level_low, '_membership m
-                    JOIN fr.laposte_address_', _level_low, '_reference r ON m.name_id = r.name_id
-                    JOIN fr.', _level_low, '_dict_view d ON r.name_id = d.id
-            WHERE
-                m.word = $1
-            '
+            CONCAT(
+                '
+                SELECT
+                    d.co_adr,
+                    d.co_adr_za
+                ',
+                CASE _level_up
+                    WHEN 'COMPLEMENT' THEN ', d.co_adr_voie, d.co_adr_numero'
+                    END,
+                '
+                FROM
+                    fr.laposte_address_', _level_low, '_membership m
+                        JOIN fr.laposte_address_', _level_low, '_reference r ON m.name_id = r.name_id
+                        JOIN fr.', _level_low, '_dict_view d ON r.name_id = d.id
+                WHERE
+                    m.word = $1
+                '
+            )
         /* NOTE
         $1 parent code
         $2 housenumber
