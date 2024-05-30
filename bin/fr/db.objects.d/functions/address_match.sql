@@ -193,7 +193,6 @@ parameters
     1 w/ uncommon
     2 uniq uncommon
     3 w/ postcode
-    4 w/ multiple element (of uncommon)
  */
 SELECT drop_all_functions_if_exists('fr', 'get_query_match');
 CREATE OR REPLACE FUNCTION fr.get_query_match(
@@ -355,7 +354,7 @@ BEGIN
         $2 municipality name
         $3 municipality old name
         $4 postcode
-        $5 better word, or (multiple parent) parent address codes
+        $5 better word  --, or (multiple parent) parent address codes
         $6 words (name)
         $7 descriptors
         $8 limit
@@ -399,31 +398,11 @@ BEGIN
                                     JOIN fr.laposte_address_', _level_low, '_reference r ON a.co_adr = r.address_id
                                     JOIN fr.laposte_address_', _level_low, '_membership m ON r.name_id = m.name_id
                             WHERE
-                        ',
-                        CASE
-                            WHEN parameters & 8 = 0 THEN
-                                '
                                 m.word = $5
-                                '
-                            -- w/ multiple element (of uncommon)
-                            ELSE
-                                '
-                                a.co_adr = ANY($5)
-                                '
-                            END,
-                        ' AND ',
-                        CASE
-                            -- not uniq uncommon
-                            WHEN parameters & 2 = 0 THEN
-                                '
-                                -- can verify area (known as ZA)
-                                a.co_insee_commune = $1
-                                '
-                            ELSE
-                                _where_area
-                            END
-                        , '
-                        )
+                                AND
+                        ',
+                        _where_area,
+                        ')
                         , similarity_elements AS (
                             SELECT
                                 co_adr,
@@ -454,32 +433,20 @@ BEGIN
         /* NOTE
         $1 uniq uncommon
          */
-        WHEN _level_up = 'STREET' AND parameters & 2 = 2 THEN
+        WHEN ((_level_up = 'STREET') OR (_level_up = 'COMPLEMENT')) AND parameters & 2 = 2 THEN
             '
             SELECT
                 d.co_adr,
                 d.co_adr_za
-            FROM
-                fr.laposte_address_street_membership m
-                    JOIN fr.laposte_address_street_reference r ON m.name_id = r.name_id
-                    JOIN fr.street_dict_view d ON r.name_id = d.id
-            WHERE
-                m.word = $1
+            ',
+            CASE _level_up
+                WHEN 'COMPLEMENT' THEN ', d.co_adr_voie, d.co_adr_numero'
+                END,
             '
-        /* NOTE
-        $1 uncommon word
-         */
-        WHEN _level_up = 'COMPLEMENT' AND parameters & 2 = 2 THEN
-            '
-            SELECT
-                d.co_adr,
-                d.co_adr_za,
-                d.co_adr_voie,
-                d.co_adr_numero
             FROM
-                fr.laposte_address_complement_membership m
-                    JOIN fr.laposte_address_complement_reference r ON m.name_id = r.name_id
-                    JOIN fr.complement_dict_view d ON r.name_id = d.id
+                fr.laposte_address_', _level_low, '_membership m
+                    JOIN fr.laposte_address_', _level_low, '_reference r ON m.name_id = r.name_id
+                    JOIN fr.', _level_low, '_dict_view d ON r.name_id = d.id
             WHERE
                 m.word = $1
             '
