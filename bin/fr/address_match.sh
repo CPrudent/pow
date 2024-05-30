@@ -65,8 +65,8 @@ bash_args \
         file_path:Fichier des Adresses à rapprocher;
         force:Forcer le traitement même si celui-ci a déjà été fait;
         suffix:Entité SQL des Adresses avec ce suffixe particulier;
-        format:Mot clé du Format des Adresses ou chemin absolu;
-        parameters:Mot clé des Paramètres du Rapprochement ou chemin absolu;
+        format:Définition du Format des Adresses (ou fichier du Format);
+        parameters:Définition des Paramètres du Rapprochement (ou fichier des Paramètres);
         import_options:Options import (du fichier) spécifiques à son type;
         import_limit:Limiter à n enregistrements;
         steps:Ensemble des étapes à réaliser (séparées par une virgule, si plusieurs);
@@ -163,15 +163,20 @@ match_vars[TABLE_NAME]=address_match_${match_request[$MATCH_REQUEST_SUFFIX]} &&
 } &&
 {
     in_array match_steps STANDARDIZE _steps_id && {
-        get_definition --property format --vars match_vars &&
+        get_definition --property format --vars match_vars && {
+            [ -n "${match_vars[FORMAT_SQL]}" ] && true || {
+                log_error "manque définition du format (option --format)"
+                exit $ERROR_CODE
+            }
+        } &&
         match_info --steps_info match_steps_info --steps_id _steps_id &&
         execute_query \
             --name STANDARDIZE_REQUEST \
             --query "CALL set_match_standardize(
-                file_path => '${match_vars[FILE_PATH]}'
-                , mapping => '${match_vars[FORMAT_SQL]}'::HSTORE
-                , force => ('${match_vars[FORCE]}' = 'yes')
-                , raise_notice => ('${match_vars[VERBOSE]}' = 'yes')
+                file_path => '${match_vars[FILE_PATH]}',
+                mapping => '${match_vars[FORMAT_SQL]}'::HSTORE,
+                force => ('${match_vars[FORCE]}' = 'yes'),
+                raise_notice => ('${match_vars[VERBOSE]}' = 'yes')
             )"
     } || true
 } &&
@@ -181,8 +186,8 @@ match_vars[TABLE_NAME]=address_match_${match_request[$MATCH_REQUEST_SUFFIX]} &&
         execute_query \
             --name MATCH_CODE_REQUEST \
             --query "CALL fr.set_match_code(
-                id => ${match_request[$MATCH_REQUEST_ID]}
-                , force => ('${match_vars[FORCE]}' = 'yes')
+                id => ${match_request[$MATCH_REQUEST_ID]},
+                force => ('${match_vars[FORCE]}' = 'yes')
             )"
     } || true
 } || exit $ERROR_CODE
