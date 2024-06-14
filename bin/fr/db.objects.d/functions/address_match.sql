@@ -13,7 +13,7 @@ BEGIN
             co_adr_za CHAR(10),
             co_adr_voie CHAR(10),
             co_adr_numero CHAR(10),
-            co_voie INT,
+            co_voie NUMERIC,
             co_insee_commune CHAR(5),
             co_postal VARCHAR,
             lb_acheminement VARCHAR,
@@ -215,7 +215,7 @@ BEGIN
         (
             ($1 IS NULL)
             OR
-            (area.co_insee_commune = $1)
+            (a.co_insee_commune = $1)
         )
         ',
         CASE
@@ -226,7 +226,7 @@ BEGIN
                 AND (
                     ($4 IS NULL)
                     OR
-                    (area.co_postal = $4)
+                    (a.co_postal = $4)
                 )
                 '
             END
@@ -239,15 +239,15 @@ BEGIN
                     OR
                     ($2 IS NULL)
                     OR
-                    (area.lb_acheminement = $2)
+                    (a.lb_acheminement = $2)
                     OR
-                    (area.lb_ligne5 = $2)
+                    (a.lb_ligne5 = $2)
                 )
                 -- municipality old name (if defined)
                 AND (
-                    (($3 IS NULL) AND (area.lb_ligne5 IS NULL))
+                    (($3 IS NULL) AND (a.lb_ligne5 IS NULL))
                     OR
-                    (area.lb_ligne5 = $3)
+                    (a.lb_ligne5 = $3)
                 )
                 '
             ELSE
@@ -258,16 +258,16 @@ BEGIN
                     OR
                     ($2 IS NULL)
                     OR
-                    (area.lb_acheminement % $2)
+                    (a.lb_acheminement % $2)
                     OR
-                    (area.lb_ligne5 % $2)
+                    (a.lb_ligne5 % $2)
                 )
                 -- municipality old name (if defined)
                 AND (
-                    --(($3 IS NULL) AND (area.lb_ligne5 IS NULL))
+                    --(($3 IS NULL) AND (a.lb_ligne5 IS NULL))
                     ($3 IS NULL)
                     OR
-                    (area.lb_ligne5 % $3)
+                    (a.lb_ligne5 % $3)
                 )
                 '
             END
@@ -295,31 +295,31 @@ BEGIN
                 CASE search
                     WHEN 'STRICT' THEN
                         '
-                        ARRAY_AGG(area.co_adr) codes_address
+                        ARRAY_AGG(a.co_adr) codes_address
                         '
                     ELSE
                         '
-                          area.co_adr
-                        , area.co_insee_commune
-                        , area.co_postal
-                        , area.lb_acheminement
-                        , area.lb_ligne5
-                        , CASE
+                        a.co_adr,
+                        a.co_insee_commune,
+                        a.co_postal,
+                        a.lb_acheminement,
+                        a.lb_ligne5,
+                        CASE
                             WHEN $2 IS NOT NULL THEN
                                 GREATEST(
-                                    get_similarity($2, area.lb_acheminement),
-                                    get_similarity($2, area.lb_ligne5)
+                                    get_similarity($2, a.lb_acheminement),
+                                    get_similarity($2, a.lb_ligne5)
                                 )
-                            END similarity_1
-                        , CASE
+                            END similarity_1,
+                        CASE
                             WHEN $3 IS NOT NULL THEN
-                                get_similarity($3, area.lb_ligne5)
+                                get_similarity($3, a.lb_ligne5)
                             END similarity_2
                         '
                     END,
                 '
                 FROM
-                    fr.area_view area
+                    fr.area_view a
                 WHERE
                 ', _where_area,
                 CASE search
@@ -330,13 +330,13 @@ BEGIN
                                 CASE
                                     WHEN $2 IS NOT NULL THEN
                                         GREATEST(
-                                            get_similarity($2, area.lb_acheminement),
-                                            get_similarity($2, area.lb_ligne5)
+                                            get_similarity($2, a.lb_acheminement),
+                                            get_similarity($2, a.lb_ligne5)
                                         )
                                     END,
                                 CASE
                                     WHEN $3 IS NOT NULL THEN
-                                        get_similarity($3, area.lb_ligne5)
+                                        get_similarity($3, a.lb_ligne5)
                                     END
                             ) DESC
                         LIMIT
@@ -390,8 +390,11 @@ BEGIN
                             SELECT
                                 a.co_adr,
                                 a.co_adr_za,
-                                a.name,
-                                ', alias_words(_columns, ',[ ]*', 'a'), '
+                        ', CASE _level_up
+                            WHEN 'STREET' THEN 'a.lb_voie'
+                            ELSE 'a.lb_ligne3'
+                            END, ' name, ',
+                                alias_words(_columns, ',[ ]*', 'a'), ',
                                 r.name_id
                             FROM
                                 fr.', _level_low, '_view a
@@ -408,7 +411,7 @@ BEGIN
                                 co_adr,
                                 co_adr_za,
                                 ', _columns, ',
-                                name,
+                                p.name,
                                 fr.get_similarity_words(
                                     words_a => $6,
                                     words_b => u.words,
@@ -464,7 +467,7 @@ BEGIN
             FROM
                 fr.address_view
             WHERE
-                co_adr_parent = ANY($1)
+                co_adr_parent = $1
                 AND
                 co_adr_l3 IS NULL
                 AND
@@ -582,13 +585,7 @@ BEGIN
                 (standardized_address).municipality_name,
                 (standardized_address).municipality_old_name,
                 (standardized_address).postcode,
-                CASE
-                    WHEN parameters & 8 = 0 THEN
-                        (match_parameters).word
-                    -- w/ multiple element (of uncommon)
-                    ELSE
-                        (match_parameters).codes_address
-                    END,
+                (match_parameters).word,
                 CASE level
                     WHEN 'STREET' THEN standardized_address.street_words
                     ELSE standardized_address.complement_words
@@ -1102,7 +1099,7 @@ BEGIN
             standardized_address => standardized_address
         ) THEN
             -- near match, set threshold, ratio, better word
-            IF _search != 'STRICT' THEN
+            IF _search != 'STRICT' AND level != 'HOUSENUMBER' THEN
                 IF _similarity_threshold IS NULL THEN
                     /* NOTE
                     AREA
@@ -1209,7 +1206,7 @@ BEGIN
                                 '
                                 co_adr BPCHAR,
                                 co_adr_za BPCHAR,
-                                co_voie INT,
+                                co_voie NUMERIC,
                                 name VARCHAR,
                                 similarity NUMERIC
                                 '

@@ -251,7 +251,7 @@ BEGIN
                         END IF;
                     END LOOP;
 
-                    _nrows := nrows +1;
+                    _nrows := _nrows +1;
                 END LOOP;
                 CALL public.log_info(CONCAT(_info, ' [STEP=%] : #%=%', _step, _level, _nrows));
             END LOOP;

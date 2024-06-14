@@ -114,7 +114,7 @@ BEGIN
                 fr.laposte_address_', _level_low, '_word_level wl
                     -- remember: w/o article
                     JOIN fr.laposte_address_', _level_low, '_word_descriptor wd ON wl.word = wd.word
-                    JOIN LATERAL UNNEST(words) WITH ORDINALITY AS w(word, i) ON TRUE
+                    JOIN LATERAL UNNEST($4) WITH ORDINALITY AS w(word, i) ON TRUE
             WHERE
                 wl.nivgeo = $1 AND wl.codgeo = ANY($2)
         )
@@ -132,7 +132,7 @@ BEGIN
 
     EXECUTE _query
         INTO better_word
-        USING zone, codes, _nof
+        USING zone, codes, _nof, words
         ;
 END
 $func$ LANGUAGE plpgsql;

@@ -116,9 +116,9 @@ match_steps=( ${match_vars[STEPS]//,/ } )
 declare -a match_steps_info=(
     [0]=Chargement
     [1]=Standardisation
-    [2]=Calcul MATCH CODE
-    [3]=Rapprochement ELEMENT
-    [4]=Rapprochement ADRESSE
+    [2]="Calcul MATCH CODE"
+    [3]="Rapprochement ELEMENT"
+    [4]="Rapprochement ADRESSE"
     [5]=Rapport
     [6]=Statistiques
 )
@@ -186,6 +186,17 @@ match_vars[TABLE_NAME]=address_match_${match_request[$MATCH_REQUEST_SUFFIX]} &&
         execute_query \
             --name MATCH_CODE_REQUEST \
             --query "CALL fr.set_match_code(
+                id => ${match_request[$MATCH_REQUEST_ID]},
+                force => ('${match_vars[FORCE]}' = 'yes')
+            )"
+    } || true
+} &&
+{
+    in_array match_steps MATCH_ELEMENT _steps_id && {
+        match_info --steps_info match_steps_info --steps_id _steps_id &&
+        execute_query \
+            --name MATCH_ELEMENT_REQUEST \
+            --query "CALL fr.set_match_element(
                 id => ${match_request[$MATCH_REQUEST_ID]},
                 force => ('${match_vars[FORCE]}' = 'yes')
             )"
