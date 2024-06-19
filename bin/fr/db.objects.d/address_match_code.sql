@@ -80,7 +80,7 @@ DECLARE
     _is_match_code BOOLEAN;
     _query TEXT;
     _nrows INTEGER;
-    _info VARCHAR := CONCAT('gestion MATCH CODE demande Rapprochement (', id, ')');
+    _info VARCHAR := CONCAT('creating MATCH CODE matching request(', id, ')');
 BEGIN
     SELECT is_match_code
     INTO _is_match_code
@@ -89,7 +89,7 @@ BEGIN
     ;
 
     IF _is_match_code IS NULL THEN
-        RAISE 'aucune demande de Rapprochement trouvée ''%''', id;
+        RAISE 'no request found (ID=%)', id;
     END IF;
 
     IF force OR NOT _is_match_code THEN

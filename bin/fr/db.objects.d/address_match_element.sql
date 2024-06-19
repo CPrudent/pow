@@ -57,7 +57,8 @@ CREATE INDEX IF NOT EXISTS ix_address_match_element_match_code ON fr.address_mat
 SELECT drop_all_functions_if_exists('fr', 'set_match_element');
 CREATE OR REPLACE PROCEDURE fr.set_match_element(
     id IN INT,
-    force IN BOOLEAN DEFAULT FALSE
+    force IN BOOLEAN DEFAULT FALSE,
+    raise_notice IN BOOLEAN DEFAULT FALSE
 )
 AS
 $proc$
@@ -65,7 +66,7 @@ DECLARE
     _is_match_element BOOLEAN;
     _parameters HSTORE;
     _nrows INTEGER;
-    _info VARCHAR := CONCAT('rapprochement ELEMENT demande Rapprochement (', id, ')');
+    _info VARCHAR := CONCAT('creating ELEMENT matching request(', id, ')');
     _step INT;
     _levels VARCHAR[] := ARRAY['AREA', 'STREET', 'HOUSENUMBER', 'COMPLEMENT'];
     _level VARCHAR;
@@ -81,10 +82,27 @@ BEGIN
     ;
 
     IF _is_match_element IS NULL THEN
-        RAISE 'aucune demande de Rapprochement trouvée "%"', id;
+        RAISE 'no request found (ID=%)', id;
     END IF;
 
     IF force OR NOT _is_match_element THEN
+        CALL public.log_info(_info);
+
+        WITH
+        request_mc(match_code) AS (
+            SELECT match_code_element
+            FROM fr.address_match_code
+            WHERE id_request = set_match_element.id
+        )
+        DELETE FROM fr.address_match_element me
+            USING request_mc mr
+            WHERE me.match_code = mr.match_code
+        ;
+        GET DIAGNOSTICS _nrows = ROW_COUNT;
+        IF _nrows > 0 THEN
+            CALL public.log_info(CONCAT('PURGE : #', _nrows));
+        END IF;
+
         -- step 1 (uncommon), step 2 (others)
         FOR _step IN 1 .. 2
         LOOP
@@ -190,13 +208,20 @@ BEGIN
                 _nrows := 0;
                 FOR _element IN EXECUTE _query USING id, _level
                 LOOP
+                    IF raise_notice THEN
+                        CALL public.log_info(
+                            FORMAT('step=%s, level=%s, match_code=%s', _step, _element.level, _element.match_code_element)
+                        );
+                    END IF;
+
                     -- match element
                     _record := fr.match_element(
                         level => _element.level,
                         step => _step,
                         standardized_address => _element.standardized_address,
                         matched_parent => _element.matched_parent,
-                        parameters => _parameters
+                        parameters => _parameters,
+                        raise_notice => raise_notice
                     );
 
                     -- matched element
@@ -253,7 +278,9 @@ BEGIN
 
                     _nrows := _nrows +1;
                 END LOOP;
-                CALL public.log_info(CONCAT(_info, ' [STEP=%] : #%=%', _step, _level, _nrows));
+                CALL public.log_info(
+                    FORMAT('[STEP=%s, LEVEL=%s] : #%s', _step, _level, _nrows)
+                );
             END LOOP;
         END LOOP;
 
@@ -263,7 +290,7 @@ BEGIN
                 mr.id = set_match_element.id
         ;
     ELSE
-        CALL public.log_info(CONCAT(_info, ' : déjà traitée (option force disponible)'));
+        CALL public.log_info(CONCAT(_info, ' : already done! (option force available)'));
     END IF;
 END
 $proc$ LANGUAGE plpgsql;

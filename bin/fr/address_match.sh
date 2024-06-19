@@ -198,7 +198,8 @@ match_vars[TABLE_NAME]=address_match_${match_request[$MATCH_REQUEST_SUFFIX]} &&
             --name MATCH_ELEMENT_REQUEST \
             --query "CALL fr.set_match_element(
                 id => ${match_request[$MATCH_REQUEST_ID]},
-                force => ('${match_vars[FORCE]}' = 'yes')
+                force => ('${match_vars[FORCE]}' = 'yes'),
+                raise_notice => ('${match_vars[VERBOSE]}' = 'yes')
             )"
     } || true
 } || exit $ERROR_CODE

@@ -245,7 +245,8 @@ BEGIN
                 )
                 -- municipality old name (if defined)
                 AND (
-                    (($3 IS NULL) AND (a.lb_ligne5 IS NULL))
+                    --(($3 IS NULL) AND (a.lb_ligne5 IS NULL))
+                    ($3 IS NULL)
                     OR
                     (a.lb_ligne5 = $3)
                 )
@@ -827,7 +828,7 @@ BEGIN
                 )
             END
             ;
-        RAISE NOTICE ' %', _notice;
+        CALL public.log_info(_notice);
     END IF;
 END
 $proc$ LANGUAGE plpgsql;
