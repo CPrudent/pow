@@ -235,8 +235,10 @@ BEGIN
                 '
                 -- municipality name (if defined and not defined code)
                 AND (
+                    /*
                     ($1 IS NOT NULL)
                     OR
+                     */
                     ($2 IS NULL)
                     OR
                     (a.lb_acheminement = $2)
@@ -255,8 +257,10 @@ BEGIN
                 '
                 -- municipality name (if defined and not defined code)
                 AND (
+                    /*
                     ($1 IS NOT NULL)
                     OR
+                     */
                     ($2 IS NULL)
                     OR
                     (a.lb_acheminement % $2)
