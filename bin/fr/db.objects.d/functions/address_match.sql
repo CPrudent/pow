@@ -720,20 +720,17 @@ BEGIN
                     WHEN 'STREET' THEN
                         FORMAT('%sNAME(%s)',
                             _notice_element,
-                            (standardized_address).municipality_code,
                             (standardized_address).street_name
                         )
                     WHEN 'HOUSENUMBER' THEN
                         FORMAT('%sNUMBER(%s) EXTENSION(%s)',
                             _notice_element,
-                            (standardized_address).municipality_code,
                             (standardized_address).housenumber,
                             (standardized_address).extension
                         )
                     WHEN 'COMPLEMENT' THEN
                         FORMAT('%sNAME(%s)',
                             _notice_element,
-                            (standardized_address).municipality_code,
                             (standardized_address).complement_name
                         )
                     END
@@ -862,17 +859,19 @@ BEGIN
     IF parameters & 2 = 2 THEN
         matched_element.codes_address := ARRAY[current.co_adr];
 
+        -- deduce parent fron uncommon result
         _parent.elapsed_time := 0;
         _parent.status := (SELECT CURRENT_SETTING('fr.address.match.strict'));
         _parent.codes_address := ARRAY[current.co_adr_za];
         matched_parents[1] := _parent;
+        -- complement can be found w/ number as parent, even if entry has no housenumber
         IF level = 'HOUSENUMBER' OR (
-            level = 'COMPLEMENT' AND standardized_address.housenumber IS NULL
+            level = 'COMPLEMENT' AND current.co_adr_numero IS NULL
         ) THEN
             _parent.codes_address := ARRAY[current.co_adr_voie];
             matched_parents[2] := _parent;
         END IF;
-        IF level = 'COMPLEMENT' AND standardized_address.housenumber IS NOT NULL THEN
+        IF level = 'COMPLEMENT' AND current.co_adr_numero IS NOT NULL THEN
             _parent.codes_address := ARRAY[current.co_adr_numero];
             matched_parents[3] := _parent;
         END IF;
@@ -1064,6 +1063,8 @@ BEGIN
         ) THEN
             _query_parameters := _query_parameters | 2;
         END IF;
+        -- no parent available yet!
+        _searchs := ARRAY_REMOVE(_searchs, 'STRICT');
     END IF;
     -- w/ postcode
     _query_parameters := _query_parameters | 4;
@@ -1095,7 +1096,7 @@ BEGIN
         END IF;
 
         IF raise_notice THEN
-            RAISE NOTICE 'search(%) parameters(%)', _search, _query_parameters;
+            CALL public.log_info(FORMAT(' [SEARCH=%s, PARAMETERS=%s]', _search, _query_parameters));
         END IF;
 
         IF fr.is_match_todo(
@@ -1161,12 +1162,10 @@ BEGIN
                     END
                     ;
                 IF _match_parameters.word IS NULL THEN
-                    RAISE NOTICE 'match_element: no better word!';
-                    RAISE NOTICE ' level(%), search(%), data(%)',
+                    CALL public.log_info(FORMAT(' [LEVEL(%s), DATA(%s)] no better word!',
                         level,
-                        _search,
                         standardized_address
-                        ;
+                    ));
                     EXIT;
                 END IF;
             END IF;
@@ -1266,7 +1265,7 @@ BEGIN
                 standardized_address,
                 _match_parameters
             LOOP
-                IF raise_notice THEN RAISE NOTICE 'results=%', _query_results; END IF;
+                IF raise_notice THEN CALL public.log_info(FORMAT(' [RESULTS=%s]', _query_results)); END IF;
                 -- FIXME
                 --IF _query_results IS NOT NULL THEN
                 --IF _query_results != ROW(NULL) THEN
@@ -1320,7 +1319,8 @@ BEGIN
                         _match_current.co_adr_voie := _query_results.co_adr_voie;
                     END IF;
 
-                    IF raise_notice THEN RAISE NOTICE 'current=%', _match_current; END IF;
+                    IF raise_notice THEN CALL public.log_info(FORMAT(' [CURRENT=%s]', _match_current)); END IF;
+
                     _analyze_results := fr.analyze_matched_elements(
                         level => level,
                         search => _search,
@@ -1336,7 +1336,8 @@ BEGIN
 
                     matched_parents := _analyze_results.matched_parents;
                     matched_element := _analyze_results.matched_element;
-                    IF raise_notice THEN RAISE NOTICE 'analyze=%', _analyze_results; END IF;
+                    IF raise_notice THEN CALL public.log_info(FORMAT(' [ANALYZE=%s]', _analyze_results)); END IF;
+
                     IF LEFT(matched_element.status, 2) = 'OK' THEN
                         EXIT;
                     END IF;
@@ -1346,12 +1347,9 @@ BEGIN
             -- loop elements
             END LOOP;
         ELSE
-            RAISE NOTICE 'match_element: not todo!';
-            RAISE NOTICE ' level(%), search(%), data(%)',
-                level,
-                _search,
-                standardized_address
-                ;
+            IF raise_notice THEN
+                CALL public.log_info(FORMAT(' [LEVEL=%s, DATA=%s] not todo!', level, standardized_address));
+            END IF;
         END IF;
         IF LEFT(matched_element.status, 2) = 'OK' THEN
             EXIT;
@@ -1366,7 +1364,7 @@ BEGIN
             matched_element => matched_element
         );
     END IF;
-    IF raise_notice THEN RAISE NOTICE 'match=%', matched_element; END IF;
+    IF raise_notice THEN CALL public.log_info(FORMAT(' [MATCH=%s]', matched_element)); END IF;
 
     /*
         matched_element.elapsed_time := clock_timestamp() - _timestamp;

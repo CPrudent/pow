@@ -66,7 +66,7 @@ DECLARE
     _is_match_element BOOLEAN;
     _parameters HSTORE;
     _nrows INTEGER;
-    _info VARCHAR := CONCAT('creating ELEMENT matching request(', id, ')');
+    _info VARCHAR := FORMAT('### matching ELEMENT (ID=%s)', id);
     _step INT;
     _levels VARCHAR[] := ARRAY['AREA', 'STREET', 'HOUSENUMBER', 'COMPLEMENT'];
     _level VARCHAR;
@@ -100,7 +100,7 @@ BEGIN
         ;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
         IF _nrows > 0 THEN
-            CALL public.log_info(CONCAT('PURGE : #', _nrows));
+            CALL public.log_info(CONCAT('[PURGE] : #', _nrows));
         END IF;
 
         -- step 1 (uncommon), step 2 (others)
@@ -210,7 +210,8 @@ BEGIN
                 LOOP
                     IF raise_notice THEN
                         CALL public.log_info(
-                            FORMAT('step=%s, level=%s, match_code=%s', _step, _element.level, _element.match_code_element)
+                            --FORMAT('[STEP=%s, LEVEL=%s, MATCH_CODE=%s, ADDR=%s]', _step, _element.level, _element.match_code_element, _element.standardized_address.id)
+                            FORMAT('[STEP=%s, ELEMENT=%s]', _step, _element)
                         );
                     END IF;
 
@@ -283,6 +284,9 @@ BEGIN
                 );
             END LOOP;
         END LOOP;
+        IF raise_notice THEN
+            CALL public.log_info(FORMAT('[TOTAL] : #%s', _nrows));
+        END IF;
 
         UPDATE fr.address_match_request mr SET
             is_match_element = TRUE
