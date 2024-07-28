@@ -189,7 +189,7 @@ $func$ LANGUAGE plpgsql;
 
 /*
 get query for matching element
-parameters
+parameters (as bits field: 2**(b-1))
     1 w/ uncommon
     2 uniq uncommon
     3 w/ postcode
@@ -359,7 +359,7 @@ BEGIN
         $2 municipality name
         $3 municipality old name
         $4 postcode
-        $5 better word  --, or (multiple parent) parent address codes
+        $5 better word
         $6 words (name)
         $7 descriptors
         $8 limit
