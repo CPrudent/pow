@@ -1585,6 +1585,11 @@ BEGIN
     END IF;
      */
 
+    /* no-uncommon
+
+    not filtering parent level:
+    street w/ uncommon word can be found, but on another municipality!
+
     -- search for uncommon value, among first of {complement, housenumber, street}
     FOREACH _level IN ARRAY _levels
     LOOP
@@ -1618,6 +1623,7 @@ BEGIN
             END IF;
         END IF;
     END LOOP;
+     */
 
     _standardized_address.elapsed_time := clock_timestamp() - _timestamp;
     RETURN _standardized_address;

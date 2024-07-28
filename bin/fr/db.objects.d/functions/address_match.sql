@@ -207,6 +207,7 @@ DECLARE
     _level_up VARCHAR := UPPER(level);
     _level_low VARCHAR := LOWER(level);
     _where_area VARCHAR;
+    _where_parent VARCHAR;
     _columns VARCHAR;
 BEGIN
     _where_area := CONCAT(
@@ -277,6 +278,15 @@ BEGIN
                 '
             END
         );
+    _where_parent := CASE _level_up
+        WHEN 'STREET' THEN 'co_adr_za = ANY($2)'
+        ELSE '(
+            (co_adr_voie = ANY($2))
+            OR
+            (co_adr_numero = ANY($2))
+        )'
+        END
+        ;
     IF (parameters & 1 = 0) OR (parameters & 2 = 0) THEN
         _columns := CASE _level_up
             WHEN 'STREET' THEN 'co_voie'
@@ -284,6 +294,7 @@ BEGIN
             END
             ;
     END IF;
+
     query_match := CASE
         /* NOTE
         $1 municipality code
@@ -292,7 +303,7 @@ BEGIN
         $4 postcode
         $5 limit
          */
-        WHEN _level_up = 'AREA' AND parameters & 1 = 0 THEN
+        WHEN _level_up = 'AREA' /*AND parameters & 1 = 0*/ THEN
             CONCAT(
                 '
                 SELECT
@@ -350,19 +361,17 @@ BEGIN
                     END
             )
         /* NOTE
-        STRICT
-        $1 parent code(s)
-        $2 name
-
-        NEAR
         $1 municipality code
-        $2 municipality name
-        $3 municipality old name
-        $4 postcode
-        $5 better word
-        $6 words (name)
-        $7 descriptors
-        $8 limit
+        $2 parent code(s)
+        +
+        STRICT
+        $3 name
+        +
+        NEAR
+        $3 better word
+        $4 words (name)
+        $5 descriptors
+        $6 limit
          */
         WHEN (((_level_up = 'STREET') OR (_level_up = 'COMPLEMENT')) AND (
             (parameters & 1 = 0) OR (parameters & 2 = 0)
@@ -376,16 +385,9 @@ BEGIN
                         FROM
                             fr.', _level_low, '_dict_view
                         WHERE
-                            name = $2
+                            name = $3
                             AND
-                        ', CASE _level_up
-                            WHEN 'STREET' THEN 'co_adr_za = ANY($1)'
-                            ELSE '(
-                                (co_adr_voie = ANY($1))
-                                OR
-                                (co_adr_numero = ANY($1))
-                            )'
-                            END
+                        ', _where_parent
                     )
                 ELSE
                     CONCAT(
@@ -406,10 +408,9 @@ BEGIN
                                     JOIN fr.laposte_address_', _level_low, '_reference r ON a.co_adr = r.address_id
                                     JOIN fr.laposte_address_', _level_low, '_membership m ON r.name_id = m.name_id
                             WHERE
-                                m.word = $5
+                                m.word = $3
                                 AND
-                        ',
-                        _where_area,
+                        ', _where_parent,
                         ')
                         , similarity_elements AS (
                             SELECT
@@ -418,9 +419,9 @@ BEGIN
                                 ', _columns, ',
                                 p.name,
                                 fr.get_similarity_words(
-                                    words_a => $6,
+                                    words_a => $4,
                                     words_b => u.words,
-                                    descriptors_a => $7,
+                                    descriptors_a => $5,
                                     descriptors_b => u.descriptors
                                 ) similarity
                             FROM
@@ -434,13 +435,12 @@ BEGIN
                         ORDER BY
                             similarity DESC
                         LIMIT
-                            $8
+                            $6
                         '
                     )
                 END
         /* NOTE
         $1 uniq uncommon
-         */
         WHEN ((_level_up = 'STREET') OR (_level_up = 'COMPLEMENT')) AND parameters & 2 = 2 THEN
             CONCAT(
                 '
@@ -460,19 +460,20 @@ BEGIN
                     m.word = $1
                 '
             )
+         */
         /* NOTE
         $1 parent code
         $2 housenumber
         $3 extension (STRICT, else abbreviated as NEAR)
          */
-        WHEN _level_up = 'HOUSENUMBER' AND parameters & 1 = 0 THEN
+        WHEN _level_up = 'HOUSENUMBER' /*AND parameters & 1 = 0*/ THEN
             '
             SELECT
                 ARRAY_AGG(co_adr) codes_address
             FROM
                 fr.address_view
             WHERE
-                co_adr_parent = $1
+                co_adr_parent = ANY($1)
                 AND
                 co_adr_l3 IS NULL
                 AND
@@ -485,7 +486,6 @@ BEGIN
             '
         /* NOTE
         $1 housenumber id (uniq uncommon)
-         */
         WHEN _level_up = 'HOUSENUMBER' AND parameters & 2 = 2 THEN
             '
             SELECT
@@ -497,6 +497,7 @@ BEGIN
             WHERE
                 id = $1
             '
+         */
         END
         ;
 END
@@ -557,7 +558,7 @@ BEGIN
         parameters => parameters
     );
 
-    IF level = 'AREA' AND parameters & 1 = 0 THEN
+    IF level = 'AREA' /*AND parameters & 1 = 0*/ THEN
         IF search = 'STRICT' THEN
             RETURN QUERY EXECUTE _query USING
                 (standardized_address).municipality_code,
@@ -574,10 +575,14 @@ BEGIN
                 (match_parameters).limit
                 ;
         END IF;
+    ELSIF ((level = 'STREET') OR (level = 'COMPLEMENT')) THEN
+    /*
     ELSIF (((level = 'STREET') OR (level = 'COMPLEMENT')) AND (
             (parameters & 1 = 0) OR (parameters & 2 = 0))) THEN
+     */
         IF search = 'STRICT' THEN
             RETURN QUERY EXECUTE _query USING
+                (standardized_address).municipality_code,
                 (match_parameters).codes_address,
                 fr._get_value_from_standardized_address(
                     standardized_address => standardized_address,
@@ -587,9 +592,7 @@ BEGIN
         ELSE
             RETURN QUERY EXECUTE _query USING
                 (standardized_address).municipality_code,
-                (standardized_address).municipality_name,
-                (standardized_address).municipality_old_name,
-                (standardized_address).postcode,
+                (match_parameters).codes_address,
                 (match_parameters).word,
                 CASE level
                     WHEN 'STREET' THEN standardized_address.street_words
@@ -602,23 +605,27 @@ BEGIN
                 (match_parameters).limit
                 ;
         END IF;
+    /*
     ELSIF (((level = 'STREET') OR (level = 'COMPLEMENT')) AND (parameters & 2 = 2)) THEN
         RETURN QUERY EXECUTE _query USING
             (match_parameters).word
             ;
-    ELSIF level = 'HOUSENUMBER' AND parameters & 1 = 0 THEN
+     */
+    ELSIF level = 'HOUSENUMBER' /*AND parameters & 1 = 0*/ THEN
         RETURN QUERY EXECUTE _query USING
-            (match_parameters).codes_address[1],
+            (match_parameters).codes_address,
             (standardized_address).housenumber,
             CASE search
                 WHEN 'STRICT' THEN (standardized_address).extension
                 ELSE (match_parameters).abbreviated_extension
                 END
             ;
+    /*
     ELSIF level = 'HOUSENUMBER' AND parameters & 1 = 1 THEN
         RETURN QUERY EXECUTE _query USING
             (match_parameters).uncommon_id
             ;
+     */
     ELSE
         RAISE 'exec_query_match: usecase not defined!';
     END IF;
@@ -1027,7 +1034,7 @@ When resolving an overloaded function call, the Mojo compiler tries each candida
 SELECT drop_all_functions_if_exists('fr', 'match_element');
 CREATE OR REPLACE FUNCTION fr.match_element(
     level IN VARCHAR,
-    step IN INT,
+    --step IN INT,
     standardized_address IN fr.standardized_address,
     matched_parent IN fr.matched_element,
     parameters IN HSTORE DEFAULT NULL,
@@ -1052,6 +1059,7 @@ DECLARE
     _analyze_results RECORD;
     _timestamp TIMESTAMP := clock_timestamp();
 BEGIN
+    /*
     -- level w/ uncommon item
     IF step = 1 THEN
         _query_parameters := _query_parameters | 1;
@@ -1066,6 +1074,7 @@ BEGIN
         -- no parent available yet!
         _searchs := ARRAY_REMOVE(_searchs, 'STRICT');
     END IF;
+     */
     -- w/ postcode
     _query_parameters := _query_parameters | 4;
     -- parent codes address
@@ -1083,9 +1092,11 @@ BEGIN
         IF _match_parameters.abbreviated_extension IS NULL THEN
             _searchs := ARRAY_REMOVE(_searchs, 'NEAR');
         END IF;
+        /*
         IF _query_parameters & 1 = 1 THEN
             _match_parameters.uncommon_id := (standardized_address).housenumber_uncommon_id;
         END IF;
+         */
     END IF;
 
     FOREACH _search IN ARRAY _searchs
@@ -1140,8 +1151,8 @@ BEGIN
             END IF;
 
             IF ((level = 'STREET') OR (level = 'COMPLEMENT')) THEN
-                _match_parameters.word := CASE
-                    WHEN _query_parameters & 1 = 0 THEN
+                _match_parameters.word := /*CASE
+                    WHEN _query_parameters & 1 = 0 THEN*/
                         -- retrieve word w/ better similarity and rarity
                         fr.get_better_word_with_similarity_criteria(
                             level => level,
@@ -1153,6 +1164,7 @@ BEGIN
                             codes => (matched_parent).codes_address,
                             raise_notice => raise_notice
                         )
+                    /*
                     ELSE
                         -- uncommon word
                         fr._get_value_from_standardized_address(
@@ -1160,6 +1172,7 @@ BEGIN
                             key => CONCAT(LOWER(level), '_uncommon_value')
                         )
                     END
+                     */
                     ;
                 IF _match_parameters.word IS NULL THEN
                     CALL public.log_info(FORMAT(' [LEVEL(%s), DATA(%s)] no better word!',
@@ -1231,6 +1244,7 @@ BEGIN
                                 similarity NUMERIC
                                 '
                             END
+                    /*
                     WHEN level = 'STREET' AND _query_parameters & 2 = 2 THEN
                         '
                         co_adr BPCHAR,
@@ -1243,16 +1257,19 @@ BEGIN
                         co_adr_voie BPCHAR,
                         co_adr_numero BPCHAR
                         '
+                     */
                     WHEN level = 'HOUSENUMBER' AND _query_parameters & 1 = 0 THEN
                         '
                         codes_address BPCHAR[]
                         '
+                    /*
                     WHEN level = 'HOUSENUMBER' AND _query_parameters & 1 = 1 THEN
                         '
                         co_adr BPCHAR,
                         co_adr_za BPCHAR,
                         co_adr_voie BPCHAR
                         '
+                     */
                     END
                 , ')'
                 )
@@ -1303,6 +1320,7 @@ BEGIN
                             _match_current.name := _query_results.name;
                             _match_current.similarity := _query_results.similarity;
                         END IF;
+                    /*
                     ELSIF level = 'STREET' AND _query_parameters & 2 = 2 THEN
                         _match_current.co_adr := _query_results.co_adr;
                         _match_current.co_adr_za := _query_results.co_adr_za;
@@ -1311,12 +1329,15 @@ BEGIN
                         _match_current.co_adr_za := _query_results.co_adr_za;
                         _match_current.co_adr_voie := _query_results.co_adr_voie;
                         _match_current.co_adr_numero := _query_results.co_adr_numero;
+                     */
                     ELSIF level = 'HOUSENUMBER' AND _query_parameters & 1 = 0 THEN
                         _match_current.codes_address := _query_results.codes_address;
+                    /*
                     ELSIF level = 'HOUSENUMBER' AND _query_parameters & 1 = 1 THEN
                         _match_current.co_adr := _query_results.co_adr;
                         _match_current.co_adr_za := _query_results.co_adr_za;
                         _match_current.co_adr_voie := _query_results.co_adr_voie;
+                     */
                     END IF;
 
                     IF raise_notice THEN CALL public.log_info(FORMAT(' [CURRENT=%s]', _match_current)); END IF;

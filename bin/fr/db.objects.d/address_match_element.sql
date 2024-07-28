@@ -103,14 +103,18 @@ BEGIN
             CALL public.log_info(CONCAT('[PURGE] : #', _nrows));
         END IF;
 
+        /*
         -- step 1 (uncommon), step 2 (others)
         FOR _step IN 1 .. 2
         LOOP
+         */
             FOREACH _level IN ARRAY _levels
             LOOP
+                /*
                 IF _step = 1 AND _level = 'AREA' THEN
                     CONTINUE;
                 END IF;
+                 */
 
                 -- search for element not already matched (w/ its matched parent if exists)
                 _query := CONCAT(
@@ -119,6 +123,7 @@ BEGIN
                         mc.level,
                         mc.match_code_element,
                     ',
+                    /*
                     CASE _step
                         WHEN 1 THEN
                             CONCAT('(
@@ -138,11 +143,12 @@ BEGIN
                                 LIMIT 1
                             )')
                         ELSE
+                     */
                             CASE _level
                                 WHEN 'AREA' THEN 'ARRAY[NULL]::VARCHAR[]'
                                 ELSE 'ARRAY[mc.match_code_parent]'
-                                END
-                        END, ' match_code_parents, ',
+                                END, ' match_code_parents, ',
+                        --END, ' match_code_parents, ',
                     CASE _level
                         WHEN 'AREA' THEN 'NULL::fr.matched_element'
                         ELSE 'me.matched_element'
@@ -182,6 +188,7 @@ BEGIN
                         )
                     '
                 );
+                /*
                 IF _step = 1 THEN
                     _query := CONCAT(_query,
                         '
@@ -204,6 +211,7 @@ BEGIN
                         '
                     );
                 END IF;
+                 */
 
                 _nrows := 0;
                 FOR _element IN EXECUTE _query USING id, _level
@@ -218,14 +226,14 @@ BEGIN
                     -- match element
                     _record := fr.match_element(
                         level => _element.level,
-                        step => _step,
+                        --step => _step,
                         standardized_address => _element.standardized_address,
                         matched_parent => _element.matched_parent,
                         parameters => _parameters,
                         raise_notice => raise_notice
                     );
 
-                    -- matched element
+                    -- save matched element
                     INSERT INTO fr.address_match_element(
                         level,
                         match_code,
@@ -283,7 +291,9 @@ BEGIN
                     FORMAT('[STEP=%s, LEVEL=%s] : #%s', _step, _level, _nrows)
                 );
             END LOOP;
+        /*
         END LOOP;
+         */
         IF raise_notice THEN
             CALL public.log_info(FORMAT('[TOTAL] : #%s', _nrows));
         END IF;
