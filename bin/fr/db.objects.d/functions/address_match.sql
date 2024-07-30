@@ -467,23 +467,30 @@ BEGIN
         $3 extension (STRICT, else abbreviated as NEAR)
          */
         WHEN _level_up = 'HOUSENUMBER' /*AND parameters & 1 = 0*/ THEN
-            '
-            SELECT
-                ARRAY_AGG(co_adr) codes_address
-            FROM
-                fr.address_view
-            WHERE
-                co_adr_parent = ANY($1)
-                AND
-                co_adr_l3 IS NULL
-                AND
-                no_numero = $2
-                AND (
-                    ($3 IS NULL)
-                    OR
-                    (lb_extension_numero = $3)
-                )
-            '
+            CONCAT(
+                '
+                SELECT
+                    ARRAY_AGG(co_adr) codes_address
+                FROM
+                    fr.address_view
+                WHERE
+                    co_adr_parent = ANY($1)
+                    AND
+                    co_adr_l3 IS NULL
+                    AND
+                    no_numero = $2
+                    AND (
+                        ($3 IS NULL)
+                        OR
+                        (', CASE search
+                                WHEN 'STRICT' THEN 'lb_extension_numero'
+                                ELSE 'lb_extension_numero_abrege'
+                                END,
+                        '
+                         = $3)
+                    )
+                '
+            )
         /* NOTE
         $1 housenumber id (uniq uncommon)
         WHEN _level_up = 'HOUSENUMBER' AND parameters & 2 = 2 THEN
@@ -853,7 +860,7 @@ CREATE OR REPLACE FUNCTION fr.analyze_matched_elements(
     similarity_threshold IN REAL DEFAULT 0.5,
     similarity_ratio IN REAL DEFAULT 0.5,
     raise_notice IN BOOLEAN DEFAULT FALSE,
-    matched_parents OUT fr.matched_element[],
+    --matched_parents OUT fr.matched_element[],
     matched_element OUT fr.matched_element
 )
 AS
@@ -862,152 +869,132 @@ DECLARE
     _ratio NUMERIC;
     _parent fr.matched_element;
 BEGIN
-    -- w/ uniq uncommon
-    IF parameters & 2 = 2 THEN
-        matched_element.codes_address := ARRAY[current.co_adr];
-
-        -- deduce parent fron uncommon result
-        _parent.elapsed_time := 0;
-        _parent.status := (SELECT CURRENT_SETTING('fr.address.match.strict'));
-        _parent.codes_address := ARRAY[current.co_adr_za];
-        matched_parents[1] := _parent;
-        -- complement can be found w/ number as parent, even if entry has no housenumber
-        IF level = 'HOUSENUMBER' OR (
-            level = 'COMPLEMENT' AND current.co_adr_numero IS NULL
-        ) THEN
-            _parent.codes_address := ARRAY[current.co_adr_voie];
-            matched_parents[2] := _parent;
-        END IF;
-        IF level = 'COMPLEMENT' AND current.co_adr_numero IS NOT NULL THEN
-            _parent.codes_address := ARRAY[current.co_adr_numero];
-            matched_parents[3] := _parent;
-        END IF;
+    IF search = 'STRICT' THEN
+        matched_element.codes_address := current.codes_address;
     ELSE
-        IF search = 'STRICT' THEN
-            matched_element.codes_address := current.codes_address;
-        ELSE
-            --IF raise_notice THEN RAISE NOTICE 'analyze_match: current=%', current; END IF;
-            IF (previous IS NULL) THEN
+        --IF raise_notice THEN RAISE NOTICE 'analyze_match: current=%', current; END IF;
+        IF (previous IS NULL) THEN
+            CALL fr.notice_match(
+                level => level,
+                search => search,
+                standardized_address => standardized_address,
+                usecase => 'ELEMENT',
+                current => current
+            );
+            IF ((
+                    (level = 'AREA')
+                    AND
+                    (COALESCE(current.similarity_1, 0) < similarity_threshold)
+                    AND
+                    (COALESCE(current.similarity_2, 0) < similarity_threshold)
+                ) OR (
+                    (level != 'AREA')
+                    AND
+                    (COALESCE(current.similarity, 0) < similarity_threshold)
+                )
+            ) THEN
                 CALL fr.notice_match(
                     level => level,
                     search => search,
                     standardized_address => standardized_address,
-                    usecase => 'ELEMENT',
+                    usecase => CASE
+                        WHEN level = 'AREA' AND standardized_address.municipality_name IS NOT NULL AND current.similarity_1 < similarity_threshold THEN
+                            '1ST_NOT_NEAR_1'
+                        WHEN level = 'AREA' AND standardized_address.municipality_old_name IS NOT NULL AND current.similarity_2 < similarity_threshold THEN
+                            '1ST_NOT_NEAR_2'
+                        ELSE '1ST_NOT_NEAR'
+                        END,
                     current => current
                 );
+                matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.not_near'));
+            ELSE
+                CALL fr.notice_match(
+                    level => level,
+                    search => search,
+                    standardized_address => standardized_address,
+                    usecase => CASE level
+                        WHEN 'AREA' THEN '1ST_OK_X'
+                        ELSE '1ST_OK'
+                        END,
+                    current => current
+                );
+                matched_element.codes_address := ARRAY[current.co_adr];
+                matched_element.similarity_1 := CASE
+                    WHEN level = 'AREA' THEN current.similarity_1
+                    ELSE current.similarity
+                    END;
+                IF level = 'AREA' AND standardized_address.municipality_old_name IS NOT NULL THEN
+                    matched_element.similarity_2 := current.similarity_2;
+                END IF;
+
                 IF ((
-                        (level = 'AREA')
+                        ARRAY_LENGTH(matched_parent.codes_address, 1) = 1
                         AND
-                        (COALESCE(current.similarity_1, 0) < similarity_threshold)
-                        AND
-                        (COALESCE(current.similarity_2, 0) < similarity_threshold)
+                        current.co_adr_za != matched_parent.codes_address[1]
                     ) OR (
-                        (level != 'AREA')
+                        ARRAY_LENGTH(matched_parent.codes_address, 1) > 1
                         AND
-                        (COALESCE(current.similarity, 0) < similarity_threshold)
+                        ARRAY_POSITION(matched_parent.codes_address, current.co_adr_za) IS NULL
                     )
                 ) THEN
-                    CALL fr.notice_match(
-                        level => level,
+                    RAISE NOTICE '%: DIFF AREA(%) PREV(%)',
+                        level,
+                        current.co_adr_za,
+                        matched_parent.codes_address
+                        ;
+                    /*
+                    _parent.codes_address := ARRAY[current.co_adr_za];
+                    _parent := fr.match_element_status(
                         search => search,
-                        standardized_address => standardized_address,
-                        usecase => CASE
-                            WHEN level = 'AREA' AND standardized_address.municipality_name IS NOT NULL AND current.similarity_1 < similarity_threshold THEN
-                                '1ST_NOT_NEAR_1'
-                            WHEN level = 'AREA' AND standardized_address.municipality_old_name IS NOT NULL AND current.similarity_2 < similarity_threshold THEN
-                                '1ST_NOT_NEAR_2'
-                            ELSE '1ST_NOT_NEAR'
-                            END,
-                        current => current
+                        matched_element => _parent
                     );
-                    matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.not_near'));
-                ELSE
-                    CALL fr.notice_match(
-                        level => level,
-                        search => search,
-                        standardized_address => standardized_address,
-                        usecase => CASE level
-                            WHEN 'AREA' THEN '1ST_OK_X'
-                            ELSE '1ST_OK'
-                            END,
-                        current => current
-                    );
-                    matched_element.codes_address := ARRAY[current.co_adr];
-                    matched_element.similarity_1 := CASE
-                        WHEN level = 'AREA' THEN current.similarity_1
-                        ELSE current.similarity
-                        END;
-                    IF level = 'AREA' AND standardized_address.municipality_old_name IS NOT NULL THEN
-                        matched_element.similarity_2 := current.similarity_2;
-                    END IF;
-
-                    IF ((
-                            ARRAY_LENGTH(matched_parent.codes_address, 1) = 1
-                            AND
-                            current.co_adr_za != matched_parent.codes_address[1]
-                        ) OR (
-                            ARRAY_LENGTH(matched_parent.codes_address, 1) > 1
-                            AND
-                            ARRAY_POSITION(matched_parent.codes_address, current.co_adr_za) IS NULL
-                        )
-                    ) THEN
-                        RAISE NOTICE '%: DIFF AREA(%) PREV(%)',
-                            level,
-                            current.co_adr_za,
-                            matched_parent.codes_address
-                            ;
-                        _parent.codes_address := ARRAY[current.co_adr_za];
-                        _parent := fr.match_element_status(
-                            search => search,
-                            matched_element => _parent
-                        );
-                        matched_parents[1] := _parent;
-                    END IF;
+                    matched_parents[1] := _parent;
+                     */
                 END IF;
+            END IF;
+        ELSE
+            IF (level = 'STREET'
+                AND
+                previous.co_voie = current.co_voie
+            ) THEN
+                CALL fr.notice_match(
+                    level => level,
+                    search => search,
+                    standardized_address => standardized_address,
+                    usecase => '2ND_SAME_CODE',
+                    current => current
+                );
+                -- TODO test postcode!
+                matched_element.codes_address := ARRAY_APPEND(matched_element.codes_address, current.co_adr);
+                RETURN;
+            END IF;
+
+            /* NOTE
+            OK if second choice far enough (15%)
+            minimum gap between 2 results ascending when similarity decrease
+            */
+            -- TODO as above w/ _1 and _2 if AREA !
+            _ratio := (previous.similarity / current.similarity);
+            IF NOT (_ratio > similarity_ratio) THEN
+                CALL fr.notice_match(
+                    level => level,
+                    search => search,
+                    standardized_address => standardized_address,
+                    usecase => '2ND_TOO_SIMILAR',
+                    current => current,
+                    ratio => _ratio
+                );
+                matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.too_similar'));
             ELSE
-                IF (level = 'STREET'
-                    AND
-                    previous.co_voie = current.co_voie
-                ) THEN
-                    CALL fr.notice_match(
-                        level => level,
-                        search => search,
-                        standardized_address => standardized_address,
-                        usecase => '2ND_SAME_CODE',
-                        current => current
-                    );
-                    -- TODO test postcode!
-                    matched_element.codes_address := ARRAY_APPEND(matched_element.codes_address, current.co_adr);
-                    RETURN;
-                END IF;
-
-                /* NOTE
-                OK if second choice far enough (15%)
-                minimum gap between 2 results ascending when similarity decrease
-                */
-                -- TODO as above w/ _1 and _2 if AREA !
-                _ratio := (previous.similarity / current.similarity);
-                IF NOT (_ratio > similarity_ratio) THEN
-                    CALL fr.notice_match(
-                        level => level,
-                        search => search,
-                        standardized_address => standardized_address,
-                        usecase => '2ND_TOO_SIMILAR',
-                        current => current,
-                        ratio => _ratio
-                    );
-                    matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.too_similar'));
-                ELSE
-                    CALL fr.notice_match(
-                        level => level,
-                        search => search,
-                        standardized_address => standardized_address,
-                        usecase => '2ND_OK',
-                        current => current,
-                        ratio => _ratio
-                    );
-                    matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.near'));
-                END IF;
+                CALL fr.notice_match(
+                    level => level,
+                    search => search,
+                    standardized_address => standardized_address,
+                    usecase => '2ND_OK',
+                    current => current,
+                    ratio => _ratio
+                );
+                matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.near'));
             END IF;
         END IF;
     END IF;
@@ -1034,12 +1021,11 @@ When resolving an overloaded function call, the Mojo compiler tries each candida
 SELECT drop_all_functions_if_exists('fr', 'match_element');
 CREATE OR REPLACE FUNCTION fr.match_element(
     level IN VARCHAR,
-    --step IN INT,
     standardized_address IN fr.standardized_address,
     matched_parent IN fr.matched_element,
     parameters IN HSTORE DEFAULT NULL,
     raise_notice IN BOOLEAN DEFAULT FALSE,
-    matched_parents OUT fr.matched_element[],
+    --matched_parents OUT fr.matched_element[],
     matched_element OUT fr.matched_element
 )
 AS
@@ -1056,25 +1042,8 @@ DECLARE
     _match_current fr.match_results;
     _match_previous fr.match_results;
     _match_parameters fr.match_parameters;
-    _analyze_results RECORD;
     _timestamp TIMESTAMP := clock_timestamp();
 BEGIN
-    /*
-    -- level w/ uncommon item
-    IF step = 1 THEN
-        _query_parameters := _query_parameters | 1;
-        IF (
-            (fr._get_value_from_standardized_address(
-                standardized_address => standardized_address,
-                key => CONCAT(LOWER(level), '_uncommon_occur')
-            ))::INT = 1
-        ) THEN
-            _query_parameters := _query_parameters | 2;
-        END IF;
-        -- no parent available yet!
-        _searchs := ARRAY_REMOVE(_searchs, 'STRICT');
-    END IF;
-     */
     -- w/ postcode
     _query_parameters := _query_parameters | 4;
     -- parent codes address
@@ -1092,11 +1061,6 @@ BEGIN
         IF _match_parameters.abbreviated_extension IS NULL THEN
             _searchs := ARRAY_REMOVE(_searchs, 'NEAR');
         END IF;
-        /*
-        IF _query_parameters & 1 = 1 THEN
-            _match_parameters.uncommon_id := (standardized_address).housenumber_uncommon_id;
-        END IF;
-         */
     END IF;
 
     FOREACH _search IN ARRAY _searchs
@@ -1151,28 +1115,19 @@ BEGIN
             END IF;
 
             IF ((level = 'STREET') OR (level = 'COMPLEMENT')) THEN
-                _match_parameters.word := /*CASE
-                    WHEN _query_parameters & 1 = 0 THEN*/
-                        -- retrieve word w/ better similarity and rarity
-                        fr.get_better_word_with_similarity_criteria(
-                            level => level,
-                            words => CASE level
-                                WHEN 'STREET' THEN standardized_address.street_words
-                                ELSE standardized_address.complement_words
-                                END,
-                            zone => 'ZA',
-                            codes => (matched_parent).codes_address,
-                            raise_notice => raise_notice
-                        )
-                    /*
-                    ELSE
-                        -- uncommon word
-                        fr._get_value_from_standardized_address(
-                            standardized_address => standardized_address,
-                            key => CONCAT(LOWER(level), '_uncommon_value')
-                        )
-                    END
-                     */
+                _match_parameters.word :=
+                    -- retrieve word w/ better similarity and rarity
+                    fr.get_better_word_with_similarity_criteria(
+                        level => level,
+                        words => CASE level
+                            WHEN 'STREET' THEN standardized_address.street_words
+                            ELSE standardized_address.complement_words
+                            END,
+                        zone => 'COM',
+                        -- TODO test if defined!
+                        codes => ARRAY[(standardized_address).municipality_code],
+                        raise_notice => raise_notice
+                    )
                     ;
                 IF _match_parameters.word IS NULL THEN
                     CALL public.log_info(FORMAT(' [LEVEL(%s), DATA(%s)] no better word!',
@@ -1342,7 +1297,7 @@ BEGIN
 
                     IF raise_notice THEN CALL public.log_info(FORMAT(' [CURRENT=%s]', _match_current)); END IF;
 
-                    _analyze_results := fr.analyze_matched_elements(
+                    matched_element := fr.analyze_matched_elements(
                         level => level,
                         search => _search,
                         parameters => _query_parameters,
@@ -1355,9 +1310,7 @@ BEGIN
                         raise_notice => raise_notice
                     );
 
-                    matched_parents := _analyze_results.matched_parents;
-                    matched_element := _analyze_results.matched_element;
-                    IF raise_notice THEN CALL public.log_info(FORMAT(' [ANALYZE=%s]', _analyze_results)); END IF;
+                    IF raise_notice THEN CALL public.log_info(FORMAT(' [ANALYZE=%s]', matched_element)); END IF;
 
                     IF LEFT(matched_element.status, 2) = 'OK' THEN
                         EXIT;

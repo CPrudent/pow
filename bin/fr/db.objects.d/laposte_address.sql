@@ -149,7 +149,7 @@ BEGIN
             -- HOUSENUMBER
             numero.no_voie AS no_numero,
             numero.lb_ext AS lb_extension_numero,
-            --numero.lb_abr_nn AS lb_extension_numero_abrege,
+            numero.lb_abr_nn AS lb_extension_numero_abrege,
 
             -- STREET
             sdict.name AS lb_voie,

@@ -72,7 +72,7 @@ DECLARE
     _level VARCHAR;
     _query TEXT;
     _element RECORD;
-    _record RECORD;
+    _matched_element fr.matched_element;
     _i INT;
 BEGIN
     SELECT is_match_element, parameters
@@ -103,83 +103,55 @@ BEGIN
             CALL public.log_info(CONCAT('[PURGE] : #', _nrows));
         END IF;
 
-        /*
-        -- step 1 (uncommon), step 2 (others)
-        FOR _step IN 1 .. 2
+        FOREACH _level IN ARRAY _levels
         LOOP
-         */
-            FOREACH _level IN ARRAY _levels
-            LOOP
-                /*
-                IF _step = 1 AND _level = 'AREA' THEN
-                    CONTINUE;
-                END IF;
-                 */
-
-                -- search for element not already matched (w/ its matched parent if exists)
-                _query := CONCAT(
-                    '
-                    SELECT
-                        mc.level,
-                        mc.match_code_element,
-                    ',
-                    /*
-                    CASE _step
-                        WHEN 1 THEN
-                            CONCAT('(
-                                SELECT
-                                    ARRAY[
-                                        (standardized_address).match_code_area,
-                                        (standardized_address).match_code_street,
-                                        (standardized_address).match_code_housenumber,
-                                        (standardized_address).match_code_complement
-                                    ]
-                                FROM fr.address_match_result
-                                WHERE
-                                    id_request = $1
-                                    AND
-                                    (standardized_address).match_code_', LOWER(_level), ' =
-                                    mc.match_code_element
-                                LIMIT 1
-                            )')
-                        ELSE
-                     */
-                            CASE _level
-                                WHEN 'AREA' THEN 'ARRAY[NULL]::VARCHAR[]'
-                                ELSE 'ARRAY[mc.match_code_parent]'
-                                END, ' match_code_parents, ',
-                        --END, ' match_code_parents, ',
-                    CASE _level
-                        WHEN 'AREA' THEN 'NULL::fr.matched_element'
-                        ELSE 'me.matched_element'
-                        END, ' matched_parent,
-                        (
-                            SELECT standardized_address
-                            FROM fr.address_match_result
-                            WHERE id_request = $1
-                            AND
-                            (standardized_address).match_code_', LOWER(_level), ' =
-                            mc.match_code_element
-                            LIMIT 1
-                        ) standardized_address
-                    FROM
-                        fr.address_match_code mc
+            -- search for element not already matched (w/ its matched parent if exists)
+            _query := CONCAT(
+                '
+                SELECT
+                    mc.level,
+                    mc.match_code_element,
+                ',
+                CASE _level
+                    WHEN 'AREA' THEN 'ARRAY[NULL]::VARCHAR[]'
+                    ELSE 'ARRAY[mc.match_code_parent]'
+                    END, ' match_code_parents, ',
+                CASE _level
+                    WHEN 'AREA' THEN 'NULL::fr.matched_element'
+                    ELSE 'me.matched_element'
+                    END, ' matched_parent,
+                    (
+                        SELECT standardized_address
+                        FROM fr.address_match_result
+                        WHERE id_request = $1
+                        AND
+                        (standardized_address).match_code_', LOWER(_level), ' =
+                        mc.match_code_element
+                        LIMIT 1
+                    ) standardized_address
+                FROM
+                    fr.address_match_code mc
+                '
+            );
+            IF _level != 'AREA' THEN
+                _query := CONCAT(_query
+                    , '
+                        LEFT OUTER JOIN fr.address_match_element me
+                            ON me.match_code = mc.match_code_parent
                     '
                 );
-                IF _level != 'AREA' THEN
-                    _query := CONCAT(_query
-                        , '
-                            LEFT OUTER JOIN fr.address_match_element me
-                                ON me.match_code = mc.match_code_parent
-                        '
-                    );
-                END IF;
+            END IF;
+            _query := CONCAT(_query,
+                '
+                WHERE
+                    mc.id_request = $1
+                    AND
+                    mc.level = $2
+                '
+            );
+            IF NOT force THEN
                 _query := CONCAT(_query,
                     '
-                    WHERE
-                        mc.id_request = $1
-                        AND
-                        mc.level = $2
                         AND
                         NOT EXISTS(
                             SELECT 1
@@ -188,53 +160,41 @@ BEGIN
                         )
                     '
                 );
-                /*
-                IF _step = 1 THEN
-                    _query := CONCAT(_query,
-                        '
-                        AND (
-                            (SELECT (standardized_address).',
-                        CASE _level
-                            WHEN 'STREET' THEN 'street_uncommon_value'
-                            WHEN 'HOUSENUMBER' THEN 'housenumber_uncommon_id'
-                            WHEN 'COMPLEMENT' THEN 'complement_uncommon_value'
-                            END
-                        , '
-                                FROM fr.address_match_result
-                                WHERE id_request = $1
-                                AND
-                                (standardized_address).match_code_', LOWER(_level), ' =
-                                mc.match_code_element
-                                LIMIT 1
-                            ) IS NOT NULL
-                        )
-                        '
+            END IF;
+
+            _nrows := 0;
+            FOR _element IN EXECUTE _query USING id, _level
+            LOOP
+                IF raise_notice THEN
+                    CALL public.log_info(
+                        --FORMAT('[STEP=%s, LEVEL=%s, MATCH_CODE=%s, ADDR=%s]', _step, _element.level, _element.match_code_element, _element.standardized_address.id)
+                        FORMAT('[ELEMENT=%s]', _element)
                     );
                 END IF;
-                 */
 
-                _nrows := 0;
-                FOR _element IN EXECUTE _query USING id, _level
-                LOOP
-                    IF raise_notice THEN
-                        CALL public.log_info(
-                            --FORMAT('[STEP=%s, LEVEL=%s, MATCH_CODE=%s, ADDR=%s]', _step, _element.level, _element.match_code_element, _element.standardized_address.id)
-                            FORMAT('[STEP=%s, ELEMENT=%s]', _step, _element)
-                        );
-                    END IF;
+                -- match element
+                _matched_element := fr.match_element(
+                    level => _element.level,
+                    standardized_address => _element.standardized_address,
+                    matched_parent => _element.matched_parent,
+                    parameters => _parameters,
+                    raise_notice => raise_notice
+                );
 
-                    -- match element
-                    _record := fr.match_element(
-                        level => _element.level,
-                        --step => _step,
-                        standardized_address => _element.standardized_address,
-                        matched_parent => _element.matched_parent,
-                        parameters => _parameters,
-                        raise_notice => raise_notice
-                    );
-
-                    -- save matched element
-                    INSERT INTO fr.address_match_element(
+                -- save matched element
+                WITH element(level, match_code) AS (
+                    VALUES (_element.level, _element.match_code_element)
+                )
+                MERGE INTO fr.address_match_element me
+                USING element t ON
+                    me.match_code = t.match_code
+                    AND
+                    me.level = t.level
+                WHEN MATCHED /*AND force*/ THEN
+                    UPDATE SET
+                        matched_element = _matched_element
+                WHEN NOT MATCHED THEN
+                    INSERT (
                         level,
                         match_code,
                         matched_element
@@ -242,61 +202,16 @@ BEGIN
                     VALUES(
                         _element.level,
                         _element.match_code_element,
-                        _record.matched_element
+                        _matched_element
                     )
-                    ;
+                ;
 
-                    FOR _i IN 1 .. COALESCE(ARRAY_LENGTH(_record.matched_parents, 1), 0)
-                    LOOP
-                        -- update parent
-                        IF _step = 2 THEN
-                            UPDATE fr.address_match_element SET
-                                matched_element = _record.matched_parents[1]
-                                WHERE
-                                    match_code = _element.match_code_parents[1]
-                                ;
-                            -- by security, one element only in array!
-                            EXIT;
-                        ELSE
-                            /*
-                            -- eventually none (complement on street, w/o housenumber)
-                            IF _record.matched_parents[_i] IS NULL THEN
-                                CONTINUE;
-                            END IF;
-                             */
-
-                            -- matched parent
-                            IF NOT EXISTS(SELECT 1
-                                FROM fr.address_match_element
-                                WHERE match_code = _element.match_code_parents[_i]
-                            ) THEN
-                                INSERT INTO fr.address_match_element(
-                                    level,
-                                    match_code,
-                                    matched_element
-                                )
-                                VALUES(
-                                    _levels[_i],
-                                    _element.match_code_parents[_i],
-                                    _record.matched_parents[_i]
-                                )
-                                ;
-                            END IF;
-                        END IF;
-                    END LOOP;
-
-                    _nrows := _nrows +1;
-                END LOOP;
-                CALL public.log_info(
-                    FORMAT('[STEP=%s, LEVEL=%s] : #%s', _step, _level, _nrows)
-                );
+                _nrows := _nrows +1;
             END LOOP;
-        /*
+            CALL public.log_info(
+                FORMAT('[LEVEL=%s] : #%s', _level, _nrows)
+            );
         END LOOP;
-         */
-        IF raise_notice THEN
-            CALL public.log_info(FORMAT('[TOTAL] : #%s', _nrows));
-        END IF;
 
         UPDATE fr.address_match_request mr SET
             is_match_element = TRUE
