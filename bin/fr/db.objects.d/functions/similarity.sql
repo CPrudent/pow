@@ -151,10 +151,14 @@ CREATE OR REPLACE FUNCTION fr.get_similarity_words(
 )
 AS
 $func$
+DECLARE
+    _nwords INT := COALESCE(ARRAY_LENGTH(words_a, 1), 0);
 BEGIN
+    IF _nwords = 0 THEN RAISE 'no words!'; END IF;
+
     similarity := (
     SELECT
-        SUM(sim)
+        SUM(sim / _nwords)
     FROM (
         SELECT
             -- rename other than similarity (else error?)
