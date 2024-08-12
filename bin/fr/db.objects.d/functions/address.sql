@@ -263,13 +263,14 @@ $func$ LANGUAGE plpgsql;
 -- number of word(s) from name (STREET or COMPLEMENT) w/o article
 SELECT drop_all_functions_if_exists('fr', 'get_nwords_wo_article');
 CREATE OR REPLACE FUNCTION fr.get_nwords_wo_article(
+    nwords IN INT,
     descriptors_as_words IN TEXT[],
-    nwords OUT INT
+    nwords_xa OUT INT
 )
 AS
 $func$
 BEGIN
-    nwords := COALESCE(ARRAY_LENGTH(ARRAY_POSITIONS(descriptors_as_words, 'A'), 1), 0);
+    nwords_xa := nwords - COALESCE(ARRAY_LENGTH(ARRAY_POSITIONS(descriptors_as_words, 'A'), 1), 0);
 END
 $func$ LANGUAGE plpgsql;
 

@@ -1268,7 +1268,9 @@ DECLARE
     _geom_srid SMALLINT;
     _geom_srid_default SMALLINT := 2154;
     _street_type_is_abbreviated BOOLEAN;
+    _street_nwords INT;
     _street_descriptors_as_words TEXT[];
+    _complement_nwords INT;
     _complement_descriptors_as_words TEXT[];
     _housenumber VARCHAR;
     _exists BOOLEAN;
@@ -1305,10 +1307,12 @@ BEGIN
                                 )
                                 END
                             */
+                            nn.nwords,
                             nn.name_as_words,
                             nn.descriptors_as_words,
                             nn.as_words
                         INTO
+                            _complement_nwords,
                             _standardized_address.complement_words,
                             _complement_descriptors_as_words,
                             _standardized_address.complement_as_words
@@ -1368,10 +1372,12 @@ BEGIN
                                 )
                                 END
                             */
+                            nn.nwords,
                             nn.name_as_words,
                             nn.descriptors_as_words,
                             nn.as_words
                         INTO
+                            _street_nwords,
                             _standardized_address.street_words,
                             _street_descriptors_as_words,
                             _standardized_address.street_as_words
@@ -1538,11 +1544,22 @@ BEGIN
 
     IF _standardized_address.street_name IS NOT NULL THEN
         _standardized_address.street_name := ARRAY_TO_STRING(_standardized_address.street_words, ' ');
-        _standardized_address.street_nwords_xa := fr.get_nwords_wo_article(_standardized_address.street_as_words);
+        _standardized_address.street_descriptors :=
+        ARRAY_TO_STRING(_street_descriptors_as_words, '');
+        -- nwords (exclude article)
+        _standardized_address.street_nwords_xa := fr.get_nwords_wo_article(
+            nwords => _street_nwords,
+            descriptors_as_words => _street_descriptors_as_words
+        );
     END IF;
     IF _standardized_address.complement_name IS NOT NULL THEN
         _standardized_address.complement_name := ARRAY_TO_STRING(_standardized_address.complement_words, ' ');
-        _standardized_address.complement_nwords_xa := fr.get_nwords_wo_article(_standardized_address.complement_as_words);
+        _standardized_address.complement_descriptors :=
+        ARRAY_TO_STRING(_complement_descriptors_as_words, '');
+        _standardized_address.complement_nwords_xa := fr.get_nwords_wo_article(
+            nwords => _complement_nwords,
+            descriptors_as_words => _complement_descriptors_as_words
+        );
     END IF;
 
     _standardized_address.level :=
