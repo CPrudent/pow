@@ -53,9 +53,14 @@ $func$
 BEGIN
     descriptor_factor := CASE descriptor
         WHEN 'A' THEN   0.25
+        WHEN 'E' THEN   0.25
         WHEN 'V' THEN   0.5
+        WHEN 'G' THEN   0.5
+        WHEN 'H' THEN   0.5
+        WHEN 'I' THEN   0.5
         WHEN 'T' THEN   0.75
-        ELSE            1.25
+        -- C, N, P
+        ELSE            1
         END
     ;
 END
@@ -75,30 +80,12 @@ AS
 $func$
 DECLARE
     _level_low VARCHAR := LOWER(level);
-    _criteria RECORD;
-    _nof INT;
     _query TEXT;
 BEGIN
     IF zone IS NULL OR codes IS NULL THEN
         CALL public.log_info('missing parameters (zone, codes)');
         RETURN;
     END IF;
-
-    _nof := CASE level
-        WHEN 'STREET' THEN
-            (
-                SELECT MAX(rank)
-                FROM fr.laposte_address_street_word_level
-                WHERE nivgeo = zone AND codgeo = ANY(codes)
-            )
-        WHEN 'COMPLEMENT' THEN
-            (
-                SELECT MAX(rank)
-                FROM fr.laposte_address_complement_word_level
-                WHERE nivgeo = zone AND codgeo = ANY(codes)
-            )
-        END
-        ;
 
     _query := CONCAT(
         '
@@ -114,7 +101,7 @@ BEGIN
                 fr.laposte_address_', _level_low, '_word_level wl
                     -- remember: w/o article
                     JOIN fr.laposte_address_', _level_low, '_word_descriptor wd ON wl.word = wd.word
-                    JOIN LATERAL UNNEST($4) WITH ORDINALITY AS w(word, i) ON TRUE
+                    JOIN LATERAL UNNEST($3) WITH ORDINALITY AS w(word, i) ON TRUE
             WHERE
                 wl.nivgeo = $1 AND wl.codgeo = ANY($2)
         )
@@ -123,8 +110,10 @@ BEGIN
         FROM
             similarity_word
         ORDER BY
-            -- get word w/ better similarity and rarity
-            (similarity * EXP((1 - ((($3 - rank) +1)::NUMERIC / $3))) * descriptor_factor) DESC
+            -- get word w/ better descriptor family, similarity and rarity
+            descriptor_factor DESC,
+            similarity DESC,
+            rank DESC
         LIMIT
             1
         '
@@ -132,7 +121,7 @@ BEGIN
 
     EXECUTE _query
         INTO better_word
-        USING zone, codes, _nof, words
+        USING zone, codes, words
         ;
 END
 $func$ LANGUAGE plpgsql;
