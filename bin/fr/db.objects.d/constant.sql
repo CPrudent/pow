@@ -1134,6 +1134,10 @@ BEGIN
     ALTER DATABASE pow SET fr.address.match.not_found = 'KO_11';
     ALTER DATABASE pow SET fr.address.match.too_similar = 'KO_12';
 
+    ALTER DATABASE pow SET fr.address.match.similarity = '6';
+    ALTER DATABASE pow SET fr.address.match.rarity = '2';
+    ALTER DATABASE pow SET fr.address.match.descriptor = '1';
+
     ALTER DATABASE pow SET fr.similarity.area.threshold = '0.5';
     ALTER DATABASE pow SET fr.similarity.area.ratio = '0.15';
     ALTER DATABASE pow SET fr.similarity.street.threshold = '0.7';

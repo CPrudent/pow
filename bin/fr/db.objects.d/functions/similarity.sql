@@ -52,16 +52,16 @@ AS
 $func$
 BEGIN
     descriptor_factor := CASE descriptor
-        WHEN 'A' THEN   0.25
-        WHEN 'E' THEN   0.25
-        WHEN 'V' THEN   0.5
-        WHEN 'G' THEN   0.5
-        WHEN 'H' THEN   0.5
-        WHEN 'I' THEN   0.5
+        WHEN 'A' THEN   0.1
+        WHEN 'E' THEN   0.1
+        WHEN 'V' THEN   0.25
+        WHEN 'G' THEN   0.25
+        WHEN 'H' THEN   0.25
+        WHEN 'I' THEN   0.25
         WHEN 'T' THEN   0.75
         -- C, N, P
         ELSE            1
-        END
+    END
     ;
 END
 $func$ LANGUAGE plpgsql;
@@ -95,7 +95,8 @@ BEGIN
                 w.i,
                 wl.word,
                 get_similarity(wl.word, w.word),
-                wl.rank,
+                DENSE_RANK() OVER (ORDER BY wl.count DESC),
+                --wl.rank,
                 fr.get_descriptor_factor(wd.as_default)
             FROM
                 fr.laposte_address_', _level_low, '_word_level wl
@@ -111,9 +112,10 @@ BEGIN
             similarity_word
         ORDER BY
             -- get word w/ better descriptor family, similarity and rarity
-            descriptor_factor DESC,
-            similarity DESC,
-            rank DESC
+            (($4 * similarity) + ($5 * rank) + ($6 * descriptor_factor)) / ($4 + $5 + $6) DESC
+            --descriptor_factor DESC,
+            --similarity DESC,
+            --rank DESC
         LIMIT
             1
         '
@@ -121,7 +123,7 @@ BEGIN
 
     EXECUTE _query
         INTO better_word
-        USING zone, codes, words
+        USING zone, codes, words, (SELECT CURRENT_SETTING('fr.address.match.similarity'))::INT, (SELECT CURRENT_SETTING('fr.address.match.rarity'))::INT, (SELECT CURRENT_SETTING('fr.address.match.descriptor'))::INT
         ;
 END
 $func$ LANGUAGE plpgsql;
@@ -140,14 +142,10 @@ CREATE OR REPLACE FUNCTION fr.get_similarity_words(
 )
 AS
 $func$
-DECLARE
-    _nwords INT := COALESCE(ARRAY_LENGTH(words_a, 1), 0);
 BEGIN
-    IF _nwords = 0 THEN RAISE 'no words!'; END IF;
-
     similarity := (
     SELECT
-        SUM(sim / _nwords)
+        SUM(sim)
     FROM (
         SELECT
             -- rename other than similarity (else error?)
