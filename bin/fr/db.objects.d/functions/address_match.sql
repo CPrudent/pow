@@ -37,14 +37,14 @@ $func$
 BEGIN
     IF ARRAY_LENGTH(matched_element.codes_address, 1) = 1 THEN
         matched_element.status := CASE search
-            WHEN 'STRICT' THEN (SELECT CURRENT_SETTING('fr.address.match.strict'))
-            ELSE (SELECT CURRENT_SETTING('fr.address.match.near'))
+            WHEN 'STRICT' THEN (SELECT CURRENT_SETTING('fr.status.match.strict'))
+            ELSE (SELECT CURRENT_SETTING('fr.status.match.near'))
             END
         ;
     ELSIF matched_element.codes_address IS NOT NULL THEN
-        matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.too_many'));
+        matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.too_many'));
     ELSE
-        matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.not_found'));
+        matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.not_found'));
     END IF;
 END
 $func$ LANGUAGE plpgsql;
@@ -906,7 +906,7 @@ BEGIN
                         END,
                     current => current
                 );
-                matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.not_near'));
+                matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.not_near'));
             ELSE
                 CALL fr.notice_match(
                     level => level,
@@ -984,7 +984,7 @@ BEGIN
                     current => current,
                     ratio => _ratio
                 );
-                matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.too_similar'));
+                matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.too_similar'));
             ELSE
                 CALL fr.notice_match(
                     level => level,
@@ -994,7 +994,7 @@ BEGIN
                     current => current,
                     ratio => _ratio
                 );
-                matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.near'));
+                matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.near'));
             END IF;
         END IF;
     END IF;
@@ -1361,7 +1361,7 @@ BEGIN
 
             -- not found: try w/ near approach
             IF (
-                matched_element.status = (SELECT CURRENT_SETTING('fr.address.match.not_found'))
+                matched_element.status = (SELECT CURRENT_SETTING('fr.status.match.not_found'))
             ) THEN
                 _similarity_threshold := fr.get_parameter_value(
                     parameters => parameters
@@ -1471,7 +1471,7 @@ BEGIN
                                         , ROUND(_street.similarity, 5)
                                     ;
                                 END IF;
-                                matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.not_near'));
+                                matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.not_near'));
                                 EXIT;
                             ELSE
                                 IF raise_notice THEN
@@ -1521,7 +1521,7 @@ BEGIN
                                             , ROUND(_street_ratio, 2)
                                         ;
                                     END IF;
-                                    matched_element.status := (SELECT CURRENT_SETTING('fr.address.match.too_similar'));
+                                    matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.too_similar'));
                                     EXIT;
                                 END IF;
                             ELSE
@@ -1597,7 +1597,7 @@ BEGIN
                 );
 
                 IF (
-                    matched_element.status != (SELECT CURRENT_SETTING('fr.address.match.not_found'))
+                    matched_element.status != (SELECT CURRENT_SETTING('fr.status.match.not_found'))
                 ) THEN
                     EXIT;
                 END IF;

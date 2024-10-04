@@ -2,46 +2,6 @@
  * add FR-ADDRESS facilities (similarity)
  */
 
--- get value of similarity parameters (threshold, ratio)
-SELECT drop_all_functions_if_exists('fr', 'get_similarity_property');
-CREATE OR REPLACE FUNCTION fr.get_similarity_property(
-    similarity IN HSTORE,
-    level IN VARCHAR,
-    key IN VARCHAR,
-    value OUT REAL
-)
-AS
-$func$
-DECLARE
-    _property VARCHAR;
-    _value TEXT;
-BEGIN
-    IF similarity IS NULL THEN
-        /* NOTE
-        get from global variables (defined in constant.sql)
-         */
-        _property := CONCAT_WS('.',
-            'fr',
-            'similarity',
-            LOWER(level),
-            LOWER(key)
-        );
-        _value := (SELECT (CURRENT_SETTING(_property)));
-        IF LENGTH(TRIM(_value)) > 0 THEN
-            value := (TRIM(_value))::REAL;
-        END IF;
-    ELSE
-        /* NOTE
-        HSTORE property as LEVEL_KEY => VALUE
-         */
-        value := (similarity -> CONCAT_WS('_',
-            UPPER(level),
-            UPPER(key)
-        ))::REAL;
-    END IF;
-END
-$func$ LANGUAGE plpgsql;
-
 -- weighted factor to differentiate word (with its descriptor)
 SELECT drop_all_functions_if_exists('fr', 'get_descriptor_factor');
 CREATE OR REPLACE FUNCTION fr.get_descriptor_factor(
@@ -74,6 +34,7 @@ CREATE OR REPLACE FUNCTION fr.get_better_word_with_similarity_criteria(
     zone IN VARCHAR,
     codes IN VARCHAR[],
     raise_notice IN BOOLEAN DEFAULT FALSE,
+    parameters IN HSTORE DEFAULT NULL,
     better_word OUT TEXT
 )
 AS
@@ -123,7 +84,25 @@ BEGIN
 
     EXECUTE _query
         INTO better_word
-        USING zone, codes, words, (SELECT CURRENT_SETTING('fr.address.match.similarity'))::INT, (SELECT CURRENT_SETTING('fr.address.match.rarity'))::INT, (SELECT CURRENT_SETTING('fr.address.match.descriptor'))::INT
+        USING zone, codes, words,
+            fr.get_parameter_value(
+                parameters => parameters,
+                category => 'weight',
+                level => 'MATCH',
+                key => 'SIMILARITY'
+            ),
+            fr.get_parameter_value(
+                parameters => parameters,
+                category => 'weight',
+                level => 'MATCH',
+                key => 'RARITY'
+            ),
+            fr.get_parameter_value(
+                parameters => parameters,
+                category => 'weight',
+                level => 'MATCH',
+                key => 'DESCRIPTOR'
+            )
         ;
 END
 $func$ LANGUAGE plpgsql;

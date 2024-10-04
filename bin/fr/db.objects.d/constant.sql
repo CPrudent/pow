@@ -1127,16 +1127,19 @@ CREATE OR REPLACE PROCEDURE fr.set_global_variables()
 AS
 $proc$
 BEGIN
-    ALTER DATABASE pow SET fr.address.match.strict = 'OK_1';
-    ALTER DATABASE pow SET fr.address.match.near = 'OK_2';
-    ALTER DATABASE pow SET fr.address.match.too_many = 'OK_3';
-    ALTER DATABASE pow SET fr.address.match.not_near = 'KO_10';
-    ALTER DATABASE pow SET fr.address.match.not_found = 'KO_11';
-    ALTER DATABASE pow SET fr.address.match.too_similar = 'KO_12';
+    --ALTER DATABASE pow RESET ALL;
+    --ALTER DATABASE pow RESET <conf_key>;
 
-    ALTER DATABASE pow SET fr.address.match.similarity = '6';
-    ALTER DATABASE pow SET fr.address.match.rarity = '2';
-    ALTER DATABASE pow SET fr.address.match.descriptor = '1';
+    ALTER DATABASE pow SET fr.status.match.strict = 'OK_1';
+    ALTER DATABASE pow SET fr.status.match.near = 'OK_2';
+    ALTER DATABASE pow SET fr.status.match.too_many = 'OK_3';
+    ALTER DATABASE pow SET fr.status.match.not_near = 'KO_10';
+    ALTER DATABASE pow SET fr.status.match.not_found = 'KO_11';
+    ALTER DATABASE pow SET fr.status.match.too_similar = 'KO_12';
+
+    ALTER DATABASE pow SET fr.weight.match.similarity = '6';
+    ALTER DATABASE pow SET fr.weight.match.rarity = '2';
+    ALTER DATABASE pow SET fr.weight.match.descriptor = '3';
 
     ALTER DATABASE pow SET fr.similarity.area.threshold = '0.5';
     ALTER DATABASE pow SET fr.similarity.area.ratio = '0.15';

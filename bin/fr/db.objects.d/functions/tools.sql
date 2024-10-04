@@ -29,7 +29,7 @@ BEGIN
         UPPER(level),
         UPPER(key)
     );
-    IF parameters IS NOT NULL AND parameters ? _property THEN
+    IF parameters IS NOT NULL AND ext_hstore.EXIST(parameters, _property) THEN
         value := (parameters -> _property)::REAL;
     ELSE
         /* NOTE
