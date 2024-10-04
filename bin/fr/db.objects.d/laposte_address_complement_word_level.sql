@@ -82,7 +82,7 @@ BEGIN
                 nivgeo,
                 codgeo,
                 word,
-                ROW_NUMBER() OVER (PARTITION BY nivgeo, codgeo ORDER BY count DESC) "rank"
+                DENSE_RANK() OVER (PARTITION BY nivgeo, codgeo ORDER BY count DESC) "rank"
             FROM
                 fr.laposte_address_complement_word_level
         )

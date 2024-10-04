@@ -56,8 +56,8 @@ BEGIN
                 w.i,
                 wl.word,
                 get_similarity(wl.word, w.word),
-                DENSE_RANK() OVER (ORDER BY wl.count DESC),
-                --wl.rank,
+                --DENSE_RANK() OVER (ORDER BY wl.count DESC),
+                wl.rank,
                 fr.get_descriptor_factor(wd.as_default)
             FROM
                 fr.laposte_address_', _level_low, '_word_level wl
