@@ -35,7 +35,8 @@ CREATE OR REPLACE FUNCTION fr.get_better_word_with_similarity_criteria(
     codes IN VARCHAR[],
     raise_notice IN BOOLEAN DEFAULT FALSE,
     parameters IN HSTORE DEFAULT NULL,
-    better_word OUT TEXT
+    word OUT TEXT,
+    score OUT NUMERIC
 )
 AS
 $func$
@@ -51,14 +52,14 @@ BEGIN
     _query := CONCAT(
         '
         WITH
-        similarity_word(i, word, similarity, rank, descriptor_factor) AS (
+        similarity_word(word, score) AS (
             SELECT
-                w.i,
                 wl.word,
-                get_similarity(wl.word, w.word),
-                --DENSE_RANK() OVER (ORDER BY wl.count DESC),
-                wl.rank,
-                fr.get_descriptor_factor(wd.as_default)
+                (
+                    (get_similarity(wl.word, w.word) * $4) +
+                    (wl.rank * $5) +
+                    (fr.get_descriptor_factor(wd.as_default) * $6)
+                ) / ($4 + $5 + $6)
             FROM
                 fr.laposte_address_', _level_low, '_word_level wl
                     -- remember: w/o article
@@ -68,22 +69,20 @@ BEGIN
                 wl.nivgeo = $1 AND wl.codgeo = ANY($2)
         )
         SELECT
-            word
+            word,
+            score
         FROM
             similarity_word
         ORDER BY
             -- get word w/ better descriptor family, similarity and rarity
-            (($4 * similarity) + ($5 * rank) + ($6 * descriptor_factor)) / ($4 + $5 + $6) DESC
-            --descriptor_factor DESC,
-            --similarity DESC,
-            --rank DESC
+            score DESC
         LIMIT
             1
         '
     );
 
     EXECUTE _query
-        INTO better_word
+        INTO word, score
         USING zone, codes, words,
             fr.get_parameter_value(
                 parameters => parameters,
