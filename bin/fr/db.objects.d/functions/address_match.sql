@@ -373,9 +373,9 @@ BEGIN
         $5 descriptors
         $6 limit
          */
-        WHEN (((_level_up = 'STREET') OR (_level_up = 'COMPLEMENT')) AND (
+        WHEN (((_level_up = 'STREET') OR (_level_up = 'COMPLEMENT')) /*AND (
             (parameters & 1 = 0) OR (parameters & 2 = 0)
-        )) THEN
+        )*/) THEN
             CASE search
                 WHEN 'STRICT' THEN
                     CONCAT(
@@ -391,6 +391,61 @@ BEGIN
                     )
                 ELSE
                     CONCAT(
+                        '
+                        WITH
+                        potential_elements AS (
+                            SELECT
+                                m.name_id
+                            FROM
+                                fr.laposte_address_', _level_low, '_word_level wl
+                                    JOIN fr.laposte_address_', _level_low, '_membership m ON wl.word = m.word
+                            WHERE
+                                wl.nivgeo = ''COM'' AND wl.codgeo = ANY(''$1'')
+                                AND
+                                wl.word = $3
+                        )
+                        , similarity_elements AS (
+                            SELECT
+                                p.name_id,
+                                fr.get_similarity_words(
+                                    words_a => $4,
+                                    words_b => u.words,
+                                    descriptors_a => $5,
+                                    descriptors_b => u.descriptors
+                                ) similarity
+                            FROM
+                                potential_elements p
+                                    JOIN fr.laposte_address_', _level_low, '_uniq u ON p.name_id = u.id
+                        )
+                        , result_elements (
+                            SELECT
+                                *
+                            FROM
+                                similarity_elements
+                            ORDER BY
+                                similarity DESC
+                            LIMIT
+                                $6
+                        )
+                        SELECT
+                            d.co_adr,
+                            d.co_adr_za,
+                            ', CASE _level_up
+                            WHEN 'STREET' THEN ' a.co_voie'
+                            ELSE 'd.co_adr_voie, d.co_adr_numero'
+                            END,',
+                            d.name,
+                            e.similarity
+                        FROM
+                            result_elements e
+                                JOIN fr.', _level_low, '_dict_view d ON e.name_id = d.id
+                            ', CASE _level_up
+                            WHEN 'STREET' THEN ' JOIN fr.laposte_address_street a ON a.co_cea = d.co_adr'
+                            END,
+                        ' WHERE
+                        ', _where_parent
+
+                /*
                         '
                         WITH
                         potential_elements AS (
@@ -437,6 +492,7 @@ BEGIN
                         LIMIT
                             $6
                         '
+                */
                     )
                 END
         /* NOTE
