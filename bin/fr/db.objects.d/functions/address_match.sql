@@ -431,7 +431,7 @@ BEGIN
                             d.co_adr,
                             d.co_adr_za,
                             ', CASE _level_up
-                            WHEN 'STREET' THEN ' a.co_voie'
+                            WHEN 'STREET' THEN 'a.co_voie'
                             ELSE 'd.co_adr_voie, d.co_adr_numero'
                             END,',
                             d.name,
