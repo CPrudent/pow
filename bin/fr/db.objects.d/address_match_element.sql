@@ -106,6 +106,12 @@ BEGIN
 
         FOREACH _level IN ARRAY _levels
         LOOP
+            IF raise_notice THEN
+                CALL public.log_info(
+                    FORMAT('===[LEVEL=%s]', _level)
+                );
+            END IF;
+
             -- search for element not already matched (w/ its matched parent if exists)
             _query := CONCAT(
                 '
@@ -168,8 +174,28 @@ BEGIN
             LOOP
                 IF raise_notice THEN
                     CALL public.log_info(
-                        --FORMAT('[STEP=%s, LEVEL=%s, MATCH_CODE=%s, ADDR=%s]', _step, _element.level, _element.match_code_element, _element.standardized_address.id)
-                        FORMAT('[ELEMENT=%s]', _element)
+                        FORMAT('---[ELEMENT=%s]',
+                            CASE _level
+                            WHEN 'AREA' THEN
+                                CONCAT_WS('-',
+                                    _element.standardized_address.municipality_old_name,
+                                    _element.standardized_address.postcode,
+                                    _element.standardized_address.municipality_name
+                                )
+                            WHEN 'STREET' THEN
+                                _element.standardized_address.street_name
+                            WHEN 'HOUSENUMBER' THEN
+                                CONCAT_WS('-',
+                                    _element.standardized_address.housenumber,
+                                    _element.standardized_address.extension
+                                )
+                            WHEN 'COMPLEMENT' THEN
+                                _element.standardized_address.complement_name
+                            END
+                        )
+                    );
+                    CALL public.log_info(
+                        FORMAT(' [ELEMENT=%s]', _element)
                     );
                 END IF;
 
@@ -210,7 +236,7 @@ BEGIN
                 _nrows := _nrows +1;
             END LOOP;
             CALL public.log_info(
-                FORMAT('[LEVEL=%s] : #%s', _level, _nrows)
+                FORMAT('===[LEVEL=%s] : #%s', _level, _nrows)
             );
         END LOOP;
 
