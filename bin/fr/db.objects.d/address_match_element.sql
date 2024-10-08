@@ -101,14 +101,14 @@ BEGIN
         ;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
         IF _nrows > 0 THEN
-            CALL public.log_info(CONCAT('[PURGE] : #', _nrows));
+            CALL public.log_info(CONCAT('===[PURGE] #', _nrows));
         END IF;
 
         FOREACH _level IN ARRAY _levels
         LOOP
             IF raise_notice THEN
                 CALL public.log_info(
-                    FORMAT('===[LEVEL=%s]', _level)
+                    FORMAT('===[LEVEL=%s]%s', _level, REPEAT('=', 70))
                 );
             END IF;
 
@@ -159,12 +159,12 @@ BEGIN
             IF NOT force THEN
                 _query := CONCAT(_query,
                     '
-                        AND
-                        NOT EXISTS(
-                            SELECT 1
-                            FROM fr.address_match_element me2
-                            WHERE mc.match_code_element = me2.match_code
-                        )
+                    AND
+                    NOT EXISTS(
+                        SELECT 1
+                        FROM fr.address_match_element me2
+                        WHERE mc.match_code_element = me2.match_code
+                    )
                     '
                 );
             END IF;
@@ -174,23 +174,45 @@ BEGIN
             LOOP
                 IF raise_notice THEN
                     CALL public.log_info(
-                        FORMAT('---[ELEMENT=%s]',
+                        FORMAT('[%s=%s]',
+                            _level,
                             CASE _level
                             WHEN 'AREA' THEN
                                 CONCAT_WS('-',
-                                    _element.standardized_address.municipality_old_name,
-                                    _element.standardized_address.postcode,
-                                    _element.standardized_address.municipality_name
+                                    fr._get_value_from_standardized_address(
+                                        standardized_address => _element.standardized_address,
+                                        key => 'municipality_old_name'
+                                    ),
+                                    fr._get_value_from_standardized_address(
+                                        standardized_address => _element.standardized_address,
+                                        key => 'postcode'
+                                    ),
+                                    fr._get_value_from_standardized_address(
+                                        standardized_address => _element.standardized_address,
+                                        key => 'municipality_name'
+                                    )
                                 )
                             WHEN 'STREET' THEN
-                                _element.standardized_address.street_name
+                                fr._get_value_from_standardized_address(
+                                    standardized_address => _element.standardized_address,
+                                    key => 'street_name'
+                                )
                             WHEN 'HOUSENUMBER' THEN
-                                CONCAT_WS('-',
-                                    _element.standardized_address.housenumber,
-                                    _element.standardized_address.extension
+                                CONCAT(
+                                    fr._get_value_from_standardized_address(
+                                        standardized_address => _element.standardized_address,
+                                        key => 'housenumber'
+                                    ),
+                                    fr._get_value_from_standardized_address(
+                                        standardized_address => _element.standardized_address,
+                                        key => 'extension'
+                                    )
                                 )
                             WHEN 'COMPLEMENT' THEN
-                                _element.standardized_address.complement_name
+                                fr._get_value_from_standardized_address(
+                                    standardized_address => _element.standardized_address,
+                                    key => 'complement_name'
+                                )
                             END
                         )
                     );
@@ -236,7 +258,7 @@ BEGIN
                 _nrows := _nrows +1;
             END LOOP;
             CALL public.log_info(
-                FORMAT('===[LEVEL=%s] : #%s', _level, _nrows)
+                FORMAT('===[LEVEL=%s] #%s', _level, _nrows)
             );
         END LOOP;
 
