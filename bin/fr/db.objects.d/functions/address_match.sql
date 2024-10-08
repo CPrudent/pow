@@ -400,7 +400,7 @@ BEGIN
                                 fr.laposte_address_', _level_low, '_word_level wl
                                     JOIN fr.laposte_address_', _level_low, '_membership m ON wl.word = m.word
                             WHERE
-                                wl.nivgeo = ''COM'' AND wl.codgeo = ANY(''$1'')
+                                wl.nivgeo = ''COM'' AND wl.codgeo = $1
                                 AND
                                 wl.word = $3
                         )
@@ -417,7 +417,7 @@ BEGIN
                                 potential_elements p
                                     JOIN fr.laposte_address_', _level_low, '_uniq u ON p.name_id = u.id
                         )
-                        , result_elements (
+                        , result_elements AS (
                             SELECT
                                 *
                             FROM
@@ -1171,8 +1171,14 @@ BEGIN
             END IF;
 
             IF ((level = 'STREET') OR (level = 'COMPLEMENT')) THEN
-                _match_parameters.word :=
-                    -- retrieve word w/ better similarity and rarity
+                -- retrieve word w/ better similarity and rarity
+                SELECT
+                    word,
+                    rating
+                INTO
+                    _match_parameters.word,
+                    _match_parameters.rating
+                FROM
                     fr.get_better_word_with_similarity_criteria(
                         level => level,
                         words => CASE level

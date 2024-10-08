@@ -36,7 +36,7 @@ CREATE OR REPLACE FUNCTION fr.get_better_word_with_similarity_criteria(
     raise_notice IN BOOLEAN DEFAULT FALSE,
     parameters IN HSTORE DEFAULT NULL,
     word OUT TEXT,
-    score OUT NUMERIC
+    rating OUT NUMERIC
 )
 AS
 $func$
@@ -52,7 +52,7 @@ BEGIN
     _query := CONCAT(
         '
         WITH
-        similarity_word(word, score) AS (
+        similarity_word(word, rating) AS (
             SELECT
                 wl.word,
                 (
@@ -70,19 +70,19 @@ BEGIN
         )
         SELECT
             word,
-            score
+            rating
         FROM
             similarity_word
         ORDER BY
             -- get word w/ better descriptor family, similarity and rarity
-            score DESC
+            rating DESC
         LIMIT
             1
         '
     );
 
     EXECUTE _query
-        INTO word, score
+        INTO word, rating
         USING zone, codes, words,
             fr.get_parameter_value(
                 parameters => parameters,
