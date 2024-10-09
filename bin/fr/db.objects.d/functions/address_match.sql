@@ -28,7 +28,8 @@ END $$;
 
 -- set status of matching element
 SELECT drop_all_functions_if_exists('fr', 'match_element_status');
-CREATE OR REPLACE FUNCTION fr.match_element_status(
+SELECT drop_all_functions_if_exists('fr', 'set_match_element_status');
+CREATE OR REPLACE FUNCTION fr.set_match_element_status(
     search IN VARCHAR,
     matched_element INOUT fr.matched_element
 )
@@ -46,6 +47,50 @@ BEGIN
     ELSE
         matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.not_found'));
     END IF;
+END
+$func$ LANGUAGE plpgsql;
+
+-- is matching OK ?
+SELECT drop_all_functions_if_exists('fr', 'is_match_element_ok');
+CREATE OR REPLACE FUNCTION fr.is_match_element_ok(
+    matched_element IN fr.matched_element,
+    isok OUT BOOLEAN
+)
+AS
+$func$
+BEGIN
+    isok := (LEFT(matched_element.status, 2) = 'OK');
+END
+$func$ LANGUAGE plpgsql;
+
+SELECT drop_all_functions_if_exists('fr', 'get_match_element_threshold');
+CREATE OR REPLACE FUNCTION fr.get_match_element_threshold(
+    level IN VARCHAR,
+    descriptors IN VARCHAR DEFAULT NULL,
+    parameters IN HSTORE DEFAULT NULL,
+    threshold OUT REAL
+)
+AS
+$func$
+DECLARE
+    _threshold REAL := 0.0;
+    _i INT;
+BEGIN
+    IF level = 'AREA' THEN
+    ELSIF level = ANY('{STREET,COMPLEMENT}') THEN
+        IF LENGTH(descriptors) > 0 THEN
+            FOR _i IN 1 .. LENGTH(descriptors)
+            LOOP
+                _threshold := _threshold + fr.get_parameter_value(
+                    parameters => parameters,
+                    category => 'THRESHOLD',
+                    level => 'MATCH',
+                    key => SUBSTR(descriptors, _i, 1)
+                );
+            END LOOP;
+        END IF;
+    END IF;
+    threshold := _threshold;
 END
 $func$ LANGUAGE plpgsql;
 
@@ -526,27 +571,27 @@ BEGIN
             CONCAT(
                 '
                 SELECT
-                    ARRAY_AGG(co_adr) codes_address
+                    ARRAY_AGG(h.co_cea) codes_address
                 FROM
-                    fr.address_view
+                    fr.laposte_address_housenumber h
+                        JOIN fr.laposte_address a ON h.co_cea = a.co_cea_determinant
                 WHERE
-                    co_adr_parent = ANY($1)
-                    AND
-                    co_adr_l3 IS NULL
-                    AND
-                    no_numero = $2
+                    h.no_voie = $2
                     AND (
                         ($3 IS NULL)
                         OR
                         (', CASE search
-                                WHEN 'STRICT' THEN 'lb_extension_numero'
-                                ELSE 'lb_extension_numero_abrege'
+                                WHEN 'STRICT' THEN 'h.lb_ext'
+                                ELSE 'h.lb_abr_nn'
                                 END,
                         '
                          = $3)
                     )
+                    AND
+                    a.co_cea_voie = ANY($1)
                 '
             )
+
         /* NOTE
         $1 housenumber id (uniq uncommon)
         WHEN _level_up = 'HOUSENUMBER' AND parameters & 2 = 2 THEN
@@ -764,16 +809,11 @@ AS
 $proc$
 DECLARE
     _notice VARCHAR;
-    _notice_element VARCHAR := FORMAT('%s: INSEE(%s) ',
-        level,
+    _notice_element VARCHAR := FORMAT('  INSEE(%s) ',
         (standardized_address).municipality_code
     );
-    _notice_1st VARCHAR := FORMAT('%s: first choice ',
-        level
-    );
-    _notice_2nd VARCHAR := FORMAT('%s: second choice ',
-        level
-    );
+    _notice_1st VARCHAR := '  first choice ';
+    _notice_2nd VARCHAR := '  second choice ';
 BEGIN
     IF raise_notice THEN
         --RAISE NOTICE 'notice_match: current=%', current;
@@ -1000,7 +1040,7 @@ BEGIN
                         ;
                     /*
                     _parent.codes_address := ARRAY[current.co_adr_za];
-                    _parent := fr.match_element_status(
+                    _parent := fr.set_match_element_status(
                         search => search,
                         matched_element => _parent
                     );
@@ -1055,7 +1095,7 @@ BEGIN
         END IF;
     END IF;
     IF matched_element.status IS NULL THEN
-        matched_element := fr.match_element_status(
+        matched_element := fr.set_match_element_status(
             search => search,
             matched_element => matched_element
         );
@@ -1142,13 +1182,14 @@ BEGIN
                     AREA
                     similarity w/ low value (default to 0.5) to match:
                     ('ST MEDARD', 'ST MEDARD EN JALLES')
-                    */
+                     */
                     _similarity_threshold := fr.get_parameter_value(
                         parameters => parameters,
-                        category => 'similarity',
-                        level => level,
-                        key => 'THRESHOLD'
+                        category => 'THRESHOLD',
+                        level => 'MATCH',
+                        key => LOWER(level)
                     );
+
                     --SET pg_trgm.similarity_threshold = _similarity_threshold;
                     _similarity_threshold := set_limit(_similarity_threshold);
 
@@ -1197,6 +1238,10 @@ BEGIN
                         standardized_address
                     ));
                     EXIT;
+                ELSE
+                    IF raise_notice THEN
+                        CALL public.log_info(FORMAT(' [WORD=%s, RATING=%s]', _match_parameters.word, _match_parameters.rating));
+                    END IF;
                 END IF;
             END IF;
 
@@ -1367,14 +1412,27 @@ BEGIN
                         matched_parent => matched_parent,
                         current => _match_current,
                         previous => _match_previous,
-                        similarity_threshold => _similarity_threshold,
+                        similarity_threshold => CASE
+                            WHEN level = 'AREA' THEN
+                                _similarity_threshold
+                            WHEN level = ANY('{STREET,COMPLEMENT}') THEN
+                                fr.get_match_element_threshold(
+                                    level => level,
+                                    descriptors =>
+                                            fr._get_value_from_standardized_address(
+                                                standardized_address => standardized_address,
+                                                key => CONCAT(LOWER(level), '_descriptors')
+                                            ),
+                                    parameters => parameters
+                                )
+                            END,
                         similarity_ratio => _similarity_ratio,
                         raise_notice => raise_notice
                     );
 
                     IF raise_notice THEN CALL public.log_info(FORMAT(' [ANALYZE=%s]', matched_element)); END IF;
 
-                    IF LEFT(matched_element.status, 2) = 'OK' THEN
+                    IF fr.is_match_element_ok(matched_element) THEN
                         EXIT;
                     END IF;
 
@@ -1387,7 +1445,7 @@ BEGIN
                 CALL public.log_info(FORMAT(' [LEVEL=%s, DATA=%s] not todo!', level, standardized_address));
             END IF;
         END IF;
-        IF LEFT(matched_element.status, 2) = 'OK' THEN
+        IF fr.is_match_element_ok(matched_element) THEN
             EXIT;
         END IF;
     -- loop searchs
@@ -1395,281 +1453,11 @@ BEGIN
 
     matched_element.elapsed_time := clock_timestamp() - _timestamp;
     IF matched_element.status IS NULL THEN
-        matched_element := fr.match_element_status(
+        matched_element := fr.set_match_element_status(
             search => 'NEAR',
             matched_element => matched_element
         );
     END IF;
     IF raise_notice THEN CALL public.log_info(FORMAT(' [MATCH=%s]', matched_element)); END IF;
-
-    /*
-        matched_element.elapsed_time := clock_timestamp() - _timestamp;
-    ELSIF level = 'STREET' THEN
-        -- parent found (area)
-        IF LEFT(matched_parent.status, 2) = 'OK' THEN
-            -- strict search
-            SELECT ARRAY_AGG(co_adr)
-            INTO matched_element.codes_address
-            FROM fr.street_view
-            WHERE
-                lb_voie = (standardized_address).street
-                AND
-                co_adr_za = ANY((matched_parent).codes_address)
-            ;
-            matched_element := fr.match_element_status(
-                search => 'STRICT'
-                , matched_element => matched_element
-            );
-
-            -- not found: try w/ near approach
-            IF (
-                matched_element.status = (SELECT CURRENT_SETTING('fr.status.match.not_found'))
-            ) THEN
-                _similarity_threshold := fr.get_parameter_value(
-                    parameters => parameters
-                    , category => 'similarity'
-                    , level => level
-                    , key => 'THRESHOLD'
-                );
-                /* FIXME don't accept variable!
-                SET pg_trgm.similarity_threshold = _similarity_threshold;
-                set_limit() obsolete!
-                 */
-                _similarity_threshold := set_limit(_similarity_threshold);
-
-                _similarity_ratio := fr.get_parameter_value(
-                    parameters => parameters
-                    , category => 'similarity'
-                    , level => level
-                    , key => 'RATIO'
-                );
-
-                /* NOTE
-                retrieve word w/ better similarity and rarity
-                 */
-                SELECT
-                    better_word
-                INTO
-                    _better_word
-                FROM
-                    fr.get_better_word_with_similarity_criteria(
-                        words => (standardized_address).words
-                        , level => 'ZA'
-                        , codes => (matched_parent).codes_address
-                        , raise_notice => raise_notice
-                    )
-                ;
-                /* NOTE
-                https://stackoverflow.com/questions/40078047/sql-weighted-average
-                 */
-                /* NOTE
-                _LOOP_LIMIT
-                same street can be delivered by many areas (postcode, district, ...)
-                to the maximum it exists a street w/ 3 areas!
-                this loop aims to find gap between two successive streets, so 3 +1
-                 */
-                IF _better_word IS NOT NULL THEN
-                    _previous_street := ROW(NULL);
-                    matched_element.status := NULL;
-                    FOR _street IN (
-                        WITH
-                        potential_streets AS (
-                            SELECT
-                                s.co_adr
-                                , s.co_adr_za
-                                , s.co_voie
-                                , s.lb_voie
-                            FROM
-                                fr.street_view s
-                                    JOIN fr.laposte_address_street_reference sr ON s.co_adr = sr.address_id
-                                    JOIN fr.laposte_address_street_membership sm ON sr.name_id = sm.name_id
-                            WHERE
-                                sm.word = _better_word
-                                AND
-                                -- can verify area (known as ZA)
-                                s.co_insee_commune = (standardized_address).municipality_code
-                        )
-                        , similarity_streets AS (
-                            SELECT
-                                co_adr
-                                , co_adr_za
-                                , co_voie
-                                , lb_voie
-                                , fr.get_similarity_words(
-                                    words_a => (standardized_address).words
-                                    , words_b => su.words
-                                    , descriptors_a => (standardized_address).descriptors
-                                    , descriptors_b => su.descriptors
-                                ) similarity
-                            FROM
-                                potential_streets ps
-                                    JOIN fr.laposte_address_street_uniq su ON ps.lb_voie = su.name
-                        )
-                        SELECT
-                            *
-                        FROM
-                            similarity_streets
-                        ORDER BY
-                            similarity DESC
-                        LIMIT
-                            _LOOP_LIMIT
-                    )
-                    LOOP
-                        IF raise_notice THEN
-                            RAISE NOTICE 'DATA(%)', _street;
-                        END IF;
-
-                        IF (_previous_street IS NULL) THEN
-                            IF raise_notice THEN
-                                RAISE NOTICE 'VOIE(%) INSEE(%)'
-                                    , (standardized_address).street
-                                    , (standardized_address).municipality_code
-                                ;
-                            END IF;
-                            IF (_street.similarity < _similarity_threshold) THEN
-                                IF raise_notice THEN
-                                    RAISE NOTICE ' premier choix trop faible VOIE(%) [sim=%]'
-                                        , _street.lb_voie
-                                        , ROUND(_street.similarity, 5)
-                                    ;
-                                END IF;
-                                matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.not_near'));
-                                EXIT;
-                            ELSE
-                                IF raise_notice THEN
-                                    RAISE NOTICE ' premier choix ok VOIE(%) [sim=%]'
-                                        , _street.lb_voie
-                                        , ROUND(_street.similarity, 5)
-                                    ;
-                                END IF;
-                                matched_element.codes_address := ARRAY[_street.co_adr]::VARCHAR[];
-                                matched_element.similarity_1 := _street.similarity;
-                                IF (_street.co_adr_za != matched_parent.codes_address[1]) THEN
-                                    RAISE NOTICE ' mais sur ZA différente (%/%)'
-                                        , _street.co_adr_za
-                                        , matched_parent.codes_address
-                                    ;
-                                    update_parent := TRUE;
-                                    matched_parent.codes_address := ARRAY[_street.co_adr_za]::VARCHAR[];
-                                    matched_parent := (
-                                        SELECT fr.match_element_status(
-                                            search => 'NEAR'
-                                            , matched_element => matched_parent
-                                        )
-                                    );
-                                END IF;
-                            END IF;
-                        ELSE
-                            /* NOTE
-                            OK if second|third choice far enough (15%)
-                            minimum gap between 2 results ascending when similarity decrease
-                             */
-                            _street_ratio := (_previous_street.similarity / _street.similarity);
-                            IF NOT (_street_ratio > _similarity_ratio) THEN
-                                -- same street, but w/ {postcode, district, ...} difference
-                                IF _previous_street.co_voie = _street.co_voie THEN
-                                    IF raise_notice THEN
-                                        RAISE NOTICE ' deuxième choix même voie CODE(%) [CEA=%]'
-                                            , _street.co_voie
-                                            , _street.co_adr
-                                        ;
-                                    END IF;
-                                    matched_element.codes_address := ARRAY_APPEND(matched_element.codes_address, _street.co_adr);
-                                ELSE
-                                    IF raise_notice THEN
-                                        RAISE NOTICE ' deuxième choix trop proche VOIE(%) [sim=%,ratio=%]'
-                                            , _street.lb_voie
-                                            , ROUND(_street.similarity, 5)
-                                            , ROUND(_street_ratio, 2)
-                                        ;
-                                    END IF;
-                                    matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.too_similar'));
-                                    EXIT;
-                                END IF;
-                            ELSE
-                                IF raise_notice THEN
-                                    RAISE NOTICE ' deuxième choix suffisamment éloigné VOIE(%) [sim=%,ratio=%]'
-                                        , _street.lb_voie
-                                        , ROUND(_street.similarity, 5)
-                                        , ROUND(_street_ratio, 2)
-                                    ;
-                                END IF;
-                                EXIT;
-                            END IF;
-                        END IF;
-
-                        _previous_street := _street;
-                    END LOOP;
-
-                    IF matched_element.status IS NULL THEN
-                        matched_element := (
-                            SELECT fr.match_element_status(
-                                search => 'NEAR'
-                                , matched_element => matched_element
-                            )
-                        );
-                    END IF;
-                END IF;
-            END IF;
-        END IF;
-    ELSIF level = 'HOUSENUMBER' THEN
-        -- parent found (street)
-        IF LEFT(matched_parent.status, 2) = 'OK' THEN
-            IF (standardized_address).extension IS NOT NULL THEN
-                _abbr := (
-                    SELECT fr.normalize_abbreviate_keyword(
-                        name => (standardized_address).extension
-                        , groups => 'EXT'
-                    )
-                );
-            END IF;
-            _with_near := (((standardized_address).extension IS NULL) OR (_abbr IS NULL));
-            IF NOT _with_near THEN
-                _searchs := ARRAY_REMOVE(_searchs, 'NEAR');
-            END IF;
-
-            FOREACH _search IN ARRAY _searchs
-            LOOP
-                _ext := CASE _search
-                    WHEN 'STRICT' THEN (standardized_address).extension
-                    ELSE _abbr
-                    END
-                ;
-
-                SELECT ARRAY_AGG(co_adr)
-                INTO matched_element.codes_address
-                FROM fr.address_view
-                WHERE
-                    co_adr_parent = ANY((matched_parent).codes_address)
-                    AND
-                    co_adr_l3 IS NULL
-                    AND
-                    no_numero = (standardized_address).housenumber
-                    AND (
-                        (_ext IS NULL)
-                        OR
-                        (lb_extension_numero = _ext)
-                    )
-                ;
-                matched_element := (
-                    SELECT fr.match_element_status(
-                        search => _search
-                        , matched_element => matched_element
-                    )
-                );
-
-                IF (
-                    matched_element.status != (SELECT CURRENT_SETTING('fr.status.match.not_found'))
-                ) THEN
-                    EXIT;
-                END IF;
-            END LOOP;
-        END IF;
-    ELSIF level = 'COMPLEMENT' THEN
-        -- parent (street or housenumber) found
-        IF LEFT(matched_parent.status, 2) = 'OK' THEN
-        END IF;
-    END IF;
-     */
 END
 $func$ LANGUAGE plpgsql;

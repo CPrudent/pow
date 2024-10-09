@@ -37,6 +37,8 @@ BEGIN
 
     DROP INDEX IF EXISTS fr.idx_numero_histo_key;
     --CREATE UNIQUE INDEX IF NOT EXISTS idx_numero_histo_key ON fr.laposte_address_housenumber_histo (co_cea, dt_reference);
+
+    CREATE INDEX IF NOT EXISTS ix_laposte_address_housenumber_number ON fr.laposte_address_housenumber (no_voie);
 END
 $proc$ LANGUAGE plpgsql;
 

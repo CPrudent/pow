@@ -1130,6 +1130,17 @@ BEGIN
     --ALTER DATABASE pow RESET ALL;
     --ALTER DATABASE pow RESET <conf_key>;
 
+    -- reset obsolete values
+    ALTER DATABASE pow RESET fr.similarity.area.threshold;
+    ALTER DATABASE pow RESET fr.similarity.street.threshold;
+    ALTER DATABASE pow RESET fr.similarity.complement.threshold;
+    /*
+    ALTER DATABASE pow SET fr.similarity.area.threshold = '0.5';
+    ALTER DATABASE pow SET fr.similarity.street.threshold = '0.7';
+    ALTER DATABASE pow SET fr.similarity.complement.threshold = '0.7';
+     */
+
+    -- matching status values
     ALTER DATABASE pow SET fr.status.match.strict = 'OK_1';
     ALTER DATABASE pow SET fr.status.match.near = 'OK_2';
     ALTER DATABASE pow SET fr.status.match.too_many = 'OK_3';
@@ -1137,16 +1148,32 @@ BEGIN
     ALTER DATABASE pow SET fr.status.match.not_found = 'KO_11';
     ALTER DATABASE pow SET fr.status.match.too_similar = 'KO_12';
 
+    -- weighted criteria values (better word)
     ALTER DATABASE pow SET fr.weight.match.similarity = '6';
     ALTER DATABASE pow SET fr.weight.match.rarity = '2';
     ALTER DATABASE pow SET fr.weight.match.descriptor = '3';
 
-    ALTER DATABASE pow SET fr.similarity.area.threshold = '0.5';
-    ALTER DATABASE pow SET fr.similarity.area.ratio = '0.15';
-    ALTER DATABASE pow SET fr.similarity.street.threshold = '0.7';
+    -- threshold level/descriptor values
+    ALTER DATABASE pow SET fr.threshold.match.area = '0.5';
+    ALTER DATABASE pow SET fr.threshold.match.street = '0.7';
+    ALTER DATABASE pow SET fr.threshold.match.complement = '0.5';
+    ALTER DATABASE pow SET fr.threshold.match.a = '0';
+    ALTER DATABASE pow SET fr.threshold.match.c = '0.7';
+    ALTER DATABASE pow SET fr.threshold.match.e = '0.3';
+    ALTER DATABASE pow SET fr.threshold.match.n = '0.7';
+    ALTER DATABASE pow SET fr.threshold.match.p = '0.5';
+    ALTER DATABASE pow SET fr.threshold.match.t = '0.6';
+    ALTER DATABASE pow SET fr.threshold.match.v = '0.3';
+    ALTER DATABASE pow SET fr.threshold.match.g = '0.3';
+    ALTER DATABASE pow SET fr.threshold.match.h = '0.3';
+    ALTER DATABASE pow SET fr.threshold.match.i = '0.3';
+
+    -- ratio level values
+    ALTER DATABASE pow SET fr.similarity.area.ratio = '0.1';
     ALTER DATABASE pow SET fr.similarity.street.ratio = '0.15';
-    ALTER DATABASE pow SET fr.similarity.complement.threshold = '0.7';
     ALTER DATABASE pow SET fr.similarity.complement.ratio = '0.15';
+
+    -- uncommon max values
     ALTER DATABASE pow SET fr.max.street.occurs = '10';
     ALTER DATABASE pow SET fr.max.housenumber.occurs = '1';
     ALTER DATABASE pow SET fr.max.complement.occurs = '10';
