@@ -32,7 +32,8 @@ CREATE OR REPLACE FUNCTION fr.get_better_word_with_similarity_criteria(
     level IN VARCHAR,
     words IN TEXT[],
     zone IN VARCHAR,
-    codes IN VARCHAR[],
+    code IN VARCHAR,
+    table_nranks IN VARCHAR,
     raise_notice IN BOOLEAN DEFAULT FALSE,
     parameters IN HSTORE DEFAULT NULL,
     word OUT TEXT,
@@ -44,8 +45,8 @@ DECLARE
     _level_low VARCHAR := LOWER(level);
     _query TEXT;
 BEGIN
-    IF zone IS NULL OR codes IS NULL THEN
-        CALL public.log_info('missing parameters (zone, codes)');
+    IF zone IS NULL OR code IS NULL THEN
+        CALL public.log_info('missing parameters (zone, code)');
         RETURN;
     END IF;
 
@@ -56,17 +57,19 @@ BEGIN
             SELECT
                 wl.word,
                 (
-                    (get_similarity(wl.word, w.word) * $4) +
-                    (wl.rank * $5) +
-                    (fr.get_descriptor_factor(wd.as_default) * $6)
-                ) / ($4 + $5 + $6)
+                    (get_similarity(wl.word, w.word) * $5) +
+                    ((1 - ((r.nranks - wl.rank)::NUMERIC
+                     / r.nranks)) * $6) +
+                    (fr.get_descriptor_factor(wd.as_default) * $7)
+                ) / ($5 + $6 + $7)
             FROM
                 fr.laposte_address_', _level_low, '_word_level wl
                     -- remember: w/o article
                     JOIN fr.laposte_address_', _level_low, '_word_descriptor wd ON wl.word = wd.word
-                    JOIN LATERAL UNNEST($3) WITH ORDINALITY AS w(word, i) ON TRUE
+                    JOIN LATERAL UNNEST($4) WITH ORDINALITY AS w(word, i) ON TRUE
+                    JOIN ', table_nranks, ' r ON r.code = wl.codgeo AND r.level = $1
             WHERE
-                wl.nivgeo = $1 AND wl.codgeo = ANY($2)
+                wl.nivgeo = $2 AND wl.codgeo = $3
         )
         SELECT
             word,
@@ -83,7 +86,7 @@ BEGIN
 
     EXECUTE _query
         INTO word, rating
-        USING zone, codes, words,
+        USING level, zone, code, words,
             fr.get_parameter_value(
                 parameters => parameters,
                 category => 'weight',

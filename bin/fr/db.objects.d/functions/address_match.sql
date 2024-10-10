@@ -809,11 +809,11 @@ AS
 $proc$
 DECLARE
     _notice VARCHAR;
-    _notice_element VARCHAR := FORMAT('  INSEE(%s) ',
+    _notice_element VARCHAR := FORMAT(' INSEE(%s) ',
         (standardized_address).municipality_code
     );
-    _notice_1st VARCHAR := '  first choice ';
-    _notice_2nd VARCHAR := '  second choice ';
+    _notice_1st VARCHAR := ' first choice ';
+    _notice_2nd VARCHAR := ' second choice ';
 BEGIN
     IF raise_notice THEN
         --RAISE NOTICE 'notice_match: current=%', current;
@@ -1167,7 +1167,7 @@ BEGIN
         END IF;
 
         IF raise_notice THEN
-            CALL public.log_info(FORMAT(' [SEARCH=%s, PARAMETERS=%s]', _search, _query_parameters));
+            CALL public.log_info(FORMAT(' SEARCH=%s, PARAMETERS=%s', _search, _query_parameters));
         END IF;
 
         IF fr.is_match_todo(
@@ -1211,7 +1211,7 @@ BEGIN
                 _match_parameters.limit := _limits_by_level[fr.get_subscript_of_level_address(level)];
             END IF;
 
-            IF ((level = 'STREET') OR (level = 'COMPLEMENT')) THEN
+            IF (_search = 'NEAR') AND ((level = 'STREET') OR (level = 'COMPLEMENT')) THEN
                 -- retrieve word w/ better similarity and rarity
                 SELECT
                     word,
@@ -1228,19 +1228,20 @@ BEGIN
                             END,
                         zone => 'COM',
                         -- TODO test if defined!
-                        codes => ARRAY[(standardized_address).municipality_code],
+                        code => (standardized_address).municipality_code,
+                        table_nranks => 'tmp_fr_match_municipality',
                         raise_notice => raise_notice
                     )
                     ;
                 IF _match_parameters.word IS NULL THEN
-                    CALL public.log_info(FORMAT(' [LEVEL(%s), DATA(%s)] no better word!',
+                    CALL public.log_info(FORMAT(' LEVEL(%s), DATA(%s) no better word!',
                         level,
                         standardized_address
                     ));
                     EXIT;
                 ELSE
                     IF raise_notice THEN
-                        CALL public.log_info(FORMAT(' [WORD=%s, RATING=%s]', _match_parameters.word, _match_parameters.rating));
+                        CALL public.log_info(FORMAT(' WORD=%s, RATING=%s', _match_parameters.word, _match_parameters.rating));
                     END IF;
                 END IF;
             END IF;
@@ -1344,7 +1345,7 @@ BEGIN
                 standardized_address,
                 _match_parameters
             LOOP
-                IF raise_notice THEN CALL public.log_info(FORMAT(' [RESULTS=%s]', _query_results)); END IF;
+                IF raise_notice THEN CALL public.log_info(FORMAT(' RESULTS=%s', _query_results)); END IF;
                 -- FIXME
                 --IF _query_results IS NOT NULL THEN
                 --IF _query_results != ROW(NULL) THEN
@@ -1402,7 +1403,7 @@ BEGIN
                      */
                     END IF;
 
-                    IF raise_notice THEN CALL public.log_info(FORMAT(' [CURRENT=%s]', _match_current)); END IF;
+                    IF raise_notice THEN CALL public.log_info(FORMAT(' CURRENT=%s', _match_current)); END IF;
 
                     matched_element := fr.analyze_matched_elements(
                         level => level,
@@ -1430,7 +1431,7 @@ BEGIN
                         raise_notice => raise_notice
                     );
 
-                    IF raise_notice THEN CALL public.log_info(FORMAT(' [ANALYZE=%s]', matched_element)); END IF;
+                    IF raise_notice THEN CALL public.log_info(FORMAT(' ANALYZE=%s', matched_element)); END IF;
 
                     IF fr.is_match_element_ok(matched_element) THEN
                         EXIT;
@@ -1442,7 +1443,7 @@ BEGIN
             END LOOP;
         ELSE
             IF raise_notice THEN
-                CALL public.log_info(FORMAT(' [LEVEL=%s, DATA=%s] not todo!', level, standardized_address));
+                CALL public.log_info(FORMAT(' LEVEL=%s, DATA=%s not todo!', level, standardized_address));
             END IF;
         END IF;
         IF fr.is_match_element_ok(matched_element) THEN
@@ -1458,6 +1459,6 @@ BEGIN
             matched_element => matched_element
         );
     END IF;
-    IF raise_notice THEN CALL public.log_info(FORMAT(' [MATCH=%s]', matched_element)); END IF;
+    IF raise_notice THEN CALL public.log_info(FORMAT(' MATCH=%s', matched_element)); END IF;
 END
 $func$ LANGUAGE plpgsql;

@@ -74,7 +74,7 @@ DECLARE
     _query TEXT;
     _element RECORD;
     _matched_element fr.matched_element;
-    _i INT;
+    _init_ranks BOOLEAN := FALSE;
 BEGIN
     SELECT is_match_element, parameters
     INTO _is_match_element, _parameters
@@ -110,6 +110,50 @@ BEGIN
                 CALL public.log_info(
                     FORMAT('===[LEVEL=%s]%s', _level, REPEAT('=', 70))
                 );
+            END IF;
+
+            IF NOT _init_ranks AND _level != 'AREA' THEN
+                DROP TABLE IF EXISTS tmp_fr_match_municipality;
+                CREATE TEMPORARY TABLE tmp_fr_match_municipality AS
+                    WITH
+                    municipalities(code) AS (
+                        SELECT DISTINCT
+                            (mr.standardized_address).municipality_code
+                        FROM
+                            fr.address_match_result mr
+                                LEFT OUTER JOIN fr.address_match_element me ON ((mr.standardized_address).level, (mr.standardized_address).match_code_area) = (me.level, me.match_code)
+                        WHERE
+                            mr.id_request = set_match_element.id
+                    )
+                    SELECT
+                        m.code,
+                        'STREET' level,
+                        MAX(wl.rank) nranks
+                    FROM
+                        fr.laposte_address_street_word_level wl
+                            JOIN municipalities m ON m.code = wl.codgeo
+                    WHERE
+                        wl.nivgeo = 'COM'
+                    GROUP BY
+                        m.code
+                    UNION
+                    SELECT
+                        m.code,
+                        'COMPLEMENT' level,
+                        MAX(wl.rank) nranks
+                    FROM
+                        fr.laposte_address_complement_word_level wl
+                            JOIN municipalities m ON m.code = wl.codgeo
+                    WHERE
+                        wl.nivgeo = 'COM'
+                    GROUP BY
+                        m.code
+                ;
+
+                IF raise_notice THEN
+                    CALL public.log_info(' RANKS');
+                END IF;
+                _init_ranks := TRUE;
             END IF;
 
             -- search for element not already matched (w/ its matched parent if exists)
@@ -174,7 +218,7 @@ BEGIN
             LOOP
                 IF raise_notice THEN
                     CALL public.log_info(
-                        FORMAT('[%s=%s]',
+                        FORMAT('---(%s=%s)',
                             _level,
                             CASE _level
                             WHEN 'AREA' THEN
@@ -217,7 +261,7 @@ BEGIN
                         )
                     );
                     CALL public.log_info(
-                        FORMAT(' [ELEMENT=%s]', _element)
+                        FORMAT(' ELEMENT=%s', _element)
                     );
                 END IF;
 
