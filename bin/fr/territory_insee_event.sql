@@ -24,16 +24,22 @@ INSERT INTO fr.insee_municipality_event(
 (
     SELECT DISTINCT -- doubles!, 21, 1977-01-01, COM, 89344 -> 89344
         mod::SMALLINT,
-        date_eff::DATE,
+        TO_DATE(date_eff, 'YYYY-MM-DD'),
         typecom_av,
         LPAD(com_av, 5, '0'),
-        tncc_av::SMALLINT,
+        CASE
+        WHEN tncc_av ~ E'^\\d+$' THEN
+            tncc_av::SMALLINT
+        END,
         ncc_av,
         nccenr_av,
         libelle_av,
         typecom_ap,
         LPAD(com_ap, 5, '0'),
-        tncc_ap::SMALLINT,
+        CASE
+        WHEN tncc_ap ~ E'^\\d+$' THEN
+            tncc_ap::SMALLINT
+        END,
         ncc_ap,
         nccenr_ap,
         libelle_ap

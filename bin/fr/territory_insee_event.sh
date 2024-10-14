@@ -49,45 +49,29 @@ io_get_list_online_available \
     --dates_list years || exit $ERROR_CODE
 [ "$POW_DEBUG" = yes ] && { declare -p years; declare -p years_list_path; }
 
-# get year (w/ format YYYY)
-if [ -z "$get_arg_year" ]; then
-    # get more recent
-    year_id=0
-else
-    in_array years "${get_arg_year}-01-01" year_id || {
-        log_error "Impossible de trouver le millésime $get_arg_year de $io_name, les millésimes disponibles sont ${years[@]}"
-        on_import_error
-    }
-fi
-year=$(date -d ${years[$year_id]} +%Y)
-[ -z "$year" ] && {
-    log_error "Impossible de trouver le millésime de $io_name"
-    on_import_error
-}
+# fix INSEE change (only last year available)
+year=$(date +%Y)
+year_id=0
 [ "$POW_DEBUG" = yes ] && { echo "year=$year (${years[$year_id]})"; }
-
-# URL to year information
-url_information='https://www.insee.fr'$(grep --only-matching --perl-regexp 'Millésime '$year'&nbsp;: <a class="renvoi" href="[^"]*"' "$years_list_path" | grep --only-matching --perl-regexp '/fr/information/[^"]*') &&
-io_download_file --url "$url_information" --output_directory "$POW_DIR_TMP" &&
-year_information=$(basename "$url_information") || on_import_error
-[ "$POW_DEBUG" = yes ] && { echo "year_information=$year_information"; }
 
 # example: https://www.insee.fr/fr/statistiques/fichier/3720946/mvtcommune-01012019-csv.zip
 # example: https://www.insee.fr/fr/statistiques/fichier/4316069/mvtcommune2020-csv.zip
 # example: https://www.insee.fr/fr/statistiques/fichier/6051727/mvtcommune_2022.csv
+# NOTE change 2023 (v_)mvtcommune_2023.csv
+# NOTE change 2024
+# href="/fr/statistiques/fichier/7766585/v_mvt_commune_2024.csv"
 
-# URL to data (take last one, thinking it's the more recent)
-# NOTE: change 2023 (v_)mvtcommune_2023.csv
-url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/[0-9]*/.*mvtcommune[0-9-_]*$year(-csv\.zip|\.csv)" "$POW_DIR_TMP/$year_information" | tail -1)
+url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/7766585/v_mvt_commune_${year}.csv" "$years_list_path")
+[ "$POW_DEBUG" = yes ] && { echo "url=$url_data"; }
 [ -z "$url_data" ] && {
-	log_error "Impossible de trouver le fichier évènement commune du millésime $year sur la page $url_information"
-	on_import_error
+    log_error "Impossible de trouver URL de $io_name"
+    on_import_error
 }
 
-url_data="https://www.insee.fr/$url_data"
+url_data="https://www.insee.fr/${url_data}"
 year_data=$(basename "$url_data")
 [ "$POW_DEBUG" = yes ] && { echo "year_data=$year_data"; }
-rm --force "$years_list_path" "$POW_DIR_TMP/$year_information"
+rm --force "$years_list_path"
 
 set_env --schema_name fr &&
 io_todo_import \

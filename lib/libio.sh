@@ -494,8 +494,8 @@ io_get_list_online_available() {
         _re2='[0-9]{2}'
         ;;
     FR-MUNICIPALITY-EVENT-INSEE)
-        _url='https://www.insee.fr/fr/information/2560452'
-        _re1='Millésime [0-9]{4}&nbsp;: <a'
+        _url='https://www.insee.fr/fr/information/7766585'
+        _re1='v_mvt_commune_[0-9]{4}.csv'
         _re2='[0-9]{4}'
         ;;
     *)
