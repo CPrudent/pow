@@ -76,8 +76,8 @@ DECLARE
     _threshold REAL := 0.0;
     _i INT;
 BEGIN
-    IF level = 'AREA' THEN
-    ELSIF level = ANY('{STREET,COMPLEMENT}') THEN
+    -- adding weigthed value for each descriptor
+    IF level = ANY('{STREET,COMPLEMENT}') THEN
         IF LENGTH(descriptors) > 0 THEN
             FOR _i IN 1 .. LENGTH(descriptors)
             LOOP
