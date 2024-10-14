@@ -489,7 +489,7 @@ io_get_list_online_available() {
         _only_matching_re1=
         ;;
     FR-TERRITORY-INSEE)
-        _url='https://www.insee.fr/fr/information/2028028'
+        _url='https://www.insee.fr/fr/information/7671844'
         _re1='table-appartenance-geo-communes-[0-9]{2}[^.]*\.zip'
         _re2='[0-9]{2}'
         ;;

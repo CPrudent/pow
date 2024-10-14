@@ -80,12 +80,23 @@ year=$(date -d ${years[$year_id]} +%y)
     log_error "Impossible de trouver le millésime de $io_name"
     on_import_error
 }
+# fix current year w/ century!
+[ "$year" = "$(date +%y)" ] && year="$(date +%C)$year"
 [ "$POW_DEBUG" = yes ] && { echo "year=$year (${years[$year_id]})"; }
 
-url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/2028028/table-appartenance-geo-communes-${year}[^.]*\.zip" "$years_list_path" | head --lines 1)
+url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/7671844/table-appartenance-geo-communes-${year}[^.]*\.zip" "$years_list_path" | head --lines 1)
+[ "$POW_DEBUG" = yes ] && { echo "url=$url_data"; }
+
+[ -z "$url_data" ] && {
+    log_error "Impossible de trouver URL de $io_name"
+    on_import_error
+}
 url_data="https://www.insee.fr/${url_data}"
 year_data=$(basename "$url_data")
 rm --force "$years_list_path"
+
+# fix current year w/ century!
+[ ${#year} -eq 2 ] && year="$(date +%C)$year"
 
 set_env --schema_name fr &&
 io_todo_import \
@@ -107,13 +118,13 @@ name_worksheet_district=ARM
 name_worksheet_supra=Zones_supra_communales
 line_number_supra=6
 # before 2011 (included)
-if [ $year -le 11 ]; then
+if [ $year -le 2011 ]; then
     name_worksheet_municipality=Liste_COM
     name_worksheet_district=
     name_worksheet_supra=Niv_supracom
     line_number_supra=5
 # 2012 and 2013
-elif [ $year -le 13 ]; then
+elif [ $year -le 2013 ]; then
     name_worksheet_municipality='Emboîtements communaux'
     name_worksheet_district=
     name_worksheet_supra='Zones supra-communales'
@@ -167,7 +178,7 @@ import_file \
 {
     {
         # before 2011 (included)
-        if [ $year -le 11 ]; then
+        if [ $year -le 2011 ]; then
             execute_query \
                 --name SUPRA_RENAME_COLUMNS \
                 --query '
@@ -233,11 +244,11 @@ execute_query \
     --name ALL_ADD_COLUMN_YEAR \
     --query "
         ALTER TABLE fr.tmp_insee_municipality
-            ADD column millesime INTEGER DEFAULT 20${year};
+            ADD column millesime INTEGER DEFAULT ${year};
         ALTER TABLE fr.tmp_insee_municipal_district
-            ADD column millesime INTEGER DEFAULT 20${year};
+            ADD column millesime INTEGER DEFAULT ${year};
         ALTER TABLE fr.tmp_insee_supra
-            ADD column millesime INTEGER DEFAULT 20${year};
+            ADD column millesime INTEGER DEFAULT ${year};
         " &&
 {
     case "$io_load_mode" in
@@ -254,9 +265,9 @@ execute_query \
             --name DELETE_YEAR \
             --query "
                 DELETE FROM fr.insee_municipality
-                    WHERE millesime = '20${year}';
+                    WHERE millesime = '${year}';
                 DELETE FROM fr.insee_supra
-                    WHERE millesime = '20${year}';"
+                    WHERE millesime = '${year}';"
         ;;
     esac
 } &&

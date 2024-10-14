@@ -25,7 +25,7 @@ INSERT INTO fr.insee_municipality
         "EPCI",
         "NATURE_EPCI",
         "ARR",
-        "CV"
+        "CANOV"
     FROM fr.tmp_insee_municipality
     -- "global" municipalities (w/ districts) are thought as supra-territory
     WHERE "CODGEO" NOT IN ('75056', '13055', '69123')
@@ -56,7 +56,7 @@ INSERT INTO fr.insee_municipality
         "EPCI",
         "NATURE_EPCI",
         "ARR",
-        "CV"
+        "CANOV"
     FROM fr.tmp_insee_municipal_district
 );
 
