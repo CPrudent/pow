@@ -452,6 +452,75 @@ io_history_export_last() {
     # transfer
     #
 
+# get property
+io_get_property_online_available() {
+    bash_args \
+        --args_p '
+            name:nom IO à rechercher (en ligne);
+            key:propriété recherchée;
+            value:valeur
+        ' \
+        --args_o '
+            name;
+            key;
+            value
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local _url_base _url_data _re1 _re2
+    local -n _value_ref=$get_arg_value
+
+    case $get_arg_name in
+    FR-TERRITORY-IGN)
+        _url_base='https://geoservices.ign.fr'
+        _url_data=${_url_base}'/adminexpress'
+        _re1='href="(http|ftp)[^"]+ADMIN-EXPRESS_(?(?!WM)[^"])+[0-9-]{10}\.7z[^"]*'
+        _re2='[0-9-]{10}'
+        ;;
+    FR-TERRITORY-IGN-IRIS)
+        _url_base='https://geoservices.ign.fr'
+        _url_data=${_url_base}'/contoursiris#telechargement'
+        _re1='href="(http|ftp)[^" ]+CONTOURS-IRIS[^" ]*(FXX|FRA)[^" ]*\.7z[^" ]*"'
+        _re2='[0-9]{4}-01-01'
+        ;;
+    FR-TERRITORY-BANATIC)
+        _url_base='https://www.collectivites-locales.gouv.fr'
+        _url_data=${_url_base}'/institutions/liste-et-composition-des-epci-fiscalite-propre'
+        _re1='^[ ]+[0-9]{4}[ ]*'
+        _re2='[0-9]{4}'
+        ;;
+    FR-TERRITORY-INSEE)
+        _url_base='https://www.insee.fr'
+        _url_data=${_url_base}'/fr/information/7671844'
+        _re1='table-appartenance-geo-communes-[0-9]{2}[^.]*\.zip'
+        _re2='[0-9]{2}'
+        ;;
+    FR-MUNICIPALITY-EVENT-INSEE)
+        _url_base='https://www.insee.fr'
+        _url_data=${_url_base}'/fr/information/7766585'
+        _re1='v_mvt_commune_[0-9]{4}.csv'
+        _re2='[0-9]{4}'
+        ;;
+    *)
+        log_error "IO $get_arg_name non pris en charge!"
+        return $ERROR_CODE
+        ;;
+    esac
+
+    case ${get_arg_key^^} in
+    URL_BASE)       _value_ref=$_url_base       ;;
+    URL_DATA)       _value_ref=$_url_data       ;;
+    REGEXP1)        _value_ref=$_re1            ;;
+    REGEXP2)        _value_ref=$_re2            ;;
+    *)
+        log_error "KEY $get_arg_key non pris en charge!"
+        return $ERROR_CODE
+        ;;
+    esac
+
+    return $SUCCESS_CODE
+}
+
 # get available dates (list, details as URL)
 io_get_list_online_available() {
     bash_args \
@@ -467,42 +536,29 @@ io_get_list_online_available() {
         ' \
         "$@" || return $ERROR_CODE
 
-    local _url _re1 _re2 _only_matching_re1=--only-matching _i
+    # NOTE _only_matching_re1=--only-matching
+    # reset it if not only matching
+    # no more used (previously needed for BANATIC)
+
+    local _url _regexp1 _regexp2 _i
     local -n _details_file_ref=$get_arg_details_file
     local -n _dates_ref=$get_arg_dates_list
 
-    case $get_arg_name in
-    FR-TERRITORY-IGN)
-        _url='https://geoservices.ign.fr/adminexpress'
-        _re1='href="(http|ftp)[^"]+ADMIN-EXPRESS_(?(?!WM)[^"])+[0-9-]{10}\.7z[^"]*'
-        _re2='[0-9-]{10}'
-        ;;
-    FR-TERRITORY-IGN-IRIS)
-        _url='https://geoservices.ign.fr/contoursiris#telechargement'
-        _re1='href="(http|ftp)[^" ]+CONTOURS-IRIS[^" ]*(FXX|FRA)[^" ]*\.7z[^" ]*"'
-        _re2='[0-9]{4}-01-01'
-        ;;
-    FR-TERRITORY-BANATIC)
-        _url='https://www.banatic.interieur.gouv.fr/V5/fichiers-en-telechargement/fichiers-telech.php'
-        _re1='Données mises à jour le :'
-        _re2='[0-9]{2}/[0-9]{2}/[0-9]{4}'
-        _only_matching_re1=
-        ;;
-    FR-TERRITORY-INSEE)
-        _url='https://www.insee.fr/fr/information/7671844'
-        _re1='table-appartenance-geo-communes-[0-9]{2}[^.]*\.zip'
-        _re2='[0-9]{2}'
-        ;;
-    FR-MUNICIPALITY-EVENT-INSEE)
-        _url='https://www.insee.fr/fr/information/7766585'
-        _re1='v_mvt_commune_[0-9]{4}.csv'
-        _re2='[0-9]{4}'
-        ;;
-    *)
-        log_error "IO $get_arg_name non pris en charge!"
+    io_get_property_online_available    \
+        --name $get_arg_name            \
+        --key URL_DATA                  \
+        --value _url                    &&
+    io_get_property_online_available    \
+        --name $get_arg_name            \
+        --key REGEXP1                   \
+        --value _regexp1                &&
+    io_get_property_online_available    \
+        --name $get_arg_name            \
+        --key REGEXP2                   \
+        --value _regexp2                || {
+        log_error "IO $get_arg_name récupération propriété!"
         return $ERROR_CODE
-        ;;
-    esac
+    }
 
     # temporary file (to be deleted by caller)
     get_tmp_file --tmpext html --tmpfile _details_file_ref &&
@@ -514,7 +570,7 @@ io_get_list_online_available() {
         --output_file "$(basename $_details_file_ref)" \
         --overwrite yes &&
     # array of available dates (desc), transforming / to -
-    _dates_ref=($(grep $_only_matching_re1 --perl-regexp "$_re1" $_details_file_ref | grep --only-matching --perl-regexp "$_re2" | sed -e 's@/@-@g' | uniq | sort --reverse)) || {
+    _dates_ref=($(grep --only-matching --perl-regexp "$_regexp1" $_details_file_ref | grep --only-matching --perl-regexp "$_regexp2" | sed --expression 's@/@-@g' | uniq | sort --reverse)) || {
         log_error "Impossible de consulter la liste des millésimes disponibles de $get_arg_name"
         return $ERROR_CODE
     }
@@ -523,7 +579,7 @@ io_get_list_online_available() {
     for ((_i=0; _i<${#_dates_ref[@]}; _i++)); do
         [[ ${_dates_ref[$_i]} =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] && continue
 
-        # tranform DD-MM-YYYY to YYYY-MM-DD
+        # transform DD-MM-YYYY to YYYY-MM-DD
         [[ ${_dates_ref[$_i]} =~ ^([0-9]{2})-([0-9]{2})-([0-9]{4})$ ]] && {
             _dates_ref[$_i]="${BASH_REMATCH[3]}-${BASH_REMATCH[2]}-${BASH_REMATCH[1]}"
             continue

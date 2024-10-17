@@ -30,4 +30,11 @@ BEGIN
     END LOOP;
 
     DROP TABLE IF EXISTS fr.laposte_address_fault_street_correction;
+
+    /*
+    -- old BANATIC data
+    DROP TABLE IF EXISTS banatic_siren_insee;
+    DROP TABLE IF EXISTS banatic_listof_epci;
+    DROP TABLE IF EXISTS banatic_setof_epci;
+     */
 END $PURGE$;
