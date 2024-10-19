@@ -37,8 +37,9 @@ bash_args \
 io_name=FR-TERRITORY-LAPOSTE
 io_date=$(date +%F)
 io_force=$get_arg_force
-declare -A io_hash
 
+# to declare on command line before calling function (else array)
+declare -A io_hash &&
 set_env --schema_name fr &&
 io_get_info_integration --name $io_name --to_hash io_hash || exit $ERROR_CODE
 
@@ -80,7 +81,7 @@ io_history_begin \
         case ${io_steps[$io_step]} in
         FR-TERRITORY-LAPOSTE-AREA)
             # only event is to do (others influence FR-TERRITORY or here FR_TERRITORY_LAPOSTE_SUPRA)
-            _step=${io_steps[$io_step]}_EVENT
+            _step=${io_steps[$io_step]}-EVENT
             ;;
         *)
             _step=${io_steps[$io_step]}
