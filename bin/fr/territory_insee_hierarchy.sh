@@ -51,7 +51,7 @@ io_get_list_online_available \
     --name $io_name \
     --details_file years_list_path \
     --dates_list years || exit $ERROR_CODE
-[ "$POW_DEBUG" = yes ] && { declare -p years; declare -p years_list_path; }
+[ "$POW_DEBUG" = yes ] && { declare -p years years_list_path; }
 
 # get year (w/ format YY)
 if [ -z "$get_arg_year" ]; then
@@ -80,21 +80,26 @@ year=$(date -d ${years[$year_id]} +%y)
     log_error "Impossible de trouver le millésime de $io_name"
     on_import_error
 }
-# fix current year w/ century!
-[ "$year" = "$(date +%y)" ] && year="$(date +%C)$year"
+# up to 2024, year coded on 4 digits
+[ $year -ge 24 ] && year="$(date +%C)$year"
 [ "$POW_DEBUG" = yes ] && { echo "year=$year (${years[$year_id]})"; }
 
-url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/7671844/table-appartenance-geo-communes-${year}[^.]*\.zip" "$years_list_path" | head --lines 1)
-[ "$POW_DEBUG" = yes ] && { echo "url=$url_data"; }
-
-[ -z "$url_data" ] && {
+io_get_property_online_available    \
+    --name $io_name                 \
+    --key URL_BASE                  \
+    --value url_base                &&
+url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/7671844/table-appartenance-geo-communes-${year}[^.]*\.zip" "$years_list_path" | head --lines 1) &&
+{
+    [ "$POW_DEBUG" = yes ] && { declare -p url_data; } || true
+} &&
+[ -n "$url_data" ] || {
     log_error "Impossible de trouver URL de $io_name"
     on_import_error
 }
-url_data="https://www.insee.fr/${url_data}"
+
+url_data="${url_base}/${url_data}"
 year_data=$(basename "$url_data")
 rm --force "$years_list_path"
-
 # fix current year w/ century!
 [ ${#year} -eq 2 ] && year="$(date +%C)$year"
 
@@ -150,10 +155,12 @@ io_history_begin \
     --date_end "${years[$year_id]}" \
     --nrows_todo 35000 \
     --id year_history_id &&
-io_download_file --url "$url_data" --output_directory "$POW_DIR_IMPORT" &&
+io_download_file \
+    --url "$url_data" \
+    --output_directory "$POW_DIR_IMPORT" &&
 year_ressource="$POW_DIR_IMPORT/$year_data" &&
 {
-    [ "$POW_DEBUG" = yes ] && { echo "year_ressource=$year_ressource"; } || true
+    [ "$POW_DEBUG" = yes ] && { declare -p year_ressource; } || true
 } &&
 import_file \
     --file_path "$year_ressource" \
@@ -241,36 +248,11 @@ import_file \
     }
 } &&
 execute_query \
-    --name ALL_ADD_COLUMN_YEAR \
-    --query "
-        ALTER TABLE fr.tmp_insee_municipality
-            ADD column millesime INTEGER DEFAULT ${year};
-        ALTER TABLE fr.tmp_insee_municipal_district
-            ADD column millesime INTEGER DEFAULT ${year};
-        ALTER TABLE fr.tmp_insee_supra
-            ADD column millesime INTEGER DEFAULT ${year};
-        " &&
-{
-    case "$io_load_mode" in
-    OVERWRITE)
-        execute_query \
-            --name TRUNCATE_DATA \
-            --query '
-                TRUNCATE TABLE fr.insee_municipality;
-                TRUNCATE TABLE fr.insee_supra;"
-                '
-        ;;
-    APPEND)
-        execute_query \
-            --name DELETE_YEAR \
-            --query "
-                DELETE FROM fr.insee_municipality
-                    WHERE millesime = '${year}';
-                DELETE FROM fr.insee_supra
-                    WHERE millesime = '${year}';"
-        ;;
-    esac
-} &&
+    --name TRUNCATE_DATA \
+    --query '
+        TRUNCATE TABLE fr.insee_municipality;
+        TRUNCATE TABLE fr.insee_supra;"
+        ' &&
 execute_query \
     --name ADMINISTRATIVE_CUTTING \
     --query "$POW_DIR_BATCH/territory_insee_hierarchy.sql" &&

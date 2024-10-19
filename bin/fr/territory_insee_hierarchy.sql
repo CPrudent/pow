@@ -5,7 +5,6 @@
 -- municipalities (except global ones, w/ districts)
 INSERT INTO fr.insee_municipality
 (
-    millesime,
     codgeo,
     libgeo,
     dep,
@@ -17,7 +16,6 @@ INSERT INTO fr.insee_municipality
 )
 (
     SELECT
-        millesime,
         "CODGEO",
         "LIBGEO",
         "DEP",
@@ -34,7 +32,6 @@ INSERT INTO fr.insee_municipality
 -- districts for Paris/Lyon/Marseille
 INSERT INTO fr.insee_municipality
 (
-    millesime,
     codgeo,
     libgeo,
     com,
@@ -47,7 +44,6 @@ INSERT INTO fr.insee_municipality
 )
 (
     SELECT
-        millesime,
         "CODGEO",
         "LIBGEO",
         "COM",
@@ -63,14 +59,12 @@ INSERT INTO fr.insee_municipality
 -- supra-territories
 INSERT INTO fr.insee_supra
 (
-    millesime,
     nivgeo,
     codgeo,
     libgeo
 )
 (
     SELECT
-        millesime,
         "NIVGEO",
         "CODGEO",
         "LIBGEO"
@@ -78,14 +72,12 @@ INSERT INTO fr.insee_supra
 );
 INSERT INTO fr.insee_supra
 (
-    millesime,
     nivgeo,
     codgeo,
     libgeo
 )
 (
     SELECT
-        millesime,
         'COM_GLOBALE_ARM',
         "CODGEO",
         "LIBGEO"

@@ -12,7 +12,6 @@ BEGIN
 END $$;
 
 CREATE TABLE IF NOT EXISTS fr.insee_municipality(
-    millesime INTEGER NOT NULL,
     codgeo VARCHAR NOT NULL,
     libgeo VARCHAR,
     com VARCHAR,
@@ -24,16 +23,29 @@ CREATE TABLE IF NOT EXISTS fr.insee_municipality(
     cv VARCHAR
 );
 
+DO $$
+BEGIN
+    IF column_exists('fr', 'insee_municipality', 'millesime') THEN
+        ALTER TABLE fr.insee_municipality DROP COLUMN millesime;
+    END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS fr.insee_supra(
-    millesime INTEGER NOT NULL,
     nivgeo VARCHAR NOT NULL,
     codgeo VARCHAR,
     libgeo VARCHAR,
     nb_com VARCHAR
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS iux_insee_municipality_codgeo_millesime ON fr.insee_municipality (codgeo, millesime);
-CREATE UNIQUE INDEX IF NOT EXISTS iux_insee_supra_nivgeo_codgeo_millesime ON fr.insee_supra (nivgeo, codgeo, millesime);
+DO $$
+BEGIN
+    IF column_exists('fr', 'insee_supra', 'millesime') THEN
+        ALTER TABLE fr.insee_supra DROP COLUMN millesime;
+    END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS iux_insee_municipality_codgeo ON fr.insee_municipality (codgeo);
+CREATE UNIQUE INDEX IF NOT EXISTS iux_insee_supra_nivgeo_codgeo ON fr.insee_supra (nivgeo, codgeo);
 
 SELECT set_table_comment(
     'fr',
