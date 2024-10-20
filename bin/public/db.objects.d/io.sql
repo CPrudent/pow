@@ -899,11 +899,11 @@ BEGIN
                 FORMAT('"%s"=>%s',
                     CONCAT(_io_depends[_i], '_t'),
                     _io_more_recents[_i] AND _io_with_differences[_i]
-                ),
+                )/*,
                 FORMAT('"%s"=>%s',
                     CONCAT(_io_depends[_i], '_i'),
                     COALESCE(_io_lasts[_j].id, 0)
-                )
+                )*/
             );
         ELSE
             _result := CONCAT_WS(',',
