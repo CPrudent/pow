@@ -293,7 +293,7 @@ BEGIN
                 22016 Île-de-Bréhat
                 85113 L'Île-d'Yeu
                 */
-                banatic_setof_epci.n_siren AS codgeo_epci_parent,
+                epci.siren AS codgeo_epci_parent,
                 /*COALESCE(*/dep_parent.codgeo/*, 'ZZZ')*/ AS codgeo_dep_parent,
                 /*COALESCE(*/reg_parent.codgeo/*, 'ZZ')*/ AS codgeo_reg_parent,
                 CASE
@@ -339,15 +339,12 @@ BEGIN
                 LEFT OUTER JOIN fr.territory_laposte
                 ON territory_laposte.nivgeo = 'CP' AND territory_laposte.codgeo = subsection.co_postal
                 -- BANATIC EPCI
-                LEFT OUTER JOIN fr.banatic_siren_insee
+                LEFT OUTER JOIN fr.gouv_epci_municipality epci
                     /* NOTE
                     les arrondissements municipaux ne sont pas présents, il faut chercher l'EPCI de la commune globale de l'arrondissement municipal
                     */
-                ON banatic_siren_insee.insee = COALESCE(commune_insee.com, commune_insee.codgeo)
-                -- BANATIC EPCI (composition)
-                LEFT OUTER JOIN fr.banatic_setof_epci
-                ON banatic_siren_insee.siren = banatic_setof_epci.siren_membre
-                    AND banatic_setof_epci.nature_juridique IN ('MET69', 'CC', 'CA', 'METRO', 'CU')
+                ON epci.insee = COALESCE(commune_insee.com, commune_insee.codgeo)
+                AND epci.nature_juridique IN ('MET69', 'CC', 'CA', 'METRO', 'CU')
                 -- DEPARTMENT
                 LEFT OUTER JOIN LATERAL (
                     SELECT
@@ -505,18 +502,25 @@ BEGIN
         IF (io_infos -> 'FR-TERRITORY-BANATIC-SET_t')::BOOLEAN THEN
             UPDATE fr.territory t SET
                 dt_reference_geo = TIMEOFDAY()::DATE,
-                codgeo_epci_parent = s.n_siren
-            FROM
-                fr.banatic_setof_epci s
-                    JOIN fr.banatic_siren_insee l ON s.siren_membre = l.siren
+                codgeo_epci_parent = e.codgeo_epci
+            FROM (
+                SELECT
+                    em.siren codgeo_epci,
+                    m.codgeo codgeo_com
+                FROM
+                    fr.gouv_epci_municipality em
+                        JOIN fr.insee_municipality m ON em.insee = COALESCE(m.com, m.codgeo)
+                WHERE
+                    em.nature_juridique IN ('MET69', 'CC', 'CA', 'METRO', 'CU')
+            ) e
             WHERE
                 (
                     t.nivgeo = municipality_subsection
-                    AND t.codgeo_com_parent = l.insee
+                    AND t.codgeo_com_parent = e.codgeo_com
                 )
                 AND
                 (
-                    t.codgeo_epci_parent IS DISTINCT FROM s.n_siren
+                    t.codgeo_epci_parent IS DISTINCT FROM e.codgeo_epci
                 )
             ;
             GET DIAGNOSTICS _nrows = ROW_COUNT;
@@ -718,9 +722,9 @@ BEGIN
     -- set name, type (EPCI level) from DGCL/BANATIC
     CALL public.log_info('Mise à jour EPCI : Nommage (source BANATIC)');
     UPDATE fr.territory
-    SET libgeo = epci.nom_du_groupement,
+    SET libgeo = epci.nom_complet,
         typgeo = epci.nature_juridique
-    FROM fr.banatic_listof_epci epci
+    FROM fr.gouv_epci epci
     WHERE territory.nivgeo = 'EPCI'
     AND territory.codgeo = epci.n_siren;
 

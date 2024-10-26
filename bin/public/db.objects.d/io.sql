@@ -301,10 +301,6 @@ BEGIN
                         codgeo
                     FROM
                         fr.insee_municipality
-                    WHERE
-                        millesime = (
-                            SELECT MAX(millesime) FROM fr.insee_municipality
-                        )
                 ) x
 
                 FULL OUTER JOIN
@@ -337,10 +333,6 @@ BEGIN
                         libgeo
                     FROM
                         fr.insee_supra
-                    WHERE
-                        millesime = (
-                            SELECT MAX(millesime) FROM fr.insee_municipality
-                        )
                 ) x
 
                 FULL OUTER JOIN
@@ -384,10 +376,6 @@ BEGIN
                             check_exists => FALSE
                         ) to_now
                 WHERE
-                    millesime = (
-                        SELECT MAX(millesime) FROM fr.insee_municipality
-                    )
-                    AND
                     to_now.date_geography != ''',
                 _last_io,
                 '''::DATE,
@@ -397,13 +385,13 @@ BEGIN
             '
                 (
                     SELECT
-                        n_siren codgeo,
-                        nom_du_groupement libgeo,
-                        nature_juridique typgeo
+                        siren_epci codgeo,
+                        nom_complet libgeo,
+                        nj_epci2024 typgeo
                     FROM
-                        fr.banatic_listof_epci
+                        fr.gouv_epci
                     WHERE
-                        nature_juridique IN (''MET69'', ''CC'', ''CA'', ''METRO'', ''CU'')
+                        nj_epci2024 IN (''MET69'', ''CC'', ''CA'', ''METRO'', ''CU'')
                 ) x
 
                 FULL OUTER JOIN
@@ -430,30 +418,17 @@ BEGIN
                 )
             '
         WHEN 'FR-TERRITORY-BANATIC-SET' THEN
+            -- w/ district and w/o global municipality
             '
                 (
                     SELECT
-                        s.n_siren codgeo_epci,
-                        c.codgeo codgeo_com
+                        em.siren codgeo_epci,
+                        m.codgeo codgeo_com
                     FROM
-                        fr.banatic_setof_epci s
-                            JOIN fr.banatic_siren_insee l ON s.siren_membre = l.siren
-                            JOIN fr.territory cg ON cg.codgeo = l.insee AND cg.nivgeo = ''COM_GLOBALE_ARM''
-                            JOIN fr.territory c ON c.codgeo_com_globale_arm_parent = cg.codgeo AND c.nivgeo = ''COM''
+                        fr.gouv_epci_municipality em
+                            JOIN fr.insee_municipality m ON em.insee = COALESCE(m.com, m.codgeo)
                     WHERE
-                        s.nature_juridique IN (''MET69'', ''CC'', ''CA'', ''METRO'', ''CU'')
-                    UNION
-                    SELECT
-                        s.n_siren codgeo_epci,
-                        l.insee codgeo_com
-                    FROM
-                        fr.banatic_setof_epci s
-                            JOIN fr.banatic_siren_insee l ON s.siren_membre = l.siren
-                    WHERE
-                        s.nature_juridique IN (''MET69'', ''CC'', ''CA'', ''METRO'', ''CU'')
-                        AND
-                        -- not global municipality
-                        l.insee !~ ''^(13055|69123|75056)$''
+                        em.nature_juridique IN (''MET69'', ''CC'', ''CA'', ''METRO'', ''CU'')
                 ) x
 
                 FULL OUTER JOIN
@@ -470,7 +445,6 @@ BEGIN
                         -- exclude 9[789] and 4 islands (last ones)
                         --t.codgeo !~ ''^(97[578]|9[89]|29083|29155|22016|85113)''
                         t.codgeo_epci_parent IS NOT NULL
-
                 ) t
 
                 ON (x.codgeo_epci, x.codgeo_com) = (t.code_epci, t.code_com)

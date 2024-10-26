@@ -40,8 +40,8 @@ bash_args \
 io_name=FR-TERRITORY
 io_date=$(date +%F)
 io_force=$get_arg_force
-declare -A io_hash
 
+declare -A io_hash &&
 set_env --schema_name fr && {
     [ "$get_arg_depends" = yes ] && {
         $POW_DIR_BATCH/territory_insee.sh --force $io_force &&

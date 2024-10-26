@@ -117,6 +117,13 @@ execute_query \
             ON fr.gouv_epci_municipality(siren_membre)
             WHERE nature_juridique IN ('MET69','CC','CA','METRO','CU');
         " &&
+execute_query \
+    --name RENAME_COLUMNS \
+    --query "
+        ALTER TABLE fr.gouv_epci RENAME nj_epci${year} TO nature_juridique;
+        ALTER TABLE fr.gouv_epci RENAME fisc_epci${year} TO fisc;
+        ALTER TABLE fr.gouv_epci RENAME nb_com_${year} TO nb_communes;
+        " &&
 rm \
     "$POW_DIR_IMPORT/gouv_epci_${year}.xlsx" \
     "$POW_DIR_IMPORT/gouv_epci_municipality_${year}.xlsx" &&
