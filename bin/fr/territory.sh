@@ -76,7 +76,7 @@ _not_ok=''
 # check up-to-date dependences
 for _io in INSEE IGN LAPOSTE-AREA; do
     [ -n "$_not_ok" ] && _not_ok+=", "
-    is_yes --var io_hash[FR-TERRITORY-${_io}_t] && _not_ok+=$_io
+    is_yes --var io_hash[FR-TERRITORY-${_io}-EVENT_t] && _not_ok+=$_io
 done
 [ -n "$_not_ok" ] && {
     log_error "IO $_not_ok non à jour des évènements Commune!"

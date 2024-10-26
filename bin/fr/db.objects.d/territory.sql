@@ -726,7 +726,7 @@ BEGIN
         typgeo = epci.nature_juridique
     FROM fr.gouv_epci epci
     WHERE territory.nivgeo = 'EPCI'
-    AND territory.codgeo = epci.n_siren;
+    AND territory.codgeo = epci.siren_epci;
 
     -- set name (ARR & CV & DEP & REG levels) from INSEE
     CALL public.log_info('Mise à jour ARR, CV, DEP, REG : Nommage (source INSEE)');

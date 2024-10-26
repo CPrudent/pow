@@ -378,7 +378,7 @@ BEGIN
                 WHERE
                     to_now.date_geography != ''',
                 _last_io,
-                '''::DATE,
+                '''::DATE
                 '
             )
         WHEN 'FR-TERRITORY-BANATIC-LIST' THEN
@@ -387,11 +387,11 @@ BEGIN
                     SELECT
                         siren_epci codgeo,
                         nom_complet libgeo,
-                        nj_epci2024 typgeo
+                        nature_juridique typgeo
                     FROM
                         fr.gouv_epci
                     WHERE
-                        nj_epci2024 IN (''MET69'', ''CC'', ''CA'', ''METRO'', ''CU'')
+                        nature_juridique IN (''MET69'', ''CC'', ''CA'', ''METRO'', ''CU'')
                 ) x
 
                 FULL OUTER JOIN
@@ -670,7 +670,7 @@ BEGIN
                     -- new point from last IO
                     p.pdi_dt_modification > ''',
                 _last_io,
-                '''::TIMESTAMP,
+                '''::TIMESTAMP
                     AND
                     -- valid point
                     p.fl_active AND p.fl_diffusable AND p.pdi_etat = 1 AND p.pdi_visible
