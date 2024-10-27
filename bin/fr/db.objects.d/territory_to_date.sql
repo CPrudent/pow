@@ -1272,7 +1272,6 @@ $func$ LANGUAGE plpgsql;
 /* TEST
 
 INSERT INTO fr.wikipedia_municipality_event (
-    millesime,
     cn_nom,
     cn_code_insee,
     ac_noms,
@@ -1280,7 +1279,6 @@ INSERT INTO fr.wikipedia_municipality_event (
     dt_effet
 )
 VALUES (
-    '2020'
     'Bordignac'
     '33063'
     ARRAY['Bordeaux', 'Mérignac']

@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS public.territory (
     code CHARACTER VARYING NOT NULL,
     name CHARACTER VARYING,
     population INT,
-    area INT,
+    area NUMERIC(10, 2),
     z_min INT,
     z_max INT,
     codes_adjoining VARCHAR[],                -- list of nearing territories (same level)
@@ -36,6 +36,21 @@ BEGIN
     END IF;
     IF NOT column_exists('public', 'territory', 'z_max') THEN
         ALTER TABLE public.territory ADD COLUMN z_max INTEGER;
+    END IF;
+
+    -- area (km2)
+    IF column_exists('public', 'territory', 'area')
+        AND (
+            SELECT UPPER(data_type)
+            FROM information_schema.columns
+            WHERE
+                table_schema = 'public'
+                AND
+                table_name = 'territory'
+                AND
+                column_name = 'area'
+        ) != 'NUMERIC' THEN
+        ALTER TABLE public.territory ALTER COLUMN area TYPE NUMERIC(10, 2);
     END IF;
 END $$;
 

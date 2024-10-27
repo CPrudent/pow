@@ -77,6 +77,8 @@ DECLARE
     _nrows_affected INTEGER;
     _context TEXT;
     _message VARCHAR;
+    _total INTEGER;
+    _current INTEGER := 1;
 BEGIN
     CALL fr.check_municipality_subsection(municipality_subsection => municipality_subsection);
 
@@ -168,6 +170,14 @@ BEGIN
     END IF;
 
     IF part_todo & 4 = 4 THEN
+        CALL public.log_info('Init des contours de communes avec subdivisions');
+
+        -- nof cases
+        SELECT COUNT(1)
+        INTO _total
+        FROM tmp_municipality_with_many_subsections
+        ;
+
         -- many subsections : divide contour between each municipality_subsection (VORONOI w/ delivery points)
         FOR _municipality_with_many_subsections IN (
             SELECT
@@ -196,7 +206,13 @@ BEGIN
         )
         LOOP
             BEGIN
-                CALL public.log_info('Init des contours avec commune partielle : ' || _municipality_with_many_subsections.co_insee_commune);
+                _message := 'INSEE %s %s/%s (%s%)';
+                CALL public.log_info(FORMAT(_message,
+                    _municipality_with_many_subsections.co_insee_commune,
+                    _current,
+                    _total,
+                    ROUND(_current::NUMERIC / _total)
+                ));
 
                 -- set of all delivery points (PDI) for the current municipality
                 CREATE TEMPORARY TABLE IF NOT EXISTS tmp_geom_delivery_point(
@@ -445,6 +461,8 @@ BEGIN
                     SQLERRM,
                     _context;
             END;
+
+            _current := _current +1;
         END LOOP;
     END IF;
 
@@ -630,11 +648,6 @@ BEGIN
     IF part_todo & 1 = 1 THEN
         CALL fr.drop_territory_index(drop_case => 'ONLY_GEOM_NATIVE');
 
-        CALL public.log_info(
-            message => 'Commande SH de suivi : watch -d -c "grep ''contours avec commune partielle'' $POW_DIR_TMP/FR_TERRITORY_GEOMETRY.notice.log | wc -l"',
-            stamped => FALSE
-        );
-
         CALL fr.set_municipality_subsection_geometry(
             municipality_subsection => municipality_subsection,
             location_min => location_min
@@ -682,12 +695,12 @@ BEGIN
     -- PART/4 : eval area (municipality_subsection first), then SUPRA for (simplified geometry, area)
     --
     IF part_todo & 8 = 8 THEN
-        -- unit= hm2 (1/100 km2)
+        -- unit= m2, divide by 1O**(3*2) to obtain km2
         -- see: https://gis.stackexchange.com/questions/169422/how-does-st-area-in-postgis-work
 
         CALL public.log_info('calcul : (superficie)');
         UPDATE fr.territory
-        SET superficie = ROUND(ST_Area(ST_Transform(gm_contour_natif, 4326)::GEOGRAPHY)/10000)
+        SET superficie = ROUND(ST_Area(ST_Transform(gm_contour_natif, 4326)::GEOGRAPHY)/1000000, 2)
         WHERE nivgeo = municipality_subsection;
 
         COMMIT;

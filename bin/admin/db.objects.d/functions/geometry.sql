@@ -402,18 +402,18 @@ $$ LANGUAGE plpgsql;
 /* TEST
 --> Découpage en 4
 SELECT  ST_SplitFour(
-        -- extent COM_CP (France Métropolitaine) except Corse
-        (SELECT ST_Extent(gm_contour) AS geom FROM territory WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94')
-        )
+    -- extent COM_CP (France Métropolitaine) except Corse
+    (SELECT ST_Extent(gm_contour) AS geom FROM territory WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94')
+    )
 
 --> Découpage en 4 * 4 = 16
 SELECT  ST_SplitFour(ST_SplitFour(
-        (SELECT ST_Extent(gm_contour) AS geom FROM territory WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94')
-        ))
+    (SELECT ST_Extent(gm_contour) AS geom FROM territory WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94')
+    ))
 
 WITH split16 AS (
     SELECT 	ST_SplitFour(ST_SplitFour(
-            (SELECT ST_Extent(gm_contour) AS geom FROM territory WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94')
+        (SELECT ST_Extent(gm_contour) AS geom FROM territory WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94')
     )) AS bbox
 )
 SELECT
@@ -438,21 +438,20 @@ END
 $$ LANGUAGE plpgsql;
 
 /* TEST
-SELECT  ST_SplitFour(
-        -- _rectangle of extent COM_CP (France Métropolitaine) except Corse
-        ST_SetSRID(
-            ST_MakePolygon(
-                ST_ExteriorRing(
-                    (SELECT ST_Extent(gm_contour) AS geom FROM territory WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94')
-                )
-            ),
-            3857
-        )
+SELECT ST_SplitFour(
+    -- rectangle of extent COM_CP (France Métropolitaine) except Corse
+    ST_SetSRID(
+        ST_MakePolygon(
+            ST_ExteriorRing(
+                (SELECT ST_Extent(gm_contour) AS geom FROM territory WHERE nivgeo = 'COM_CP' AND codgeo_metropole_dom_tom_parent = 'FRM' AND codgeo_reg_parent != '94')
+            )
+        ),
+        3857
     )
+)
  */
 
 -- BBOX for all parts of France (according to SRID)
-SELECT public.drop_all_functions_if_exists('public', 'coordIsInSridBounds');
 SELECT public.drop_all_functions_if_exists('public', 'is_valid_geometry_in_SRID_bounds');
 -- from (x, y, SRID)
 CREATE OR REPLACE FUNCTION is_valid_geometry_in_SRID_bounds(
@@ -531,7 +530,7 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
-/* TESTS
+/* TEST
 DROP TABLE IF EXISTS tmp_pdi_srid_out_bounds;
 CREATE TABLE tmp_pdi_srid_out_bounds AS
     SELECT * FROM geopad.pdi
@@ -968,7 +967,6 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
-
 /*
  * seuil de 1 millième d'unité (du SRID donné des géométries à comparer) par défaut
  * si 3857, en mètre
@@ -979,7 +977,7 @@ SELECT public.drop_all_functions_if_exists('public', 'ST_Equals_with_Threshold')
 CREATE OR REPLACE FUNCTION public.ST_Equals_with_Threshold(
     geom1 GEOMETRY,
     geom2 GEOMETRY,
-    distance NUMERIC DEFAULT 0.001,
+    threshold NUMERIC DEFAULT 0.001,
     reference VARCHAR DEFAULT 'ONE'           -- 'TWO' if second
 )
 RETURNS BOOLEAN AS
@@ -987,19 +985,37 @@ $func$
 DECLARE
     _srid1 INTEGER := ST_SRID(geom1);
     _srid2 INTEGER := ST_SRID(geom2);
+    _dim1 INTEGER := ST_Dimension(geom1);
+    _dim2 INTEGER := ST_Dimension(geom2);
+    _area1 NUMERIC;
+    _area2 NUMERIC;
 BEGIN
-	RETURN
-        CASE
-        WHEN _srid1  = _srid2 THEN
-            (ST_Distance(geom1, geom2) <= distance)
-        WHEN _srid1 != _srid2 THEN
+    IF _dim1 != _dim2 THEN
+        RAISE 'geometry comparison between 2 objects of different dimension!';
+    END IF;
+
+    IF _dim1 = 0 THEN
+        RETURN
             CASE
-            WHEN reference = 'ONE' THEN
-                (ST_Distance(geom1, ST_Transform(geom2, _srid1)) <= distance)
-            WHEN reference = 'TWO' THEN
-                (ST_Distance(ST_Transform(geom1, _srid2), geom2) <= distance)
-            END
-        END;
+            WHEN _srid1  = _srid2 THEN
+                (ST_Distance(geom1, geom2) <= threshold)
+            WHEN _srid1 != _srid2 THEN
+                CASE
+                WHEN reference = 'ONE' THEN
+                    (ST_Distance(geom1, ST_Transform(geom2, _srid1)) <= threshold)
+                WHEN reference = 'TWO' THEN
+                    (ST_Distance(ST_Transform(geom1, _srid2), geom2) <= threshold)
+                END
+            END;
+    ELSIF _dim1 = 2 THEN
+        _area1 := ST_Area(ST_Transform(geom1, 4326)::GEOGRAPHY);
+        _area2 := ST_Area(ST_Transform(geom2, 4326)::GEOGRAPHY);
+
+        RETURN
+            (ABS(_area1 - _area2) <= threshold);
+    ELSE
+        RETURN FALSE;
+    END IF;
 END
 $func$ LANGUAGE plpgsql;
 

@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS fr.territory (
     libgeo CHARACTER VARYING,
     typgeo CHARACTER VARYING,
     population BIGINT,
-    superficie BIGINT,
+    superficie NUMERIC(10, 2),
     z_min INT,
     z_max INT,
     gm_contour_natif GEOMETRY, --Géographie native (non simplifiée, projetée dans un système local)
@@ -41,6 +41,21 @@ BEGIN
     END IF;
     IF NOT column_exists('fr', 'territory', 'z_max') THEN
         ALTER TABLE fr.territory ADD COLUMN z_max INTEGER;
+    END IF;
+
+    -- area (km2)
+    IF column_exists('fr', 'territory', 'superficie')
+        AND (
+            SELECT UPPER(data_type)
+            FROM information_schema.columns
+            WHERE
+                table_schema = 'fr'
+                AND
+                table_name = 'territory'
+                AND
+                column_name = 'superficie'
+        ) != 'NUMERIC' THEN
+        ALTER TABLE fr.territory ALTER COLUMN superficie TYPE NUMERIC(10, 2);
     END IF;
 END $$;
 
@@ -479,9 +494,6 @@ BEGIN
                 (
                     t.nivgeo = municipality_subsection
                     AND t.codgeo_com_parent = insee.codgeo
-                    AND insee.millesime = (
-                        SELECT MAX(millesime) FROM fr.insee_municipality
-                    )
                 )
                 AND
                 (
@@ -736,7 +748,7 @@ BEGIN
     WHERE territory.nivgeo IN ('ARR', 'CV', 'DEP', 'REG')
     AND insee.nivgeo = territory.nivgeo
     AND insee.codgeo = territory.codgeo
-    AND insee.millesime = (SELECT MAX(millesime) FROM fr.insee_supra);
+    ;
 
     -- set name (territory overseas)
     CALL fr.set_territory_exceptions(usecase => 'NAME');
