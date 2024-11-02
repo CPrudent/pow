@@ -66,7 +66,8 @@ CREATE OR REPLACE PROCEDURE fr.set_municipality_subsection_geometry(
     part_todo INT DEFAULT 1 | 2 | 4 | 8,
     municipality_subsection VARCHAR DEFAULT 'ZA',
     location_min INT DEFAULT 4,
-    department_test VARCHAR DEFAULT NULL
+    department_test VARCHAR DEFAULT NULL,
+    fix BOOLEAN DEFAULT FALSE
 )
 AS
 $proc$
@@ -74,7 +75,7 @@ DECLARE
     _municipality_with_many_subsections RECORD;
     _uniq VARCHAR;
     _nof INTEGER;
-    _nrows_affected INTEGER;
+    _nrows INTEGER;
     _context TEXT;
     _message VARCHAR;
     _total INTEGER;
@@ -84,7 +85,7 @@ BEGIN
 
     IF part_todo & 1 = 1 THEN
         -- reset
-        CALL public.log_info('Reset des contours natifs ' || municipality_subsection);
+        CALL public.log_info('Reset contours natifs ' || municipality_subsection);
         UPDATE fr.territory
         SET gm_contour_natif = NULL
         WHERE nivgeo = municipality_subsection
@@ -92,52 +93,82 @@ BEGIN
         AND (department_test IS NULL OR territory.codgeo_dep_parent = department_test);
     END IF;
 
-    CALL public.log_info('Identification des Communes multi-' || municipality_subsection);
-    DROP TABLE IF EXISTS tmp_municipality_with_many_subsections;
-    CREATE TEMPORARY TABLE tmp_municipality_with_many_subsections AS (
-        SELECT
-            za.codgeo_com_parent co_insee_commune,
-            COUNT(*) AS nb_subsections,
-            CASE
-                WHEN municipality_subsection = 'ZA' THEN FIRST(za.codgeo)
-                WHEN municipality_subsection = 'COM_CP' THEN FIRST(za.codgeo_cp_parent)
-            END first_subsection
-        FROM fr.territory za
-        WHERE
-            nivgeo = municipality_subsection
-            AND
-            --ayant une commune IGN = un contour commune IGN
-            EXISTS (
-                SELECT 1 FROM (
-                    SELECT
-                        insee_com AS codgeo
+    -- trick to work w/ already created table
+    IF NOT fix THEN
+        CALL public.log_info('Création INSEE, infra (avec PDI)');
+        DROP TABLE IF EXISTS tmp_municipality_subsection_with_delivery;
+        CREATE TEMPORARY TABLE tmp_municipality_subsection_with_delivery AS (
+            WITH
+            municipality_subsection AS (
+                SELECT DISTINCT
+                    co_insee_commune,
+                    CASE
+                        WHEN municipality_subsection = 'ZA' THEN co_cea
+                        WHEN municipality_subsection = 'COM_CP' THEN co_postal
+                    END subsection
+                FROM
+                    fr.laposte_address_area
+                WHERE
+                    fl_active
+                    AND (
+                        department_test IS NULL
+                        OR
+                        co_insee_departement = department_test
+                    )
+            )
+            SELECT *
+            FROM
+                municipality_subsection ms
+            WHERE
+                EXISTS(
+                    SELECT 1
                     FROM
-                        fr.ign_municipality
+                        fr.delivery_point_view dp
                     WHERE
-                        insee_com NOT IN ('75056', '13055', '69123')
-                    UNION
-                    SELECT
-                        insee_arm
-                    FROM
-                        fr.ign_municipal_district
-                ) AS commune_ign
-                WHERE commune_ign.codgeo = za.codgeo_com_parent
-            )
-            AND (
-                department_test IS NULL
-                OR
-                za.codgeo_dep_parent = department_test
-            )
-        GROUP BY za.codgeo_com_parent
-        HAVING COUNT(*) > 1
-    );
-    CREATE UNIQUE INDEX ON tmp_municipality_with_many_subsections (co_insee_commune);
+                        fl_active
+                        AND fl_diffusable
+                        AND pdi_etat = 1
+                        AND pdi_visible
+                        -- at least street-center (=4)
+                        AND pdi_no_type_localisation_coord >= location_min
+                        AND pdi_coord_native IS NOT NULL
+
+                        AND dp.co_insee_commune = ms.co_insee_commune
+                        AND ms.subsection = CASE
+                            WHEN municipality_subsection = 'ZA' THEN dp.co_adr_za
+                            WHEN municipality_subsection = 'COM_CP' THEN dp.co_postal
+                            END
+                )
+            );
+        GET DIAGNOSTICS _nrows = ROW_COUNT;
+        CALL public.log_info('Total #' || _nrows);
+    END IF;
 
     IF part_todo & 2 = 2 THEN
-        -- only 1 municipality_subsection : same contour as municipality
-        CALL public.log_info('Init des contours de communes entières');
-        UPDATE fr.territory
-        SET gm_contour_natif = commune_ign.geom
+        -- only 1 subsection : same contour as municipality
+        -- w/ delivery points (well known as PDI)
+        CALL public.log_info('INSEE avec 1 INFRA');
+        WITH
+        municipality_only_one_subsection AS (
+            SELECT
+                co_insee_commune
+            FROM
+                tmp_municipality_subsection_with_delivery
+            GROUP BY
+                co_insee_commune
+            HAVING
+                COUNT(*) = 1
+        ),
+        municipality_subsection_only_one AS (
+            SELECT
+                msd.co_insee_commune,
+                msd.subsection
+            FROM
+                tmp_municipality_subsection_with_delivery msd
+                    JOIN municipality_only_one_subsection m1s ON msd.co_insee_commune = m1s.co_insee_commune
+        )
+        UPDATE fr.territory t
+        SET gm_contour_natif = im.geom
         FROM (
             SELECT
                 insee_com AS codgeo,
@@ -152,25 +183,48 @@ BEGIN
                 geom
             FROM
                 fr.ign_municipal_district
-        ) AS commune_ign
+        ) AS im
+            JOIN municipality_subsection_only_one m1s
+            ON im.codgeo = m1s.co_insee_commune
         WHERE
-            nivgeo = municipality_subsection
+            t.nivgeo = municipality_subsection
             AND
-            codgeo_com_parent = commune_ign.codgeo
-            AND
-            NOT EXISTS (
-                SELECT 1 FROM tmp_municipality_with_many_subsections
-                WHERE tmp_municipality_with_many_subsections.co_insee_commune = territory.codgeo_com_parent
-            )
-            AND (
-                department_test IS NULL
-                OR
-                codgeo_dep_parent = department_test
-            );
+            t.codgeo = m1s.subsection
+            ;
+
+        GET DIAGNOSTICS _nrows = ROW_COUNT;
+        CALL public.log_info('Total #' || _nrows);
     END IF;
 
     IF part_todo & 4 = 4 THEN
-        CALL public.log_info('Init des contours de communes avec subdivisions');
+        CALL public.log_info('INSEE avec n INFRAs');
+
+        DROP TABLE IF EXISTS tmp_municipality_with_many_subsections;
+        CREATE TEMPORARY TABLE tmp_municipality_with_many_subsections AS (
+        WITH
+        municipality_only_one_subsection AS (
+            SELECT
+                co_insee_commune
+            FROM
+                tmp_municipality_subsection_with_delivery
+            GROUP BY
+                co_insee_commune
+            HAVING
+                COUNT(*) = 1
+        )
+        SELECT DISTINCT
+            co_insee_commune
+        FROM
+            tmp_municipality_subsection_with_delivery mns
+        WHERE
+            NOT EXISTS(
+                SELECT 1
+                FROM
+                    municipality_only_one_subsection m1s
+                WHERE
+                    m1s.co_insee_commune = mns.co_insee_commune
+            )
+        );
 
         -- nof cases
         SELECT COUNT(1)
@@ -178,14 +232,12 @@ BEGIN
         FROM tmp_municipality_with_many_subsections
         ;
 
-        -- many subsections : divide contour between each municipality_subsection (VORONOI w/ delivery points)
+        -- many subsections : divide contour between each subsection (VORONOI w/ delivery points)
         FOR _municipality_with_many_subsections IN (
             SELECT
-                tmp_municipality_with_many_subsections.co_insee_commune,
-                tmp_municipality_with_many_subsections.nb_subsections,
-                tmp_municipality_with_many_subsections.first_subsection,
-                commune_ign.geom AS gm_contour_natif,
-                ST_SRID(commune_ign.geom) AS srid
+                co_insee_commune,
+                im.geom AS gm_contour_natif,
+                ST_SRID(im.geom) AS srid
             FROM tmp_municipality_with_many_subsections
             INNER JOIN (
                 SELECT
@@ -201,20 +253,20 @@ BEGIN
                     geom
                 FROM
                     fr.ign_municipal_district
-            ) AS commune_ign ON commune_ign.codgeo = tmp_municipality_with_many_subsections.co_insee_commune
+            ) AS im ON im.codgeo = co_insee_commune
             ORDER BY 1
         )
         LOOP
             BEGIN
-                _message := 'INSEE %s %s/%s (%s%)';
+                _message := 'INSEE %s %s/%s (%s%%)';
                 CALL public.log_info(FORMAT(_message,
                     _municipality_with_many_subsections.co_insee_commune,
                     _current,
                     _total,
-                    ROUND(_current::NUMERIC / _total)
+                    ROUND((_current::NUMERIC / _total) * 100)
                 ));
 
-                -- set of all delivery points (PDI) for the current municipality
+                -- set of all delivery points (PDI) for current municipality
                 CREATE TEMPORARY TABLE IF NOT EXISTS tmp_geom_delivery_point(
                     geom GEOMETRY,
                     subsection_id VARCHAR,
@@ -247,64 +299,6 @@ BEGIN
                         AND pdi_no_type_localisation_coord >= location_min
                         AND pdi_coord_native IS NOT NULL
                 );
-
-                SELECT COUNT(DISTINCT subsection_id), NULLIF(UNIQUE_AGG(subsection_id), 'INIT_VALUE')
-                INTO _nof, _uniq
-                FROM tmp_geom_delivery_point;
-
-                -- number of subsections different from waited one
-                IF _nof != _municipality_with_many_subsections.nb_subsections THEN
-                    IF _nof = 0 THEN
-                        RAISE NOTICE 'INFO : 0 % avec des points adresses sur la commune %, alors qu''on en attendait plusieurs',
-                            municipality_subsection,
-                            _municipality_with_many_subsections.co_insee_commune;
-                        -- set contour of municipality to first municipality_subsection
-                        UPDATE fr.territory
-                        SET gm_contour_natif = _municipality_with_many_subsections.gm_contour_natif
-                        WHERE
-                            nivgeo = municipality_subsection
-                            AND
-                            codgeo = CASE
-                                WHEN municipality_subsection = 'ZA' THEN
-                                    _municipality_with_many_subsections.first_subsection
-                                WHEN municipality_subsection = 'COM_CP' THEN
-                                    CONCAT_WS('-',
-                                        _municipality_with_many_subsections.co_insee_commune,
-                                        _municipality_with_many_subsections.first_subsection
-                                    )
-                                END;
-
-                        CONTINUE;
-                    ELSIF _nof = 1 THEN
-                        RAISE NOTICE 'INFO : 1 % (%) avec des points adresses sur la commune %, alors qu''on en attendait %',
-                            municipality_subsection,
-                            _uniq,
-                            _municipality_with_many_subsections.co_insee_commune,
-                            _municipality_with_many_subsections.nb_subsections;
-                        -- set contour of municipality to uniq municipality_subsection
-                        UPDATE fr.territory
-                        SET gm_contour_natif = _municipality_with_many_subsections.gm_contour_natif
-                        WHERE
-                            codgeo = CASE
-                                WHEN municipality_subsection = 'ZA' THEN
-                                    _uniq
-                                WHEN municipality_subsection = 'COM_CP' THEN
-                                    CONCAT_WS('-',
-                                        _municipality_with_many_subsections.co_insee_commune,
-                                        _uniq
-                                    )
-                                END;
-
-                        CONTINUE;
-                    -- less or more : need to evaluate contour for each
-                    ELSE
-                        RAISE NOTICE 'INFO : % % avec des points adresses sur la commune %, alors qu''on en attendait %',
-                            _nof,
-                            municipality_subsection,
-                            _municipality_with_many_subsections.co_insee_commune,
-                            _municipality_with_many_subsections.nb_subsections;
-                    END IF;
-                END IF;
 
                 CREATE INDEX ix_tmp_geom_delivery_point_geom ON tmp_geom_delivery_point USING GIST(geom);
 
@@ -454,7 +448,7 @@ BEGIN
 
             EXCEPTION WHEN OTHERS THEN
                 GET STACKED DIAGNOSTICS _context = PG_EXCEPTION_CONTEXT;
-                RAISE '% : Erreur sur traitement % pour la commune % : % (%)',
+                RAISE '% : Erreur % sur INSEE % : % (%)',
                     TO_CHAR(clock_timestamp(), 'HH24:MI:SS'),
                     municipality_subsection,
                     _municipality_with_many_subsections.co_insee_commune,
@@ -473,11 +467,9 @@ BEGIN
         test w/ a department can be KO for municipalities near another missing department !
          */
         FOR _municipality_with_many_subsections IN (
-            SELECT
-                co_insee_commune,
-                nb_subsections
+            SELECT co_insee_commune
             FROM tmp_municipality_with_many_subsections
-            ORDER BY co_insee_commune
+            ORDER BY 1
         )
         LOOP
             /* NOTE
@@ -548,10 +540,10 @@ BEGIN
                 -- If no snapping occurs then the input geometry is returned unchanged.
                 AND NOT ST_Equals(territory.gm_contour_natif, snap_territory_around.gm_contour_natif);
 
-            GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
+            GET DIAGNOSTICS _nrows = ROW_COUNT;
             _message := ' traité';
-            IF _nrows_affected > 1 THEN _message := _message || 's'; END IF;
-            CALL public.log_info(CONCAT('ST_Snap autour de ', _municipality_with_many_subsections.co_insee_commune, ' : #', _nrows_affected, _message));
+            IF _nrows > 1 THEN _message := _message || 's'; END IF;
+            CALL public.log_info(CONCAT('ST_Snap autour ', _municipality_with_many_subsections.co_insee_commune, ' : #', _nrows, _message));
         END LOOP;
     END IF;
 
@@ -589,61 +581,16 @@ DECLARE
     _municipality_with_many_zipcodes RECORD;
     _uniq_zipcode CHAR(5);
     _nof_zipcodes INTEGER;
-    _nrows_affected INTEGER;
+    _nrows INTEGER;
     _context TEXT;
     _message VARCHAR;
 BEGIN
     CALL fr.check_municipality_subsection(municipality_subsection => municipality_subsection);
-    CALL public.log_info('Début du calcul des Contours');
+    CALL public.log_info('Début Calcul des contours');
 
     --
-    -- PART/1 : initialize native geometry for based level (as COM_CP)
+    -- PART/1 : initialize native geometry for based level (as COM_CP/ZA)
     --
-
-    /*
-    exec: 4/2023 with IGN of 3/2023
-
-    no actives PDI (ok IGN: +IGN) for these municipalities (w/ 2 zipcodes)
-    last 3 columns are: number of addresses, nof OFF points, nof ON points
-        +IGN  2  01104-01200  2017-11-18  01200 (CHEZERY FORENS)        1  0  0
-        +IGN  2  01269-01460  2017-11-18  01460 (NANTUA)                5  0  0
-        +IGN  2  01313-01630  2017-11-18  01630 (PREVESSIN MOENS)       0  0  0
-        +IGN  2  04074-04270  2017-11-18  04270 (ENTRAGES)              33  0  0
-        +IGN  2  04109-04310  2017-11-18  04310 (MALLEFOUGASSE AUGES)   0  0  0
-        +IGN  2  04204-04270  2017-11-18  04270 (SENEZ)                 1  0  0
-        +IGN  2  05133-05240  2017-11-18  05240 (ST CHAFFREY)           0  0  0
-        +IGN  2  07140-07300  2017-11-18  07300 (LEMPS)                 0  0  0
-        +IGN  2  07198-07800  2017-11-18  07800 (ROMPON)                6  3  0
-        +IGN  2  13019-13170  2017-11-18  13170 (CABRIES)               0  0  0
-        +IGN  2  13102-13700  2018-07-07  13700 (ST VICTORET)           0  0  0
-        +IGN  2  18101-18350  2017-11-18  18350 (GERMIGNY L EXEMPT)     0  0  0
-        +IGN  2  18134-36260  2017-11-18  36260 (LURY SUR ARNON)        0  0  0
-        +IGN  2  24364-24120  2020-04-04  24120 (COLY ST AMAND)         191  0  0
-        +IGN  2  26067-26340  2017-11-18  26340 (CHALANCON)             0  0  0
-        +IGN  2  2A249-20100  2017-11-18  20100 (PROPRIANO)             0  0  0
-        +IGN  2  2B043-20226  2017-11-18  20226 (BRANDO)                0  0  0
-        +IGN  2  2B049-20260  2017-11-18  20260 (CALENZANA)             2  1  0
-        +IGN  2  2B314-20217  2017-11-18  20217 (SANTO PIETRO DI TENDA) 2  19  0
-        +IGN  2  32121-32130  2017-11-18  32130 (ENDOUFIELLE)           0  0  0
-        +IGN  2  34209-34450  2017-11-18  34450 (PORTIRAGNES)           0  0  0
-        +IGN  2  44074-44620  2017-11-18  44620 (INDRE)                 0  0  0
-        +IGN  2  45269-45380  2017-11-18  45380 (ST AY)                 0  0  0
-        +IGN  2  73013-73530  2017-11-18  73530 (ALBIEZ MONTROND)       0  0  0
-        +IGN  2  73227-73600  2022-10-15  73600 (COURCHEVEL)            0  0  0
-        +IGN  2  74208-74480  2018-03-17  74480 (PASSY)                 0  0  0
-        +IGN  2  91665-91140  2017-11-18  91140 (LA VILLE DU BOIS)      0  0  0
-        +IGN  2  95120-95760  2017-11-18  95760 (BUTRY SUR OISE)        0  0  0
-        +IGN  2  97101-97142  2017-11-18  97142 (LES ABYMES)            181  93  0
-        +IGN  2  97301-97353  2017-11-18  97353 (REGINA)                13  0  0
-    no GEOMETRY (ko IGN: -IGN)
-    particular case: 27676 : 01/01/2023 : Les Trois Lacs est rétablie (IGN not up todate!)
-        -IGN  1  27676-27700  2022-12-11  27700 (LES TROIS LACS)        509  14  448
-        -IGN  1  27676-27940  2022-12-11  27940 (LES TROIS LACS)        415  61  371
-        -IGN  1  97501-97500  2017-11-18  97500 (ST PIERRE ET MIQUELON) 6  0  0
-        -IGN  1  97502-97500  2017-11-18  97500 (ST PIERRE ET MIQUELON) 30  0  0
-        -IGN  1  97701-97133  2017-11-18  97133 (ST BARTHELEMY)         1281  0  1230
-        -IGN  1  97801-97150  2017-11-18  97150 (ST MARTIN)             7045  28  6727
-     */
 
     IF part_todo & 1 = 1 THEN
         CALL fr.drop_territory_index(drop_case => 'ONLY_GEOM_NATIVE');
@@ -661,14 +608,14 @@ BEGIN
         CALL fr.drop_territory_index(drop_case => 'ONLY_GEOM_WORLD');
 
         CALL public.log_info(
-            message => 'Commande SH de suivi : watch -d -c "cat $POW_DIR_TMP/FR_TERRITORY_GEOMETRY.notice.log | grep -o -P ''[0-9]+ traité'' | grep -o -P ''[0-9]+'' | awk ''{ SUM += \$1} END { print SUM }''"',
+            message => 'shell: watch -d -c "cat $POW_DIR_TMP/FR_TERRITORY_GEOMETRY.notice.log | grep -o -P ''[0-9]+ traité'' | grep -o -P ''[0-9]+'' | awk ''{ SUM += \$1 } END { print SUM }''"',
             stamped => FALSE
         );
 
         CALL public.log_info('Reset des contours simplifiés');
         UPDATE fr.territory SET gm_contour = NULL;
 
-        CALL public.log_info('Calcul des contours reprojetés (WGS84) simplifiés');
+        CALL public.log_info('Calcul (avec projection WGS84) des contours simplifiés');
         CALL fr.ST_SimplifyTerritory(
             levels => ARRAY[municipality_subsection],
             to_srid => 4326,
@@ -698,9 +645,9 @@ BEGIN
         -- unit= m2, divide by 1O**(3*2) to obtain km2
         -- see: https://gis.stackexchange.com/questions/169422/how-does-st-area-in-postgis-work
 
-        CALL public.log_info('calcul : (superficie)');
+        CALL public.log_info('Calcul superficie');
         UPDATE fr.territory
-        SET superficie = ROUND(ST_Area(ST_Transform(gm_contour_natif, 4326)::GEOGRAPHY)/1000000, 2)
+        SET superficie = ROUND(ST_Area(ST_Transform(gm_contour_natif, 4326)::GEOGRAPHY)::NUMERIC / 1000000, 2)
         WHERE nivgeo = municipality_subsection;
 
         COMMIT;
@@ -711,7 +658,7 @@ BEGIN
     IF part_todo & 16 = 16 THEN
         CALL fr.drop_territory_index(drop_case => 'ONLY_GEOM_WORLD');
 
-        CALL public.log_info('remontée SUPRA : (superficie, contour simplifié)');
+        CALL public.log_info('Remontée SUPRA : (superficie, contour simplifié)');
         PERFORM fr.set_territory_supra(
             schema_name => 'fr',
             table_name => 'territory',
@@ -725,7 +672,7 @@ BEGIN
         COMMIT;
     END IF;
 
-    CALL public.log_info('Fin du calcul des Contours');
+    CALL public.log_info('Fin Calcul des contours');
 END
 $proc$ LANGUAGE plpgsql;
 

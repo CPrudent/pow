@@ -25,21 +25,25 @@ on_integration_error() {
 bash_args \
     --args_p "
         force:Forcer le traitement même si celui-ci a déjà été fait;
-        depends:Mettre à jour les dépendances (si nécessaire)
+        depends:Mettre à jour les dépendances (si nécessaire);
+        mode:Indiquer le mode de calcul
     " \
     --args_v '
         force:yes|no;
-        depends:yes|no
+        depends:yes|no;
+        mode:AUTO|CREATE|UPDATE
     ' \
     --args_d '
         force:no;
-        depends:yes
+        depends:yes;
+        mode:AUTO
     ' \
     "$@" || exit $ERROR_CODE
 
 io_name=FR-TERRITORY
 io_date=$(date +%F)
 io_force=$get_arg_force
+io_mode=$get_arg_mode
 
 declare -A io_hash &&
 set_env --schema_name fr && {
@@ -73,7 +77,7 @@ io_get_info_integration --name $io_name --to_hash io_hash --to_string io_str || 
 
 [ "$POW_DEBUG" = yes ] && { echo $io_str | tr ',' '\n'; }
 _not_ok=''
-# check up-to-date dependences
+# check up-to-date dependences (w/ municipality events)
 for _io in INSEE IGN LAPOSTE-AREA; do
     [ -n "$_not_ok" ] && _not_ok+=", "
     is_yes --var io_hash[FR-TERRITORY-${_io}-EVENT_t] && _not_ok+=$_io
@@ -100,7 +104,11 @@ io_history_begin \
     #  build supra territories
     execute_query \
         --name FR_TERRITORY \
-        --query "SELECT fr.set_territory('$io_str'::HSTORE)" &&
+        --query "SELECT fr.set_territory(
+            io_infos => '$io_str'::HSTORE,
+            mode => '$io_mode',
+            force => ('$io_force' = 'yes')
+        )" &&
 
     for (( io_step=0; io_step<${#io_steps[@]}; io_step++ )); do
         # last id
@@ -126,7 +134,7 @@ io_history_begin \
                         execute_query \
                             --name FR_TERRITORY_GEOMETRY \
                             --query "CALL fr.set_territory_geometry()" && {
-                                _error=$(grep '^ERREUR' $POW_DIR_ARCHIVE/FR_AREA_GEOMETRY.notice.log)
+                                _error=$(grep '^ERREUR' $POW_DIR_ARCHIVE/FR_TERRITORY_GEOMETRY.notice.log)
                                 [ -n "$_error" ] && {
                                     log_error "calcul des géométries : $_error"
                                     false
@@ -149,18 +157,6 @@ io_history_begin \
                     io_error=1
                     break
                 }
-            # not todo? only necessary to propagate (area, simplified geometry) on SUPRA
-            elif (! is_yes --var io_hash[${io_steps[$io_step]}_t]); then
-                execute_query \
-                    --name FR_TERRITORY_GEOMETRY \
-                    --query "CALL fr.set_territory_geometry(part_todo => 16)" && {
-                        _error=$(grep '^ERREUR' $POW_DIR_ARCHIVE/FR_AREA_GEOMETRY.notice.log)
-                        [ -n "$_error" ] && {
-                            log_error "calcul des géométries : $_error"
-                            io_error=1
-                            false
-                        } || true
-                    }
             fi
             ;;
         # nothing todo for IOs already done
@@ -181,7 +177,7 @@ io_history_begin \
 
 # build adjoining territories
 execute_query \
-    --name FR_TERRITORY_NEAR \
+    --name FR_TERRITORY_NEXT \
     --query "SELECT fr.set_territory_next()" &&
 
 # update altitude if needed
@@ -189,7 +185,7 @@ $POW_DIR_BATCH/territory_altitude.sh --reset_territory yes &&
 
 io_history_end_ok \
     --nrows_processed "(SELECT COUNT(1) FROM fr.territory)" \
-    --infos "$io_info" \
+    --infos "$_ids" \
     --id $io_main_id &&
 vacuum \
     --schema_name fr \

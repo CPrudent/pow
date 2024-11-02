@@ -228,6 +228,11 @@ BEGIN
                 x.population != t.population
             '
         WHEN 'FR-TERRITORY-IGN-GEOMETRY' THEN
+            /* NOTE
+            equals (up to 100 m2), due to snap
+            08043: IGN  4670930.49597246  POW:  4670999.204580205
+            16280: IGN 21753110.937482286 POW: 21753178.733738717
+             */
             '
                 (
                     SELECT
@@ -261,7 +266,7 @@ BEGIN
 
                 ON x.codgeo = t.codgeo
             WHERE
-                NOT ST_Equals_with_Threshold(x.geom, t.gm_contour_natif)
+                NOT ST_Equals_with_Threshold(x.geom, t.gm_contour_natif, threshold => 100)
             '
         WHEN 'FR-TERRITORY-IGN-EVENT' THEN
             CONCAT(
@@ -328,11 +333,16 @@ BEGIN
             '
                 (
                     SELECT
-                        nivgeo,
+                        CASE nivgeo
+                            WHEN ''CANOV'' THEN ''CV''
+                            ELSE nivgeo
+                        END,
                         codgeo,
                         libgeo
                     FROM
                         fr.insee_supra
+                    WHERE
+                        nivgeo ~ ''COM_GLOBALE_ARM|ARR|CANOV|DEP|REG''
                 ) x
 
                 FULL OUTER JOIN
@@ -570,95 +580,6 @@ BEGIN
                 '''::DATE
                 '
             )
-        /* NOTE never difference!
-                moreover it has relation, so depends of prerequisites
-        WHEN 'FR-TERRITORY-LAPOSTE-SUPRA' THEN
-            '
-                (
-                    SELECT
-                        codgeo,
-                        NULLIF(codgeo_pdc_ppdc_parent, codgeo) codgeo_pdc_ppdc_parent,
-                        NULLIF(codgeo_ppdc_pdc_parent, codgeo) codgeo_ppdc_pdc_parent,
-                        CASE WHEN nivgeo = ''DEX'' THEN codgeo ELSE codgeo_dex_parent END codgeo_dex_parent
-                    FROM
-                        fr.territory_laposte
-                    WHERE
-                        -- fix bug (see #45 3rd usecase)
-                        (
-                            nivgeo = ''CP''
-                            AND
-                            codgeo !~ ''^9[78]''
-                        )
-                        OR	(
-                            nivgeo = ''PDC_PPDC''
-                            AND
-                            NOT codgeo = ANY(''{A19500,A19490,A19497,A19503,A19492,A75042,A19494}'')
-                        )
-                        OR (
-                            nivgeo = ''PPDC_PDC''
-                            AND
-                            NOT codgeo = ANY(''{A75042}'')
-                        )
-                        OR (
-                            nivgeo = ''DEX''
-                        )
-                ) x
-
-                FULL OUTER JOIN
-
-                (
-                    SELECT
-                        codgeo,
-                        NULLIF(codgeo_pdc_ppdc_parent, codgeo) codgeo_pdc_ppdc_parent,
-                        NULLIF(codgeo_ppdc_pdc_parent, codgeo) codgeo_ppdc_pdc_parent,
-                        CASE WHEN nivgeo = ''DEX'' THEN codgeo ELSE codgeo_dex_parent END codgeo_dex_parent
-                    FROM
-                        fr.territory
-                    WHERE
-                        -- fix bug (see #45 3rd usecase)
-                        ((
-                                nivgeo = ''CP''
-                                AND
-                                codgeo !~ ''^9[78]''
-                                -- fix bug (see #45 4th usecase)
-                                AND
-                                COALESCE(codgeo_pdc_ppdc_parent, codgeo_ppdc_pdc_parent, codgeo_dex_parent) IS NOT NULL
-                            )
-                            OR (
-                                nivgeo = ''PDC_PPDC''
-                                AND
-                                NOT codgeo = ANY(''{A19500,A19490,A19497,A19503,A19492,A75042,A19494}'')
-                            )
-                            OR (
-                                nivgeo = ''PPDC_PDC''
-                                AND
-                                NOT codgeo = ANY(''{A75042}'')
-                            )
-                            OR (
-                                nivgeo = ''DEX''
-                            )
-                        )
-                ) t
-
-                ON x.codgeo = t.codgeo
-            WHERE
-                -- level
-                (
-                    x.codgeo IS NULL
-                    OR
-                    t.codgeo IS NULL
-                )
-                -- SUPRA
-                OR
-                (
-                    x.codgeo_pdc_ppdc_parent IS DISTINCT FROM t.codgeo_pdc_ppdc_parent
-                    OR
-                    x.codgeo_ppdc_pdc_parent IS DISTINCT FROM t.codgeo_ppdc_pdc_parent
-                    OR
-                    x.codgeo_dex_parent IS DISTINCT FROM t.codgeo_dex_parent
-                )
-            '
-         */
         WHEN 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT-GEOMETRY' THEN
             CONCAT(
                 '

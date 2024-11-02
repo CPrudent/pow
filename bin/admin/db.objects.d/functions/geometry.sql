@@ -991,7 +991,7 @@ DECLARE
     _area2 NUMERIC;
 BEGIN
     IF _dim1 != _dim2 THEN
-        RAISE 'geometry comparison between 2 objects of different dimension!';
+        RETURN FALSE;
     END IF;
 
     IF _dim1 = 0 THEN
