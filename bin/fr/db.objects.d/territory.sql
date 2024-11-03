@@ -539,7 +539,7 @@ BEGIN
             -- updating infra-municipality can be sufficient
             (io_infos -> 'FR-TERRITORY-INSEE-MUNICIPALITY_t')::BOOLEAN
             OR
-            -- rebuild infra-municipality
+            -- need to rebuild infra-municipality
             (io_infos -> 'FR-TERRITORY-LAPOSTE-AREA-ADD-OR-DEL_t')::BOOLEAN
         ))
         OR (

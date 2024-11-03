@@ -27,7 +27,7 @@
 -- check validity of municipality_subsection
 SELECT drop_all_functions_if_exists('fr', 'check_municipality_subsection');
 CREATE OR REPLACE PROCEDURE fr.check_municipality_subsection(
-    municipality_subsection VARCHAR,                      -- ZA or COM_CP
+    municipality_subsection VARCHAR,
     check_level BOOLEAN DEFAULT TRUE,
     check_territory BOOLEAN DEFAULT TRUE
 )
@@ -197,6 +197,8 @@ BEGIN
     END IF;
 
     IF part_todo & 4 = 4 THEN
+        -- execution: ~ 1'10" per municipality
+        -- #1272 municipalities, so long time!
         CALL public.log_info('INSEE avec n INFRAs');
 
         DROP TABLE IF EXISTS tmp_municipality_with_many_subsections;
@@ -776,11 +778,20 @@ BEGIN
     LOOP
         -- gt 1 km2, why ?
         IF _holes.area > 1000000 THEN
-            RAISE NOTICE 'Trou d une surface anormale grande (%), voisin de %, ignoré', _holes.area, _holes.codgeos_voisin;
+            CALL public.log_info(FORMAT(
+                'Trou d une surface anormale grande (%), voisin de %, ignoré',
+                _holes.area,
+                _holes.codgeos_voisin
+            ));
+
             CONTINUE;
         END IF;
 
-        RAISE NOTICE 'Trou d une surface de %, voisin de %, unification avec le premier voisin', _holes.area, _holes.codgeos_voisin[1];
+        CALL public.log_info(FORMAT(
+            'Trou d une surface de %, voisin de %, unification avec le premier voisin',
+            _holes.area,
+            _holes.codgeos_voisin[1]
+        ));
 
         IF NOT simulation THEN
             SELECT ST_Multi(
@@ -803,7 +814,11 @@ BEGIN
             AND territory.codgeo = _holes.codgeos_voisin[1];
 
             IF ST_GeometryType(_new_geom) != 'ST_MultiPolygon' THEN
-                RAISE NOTICE 'ERREUR géométrie non Multi % : %', municipality_subsection, _holes.codgeos_voisin[1];
+                CALL public.log_info(FORMAT(
+                    'ERREUR géométrie non Multi % : %',
+                    municipality_subsection,
+                    _holes.codgeos_voisin[1]
+                ));
                 CONTINUE;
             END IF;
 
