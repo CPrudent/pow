@@ -90,25 +90,25 @@ altitude_set_list() {
         --query "
             COPY (
                 SELECT
-                    code
-                    , municipality
-                    , department
-                    , district
-                    , me.mod
-                    , me.date_eff
-                    , me.libelle_av
-                    , me.com_ap
-                    , me.libelle_ap
+                    code,
+                    municipality,
+                    department,
+                    district,
+                    me.mod,
+                    me.date_eff,
+                    me.libelle_av,
+                    me.com_ap,
+                    me.libelle_ap
                 FROM
                     fr.municipality_altitude ma
                         LEFT OUTER JOIN LATERAL (
                             SELECT
-                                com_av
-                                , com_ap
-                                , date_eff
-                                , mod
-                                , libelle_av
-                                , libelle_ap
+                                com_av,
+                                com_ap,
+                                date_eff,
+                                mod,
+                                libelle_av,
+                                libelle_ap
                             FROM
                                 fr.insee_municipality_event me
                             WHERE
@@ -239,21 +239,28 @@ altitude_set_exceptions() {
             WITH
             missing_altitude AS (
                 SELECT
-                    codgeo
-                    , z_min
-                    , z_max
+                    codgeo,
+                    z_min,
+                    z_max
                 FROM (
                     VALUES
-                        ('97501', 'Miquelon-Langlade', 0, 240)
-                        , ('97502', 'Saint-Pierre', 0, 207)
-                        , ('97701', 'Saint-Barthélemy', 0, 286)
-                        , ('97801', 'Saint-Martin', 0, 424)
-                        , ('97607', 'Dembeni', 0, 651)
+                        ('52278', 'Lavilleneuve-au-Roi', 194, 395),
+                        ('55138', 'Culey', 218, 379),
+                        ('64181', 'Castillon (Canton d'Arthez-de-Béarn)', 154, 307),
+                        ('64182', 'Castillon (Canton de Lembeye)', 122, 231),
+                        -- only average!
+                        ('76601', 'Saint-Lucien', 184, 184),
+                        ('97501', 'Miquelon-Langlade', 0, 240),
+                        ('97502', 'Saint-Pierre', 0, 207),
+                        ('97701', 'Saint-Barthélemy', 0, 286),
+                        ('97801', 'Saint-Martin', 0, 424),
+                        ('97607', 'Dembeni', 0, 651)
                 ) AS t(codgeo, libgeo, z_min, z_max)
             )
             UPDATE fr.municipality_altitude SET
-                z_min = m.z_min
-                , z_max = m.z_max
+                z_min = m.z_min,
+                z_max = m.z_max,
+                done = TRUE
                 FROM missing_altitude m
                 WHERE
                     code = m.codgeo
@@ -368,18 +375,19 @@ execute_query \
                 COUNT(*) > 1
         )
         SELECT
-            t.codgeo code
-            , REGEXP_REPLACE(t.libgeo, '\(Canton ', '(canton ') municipality
-            , CASE WHEN mns.libgeo IS NULL THEN NULL::VARCHAR
-            ELSE
-                d.libgeo
-            END department
-            , CASE WHEN t.codgeo_com_globale_arm_parent IS NULL THEN NULL::VARCHAR
-            ELSE
-                CONCAT(REGEXP_REPLACE(REGEXP_REPLACE(t.libgeo, '^[^0-9]*', ''), ' A', '_a'), '_de_', cg.libgeo)
-            END district
-            , NULL::INT z_min, NULL::INT z_max
-            , FALSE done
+            t.codgeo code,
+            REGEXP_REPLACE(t.libgeo, '\(Canton ', '(canton ') municipality,
+            CASE
+                WHEN mns.libgeo IS NULL THEN NULL::VARCHAR
+                ELSE d.libgeo
+            END department,
+            CASE
+                WHEN t.codgeo_com_globale_arm_parent IS NULL THEN NULL::VARCHAR
+                ELSE CONCAT(REGEXP_REPLACE(REGEXP_REPLACE(t.libgeo, '^[^0-9]*', ''), ' A', '_a'), '_de_', cg.libgeo)
+            END district,
+            NULL::INT z_min,
+            NULL::INT z_max,
+            FALSE done
         FROM fr.territory t
             LEFT OUTER JOIN municipality_namesake mns ON t.libgeo = mns.libgeo
             JOIN fr.territory d ON d.nivgeo = 'DEP' AND d.codgeo = t.codgeo_dep_parent
@@ -495,8 +503,8 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                                         --name TERRITORY_MERGE_ABORT \
                                         --query "
                                             SELECT
-                                                t.com_ap
-                                                , CASE WHEN me.com_ap IS NULL THEN t.libelle_ap
+                                                t.com_ap,
+                                                CASE WHEN me.com_ap IS NULL THEN t.libelle_ap
                                                 ELSE me.libelle_ap
                                                 END
                                             FROM (

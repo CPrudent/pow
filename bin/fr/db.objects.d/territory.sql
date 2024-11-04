@@ -350,7 +350,10 @@ BEGIN
             ON TRUE
     );
     GET DIAGNOSTICS _nrows = ROW_COUNT;
-    RAISE NOTICE 'LAPOSTE: insertion #% %', _nrows, municipality_subsection;
+    CALL public.log_info(FORMAT('LAPOSTE: insertion #%s %s',
+        _nrows,
+        municipality_subsection
+    ));
 END
 $proc$ LANGUAGE plpgsql;
 
@@ -389,7 +392,7 @@ BEGIN
             (
                 t.nivgeo = municipality_subsection
                 AND
-                area.co_cea = t.codgeo
+                t.codgeo = area.co_cea
             )
             AND
             (
@@ -498,6 +501,16 @@ BEGIN
 END
 $proc$ LANGUAGE plpgsql;
 
+/*
+ create/update territories
+
+ elapsed times
+    n ZA: 24h
+    snap: 10h
+    simplify: 20'
+    merge hole: 1'
+    supra: 1'
+ */
 SELECT drop_all_functions_if_exists('fr', 'set_territory');
 CREATE OR REPLACE FUNCTION fr.set_territory(
     io_infos HSTORE,
@@ -509,14 +522,11 @@ CREATE OR REPLACE FUNCTION fr.set_territory(
 RETURNS BOOLEAN
 AS $$
 DECLARE
-    _query TEXT;
     _update BOOLEAN := TRUE;
     _message_begin VARCHAR := 'Mise à jour';
     _message_end VARCHAR;
     _drop_index VARCHAR := 'EXCEPT_LEVEL_CODE';
     _nrows INTEGER;
-    _levels VARCHAR[] := public.get_levels('fr');
-    _level VARCHAR;
 BEGIN
     CALL fr.check_municipality_subsection(
         municipality_subsection => municipality_subsection,
@@ -645,6 +655,90 @@ BEGIN
         ;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
         CALL public.log_info('Mise à jour COM, CV, ARR, DEP, REG : #' || _nrows || ' Nommage (source POW)');
+    END IF;
+END
+$proc$ LANGUAGE plpgsql;
+
+-- altitude handling
+SELECT drop_all_functions_if_exists('fr', 'set_territory_altitude');
+CREATE OR REPLACE PROCEDURE fr.set_territory_altitude(
+    usecase VARCHAR
+)
+AS
+$proc$
+DECLARE
+    _nrows INTEGER;
+BEGIN
+    IF usecase = 'BACKUP' THEN
+        DROP TABLE IF EXISTS fr.municipality_altitude_backup;
+        SELECT codgeo, z_min, z_max
+        INTO fr.municipality_altitude_backup
+        FROM fr.territory
+        WHERE nivgeo = 'COM'
+        AND z_min IS NOT NULL
+        AND z_max IS NOT NULL
+        ;
+        GET DIAGNOSTICS _nrows = ROW_COUNT;
+        CALL public.log_info('Altitude : #' || _nrows || '  (BACKUP)');
+    ELSIF usecase = 'RESTORE' THEN
+        WITH
+        last_territory(date) AS (
+            SELECT (get_last_io('FR-TERRITORY')).date_data_end
+        ),
+        municipality_event(code) AS (
+            SELECT
+                DISTINCT com_ap
+            FROM
+                fr.insee_municipality_event me
+                    CROSS JOIN last_territory lt
+            WHERE
+                (
+                    -- fusion
+                    (me.mod BETWEEN 30 AND 34)
+                    OR
+                    -- création, rétablissement
+                    (me.mod BETWEEN 20 AND 21)
+                )
+                AND me.date_eff > lt.date
+                AND me.typecom_av = 'COM'
+                AND me.typecom_ap = 'COM'
+        )
+        UPDATE fr.territory t SET
+            z_min = ma.z_min,
+            z_max = ma.z_max
+        FROM fr.municipality_altitude_backup ma
+        WHERE
+            t.nivgeo = 'COM'
+            AND
+            t.codgeo = ma.code
+            AND
+            NOT EXISTS(
+                SELECT 1
+                FROM municipality_event me
+                WHERE t.codgeo = me.code
+            )
+        ;
+        GET DIAGNOSTICS _nrows = ROW_COUNT;
+        CALL public.log_info('Altitude : #' || _nrows || '  (RESTORE)');
+    ELSIF usecase = 'UPDATE' THEN
+        UPDATE fr.territory t SET
+            z_min = ma.z_min,
+            z_max = ma.z_max
+        FROM fr.municipality_altitude ma
+        WHERE
+            t.nivgeo = 'COM' AND t.codgeo = ma.code
+        ;
+        CALL public.log_info('Altitude : #' || _nrows || '  (UPDATE)');
+
+        -- propagate altitudes (SUPRA levels)
+        PERFORM fr.set_territory_supra(
+            table_name => 'territory',
+            schema_name => 'fr',
+            base_level => 'COM',
+            update_mode => TRUE,
+            columns_agg => ARRAY['z_min', 'z_max'],
+            columns_agg_func => '{"z_min":"MIN", "z_max":"MAX"}'::JSONB
+        );
     END IF;
 END
 $proc$ LANGUAGE plpgsql;
@@ -851,8 +945,14 @@ CREATE OR REPLACE FUNCTION fr.set_territory_next(
 RETURNS BOOLEAN
 AS $$
 DECLARE
-    _nrows_affected INTEGER;
+    _nrows INTEGER;
 BEGIN
+    /* ERROR happened 11/2024
+    GEOSRelatePattern: TopologyException: side location conflict at 3.3774937577411221 47.669749502512076. This can occur if the input geometry is invalid.
+
+    fix, on web: https://georezo.net/forum/viewtopic.php?id=131561
+    w/ ST_ReducePrecision()
+     */
     IF null_only THEN
         WITH initial_territory AS (
             SELECT nivgeo, codgeo, gm_contour
@@ -885,7 +985,11 @@ BEGIN
             --AND ST_Touches(next_territory.gm_contour, territory.gm_contour)
             AND ST_Intersects(territory.gm_contour, next_territory.gm_contour)
             -- for 2 next polygonal geometries: dim[boundary(a) ∩ boundary(b)] = 1
-            AND ST_Relate(territory.gm_contour, next_territory.gm_contour, '****1****')        )
+            AND ST_Relate(
+                ST_ReducePrecision(territory.gm_contour, 0.01), ST_ReducePrecision(next_territory.gm_contour, 0.01),
+                '****1****'
+            )
+        )
         FROM extend_territory
         WHERE territory.codgeo = extend_territory.codgeo
         AND territory.nivgeo = extend_territory.nivgeo;
@@ -899,15 +1003,18 @@ BEGIN
             --AND ST_Touches(next_territory.gm_contour, territory.gm_contour)
             AND ST_Intersects(territory.gm_contour, next_territory.gm_contour)
             -- for 2 next polygonal geometries: dim[boundary(a) ∩ boundary(b)] = 1
-            AND ST_Relate(territory.gm_contour, next_territory.gm_contour, '****1****')
+            AND ST_Relate(
+                ST_ReducePrecision(territory.gm_contour, 0.01), ST_ReducePrecision(next_territory.gm_contour, 0.01),
+                '****1****'
+            )
         )
         -- to avoid backup-levels (as COM_A_XXXXXX)
         WHERE nivgeo = ANY(public.get_levels('fr'));
     END IF;
-    GET DIAGNOSTICS _nrows_affected = ROW_COUNT;
-    CALL public.log_info('Mise à jour Territoires : #' || _nrows_affected || ' Voisinage (source POW)');
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info('Mise à jour Territoires : #' || _nrows || ' Voisinage (source POW)');
 
-    RETURN _nrows_affected > 0;
+    RETURN _nrows > 0;
 END $$ LANGUAGE plpgsql;
 
 /*

@@ -183,7 +183,7 @@ BEGIN
     END IF;
 
     IF NOT subcall THEN
-        RAISE NOTICE 'ST_SimplifyTerritory : finalisation';
+        CALL public.log_info('ST_SimplifyTerritory : finalisation');
         WITH territoire_simp AS (
             SELECT codgeo, ST_Union(polygon_simp_geom) AS geom
             FROM fr.tmp_polygon_to_simp

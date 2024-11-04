@@ -1122,6 +1122,19 @@ BEGIN
 END;
 $proc$ LANGUAGE plpgsql;
 
+SELECT public.drop_all_functions_if_exists('fr', 'set_address_constant');
+CREATE OR REPLACE PROCEDURE fr.set_address_constant()
+AS
+$proc$
+BEGIN
+    DELETE FROM fr.constant WHERE usecase = 'FR_ADDRESS';
+    INSERT INTO fr.constant (usecase, key, value) VALUES
+        ('FR_ADDRESS', 'EPCI_KIND', 'METRO|MET69|CA|CC|CU'),
+        ('FR_ADDRESS', 'MUNICIPALITY_DISTRICT', '69123|13055|75056')
+    ;
+END;
+$proc$ LANGUAGE plpgsql;
+
 SELECT public.drop_all_functions_if_exists('fr', 'set_global_variables');
 CREATE OR REPLACE PROCEDURE fr.set_global_variables()
 AS
@@ -1330,6 +1343,7 @@ BEGIN
     CALL fr.set_laposte_municipality_normalized_label_exception();
     CALL fr.set_territory_overseas();
 
+    CALL fr.set_address_constant();
     CALL fr.set_global_variables();
     CALL fr.set_constant_index();
 END;

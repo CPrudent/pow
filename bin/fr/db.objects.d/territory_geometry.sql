@@ -78,8 +78,8 @@ DECLARE
     _nrows INTEGER;
     _context TEXT;
     _message VARCHAR;
-    _total INTEGER;
-    _current INTEGER := 1;
+    _total INTEGER := 0;
+    _current INTEGER;
 BEGIN
     CALL fr.check_municipality_subsection(municipality_subsection => municipality_subsection);
 
@@ -147,7 +147,7 @@ BEGIN
     IF part_todo & 2 = 2 THEN
         -- only 1 subsection : same contour as municipality
         -- w/ delivery points (well known as PDI)
-        CALL public.log_info('INSEE avec 1 INFRA');
+        CALL public.log_info('INSEE avec 1-INFRA');
         WITH
         municipality_only_one_subsection AS (
             SELECT
@@ -198,9 +198,9 @@ BEGIN
 
     IF part_todo & 4 = 4 THEN
         -- execution: ~ 1'10" per municipality
-        -- #1272 municipalities, so long time!
-        CALL public.log_info('INSEE avec n INFRAs');
+        CALL public.log_info('INSEE avec n-INFRA');
 
+        -- #1272 municipalities, so long time!
         DROP TABLE IF EXISTS tmp_municipality_with_many_subsections;
         CREATE TEMPORARY TABLE tmp_municipality_with_many_subsections AS (
         WITH
@@ -233,6 +233,8 @@ BEGIN
         INTO _total
         FROM tmp_municipality_with_many_subsections
         ;
+        _message := 'n-INFRA %s %s/%s (%s%%)';
+        _current := 1;
 
         -- many subsections : divide contour between each subsection (VORONOI w/ delivery points)
         FOR _municipality_with_many_subsections IN (
@@ -260,7 +262,6 @@ BEGIN
         )
         LOOP
             BEGIN
-                _message := 'INSEE %s %s/%s (%s%%)';
                 CALL public.log_info(FORMAT(_message,
                     _municipality_with_many_subsections.co_insee_commune,
                     _current,
@@ -468,6 +469,16 @@ BEGIN
         be careful: this part needs all municipalities
         test w/ a department can be KO for municipalities near another missing department !
          */
+
+        IF _total = 0 THEN
+            SELECT COUNT(1)
+            INTO _total
+            FROM tmp_municipality_with_many_subsections
+            ;
+        END IF;
+        _message := 'ST_Snap autour %s %s/%s (%s%%) : #%s';
+        _current := 1;
+
         FOR _municipality_with_many_subsections IN (
             SELECT co_insee_commune
             FROM tmp_municipality_with_many_subsections
@@ -543,9 +554,15 @@ BEGIN
                 AND NOT ST_Equals(territory.gm_contour_natif, snap_territory_around.gm_contour_natif);
 
             GET DIAGNOSTICS _nrows = ROW_COUNT;
-            _message := ' traité';
-            IF _nrows > 1 THEN _message := _message || 's'; END IF;
-            CALL public.log_info(CONCAT('ST_Snap autour ', _municipality_with_many_subsections.co_insee_commune, ' : #', _nrows, _message));
+            CALL public.log_info(FORMAT(_message,
+                _municipality_with_many_subsections.co_insee_commune,
+                _current,
+                _total,
+                ROUND((_current::NUMERIC / _total) * 100),
+                _nrows
+            ));
+
+            _current := _current +1;
         END LOOP;
     END IF;
 
@@ -617,7 +634,7 @@ BEGIN
         CALL public.log_info('Reset des contours simplifiés');
         UPDATE fr.territory SET gm_contour = NULL;
 
-        CALL public.log_info('Calcul (avec projection WGS84) des contours simplifiés');
+        CALL public.log_info('Calcul des contours simplifiés (avec projection WGS84)');
         CALL fr.ST_SimplifyTerritory(
             levels => ARRAY[municipality_subsection],
             to_srid => 4326,
