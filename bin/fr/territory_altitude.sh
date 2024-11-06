@@ -5,6 +5,19 @@
     #--
     # update territories w/ altitude (if available) from multiples sources
 
+    # NOTE
+    # last run from scratch : create territory (lose altitude)!
+    # need at least 9h (w/ html already in cache)
+    # moreover crash at end (due to shell currently modified)
+    # BUT no test from territory (w/ backup/restore and extract list w/ events)!
+
+    # NOTE
+    # PREPARE_TERRITORY_ALTITUDE
+    #  w/ municipality event OR no (min, max) altitudes
+
+    # NOTE
+    # after updates, remains 85 municipalities w/o altitude (98*)
+
 # many sources (not one complete, have to mix them) : idea is to call one as base and another as complement
 ALTITUDE_SOURCE_WIKIPEDIA=1
 ALTITUDE_SOURCE_LALTITUDE=2
@@ -232,6 +245,9 @@ altitude_set_url() {
 }
 
 # set (min, max) values for exceptions (not found elsewhere)
+#  no values: 52278, 55138, 97*
+#  another name: 64181, 64182
+#  only average: 76601
 altitude_set_exceptions() {
     execute_query \
         --name TODO_TERRITORY_ALTITUDE \
@@ -246,9 +262,8 @@ altitude_set_exceptions() {
                     VALUES
                         ('52278', 'Lavilleneuve-au-Roi', 194, 395),
                         ('55138', 'Culey', 218, 379),
-                        ('64181', 'Castillon (Canton d'Arthez-de-Béarn)', 154, 307),
+                        ('64181', 'Castillon (Canton d''Arthez-de-Béarn)', 154, 307),
                         ('64182', 'Castillon (Canton de Lembeye)', 122, 231),
-                        -- only average!
                         ('76601', 'Saint-Lucien', 184, 184),
                         ('97501', 'Miquelon-Langlade', 0, 240),
                         ('97502', 'Saint-Pierre', 0, 207),
@@ -348,7 +363,7 @@ bash_args \
 #      by another call of bash_args !
 #      get_arg_reset also used by set_env_pg()
 
-[ "$get_arg_force_list" = no ] && _where='AND (t.z_min IS NULL OR t.z_max IS NULL OR t.z_max < t.z_min)' || _where=''
+[ "$get_arg_force_list" = no ] && _where='(t.z_min IS NULL OR t.z_max IS NULL OR t.z_max < t.z_min)' || _where=''
 set_env --schema_name fr &&
 log_info 'Mise à jour des données Altitude (min, max) des Communes' && {
     [ "$get_arg_reset_territory" = yes ] && {
@@ -373,6 +388,9 @@ execute_query \
                 libgeo
             HAVING
                 COUNT(*) > 1
+        ),
+        last_territory(date) AS (
+            SELECT (get_last_io('FR-TERRITORY')).date_data_end
         )
         SELECT
             t.codgeo code,
@@ -393,7 +411,29 @@ execute_query \
             JOIN fr.territory d ON d.nivgeo = 'DEP' AND d.codgeo = t.codgeo_dep_parent
             LEFT OUTER JOIN fr.territory cg ON cg.nivgeo = 'COM_GLOBALE_ARM' AND cg.codgeo = t.codgeo_com_globale_arm_parent
         WHERE
-            t.nivgeo = 'COM' AND t.codgeo !~ '^98' $_where
+            t.nivgeo = 'COM'
+            AND t.codgeo !~ '^98'
+            AND (
+                EXISTS(
+                    SELECT
+                        1
+                    FROM
+                        fr.insee_municipality_event me
+                            CROSS JOIN last_territory lt
+                    WHERE
+                        me.com_ap = t.codgeo
+                        AND
+                        (
+                            (me.mod BETWEEN 20 AND 21)
+                            OR
+                            (me.mod BETWEEN 30 AND 34)
+                        )
+                        AND me.date_eff > lt.date
+                        AND me.typecom_av = 'COM'
+                        AND me.typecom_ap = 'COM'
+                )
+            $([ -n "$_where" ] && echo "OR $_where")
+            )
         " &&
 altitude_set_exceptions && {
 execute_query \
@@ -663,7 +703,7 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
         }
         # check for complete (or error)
         execute_query \
-            --name IS_OK_TERRITORY_ALTITUDE \
+            --name IS_KO_TERRITORY_ALTITUDE \
             --query 'SELECT EXISTS(SELECT 1 FROM fr.municipality_altitude WHERE z_min IS NULL OR z_max IS NULL OR z_max < z_min)' \
             --psql_arguments 'tuples-only:pset=format=unaligned' \
             --return _territory_ko && {
@@ -686,21 +726,7 @@ rm --force $_tmpfile || {
     execute_query \
         --name SET_TERRITORY_ALTITUDE \
         --query "
-            UPDATE fr.territory t SET
-                z_min = ma.z_min
-                , z_max = ma.z_max
-            FROM fr.municipality_altitude ma
-            WHERE
-                t.nivgeo = 'COM' AND t.codgeo = ma.code;
-            -- set altitudes (SUPRA levels)
-            PERFORM fr.set_territory_supra(
-                table_name => 'territory'
-                , schema_name => 'fr'
-                , base_level => 'COM'
-                , update_mode => TRUE
-                , columns_agg => ARRAY['z_min', 'z_max']
-                , columns_agg_func => '{\"z_min\":\"MIN\", \"z_max\":\"MAX\"}'::JSONB
-            );
+            CALL fr.set_territory_altitude(usecase => 'UPDATE')
         " &&
     archive_file $_territory_list &&
     log_info 'Mise à jour avec succès'

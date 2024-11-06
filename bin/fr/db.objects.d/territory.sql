@@ -671,38 +671,17 @@ DECLARE
 BEGIN
     IF usecase = 'BACKUP' THEN
         DROP TABLE IF EXISTS fr.municipality_altitude_backup;
-        SELECT codgeo, z_min, z_max
-        INTO fr.municipality_altitude_backup
-        FROM fr.territory
-        WHERE nivgeo = 'COM'
-        AND z_min IS NOT NULL
-        AND z_max IS NOT NULL
+        CREATE TABLE fr.municipality_altitude_backup AS
+            SELECT codgeo, z_min, z_max
+            FROM fr.territory
+            WHERE
+                nivgeo = 'COM'
+                AND z_min IS NOT NULL
+                AND z_max IS NOT NULL
         ;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
         CALL public.log_info('Altitude : #' || _nrows || '  (BACKUP)');
     ELSIF usecase = 'RESTORE' THEN
-        WITH
-        last_territory(date) AS (
-            SELECT (get_last_io('FR-TERRITORY')).date_data_end
-        ),
-        municipality_event(code) AS (
-            SELECT
-                DISTINCT com_ap
-            FROM
-                fr.insee_municipality_event me
-                    CROSS JOIN last_territory lt
-            WHERE
-                (
-                    -- fusion
-                    (me.mod BETWEEN 30 AND 34)
-                    OR
-                    -- création, rétablissement
-                    (me.mod BETWEEN 20 AND 21)
-                )
-                AND me.date_eff > lt.date
-                AND me.typecom_av = 'COM'
-                AND me.typecom_ap = 'COM'
-        )
         UPDATE fr.territory t SET
             z_min = ma.z_min,
             z_max = ma.z_max
@@ -711,12 +690,6 @@ BEGIN
             t.nivgeo = 'COM'
             AND
             t.codgeo = ma.code
-            AND
-            NOT EXISTS(
-                SELECT 1
-                FROM municipality_event me
-                WHERE t.codgeo = me.code
-            )
         ;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
         CALL public.log_info('Altitude : #' || _nrows || '  (RESTORE)');
