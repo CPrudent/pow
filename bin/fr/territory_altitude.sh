@@ -12,7 +12,7 @@
     # BUT no test from territory (w/ backup/restore and extract list w/ events)!
 
     # NOTE
-    # PREPARE_TERRITORY_ALTITUDE
+    # PREPARE_MUNICIPALITY_ALTITUDE
     #  w/ municipality event OR no (min, max) altitudes
 
     # NOTE
@@ -99,7 +99,7 @@ altitude_set_list() {
     [ $get_arg_step -eq 0 ] && _where='NOT done' || _where='(z_min IS NULL OR z_max IS NULL OR z_max < z_min)'
 
     execute_query \
-        --name TODO_TERRITORY_ALTITUDE \
+        --name TODO_MUNICIPALITY_ALTITUDE \
         --query "
             COPY (
                 SELECT
@@ -250,7 +250,7 @@ altitude_set_url() {
 #  only average: 76601
 altitude_set_exceptions() {
     execute_query \
-        --name TODO_TERRITORY_ALTITUDE \
+        --name EXCEPT_MUNICIPALITY_ALTITUDE \
         --query "
             WITH
             missing_altitude AS (
@@ -338,9 +338,9 @@ bash_args \
         force_list:Lister les communes même si elles possèdent déjà des altitudes;
         force_public:Forcer la mise à jour des altitudes, même si données incomplètes;
         use_cache:Utiliser les données présentes dans le cache;
-        reset_territory:Effacer la table de préparation;
-        except_territory:RE pour écarter certaines communes;
-        only_territory:RE pour traiter certaines communes;
+        reset_municipality:Effacer la table de préparation;
+        except_municipality:RE pour écarter certaines communes;
+        only_municipality:RE pour traiter certaines communes;
         from_date:Prise en compte des fusions de communes à partir de cette date
 
     ' \
@@ -348,14 +348,14 @@ bash_args \
         force_list:yes|no;
         force_public:yes|no;
         use_cache:yes|no;
-        reset_territory:yes|no
+        reset_municipality:yes|no
     ' \
     --args_d '
         force_list:no;
         force_public:no;
         use_cache:yes;
         from_date:2009-01-01;
-        reset_territory:no
+        reset_municipality:no
     ' \
     "$@" || exit $ERROR_CODE
 
@@ -366,14 +366,14 @@ bash_args \
 [ "$get_arg_force_list" = no ] && _where='(t.z_min IS NULL OR t.z_max IS NULL OR t.z_max < t.z_min)' || _where=''
 set_env --schema_name fr &&
 log_info 'Mise à jour des données Altitude (min, max) des Communes' && {
-    [ "$get_arg_reset_territory" = yes ] && {
+    [ "$get_arg_reset_municipality" = yes ] && {
         execute_query \
-            --name RESET_TERRITORY_ALTITUDE \
+            --name RESET_MUNICIPALITY_ALTITUDE \
             --query "DROP TABLE IF EXISTS fr.municipality_altitude"
     } || true
 } &&
 execute_query \
-    --name PREPARE_TERRITORY_ALTITUDE \
+    --name PREPARE_MUNICIPALITY_ALTITUDE \
     --query "
         CREATE TABLE IF NOT EXISTS fr.municipality_altitude AS
         WITH
@@ -437,7 +437,7 @@ execute_query \
         " &&
 altitude_set_exceptions && {
 execute_query \
-    --name WITH_TERRITORY_ALTITUDE \
+    --name COUNT_MUNICIPALITY_ALTITUDE \
     --query 'SELECT COUNT(1) FROM fr.municipality_altitude' \
     --psql_arguments 'tuples-only:pset=format=unaligned' \
     --return _territory_count && {
@@ -468,10 +468,10 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
             --cache _territory_cache \
             --tmpfile _tmpfile && {
             while IFS=: read -a _territory_data; do
-                # only territory?
-                [ -n "$get_arg_only_territory" ] && [[ ! ${_territory_data[$TERRITORY_CODE]} =~ $get_arg_only_territory ]] && continue
-                # except territory?
-                [ -n "$get_arg_except_territory" ] && [[ ${_territory_data[$TERRITORY_CODE]} =~ $get_arg_except_territory ]] && continue
+                # only municipality?
+                [ -n "$get_arg_only_municipality" ] && [[ ! ${_territory_data[$TERRITORY_CODE]} =~ $get_arg_only_municipality ]] && continue
+                # except municipality?
+                [ -n "$get_arg_except_municipality" ] && [[ ${_territory_data[$TERRITORY_CODE]} =~ $get_arg_except_municipality ]] && continue
 
                 _first=1
                 while true; do
@@ -540,7 +540,7 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                                     # find if eventually "separated", and final name of merged _municipality
                                     # SQL: exists abort (code 21)?, more recent merge ?
                                     execute_query \
-                                        --name TERRITORY_MERGE_ABORT \
+                                        --name MUNICIPALITY_MERGE_ABORT \
                                         --query "
                                             SELECT
                                                 t.com_ap,
@@ -586,7 +586,7 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                                             # else, find old municipalities (before merge) starting at 2009/1/1 (web seems updated up to this date), not before!
                                             set -o noglob &&
                                             execute_query \
-                                                --name TERRITORY_MERGE \
+                                                --name MUNICIPALITY_MERGE \
                                                 --query "
                                                     SELECT * FROM fr.get_municipalities_of_merge(
                                                         municipality_code => '${_territory_data[$TERRITORY_CODE]}'
@@ -687,7 +687,7 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                 done
 
                 execute_query \
-                    --name UDPATE_TERRITORY_ALTITUDE \
+                    --name UDPATE_MUNICIPALITY_ALTITUDE \
                     --query "
                         UPDATE fr.municipality_altitude SET
                             z_min = ${_min:-NULL::INT}
@@ -703,7 +703,7 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
         }
         # check for complete (or error)
         execute_query \
-            --name IS_KO_TERRITORY_ALTITUDE \
+            --name IS_KO_MUNICIPALITY_ALTITUDE \
             --query 'SELECT EXISTS(SELECT 1 FROM fr.municipality_altitude WHERE z_min IS NULL OR z_max IS NULL OR z_max < z_min)' \
             --psql_arguments 'tuples-only:pset=format=unaligned' \
             --return _territory_ko && {

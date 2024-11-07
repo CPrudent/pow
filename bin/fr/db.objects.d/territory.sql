@@ -577,9 +577,11 @@ BEGIN
 
     -- build all if necessary to calculate geometries
     IF NOT _update THEN
+        CALL public.log_info('Sauvegarde Données (altitude)');
+        CALL fr.set_territory_altitude(usecase => 'BACKUP');
+
         CALL public.log_info('Purge Données');
         TRUNCATE TABLE fr.territory;
-
         CALL public.log_info('Insertion Données');
         CALL fr.set_territory_create(
             municipality_subsection => municipality_subsection
@@ -588,6 +590,9 @@ BEGIN
             usecase => 'RELATION',
             municipality_subsection => municipality_subsection
         );
+
+        CALL public.log_info('Restauration Données (altitude)');
+        CALL fr.set_territory_altitude(usecase => 'RESTORE');
     ELSE
         CALL public.log_info('Mise à jour Données');
         CALL fr.set_territory_update(

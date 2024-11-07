@@ -181,7 +181,7 @@ execute_query \
     --query "SELECT fr.set_territory_next()" &&
 
 # update altitude if needed
-$POW_DIR_BATCH/territory_altitude.sh --reset_territory yes &&
+$POW_DIR_BATCH/territory_altitude.sh --reset_municipality yes &&
 
 io_history_end_ok \
     --nrows_processed "(SELECT COUNT(1) FROM fr.territory)" \
