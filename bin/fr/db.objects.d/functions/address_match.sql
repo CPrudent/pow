@@ -27,7 +27,6 @@ BEGIN
 END $$;
 
 -- set status of matching element
-SELECT drop_all_functions_if_exists('fr', 'match_element_status');
 SELECT drop_all_functions_if_exists('fr', 'set_match_element_status');
 CREATE OR REPLACE FUNCTION fr.set_match_element_status(
     search IN VARCHAR,
@@ -963,8 +962,10 @@ AS
 $func$
 DECLARE
     _ratio NUMERIC;
-    _parent fr.matched_element;
+    --_parent fr.matched_element;
 BEGIN
+    --CALL log_info(FORMAT('search=%s', search));
+
     IF search = 'STRICT' THEN
         matched_element.codes_address := current.codes_address;
     ELSE
@@ -984,7 +985,7 @@ BEGIN
                     AND
                     (COALESCE(current.similarity_2, 0) < similarity_threshold)
                 ) OR (
-                    (level != 'AREA')
+                    (level = ANY('{STREET,COMPLEMENT}'))
                     AND
                     (COALESCE(current.similarity, 0) < similarity_threshold)
                 )
@@ -1003,49 +1004,64 @@ BEGIN
                     current => current
                 );
                 matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.not_near'));
+                --CALL log_info('housenumber-else not near!');
+            ELSIF (level = 'HOUSENUMBER') AND current.codes_address IS NULL THEN
+                matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.not_found'));
+                --CALL log_info('housenumber not found!');
             ELSE
-                CALL fr.notice_match(
-                    level => level,
-                    search => search,
-                    standardized_address => standardized_address,
-                    usecase => CASE level
-                        WHEN 'AREA' THEN '1ST_OK_X'
-                        ELSE '1ST_OK'
-                        END,
-                    current => current
-                );
-                matched_element.codes_address := ARRAY[current.co_adr];
-                matched_element.similarity_1 := CASE
-                    WHEN level = 'AREA' THEN current.similarity_1
-                    ELSE current.similarity
-                    END;
-                IF level = 'AREA' AND standardized_address.municipality_old_name IS NOT NULL THEN
-                    matched_element.similarity_2 := current.similarity_2;
+                IF (level != 'HOUSENUMBER') THEN
+                    CALL fr.notice_match(
+                        level => level,
+                        search => search,
+                        standardized_address => standardized_address,
+                        usecase => CASE level
+                            WHEN 'AREA' THEN '1ST_OK_X'
+                            ELSE '1ST_OK'
+                            END,
+                        current => current
+                    );
+                    matched_element.similarity_1 := CASE
+                        WHEN level = 'AREA' THEN current.similarity_1
+                        ELSE current.similarity
+                        END;
+                    IF level = 'AREA' AND standardized_address.municipality_old_name IS NOT NULL THEN
+                        matched_element.similarity_2 := current.similarity_2;
+                    END IF;
                 END IF;
 
-                IF ((
-                        ARRAY_LENGTH(matched_parent.codes_address, 1) = 1
-                        AND
-                        current.co_adr_za != matched_parent.codes_address[1]
-                    ) OR (
-                        ARRAY_LENGTH(matched_parent.codes_address, 1) > 1
-                        AND
-                        ARRAY_POSITION(matched_parent.codes_address, current.co_adr_za) IS NULL
-                    )
-                ) THEN
-                    RAISE NOTICE '%: DIFF AREA(%) PREV(%)',
-                        level,
-                        current.co_adr_za,
-                        matched_parent.codes_address
-                        ;
-                    /*
-                    _parent.codes_address := ARRAY[current.co_adr_za];
-                    _parent := fr.set_match_element_status(
-                        search => search,
-                        matched_element => _parent
-                    );
-                    matched_parents[1] := _parent;
-                     */
+                matched_element.codes_address := CASE level
+                    WHEN 'HOUSENUMBER' THEN current.codes_address
+                    ELSE ARRAY[current.co_adr]
+                END
+                ;
+                --CALL log_info('element ok!');
+
+                -- check AREA if available
+                IF current.co_adr_za IS NOT NULL THEN
+                    IF ((
+                            ARRAY_LENGTH(matched_parent.codes_address, 1) = 1
+                            AND
+                            current.co_adr_za != matched_parent.codes_address[1]
+                        ) OR (
+                            ARRAY_LENGTH(matched_parent.codes_address, 1) > 1
+                            AND
+                            ARRAY_POSITION(matched_parent.codes_address, current.co_adr_za) IS NULL
+                        )
+                    ) THEN
+                        CALL log_info(FORMAT('%s: DIFF AREA(%s) PREV(%s)',
+                            level,
+                            current.co_adr_za,
+                            matched_parent.codes_address
+                        ));
+                        /*
+                        _parent.codes_address := ARRAY[current.co_adr_za];
+                        _parent := fr.set_match_element_status(
+                            search => search,
+                            matched_element => _parent
+                        );
+                        matched_parents[1] := _parent;
+                        */
+                    END IF;
                 END IF;
             END IF;
         ELSE
@@ -1090,6 +1106,7 @@ BEGIN
                     current => current,
                     ratio => _ratio
                 );
+                matched_element.codes_address := current.co_adr;
                 matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.near'));
             END IF;
         END IF;
@@ -1099,6 +1116,9 @@ BEGIN
             search => search,
             matched_element => matched_element
         );
+    END IF;
+    IF matched_element.level IS NULL THEN
+        matched_element.level := level;
     END IF;
 END
 $func$ LANGUAGE plpgsql;
@@ -1420,10 +1440,10 @@ BEGIN
                                 fr.get_match_element_threshold(
                                     level => level,
                                     descriptors =>
-                                            fr._get_value_from_standardized_address(
-                                                standardized_address => standardized_address,
-                                                key => CONCAT(LOWER(level), '_descriptors')
-                                            ),
+                                        fr._get_value_from_standardized_address(
+                                            standardized_address => standardized_address,
+                                            key => CONCAT(LOWER(level), '_descriptors')
+                                        ),
                                     parameters => parameters
                                 )
                             END,
