@@ -1130,6 +1130,7 @@ BEGIN
     DELETE FROM fr.constant WHERE usecase = 'FR_ADDRESS';
     INSERT INTO fr.constant (usecase, key, value) VALUES
         ('FR_ADDRESS', 'EPCI_KIND', 'METRO|MET69|CA|CC|CU'),
+        -- Lyon, Marseille, Paris
         ('FR_ADDRESS', 'MUNICIPALITY_DISTRICT', '69123|13055|75056')
     ;
 END;
@@ -1156,10 +1157,10 @@ BEGIN
     -- matching status values
     ALTER DATABASE pow SET fr.status.match.strict = 'OK_1';
     ALTER DATABASE pow SET fr.status.match.near = 'OK_2';
-    ALTER DATABASE pow SET fr.status.match.too_many = 'OK_3';
-    ALTER DATABASE pow SET fr.status.match.not_near = 'KO_10';
-    ALTER DATABASE pow SET fr.status.match.not_found = 'KO_11';
+    ALTER DATABASE pow SET fr.status.match.not_found = 'KO_10';
+    ALTER DATABASE pow SET fr.status.match.not_near = 'KO_11';
     ALTER DATABASE pow SET fr.status.match.too_similar = 'KO_12';
+    ALTER DATABASE pow SET fr.status.match.too_many = 'KO_13';
 
     -- weighted criteria values (better word)
     ALTER DATABASE pow SET fr.weight.match.similarity = '6';

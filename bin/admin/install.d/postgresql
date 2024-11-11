@@ -77,11 +77,16 @@ apt update &&
 }
 
 # custom config
+# https://www.enterprisedb.com/blog/tuning-maxwalsize-postgresql
+# https://www.enterprisedb.com/postgres-tutorials/how-tune-postgresql-memory
 declare -A _params_postgresql=(
     [log_min_duration_statement]=5000
     [listen_addresses]="'*'"
     [min_wal_size]='500MB'
     [max_wal_size]='3GB'
+    [shared_buffers]='2GB'
+    [work_mem]='500MB'
+    [maintenance_work_mem]='250MB'
     [join_collapse_limit]=16
     [tcp_keepalives_idle]=300
 )

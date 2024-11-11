@@ -5,6 +5,7 @@
     #--
     # match FR addresses
 
+# log info about matching step
 match_info() {
     bash_args \
         --args_p "
@@ -19,7 +20,7 @@ match_info() {
 
     local -n _steps_ref=$get_arg_steps_info
 
-    log_info "demande de Rapprochement (étape ${_steps_ref[$get_arg_steps_id]})"
+    log_info "demande de Rapprochement (étape '${_steps_ref[$get_arg_steps_id]}')"
     return $SUCCESS_CODE
 }
 
@@ -150,7 +151,7 @@ match_vars[TABLE_NAME]=address_match_${match_request[$MATCH_REQUEST_SUFFIX]} &&
 {
     in_array match_steps IMPORT _steps_id && {
         ([ match_vars[FORCE] = no ] && table_exists --schema_name fr --table_name ${match_vars[TABLE_NAME]}) || {
-            match_info --steps_info match_steps_info --steps_id _steps_id &&
+            match_info --steps_info match_steps_info --steps_id $_steps_id &&
             import_file \
                 --file_path "${match_vars[FILE_PATH]}" \
                 --schema_name fr \
@@ -169,7 +170,7 @@ match_vars[TABLE_NAME]=address_match_${match_request[$MATCH_REQUEST_SUFFIX]} &&
                 exit $ERROR_CODE
             }
         } &&
-        match_info --steps_info match_steps_info --steps_id _steps_id &&
+        match_info --steps_info match_steps_info --steps_id $_steps_id &&
         execute_query \
             --name STANDARDIZE_REQUEST \
             --query "CALL set_match_standardize(
@@ -182,7 +183,7 @@ match_vars[TABLE_NAME]=address_match_${match_request[$MATCH_REQUEST_SUFFIX]} &&
 } &&
 {
     in_array match_steps MATCH_CODE _steps_id && {
-        match_info --steps_info match_steps_info --steps_id _steps_id &&
+        match_info --steps_info match_steps_info --steps_id $_steps_id &&
         execute_query \
             --name MATCH_CODE_REQUEST \
             --query "CALL fr.set_match_code(
@@ -193,7 +194,7 @@ match_vars[TABLE_NAME]=address_match_${match_request[$MATCH_REQUEST_SUFFIX]} &&
 } &&
 {
     in_array match_steps MATCH_ELEMENT _steps_id && {
-        match_info --steps_info match_steps_info --steps_id _steps_id &&
+        match_info --steps_info match_steps_info --steps_id $_steps_id &&
         execute_query \
             --name MATCH_ELEMENT_REQUEST \
             --query "CALL fr.set_match_element(

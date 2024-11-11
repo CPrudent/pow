@@ -1004,10 +1004,12 @@ BEGIN
                     current => current
                 );
                 matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.not_near'));
-                --CALL log_info('housenumber-else not near!');
-            ELSIF (level = 'HOUSENUMBER') AND current.codes_address IS NULL THEN
+            ELSIF (
+                ((level = 'HOUSENUMBER') AND (current.codes_address IS NULL))
+                OR
+                ((level != 'HOUSENUMBER') AND (current.co_adr IS NULL))
+                ) THEN
                 matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.not_found'));
-                --CALL log_info('housenumber not found!');
             ELSE
                 IF (level != 'HOUSENUMBER') THEN
                     CALL fr.notice_match(
@@ -1034,8 +1036,8 @@ BEGIN
                     ELSE ARRAY[current.co_adr]
                 END
                 ;
-                --CALL log_info('element ok!');
 
+                /* only for STREET, else parent is not AREA !
                 -- check AREA if available
                 IF current.co_adr_za IS NOT NULL THEN
                     IF ((
@@ -1063,6 +1065,7 @@ BEGIN
                         */
                     END IF;
                 END IF;
+                 */
             END IF;
         ELSE
             IF (level = 'STREET'
