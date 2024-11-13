@@ -24,7 +24,7 @@ match_info() {
     return $SUCCESS_CODE
 }
 
-# set defintion (SQL) of property (format or parameters) w/ OS file
+# get defintion of property (format or parameters) w/ OS file
 get_definition() {
     bash_args \
         --args_p "
@@ -42,17 +42,18 @@ get_definition() {
 
     local -n _vars_ref=$get_arg_vars
     local _property=${get_arg_property^^}
+    local _path=${_property}_PATH _sql=${_property}_SQL
 
     # defined property ?
     [ -n "${_vars_ref[${_property}]}" ] && {
         # default path
-        _vars_ref[${_property}_PATH]="${POW_DIR_BIN}/${_vars_ref[${_property}]}_${get_arg_property}.sql"
-        [ -f "${_vars_ref[${_property}_PATH]}" ] &&
-        _vars_ref[${_property}_SQL]=$(cat "${_vars_ref[${_property}_PATH]}") || {
+        _vars_ref[$_path]="${POW_DIR_BIN}/${_vars_ref[${_property}]}_${get_arg_property}.sql"
+        [ -f "${_vars_ref[$_path]}" ] &&
+        _vars_ref[$_sql]=$(cat "${_vars_ref[_path]}") || {
             # specific path
             [ -f "${_vars_ref[${_property}]}" ] &&
-            _vars_ref[${_property}_SQL]=$(cat "${_vars_ref[${_property}]}") || {
-                log_error "Le fichier ${get_arg_property^} ${_vars_ref[${_property}]} n'existe pas"
+            _vars_ref[$_sql]=$(cat "${_vars_ref[${_property}]}") || {
+                log_error "Le fichier ${_property} ${_vars_ref[${_property}]} n'existe pas"
                 return $ERROR_CODE
             }
         }
@@ -71,6 +72,7 @@ bash_args \
         import_options:Options import (du fichier) spécifiques à son type;
         import_limit:Limiter à n enregistrements;
         steps:Ensemble des étapes à réaliser (séparées par une virgule, si plusieurs);
+        info:Afficher informations de la demande;
         verbose:Ajouter des détails sur les traitements
     " \
     --args_o '
@@ -78,10 +80,12 @@ bash_args \
     ' \
     --args_v '
         force:yes|no;
+        info:yes|no;
         verbose:yes|no
     ' \
     --args_d '
         force:no;
+        info:no;
         verbose:no;
         steps:ALL
     ' \
@@ -149,8 +153,16 @@ match_request=($_request) &&
 match_vars[TABLE_NAME]=address_match_${match_request[$MATCH_REQUEST_SUFFIX]} &&
 
 {
+    # only info
+    [ "$get_arg_info" = yes ] && {
+        declare -p match_request match_vars
+        exit $SUCCESS_CODE
+    } || true
+} &&
+
+{
     in_array match_steps IMPORT _steps_id && {
-        ([ match_vars[FORCE] = no ] && table_exists --schema_name fr --table_name ${match_vars[TABLE_NAME]}) || {
+        ([ ${match_vars[FORCE]} = no ] && table_exists --schema_name fr --table_name ${match_vars[TABLE_NAME]}) || {
             match_info --steps_info match_steps_info --steps_id $_steps_id &&
             import_file \
                 --file_path "${match_vars[FILE_PATH]}" \
