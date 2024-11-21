@@ -119,74 +119,127 @@ not really obtain normalized name, by example, for street
  */
 SELECT drop_all_functions_if_exists('fr', 'set_match_standardize');
 CREATE OR REPLACE PROCEDURE fr.set_match_standardize(
-    file_path IN VARCHAR,
+    id IN INTEGER,
     mapping IN HSTORE,
     force IN BOOLEAN DEFAULT FALSE,
-    raise_notice IN BOOLEAN DEFAULT FALSE
+    raise_notice IN BOOLEAN DEFAULT FALSE,
+    simulation IN BOOLEAN DEFAULT FALSE
 )
 AS
 $proc$
 DECLARE
-    _id_request INTEGER;
-    _suffix VARCHAR;
+    _import VARCHAR;
+    _source_name VARCHAR;
+    _source_kind VARCHAR;
+    _source_filter VARCHAR;
+    _source_query VARCHAR;
     _is_normalized BOOLEAN;
     _matching HSTORE;
-    _query TEXT;
     _table VARCHAR;
+    _query TEXT;
     _nrows INTEGER;
     _info VARCHAR;
 BEGIN
-    SELECT id, suffix, is_normalized, parameters
-    INTO _id_request, _suffix, _is_normalized, _matching
+    SELECT import_name, source_name, source_kind, source_filter, source_query, is_normalized, parameters
+    INTO _import, _source_name, _source_kind, _source_filter, _source_query, _is_normalized, _matching
     FROM fr.address_match_request mr
-    WHERE mr.file_path = set_match_standardize.file_path
+    WHERE mr.id = set_match_standardize.id
     ;
-
-    IF _id_request IS NULL THEN
-        RAISE 'aucune demande de Rapprochement trouvée pour le fichier ''%''', file_path;
+    IF NOT FOUND THEN
+        RAISE 'aucune demande de Rapprochement trouvée pour ID ''%''', id;
     END IF;
 
-    _info := CONCAT('standardisation demande Rapprochement (', _id_request, ')');
+    _info := CONCAT('standardisation demande Rapprochement (', id, ')');
     IF force OR NOT _is_normalized THEN
-        DELETE FROM fr.address_match_result WHERE id_request = _id_request;
+        DELETE FROM fr.address_match_result WHERE id_request = set_match_standardize.id;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
         IF _nrows > 0 THEN
             CALL public.log_info(CONCAT(_info, ' - PURGE : #', _nrows));
         END IF;
 
-        _table := CONCAT('address_match_', _suffix);
+        _table := CASE _source_kind
+            WHEN 'FILE' THEN
+                CONCAT_WS('.', 'fr', _import)
+            WHEN 'TABLE' THEN
+                CONCAT_WS('.', 'fr', _source_name)
+            WHEN 'QUERY' THEN
+                _source_name
+            END
+        ;
+
+        IF _source_kind = 'QUERY' THEN
+            _query := CONCAT(
+                '
+                WITH
+                ',
+                _table,
+                ' AS (',
+                _source_query,
+                ')
+                '
+            );
+        END IF;
+
         _query := CONCAT(
+            _query,
             '
             INSERT INTO fr.address_match_result(
-                  id_request
-                , id_address
-                , standardized_address
+                id_request,
+                id_address,
+                standardized_address
             )
             (
                 SELECT
-                      $1
-                    , d.rowid
-                    , ROW(sa.*)::fr.standardized_address
-                FROM fr.
+                    $1,
+                    d.rowid,
+                    ROW(sa.*)::fr.standardized_address
+                FROM
                 '
                 , _table, ' d
                     LEFT OUTER JOIN fr.standardize_address(
-                        address =>  d
-                        , mapping => $2
-                        , matching => $3
-                        , raise_notice => $4
+                        address =>  d,
+                        mapping => $2,
+                        matching => $3,
+                        raise_notice => $4
                     ) sa ON TRUE
+            '
+        );
+
+        IF _source_filter IS NOT NULL THEN
+            _query := CONCAT(
+                _query,
+                '
+                WHERE
+                ',
+                _source_filter
+            );
+        END IF;
+        _query := CONCAT(
+            _query,
+            '
             )
             '
         );
-        EXECUTE _query USING _id_request, mapping, _matching, raise_notice;
+
+        IF raise_notice THEN
+            CALL public.log_info(FORMAT('ID(%s): mapping %s', id, mapping));
+            CALL public.log_info(FORMAT('ID(%s): query %s', id, _query));
+            CALL public.log_info(FORMAT('ID(%s): matching %s', id, _matching));
+        END IF;
+
+        IF simulation THEN
+            RAISE NOTICE 'query=%', _query;
+            RETURN;
+        END IF;
+
+        EXECUTE _query USING id, mapping, _matching, raise_notice;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
         CALL public.log_info(CONCAT(_info, ' : #', _nrows));
 
-        UPDATE fr.address_match_request SET
+        UPDATE fr.address_match_request mr SET
             is_normalized = TRUE
             WHERE
-                id = _id_request
+                mr.id = set_match_standardize.id
         ;
     ELSE
         CALL public.log_info(CONCAT(_info, ' : déjà traitée (option force disponible)'));

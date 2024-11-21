@@ -64,19 +64,20 @@ get_definition() {
 
 bash_args \
     --args_p "
-        file_path:Fichier des Adresses à rapprocher;
-        force:Forcer le traitement même si celui-ci a déjà été fait;
-        suffix:Entité SQL des Adresses avec ce suffixe particulier;
+        source_name:Fichier des Adresses à rapprocher;
+        source_query:Requête à appliquer pour obtenir les données entrantes;
+        source_filter:Filtre à appliquer sur les données entrantes;
         format:Définition du Format des Adresses (ou fichier du Format);
         parameters:Définition des Paramètres du Rapprochement (ou fichier des Paramètres);
         import_options:Options import (du fichier) spécifiques à son type;
         import_limit:Limiter à n enregistrements;
         steps:Ensemble des étapes à réaliser (séparées par une virgule, si plusieurs);
-        info:Afficher informations de la demande;
+        info:Afficher les informations de la demande;
+        force:Forcer le traitement même si celui-ci a déjà été fait;
         verbose:Ajouter des détails sur les traitements
     " \
     --args_o '
-        file_path
+        source_name
     ' \
     --args_v '
         force:yes|no;
@@ -92,14 +93,15 @@ bash_args \
     "$@" || exit $ERROR_CODE
 
 declare -A match_vars=(
-    [FILE_PATH]="$get_arg_file_path"
+    [SOURCE_NAME]="$get_arg_source_name"
+    [SOURCE_KIND]=
+    [SOURCE_FILTER]="$get_arg_source_filter"
+    [SOURCE_QUERY]="$get_arg_source_query"
     [FORCE]=$get_arg_force
-    [SUFFIX]="$get_arg_suffix"
     [FORMAT]="$get_arg_format"
     [PARAMETERS]="$get_arg_parameters"
     [IMPORT_OPTIONS]="$get_arg_import_options"
     [IMPORT_LIMIT]=$get_arg_import_limit
-    [TABLE_NAME]=''
     [FORMAT_PATH]=''
     [FORMAT_SQL]=''
     [PARAMETERS_PATH]=''
@@ -109,8 +111,7 @@ declare -A match_vars=(
 )
 _k=0
 MATCH_REQUEST_ID=$((_k++))
-MATCH_REQUEST_SUFFIX=$((_k++))
-MATCH_REQUEST_NEW=$((_k++))
+MATCH_REQUEST_IMPORT=$((_k++))
 MATCH_REQUEST_ITEMS=$_k
 declare -a match_request
 
@@ -128,46 +129,62 @@ declare -a match_steps_info=(
     [6]=Statistiques
 )
 
-expect file "${match_vars[FILE_PATH]}" &&
-get_definition --property parameters --vars match_vars &&
 set_env --schema_name fr &&
+# determine kind of source
+{
+    [ -f "${match_vars[SOURCE_NAME]}" ] && {
+        match_vars[SOURCE_KIND]=FILE
+    } || {
+        table_exists --schema_name fr --table_name "${match_vars[SOURCE_NAME]}" && match_vars[SOURCE_KIND]=TABLE || {
+            [ -n "${match_vars[SOURCE_QUERY]}" ] && match_vars[SOURCE_KIND]=QUERY
+        }
+    }
+} &&
 
+get_definition --property parameters --vars match_vars &&
+
+# ERROR if query has * (following select) which is replaced by bash_args as files!
 execute_query \
     --name MATCH_REQUEST \
     --query "
-        SELECT CONCAT_WS(' ', id, suffix, new_request)
-        FROM fr.add_match_request(
-            file_path => '${match_vars[FILE_PATH]}'
-            $([ -n "${match_vars[SUFFIX]}" ] && echo ", suffix => '${match_vars[SUFFIX]}'")
+        SELECT CONCAT_WS(' ', id, import_name)
+        FROM fr.set_match_request(
+            source_name => '${match_vars[SOURCE_NAME]}',
+            source_kind => '${match_vars[SOURCE_KIND]}'
+            $([ -n "${match_vars[SOURCE_FILTER]}" ] && echo ", source_filter => '${match_vars[SOURCE_FILTER]//\'/\'\'}'")
+            $([ -n "${match_vars[SOURCE_QUERY]}" ] && echo ", source_query => '${match_vars[SOURCE_QUERY]//\'/\'\'}'")
             $([ -n "${match_vars[PARAMETERS_SQL]}" ] && echo ", parameters => '${match_vars[PARAMETERS_SQL]}'::HSTORE")
         )
     " \
     --psql_arguments 'tuples-only:pset=format=unaligned' \
     --return _request &&
+
 match_request=($_request) &&
-[ ${#match_request[*]} -eq $MATCH_REQUEST_ITEMS ] || {
-    log_error "demande Rapprochement fichier '${match_vars[FILE_PATH]}' en erreur"
-    exit $ERROR_CODE
-} &&
 
-match_vars[TABLE_NAME]=address_match_${match_request[$MATCH_REQUEST_SUFFIX]} &&
+# ERROR if TABLE|QUERY as 2nd result (import_name) is null, and so array has only 1 element!
+# declare -p match_request &&
+# [ ${#match_request[*]} -eq $MATCH_REQUEST_ITEMS ] || {
+#     log_error "demande Rapprochement données '${match_vars[SOURCE_NAME]}' en erreur"
+#     exit $ERROR_CODE
+# } &&
 
+# only info
 {
-    # only info
     [ "$get_arg_info" = yes ] && {
         declare -p match_request match_vars
         exit $SUCCESS_CODE
     } || true
 } &&
 
+# import todo? only for FILE input
 {
-    in_array match_steps IMPORT _steps_id && {
-        ([ ${match_vars[FORCE]} = no ] && table_exists --schema_name fr --table_name ${match_vars[TABLE_NAME]}) || {
+    ([ "${match_vars[SOURCE_KIND]}" = FILE ] && in_array match_steps IMPORT _steps_id) && {
+        ([ ${match_vars[FORCE]} = no ] && table_exists --schema_name fr --table_name ${match_request[MATCH_REQUEST_IMPORT]}) || {
             match_info --steps_info match_steps_info --steps_id $_steps_id &&
             import_file \
-                --file_path "${match_vars[FILE_PATH]}" \
+                --file_path "${match_vars[SOURCE_NAME]}" \
                 --schema_name fr \
-                --table_name ${match_vars[TABLE_NAME]} \
+                --table_name "${match_request[MATCH_REQUEST_IMPORT]}" \
                 --load_mode OVERWRITE_TABLE \
                 --limit "${match_vars[IMPORT_LIMIT]}" \
                 --import_options "${match_vars[IMPORT_OPTIONS]}"
@@ -182,11 +199,12 @@ match_vars[TABLE_NAME]=address_match_${match_request[$MATCH_REQUEST_SUFFIX]} &&
                 exit $ERROR_CODE
             }
         } &&
+        declare -p match_vars &&
         match_info --steps_info match_steps_info --steps_id $_steps_id &&
         execute_query \
             --name STANDARDIZE_REQUEST \
             --query "CALL set_match_standardize(
-                file_path => '${match_vars[FILE_PATH]}',
+                id => ${match_request[MATCH_REQUEST_ID]},
                 mapping => '${match_vars[FORMAT_SQL]}'::HSTORE,
                 force => ('${match_vars[FORCE]}' = 'yes'),
                 raise_notice => ('${match_vars[VERBOSE]}' = 'yes')
