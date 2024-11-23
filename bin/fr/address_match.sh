@@ -199,7 +199,7 @@ match_request=($_request) &&
                 exit $ERROR_CODE
             }
         } &&
-        declare -p match_vars &&
+        #declare -p match_vars &&
         match_info --steps_info match_steps_info --steps_id $_steps_id &&
         execute_query \
             --name STANDARDIZE_REQUEST \

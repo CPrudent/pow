@@ -197,7 +197,7 @@ BEGIN
                 '
                 , _table, ' d
                     LEFT OUTER JOIN fr.standardize_address(
-                        address =>  d,
+                        address =>  TO_JSON(d),
                         mapping => $2,
                         matching => $3,
                         raise_notice => $4

@@ -1252,7 +1252,7 @@ view test_normalize.sh : option NAME_DIFF
 -- standardize one address
 SELECT drop_all_functions_if_exists('fr', 'standardize_address');
 CREATE OR REPLACE FUNCTION fr.standardize_address(
-    address IN RECORD,                  -- address to standardize
+    address IN JSON,                    -- address to standardize
     mapping IN HSTORE,                  -- mapping address(client)/address(reference)
     matching IN HSTORE DEFAULT NULL,    -- matching parameters
     raise_notice IN BOOLEAN DEFAULT FALSE
@@ -1273,7 +1273,6 @@ DECLARE
     _complement_nwords INT;
     _complement_descriptors_as_words TEXT[];
     _housenumber VARCHAR;
-    _exists BOOLEAN;
     _levels VARCHAR[] := ARRAY['COMPLEMENT', 'HOUSENUMBER', 'STREET'];
     _level VARCHAR;
     _record RECORD;
@@ -1282,19 +1281,17 @@ DECLARE
     _cadastre_parcel_section VARCHAR;
     _cadastre_parcel_prefix CHAR(3);
 BEGIN
-    FOREACH _mapping SLICE 1 IN ARRAY %# mapping LOOP
-        _mapping[2] := CONCAT('$1.', _mapping[2]);
+    IF raise_notice THEN CALL public.log_info(FORMAT('Adresse : %s', address)); END IF;
+
+    -- standardize inputs, applying checks
+    FOREACH _mapping SLICE 1 IN ARRAY %# mapping
+    LOOP
         BEGIN
             CASE _mapping[1]
                 WHEN 'id' THEN
-                    EXECUTE CONCAT('SELECT ', _mapping[2])
-                        INTO _standardized_address.id
-                        USING address;
+                    _standardized_address.id := address->>_mapping[2];
                 WHEN 'complement' THEN
-                    EXECUTE CONCAT('SELECT NULLIF(TRIM(', _mapping[2], '::TEXT), '''')')
-                        INTO _standardized_address.complement_name
-                        USING address;
-
+                    _standardized_address.complement_name := NULLIF(TRIM(address->>_mapping[2]), '');
                     IF _standardized_address.complement_name IS NOT NULL THEN
                         SELECT
                             /*
@@ -1324,9 +1321,7 @@ BEGIN
                         ;
                     END IF;
                 WHEN 'housenumber' THEN
-                    EXECUTE CONCAT('SELECT NULLIF(TRIM(', _mapping[2], '::TEXT), '''')')
-                        INTO _housenumber
-                        USING address;
+                    _housenumber := NULLIF(TRIM(address->>_mapping[2]), '');
                     IF (
                         (_housenumber IS NOT NULL)
                         AND (
@@ -1338,7 +1333,7 @@ BEGIN
                             (_housenumber = '0')
                         )
                     ) THEN
-                        RAISE NOTICE 'Numéro de voie ignoré car invalide : "%"', _housenumber;
+                        CALL public.log_info(FORMAT('Numéro de voie ignoré car invalide : (%s)', _housenumber));
                     ELSE
                         IF _housenumber ~ '[^0-9]' THEN
                             SELECT
@@ -1351,15 +1346,9 @@ BEGIN
                         END IF;
                     END IF;
                 WHEN 'extension' THEN
-                    EXECUTE CONCAT('SELECT ', _mapping[2])
-                        INTO _standardized_address.extension
-                        USING address;
-                    _standardized_address.extension := NULLIF(TRIM(public.clean_address_label(_standardized_address.extension)), '');
+                    _standardized_address.extension := NULLIF(TRIM(public.clean_address_label(address->>_mapping[2])), '');
                 WHEN 'street' THEN
-                    EXECUTE CONCAT('SELECT NULLIF(TRIM(', _mapping[2], '::TEXT), '''')')
-                        INTO _standardized_address.street_name
-                        USING address;
-
+                    _standardized_address.street_name := NULLIF(TRIM(address->>_mapping[2]), '');
                     IF _standardized_address.street_name IS NOT NULL THEN
                         SELECT
                             /*
@@ -1389,112 +1378,76 @@ BEGIN
                         ;
                     END IF;
                 WHEN 'municipality_code' THEN
-                    EXECUTE CONCAT('SELECT ', _mapping[2])
-                        INTO _standardized_address.municipality_code
-                        USING address;
-
-                    SELECT EXISTS(
+                    _standardized_address.municipality_code := NULLIF(TRIM(address->>_mapping[2]), '');
+                    IF NOT EXISTS(
                         SELECT 1 FROM fr.laposte_address_area
-                        WHERE co_insee_commune = _standardized_address.municipality_code
-                        AND fl_active)
-                    INTO _exists;
-                    IF NOT _exists THEN
-                        RAISE NOTICE 'Code INSEE (commune) ignoré car invalide : "%"', _standardized_address.municipality_code;
+                        WHERE co_insee_commune = COALESCE(_standardized_address.municipality_code, '99999')
+                        AND fl_active
+                    ) THEN
+                        CALL public.log_info(FORMAT('Code INSEE (commune) ignoré car invalide : (%s)', _standardized_address.municipality_code));
                         _standardized_address.municipality_code := NULL;
                     END IF;
                 WHEN 'postcode' THEN
-                    EXECUTE CONCAT('SELECT ', _mapping[2])
-                        INTO _standardized_address.postcode
-                        USING address;
-                    SELECT EXISTS(
+                    _standardized_address.postcode := NULLIF(TRIM(address->>_mapping[2]), '');
+                    IF NOT EXISTS(
                         SELECT 1 FROM fr.laposte_address_area
-                        WHERE co_postal = _standardized_address.postcode
-                        AND fl_active)
-                    INTO _exists;
-                    IF NOT _exists THEN
-                        RAISE NOTICE 'Code postal ignoré car invalide : "%"', _standardized_address.postcode;
+                        WHERE co_postal = COALESCE(_standardized_address.postcode, '99999')
+                        AND fl_active
+                    ) THEN
+                        CALL public.log_info(FORMAT('Code postal ignoré car invalide : (%s)', _standardized_address.postcode));
                         _standardized_address.postcode := NULL;
                     END IF;
                 WHEN 'municipality_name' THEN
-                    EXECUTE CONCAT('SELECT NULLIF(TRIM(', _mapping[2], '::TEXT), '''')')
-                        INTO _standardized_address.municipality_name
-                        USING address;
+                    _standardized_address.municipality_name := NULLIF(TRIM(address->>_mapping[2]), '');
                 -- TODO à intégrer dans lb_ligneX
                 -- mention CEDEX OU libellé Ancienne Commune OU les 2 accollées
                 -- RE=^((BP|CS|CE|CP) *[0-9]+)? *([A-Z ]+)?$
                 WHEN 'municipality_old_name' THEN
-                    EXECUTE CONCAT('SELECT NULLIF(TRIM(', _mapping[2], '::TEXT), '''')')
-                        INTO _standardized_address.municipality_old_name
-                        USING address;
+                    _standardized_address.municipality_old_name := NULLIF(TRIM(address->>_mapping[2]), '');
 
                 WHEN 'geo_xy' THEN
-                    EXECUTE CONCAT('SELECT REPLACE(SPLIT_PART(', _mapping[2], ','','',1)::VARCHAR, '','', ''.'')::DOUBLE PRECISION')
-                        INTO _geom_x
-                        USING address;
-                    EXECUTE CONCAT('SELECT REPLACE(SPLIT_PART(', _mapping[2], ','','',2)::VARCHAR, '','', ''.'')::DOUBLE PRECISION')
-                        INTO _geom_y
-                        USING address;
+                    _geom_x := REPLACE(SPLIT_PART(address->>_mapping[2], ',', 1)::VARCHAR, ',', '.')::DOUBLE PRECISION;
+                    _geom_y := REPLACE(SPLIT_PART(address->>_mapping[2], ',', 2)::VARCHAR, ',', '.')::DOUBLE PRECISION;
                 WHEN 'geo_latlon' THEN
                     -- latitude = Y, longitude = X
-                    EXECUTE CONCAT('SELECT REPLACE(SPLIT_PART(', _mapping[2], ','','',2)::VARCHAR, '','', ''.'')::DOUBLE PRECISION')
-                        INTO _geom_x
-                        USING address;
-                    EXECUTE CONCAT('SELECT REPLACE(SPLIT_PART(', _mapping[2], ','','',1)::VARCHAR, '','' ,''.'')::DOUBLE PRECISION')
-                        INTO _geom_y
-                        USING address;
+                    _geom_x := REPLACE(SPLIT_PART(address->>_mapping[2], ',', 2)::VARCHAR, ',', '.')::DOUBLE PRECISION;
+                    _geom_y := REPLACE(SPLIT_PART(address->>_mapping[2], ',', 1)::VARCHAR, ',', '.')::DOUBLE PRECISION;
                     _geom_srid_default := 4326;
                 WHEN 'geo_x' THEN
-                    EXECUTE CONCAT('SELECT REPLACE(', _mapping[2], '::VARCHAR, '','', ''.'')::DOUBLE PRECISION')
-                        INTO _geom_x
-                        USING address;
+                    _geom_x := REPLACE(address->>_mapping[2], ',', '.')::DOUBLE PRECISION;
                 WHEN 'geo_y' THEN
-                    EXECUTE CONCAT('SELECT REPLACE(', _mapping[2], '::VARCHAR, '','' ,''.'')::DOUBLE PRECISION')
-                        INTO _geom_y
-                        USING address;
+                    _geom_y := REPLACE(address->>_mapping[2], ',', '.')::DOUBLE PRECISION;
                 WHEN 'geo_srid' THEN
-                    EXECUTE CONCAT('SELECT ', _mapping[2], '::SMALLINT')
-                        INTO _geom_srid
-                        USING address;
+                    _geom_srid := (address->>_mapping[2])::SMALLINT;
                 WHEN 'geo_wkt' THEN
-                    EXECUTE CONCAT('SELECT ST_PointFromText(', _mapping[2], ')')
-                        INTO _geom
-                        USING address;
+                    _geom := ST_PointFromText(address->>_mapping[2]);
                 WHEN 'geo_json' THEN
-                    EXECUTE CONCAT('SELECT ST_GeomFromGeoJSON(', _mapping[2], ')')
-                        INTO _geom
-                        USING address;
+                    _geom := ST_GeomFromGeoJSON(address->>_mapping[2]);
                 WHEN 'geo' THEN
-                    EXECUTE CONCAT('SELECT ', _mapping[2])
-                        INTO _geom
-                        USING address;
+                    _geom := (address->>_mapping[2])::GEOMETRY;
 
                 WHEN 'cadastre_parcel_number' THEN
-                    EXECUTE CONCAT('SELECT ', _mapping[2], '::INTEGER::VARCHAR')
-                        INTO _cadastre_parcel_number
-                        USING address;
+                    _cadastre_parcel_number := (address->>_mapping[2])::INTEGER::VARCHAR;
                 WHEN 'cadastre_parcel_section' THEN
-                    EXECUTE CONCAT('SELECT ', _mapping[2])
-                        INTO _cadastre_parcel_section
-                        USING address;
                     --On enlève les éventuel 0 préfixant l'identifiant de section cadastrale
                     --Alternative : ne prendre que les lettre alphabéthiques ?
-                    _cadastre_parcel_section := REPLACE(_cadastre_parcel_section, '0', '');
+                    _cadastre_parcel_section := REPLACE(address->>_mapping[2], '0', '');
                 WHEN 'cadastre_parcel_prefix' THEN
-                    EXECUTE CONCAT('SELECT ', _mapping[2])
-                        INTO _cadastre_parcel_prefix
-                        USING address;
+                    _cadastre_parcel_prefix := address->>_mapping[2];
             ELSE
-                RAISE NOTICE 'Attribut % ignoré car inconnu', _mapping[1];
+                CALL public.log_info(FORMAT('Attribut (%s) ignoré car inconnu', _mapping[1]));
             END CASE;
         EXCEPTION WHEN OTHERS THEN
-            RAISE NOTICE 'Attribut % ignoré car provoquant une erreur à l''évaluation de % : "%"', _mapping[1], _mapping[2], SQLERRM;
+            CALL public.log_info(FORMAT('Attribut (%s) ignoré car provoquant une erreur à l''évaluation de %s : "%s"', _mapping[1], _mapping[2], SQLERRM));
         END;
     END LOOP;
 
+    -- raise if mandatory not available
     IF _standardized_address.id IS NULL THEN
-        RAISE 'Vous devez spécifier un code identifiant de l''adresse';
+        RAISE 'Vous devez spécifier un code identifiant (ID) de l''adresse';
     END IF;
 
+    -- about municipality name, postcode
     _standardized_address.municipality_name := fr.normalize_municipality_name(
         code => _standardized_address.municipality_code,
         name => _standardized_address.municipality_name
@@ -1511,7 +1464,7 @@ BEGIN
             FROM fr.laposte_address_area
             WHERE lb_ach_nn = _standardized_address.municipality_name AND fl_active;
         EXCEPTION WHEN OTHERS THEN
-            RAISE NOTICE 'Déduction code INSEE à partir du nom "%" provoquant une erreur : %', _standardized_address.municipality_name,  SQLERRM;
+            CALL public.log_info(FORMAT('Déduction code INSEE à partir du nom "%s" provoquant une erreur : %s', _standardized_address.municipality_name,  SQLERRM));
         END;
     END IF;
     IF _standardized_address.municipality_name IS NULL AND _standardized_address.municipality_code IS NOT NULL THEN
@@ -1521,27 +1474,28 @@ BEGIN
             FROM fr.laposte_address_area
             WHERE co_insee_commune = _standardized_address.municipality_code AND fl_active;
         EXCEPTION WHEN OTHERS THEN
-            RAISE NOTICE 'Déduction libellé Commune à partir du code "%" provoquant une erreur : %', _standardized_address.municipality_code,  SQLERRM;
+            CALL public.log_info(FORMAT('Déduction libellé INSEE à partir du code "%s" provoquant une erreur : %s', _standardized_address.municipality_code,  SQLERRM));
         END;
     END IF;
 
+    -- about geometry
     IF _geom IS NULL
     AND _geom_x IS NOT NULL
     AND _geom_y IS NOT NULL THEN
         _geom := ST_MakePoint(_geom_x,_geom_y);
     END IF;
-
     IF _geom IS NOT NULL THEN
         IF ST_SRID(_geom) = 0 THEN
             _geom := ST_SetSRID(_geom, COALESCE(_geom_srid, _geom_srid_default));
         END IF;
         IF NOT public.is_valid_geometry_in_SRID_bounds(_geom) THEN
-            RAISE NOTICE 'Coordonnées en dehors des limites du système de projection : %, SRID %', ST_AsText(_geom), ST_SRID(_geom);
+            CALL public.log_info(FORMAT('Coordonnées en dehors des limites du système de projection : %, SRID %', ST_AsText(_geom), ST_SRID(_geom)));
         ELSE
             _standardized_address.geom := ST_Transform(_geom, 3857);
         END IF;
     END IF;
 
+    -- set values for (street, complement)
     IF _standardized_address.street_name IS NOT NULL THEN
         _standardized_address.street_name := ARRAY_TO_STRING(_standardized_address.street_words, ' ');
         _standardized_address.street_descriptors :=
@@ -1562,6 +1516,7 @@ BEGIN
         );
     END IF;
 
+    -- level of address
     _standardized_address.level :=
     CASE
         WHEN _standardized_address.complement_name IS NOT NULL THEN 'COMPLEMENT'
@@ -1570,6 +1525,7 @@ BEGIN
         WHEN _standardized_address.municipality_code IS NOT NULL THEN 'AREA'
     END;
 
+    -- match codes
     IF (_standardized_address.postcode IS NOT NULL
         OR _standardized_address.municipality_code IS NOT NULL
         OR _standardized_address.municipality_old_name IS NOT NULL
