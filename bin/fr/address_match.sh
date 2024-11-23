@@ -122,9 +122,9 @@ match_steps=( ${match_vars[STEPS]//,/ } )
 declare -a match_steps_info=(
     [0]=Chargement
     [1]=Standardisation
-    [2]="Calcul MATCH CODE"
-    [3]="Rapprochement ELEMENT"
-    [4]="Rapprochement ADRESSE"
+    [2]='Calcul MATCH CODE'
+    [3]='Rapprochement ELEMENT'
+    [4]='Rapprochement ADRESSE'
     [5]=Rapport
     [6]=Statistiques
 )
@@ -136,9 +136,16 @@ set_env --schema_name fr &&
         match_vars[SOURCE_KIND]=FILE
     } || {
         table_exists --schema_name fr --table_name "${match_vars[SOURCE_NAME]}" && match_vars[SOURCE_KIND]=TABLE || {
-            [ -n "${match_vars[SOURCE_QUERY]}" ] && match_vars[SOURCE_KIND]=QUERY
+            [ -n "${match_vars[SOURCE_QUERY]}" ] && match_vars[SOURCE_KIND]=QUERY || {
+                log_error 'type source non déterminé!'
+                false
+            }
         }
     }
+} &&
+
+{
+    [ "${match_vars[VERBOSE]}" = yes ] && log_info "type source: ${match_vars[SOURCE_KIND]}" || true
 } &&
 
 get_definition --property parameters --vars match_vars &&
@@ -160,6 +167,13 @@ execute_query \
     --return _request &&
 
 match_request=($_request) &&
+
+{
+    [ "${match_vars[VERBOSE]}" = yes ] && {
+        log_info "$(declare -p match_request)"
+        log_info "$(declare -p match_vars)"
+    } || true
+} &&
 
 # ERROR if TABLE|QUERY as 2nd result (import_name) is null, and so array has only 1 element!
 # declare -p match_request &&
@@ -198,6 +212,7 @@ match_request=($_request) &&
         }
     } || true
 } &&
+
 {
     in_array match_steps STANDARDIZE _steps_id && {
         get_definition --property format --vars match_vars && {
@@ -218,6 +233,7 @@ match_request=($_request) &&
             )"
     } || true
 } &&
+
 {
     in_array match_steps MATCH_CODE _steps_id && {
         match_info --steps_info match_steps_info --steps_id $_steps_id &&
@@ -229,6 +245,7 @@ match_request=($_request) &&
             )"
     } || true
 } &&
+
 {
     in_array match_steps MATCH_ELEMENT _steps_id && {
         match_info --steps_info match_steps_info --steps_id $_steps_id &&
@@ -240,6 +257,10 @@ match_request=($_request) &&
                 raise_notice => ('${match_vars[VERBOSE]}' = 'yes')
             )"
     } || true
+} &&
+
+{
+    [ "${match_vars[VERBOSE]}" = yes ] && log_info "archive: ${POW_DIR_ARCHIVE}" || true
 } || exit $ERROR_CODE
 
 exit $SUCCESS_CODE
