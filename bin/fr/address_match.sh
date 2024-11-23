@@ -72,8 +72,8 @@ bash_args \
         import_options:Options import (du fichier) spécifiques à son type;
         import_limit:Limiter à n enregistrements;
         steps:Ensemble des étapes à réaliser (séparées par une virgule, si plusieurs);
-        info:Afficher les informations de la demande;
         force:Forcer le traitement même si celui-ci a déjà été fait;
+        only_info:Afficher les informations de la demande;
         verbose:Ajouter des détails sur les traitements
     " \
     --args_o '
@@ -81,12 +81,12 @@ bash_args \
     ' \
     --args_v '
         force:yes|no;
-        info:yes|no;
+        only_info:NO|ID|ALL;
         verbose:yes|no
     ' \
     --args_d '
         force:no;
-        info:no;
+        only_info:NO;
         verbose:no;
         steps:ALL
     ' \
@@ -170,8 +170,15 @@ match_request=($_request) &&
 
 # only info
 {
-    [ "$get_arg_info" = yes ] && {
-        declare -p match_request match_vars
+    [ "$get_arg_only_info" != NO ] && {
+        case "$get_arg_only_info" in
+        ID)
+            echo ${match_request[MATCH_REQUEST_ID]}
+            ;;
+        ALL)
+            declare -p match_request match_vars
+            ;;
+        esac
         exit $SUCCESS_CODE
     } || true
 } &&
