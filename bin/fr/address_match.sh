@@ -10,17 +10,17 @@ match_info() {
     bash_args \
         --args_p "
             steps_info:Table des libellés des étapes;
-            steps_id:Entrée dans cette table
+            step:Entrée dans cette table
         " \
         --args_o '
             steps_info;
-            steps_id
+            step
         ' \
         "$@" || return $ERROR_CODE
 
     local -n _steps_ref=$get_arg_steps_info
 
-    log_info "demande de Rapprochement (étape '${_steps_ref[$get_arg_steps_id]}')"
+    log_info "demande de Rapprochement (étape '${_steps_ref[$get_arg_step]}')"
     return $SUCCESS_CODE
 }
 
@@ -65,34 +65,53 @@ get_definition() {
 output_columns() {
     bash_args \
         --args_p "
+            columns_set:Ensemble des colonnes;
             columns_user:Liste des colonnes à traiter;
-            columns_set:Ensemble des colonnes disponibles;
+            columns_default:Ensemble des colonnes disponibles;
             columns_todo:Résultat
         " \
         --args_o '
-            columns_user;
             columns_set;
-            columns
+            columns_user;
+            columns_default;
+            columns_todo
+        ' \
+        --args_v '
+            columns_set:IN|MORE
         ' \
         "$@" || return $ERROR_CODE
 
     local -n _user_ref=$get_arg_columns_user
     local -n _todo_ref=$get_arg_columns_todo
-    local _item _minus _tmp
+    local _item _minus _tmp _i _rc
 
     # clone default list
-    _tmp=$(declare -p ${get_arg_columns_set}) &&
-    echo "$_tmp" &&
-    eval "${_tmp/${get_arg_columns_set}=/_array_clone=}" &&
-    declare -p _array_clone
+    _tmp=$(declare -p ${get_arg_columns_default}) &&
+    #echo "$_tmp" &&
+    eval "${_tmp/${get_arg_columns_default}=/_array_clone=}" &&
+    #declare -p _array_clone
 
     for _item in ${_user_ref[@]}; do
+        #echo "item=$_item (#${#_array_clone[@]})"
         _minus=${_item:0:1}
-        [ "$_minus" = - ] &&
-        _array_clone=( "${_array_clone[@]/${_item:1}}" ) &&
-        continue
+        if [ "$_minus" = - ]; then
+            #_array_clone=( "${_array_clone[@]/${_item:1}}" ) &&
+            for _i in "${!_array_clone[@]}"; do
+                [[ $_i = ${_item:1} ]] && {
+                    unset '_array_clone[$_i]'
+                    #echo "(#${#_array_clone[@]})"
+                    break
+                }
+            done
+            continue
+        fi
 
-        #in_array _array_clone "$_item" &&
+        in_array --array _array_clone --item "$_item"
+        _rc=$?
+        [ "$get_arg_columns_set" = IN ] && _item="i.${_item,,}"
+        # column has to NOT exist if IN set (and vice versa if MORE)
+        (([ "$get_arg_columns_set" = IN ] && [ $_rc -eq 1 ]) ||
+        ([ "$get_arg_columns_set" = MORE ] && [ $_rc -eq 0 ])) &&
         _todo_ref+=( "$_item" )
     done
     _todo_ref+=( "${_array_clone[@]}" )
@@ -164,15 +183,13 @@ MATCH_STEPS=IMPORT,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT,REPORT,STATS
 declare -a match_steps
 [ "${match_vars[STEPS]}" = ALL ] && match_vars[STEPS]=$MATCH_STEPS
 match_steps=( ${match_vars[STEPS]//,/ } )
-declare -A match_steps_index
-array_index --array match_steps --index match_steps_index
-declare -a match_steps_info=(
-    [0]=Chargement
-    [1]=Standardisation
-    [2]='Calcul MATCH CODE'
-    [3]='Rapprochement ELEMENT'
-    [4]=Rapport
-    [5]=Statistiques
+declare -A match_steps_info=(
+    [IMPORT]=Chargement
+    [STANDARDIZE]=Standardisation
+    [MATCH_CODE]='Calcul MATCH CODE'
+    [MATCH_ELEMENT]='Rapprochement ELEMENT'
+    [REPORT]=Rapport
+    [STATS]=Statistiques
 )
 
 # columns to report
@@ -279,9 +296,9 @@ match_request=($_request) &&
 
 # import todo? only for FILE input
 {
-    ([ "${match_vars[SOURCE_KIND]}" = FILE ] && in_array --array match_steps --index match_steps_index --item IMPORT --position _steps_id) && {
+    ([ "${match_vars[SOURCE_KIND]}" = FILE ] && in_array --array match_steps --item IMPORT) && {
         ([ ${match_vars[FORCE]} = no ] && table_exists --schema_name fr --table_name ${match_request[MATCH_REQUEST_IMPORT]}) || {
-            match_info --steps_info match_steps_info --steps_id $_steps_id &&
+            match_info --steps_info match_steps_info --step IMPORT &&
             import_file \
                 --file_path "${match_vars[SOURCE_NAME]}" \
                 --schema_name fr \
@@ -294,15 +311,14 @@ match_request=($_request) &&
 } &&
 
 {
-    in_array --array match_steps --index match_steps_index --item STANDARDIZE --position _steps_id && {
+    in_array --array match_steps --item STANDARDIZE && {
         get_definition --property format --vars match_vars && {
             [ -n "${match_vars[FORMAT_SQL]}" ] && true || {
                 log_error "manque définition du format (option --format)"
                 exit $ERROR_CODE
             }
         } &&
-        #declare -p match_vars &&
-        match_info --steps_info match_steps_info --steps_id $_steps_id &&
+        match_info --steps_info match_steps_info --step STANDARDIZE &&
         execute_query \
             --name STANDARDIZE_REQUEST \
             --query "CALL set_match_standardize(
@@ -315,8 +331,8 @@ match_request=($_request) &&
 } &&
 
 {
-    in_array --array match_steps --index match_steps_index --item MATCH_CODE --position _steps_id && {
-        match_info --steps_info match_steps_info --steps_id $_steps_id &&
+    in_array --array match_steps --item MATCH_CODE && {
+        match_info --steps_info match_steps_info --step MATCH_CODE &&
         execute_query \
             --name MATCH_CODE_REQUEST \
             --query "CALL fr.set_match_code(
@@ -327,8 +343,8 @@ match_request=($_request) &&
 } &&
 
 {
-    in_array --array match_steps --index match_steps_index --item MATCH_ELEMENT --position _steps_id && {
-        match_info --steps_info match_steps_info --steps_id $_steps_id &&
+    in_array --array match_steps --item MATCH_ELEMENT && {
+        match_info --steps_info match_steps_info --step MATCH_ELEMENT &&
         execute_query \
             --name MATCH_ELEMENT_REQUEST \
             --query "CALL fr.set_match_element(
@@ -340,22 +356,23 @@ match_request=($_request) &&
 } &&
 
 {
-    in_array --array match_steps --index match_steps_index --item REPORT --position _steps_id && {
-        match_info --steps_info match_steps_info --steps_id $_steps_id
-
-        declare -p match_vars &&
+    # FIX-ME: bash_args don't accept argument beginning w/ a dash (-) !
+    in_array --array match_steps --item REPORT && {
+        match_info --steps_info match_steps_info --step REPORT &&
         declare -a _list_in _list_more &&
         declare -a match_columns_in=( ${match_vars[COLUMNS_IN]//,/ } ) &&
         echo "IN: (${get_arg_output_in_columns}) $(declare -p match_columns_in)" &&
         output_columns \
+            --columns_set IN \
             --columns_user match_columns_in \
-            --columns_set match_in_columns \
+            --columns_default match_in_columns \
             --columns_todo _list_in &&
         declare -a match_columns_more=( ${match_vars[COLUMNS_MORE]//,/ } ) &&
         echo "MORE: (${get_arg_output_more_columns}) $(declare -p match_columns_more)" &&
         output_columns \
+            --columns_set MORE \
             --columns_user match_columns_more \
-            --columns_set match_more_columns \
+            --columns_default match_more_columns \
             --columns_todo _list_more &&
         echo RESULT &&
         declare -p _list_in _list_more || {

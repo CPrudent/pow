@@ -41,7 +41,7 @@ if [ -z "$get_arg_year" ]; then
     # get more recent
     year_id=0
 else
-    in_array years "${get_arg_year}-01-01" year_id || {
+    in_array --array years --item "${get_arg_year}-01-01" --position year_id || {
         log_error "Impossible de trouver le millésime $get_arg_year de $io_name, les millésimes disponibles sont ${years[@]}"
         on_import_error
     }

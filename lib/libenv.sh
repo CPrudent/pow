@@ -268,7 +268,7 @@ _set_pg_env() {
         "$@" || return $ERROR_CODE
 
     local _std=(admin public)
-    in_array _std "$get_arg_schema_name" && {
+    in_array --array _std --item "$get_arg_schema_name" && {
         POW_PG_USERNAME=postgres
         POW_PG_DEFAULT_SCHEMA=public
     } || {
@@ -382,7 +382,7 @@ set_env() {
     # check for schema (from directory source)
     {
         local _schemas=($(ls -1d "$POW_DIR_ROOT/bin/"* | xargs --max-args 1 basename))
-        in_array _schemas "$get_arg_schema_name" || {
+        in_array --array _schemas --item "$get_arg_schema_name" || {
             log_error 'schéma non valide!'
             false
         }

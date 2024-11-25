@@ -109,6 +109,7 @@ expect() {
     return $SUCCESS_CODE
 }
 
+# build index on array w/ an associative index array (key=value, value=position)
 array_index() {
     bash_args \
         --args_p '
@@ -142,7 +143,6 @@ in_array() {
     bash_args \
         --args_p '
             array:Tableau;
-            index:Index du tableau;
             item:Elèment recherché;
             position:Position de l élément trouvé
         ' \
@@ -153,15 +153,18 @@ in_array() {
         "$@" || return $ERROR_CODE
 
     local -n _array_ref=$get_arg_array
-    local -n _index_ref=${get_arg_array}_index
+    local _pos
 
     [ ${#_array_ref[@]} -eq 0 ] && return 1
+    _pos=$(printf '%s\n' "${_array_ref[@]}" | grep --fixed-strings --line-number --line-regexp -- "$get_arg_item")
     # exists item ?
-    [ "${_index_ref[$get_arg_item]}" ] && {
+    [ $? -eq 0 ] && {
         # returning position ?
         [ -n "$get_arg_position" ] &&
         local -n _pos_ref=$get_arg_position &&
-        _pos_ref=${_index_ref[$get_arg_item]}
+        _pos_ref=${_pos%:*}
+        # grep is 1-base
+        ((_pos_ref--))
 
         return 0
     }

@@ -70,7 +70,7 @@ elif [ "$get_arg_year" = ALL ]; then
     done
     exit $SUCCESS_CODE
 else
-    in_array years "$(date +%C)${get_arg_year}-01-01" year_id || {
+    in_array --array years --item "$(date +%C)${get_arg_year}-01-01" --position year_id || {
         log_error "Impossible de trouver le millésime $get_arg_year de $io_name, les millésimes disponibles sont ${years[@]}"
         on_import_error
     }
