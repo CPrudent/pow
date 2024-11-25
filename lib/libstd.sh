@@ -109,30 +109,106 @@ expect() {
     return $SUCCESS_CODE
 }
 
+array_index() {
+    bash_args \
+        --args_p '
+            array:Tableau;
+            index:Index du tableau
+        ' \
+        --args_o '
+            array;
+            index
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local -n _array_ref=$get_arg_array
+    local -n _index_ref=${get_arg_index}
+    local _i
+
+    for _i in "${!_array_ref[@]}"; do
+        _index_ref["${_array_ref[$_i]}"]=$_i
+    done
+
+    return $SUCCESS_CODE
+}
+
 # item in array
 # https://stackoverflow.com/questions/8082947/how-to-pass-an-array-to-a-bash-function
 # optional 3rd argument gives ID of searched item, as: in_array ARRAY STR_TO_SEARCH ID
+# FIX due to error!
 # another solution w/ print
 # https://stackoverflow.com/questions/3685970/check-if-a-bash-array-contains-a-value
 in_array() {
-    local _ref=$1[@]
-    local _array=("${!_ref}")
-    local _rc=1 _i _return_id=0
-    [ $# -eq 3 ] && {
-        _return_id=1
-        local -n _id_ref=$3
-        [ "$3" = _i ] && log_error "retour indice vers _i (en conflit avec local _i) : changer le nom"
+    bash_args \
+        --args_p '
+            array:Tableau;
+            index:Index du tableau;
+            item:Elèment recherché;
+            position:Position de l élément trouvé
+        ' \
+        --args_o '
+            array;
+            item
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local -n _array_ref=$get_arg_array
+    local -n _index_ref=${get_arg_array}_index
+
+    [ ${#_array_ref[@]} -eq 0 ] && return 1
+    # exists item ?
+    [ "${_index_ref[$get_arg_item]}" ] && {
+        # returning position ?
+        [ -n "$get_arg_position" ] &&
+        local -n _pos_ref=$get_arg_position &&
+        _pos_ref=${_index_ref[$get_arg_item]}
+
+        return 0
     }
-    for ((_i=0; _i < ${#_array[@]}; _i++)); do
-        #echo "$_i: ${_array[$_i]}"
-        [ "${_array[$_i]}" = "$2" ] && {
-            _rc=0
-            break
-        }
-    done
-    [ $_return_id -eq 1 ] && [ $_i -lt ${#_array[@]} ] && _id_ref=$_i
-    return $_rc
+
+    return 1
+
+#     local _ref=$1[@]
+#     local _array=("${!_ref}")
+#     local _rc=1 _i _return_id=0
+#     [ $# -eq 3 ] && {
+#         _return_id=1
+#         local -n _id_ref=$3
+#         [ "$3" = _i ] && log_error "retour indice vers _i (en conflit avec local _i) : changer le nom"
+#     }
+#     for ((_i=0; _i < ${#_array[@]}; _i++)); do
+#         #echo "$_i: ${_array[$_i]}"
+#         [ "${_array[$_i]}" = "$2" ] && {
+#             _rc=0
+#             break
+#         }
+#     done
+#     [ $_return_id -eq 1 ] && [ $_i -lt ${#_array[@]} ] && _id_ref=$_i
+#     return $_rc
 }
+
+# FIX ME: syntax error near unexpected token `('
+# clone_array() {
+#     bash_args \
+#         --args_p '
+#             from_array:Tableau à cloner;
+#             to_array:Tableau cloné
+#         ' \
+#         --args_o '
+#             from_array;
+#             to_array
+#         ' \
+#         "$@" || return $ERROR_CODE
+#
+#     local -n _array_ref=$get_arg_to_array
+#     local _tmp=$(declare -p $get_arg_from_array)
+#
+#     echo "$_tmp"
+#     eval "${_tmp/${get_arg_from_array}=/${_array_ref}=}" &&
+#     declare -p ${_array_ref}
+#
+#     return $SUCCESS_CODE
+# }
 
 # eval duration of treatment (w/ its beginning)
 get_elapsed_time() {

@@ -80,7 +80,7 @@ DECLARE
     _is_match_code BOOLEAN;
     _query TEXT;
     _nrows INTEGER;
-    _info VARCHAR := CONCAT('creating MATCH CODE matching request(', id, ')');
+    _info VARCHAR;
 BEGIN
     SELECT is_match_code
     INTO _is_match_code
@@ -89,9 +89,10 @@ BEGIN
     ;
 
     IF _is_match_code IS NULL THEN
-        RAISE 'no request found (ID=%)', id;
+        RAISE 'aucune demande de Rapprochement trouvée pour ID ''%''', id;
     END IF;
 
+    _info := CONCAT('gestion MATCH CODE demande Rapprochement (', id, ')');
     IF force OR NOT _is_match_code THEN
         DELETE FROM fr.address_match_code WHERE id_request = id;
         GET DIAGNOSTICS _nrows = ROW_COUNT;

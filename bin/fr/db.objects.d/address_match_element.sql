@@ -67,7 +67,7 @@ DECLARE
     _is_match_element BOOLEAN;
     _parameters HSTORE;
     _nrows INTEGER;
-    _info VARCHAR := FORMAT('### matching ELEMENT (ID=%s)', id);
+    _info VARCHAR;
     _step INT;
     _levels VARCHAR[] := ARRAY['AREA', 'STREET', 'HOUSENUMBER', 'COMPLEMENT'];
     _level VARCHAR;
@@ -83,9 +83,10 @@ BEGIN
     ;
 
     IF _is_match_element IS NULL THEN
-        RAISE 'no request found (ID=%)', id;
+        RAISE 'aucune demande de Rapprochement trouvée pour ID ''%''', id;
     END IF;
 
+    _info := CONCAT('gestion ELEMENT demande Rapprochement (', id, ')');
     IF force OR NOT _is_match_element THEN
         CALL public.log_info(_info);
 
@@ -312,7 +313,7 @@ BEGIN
                 mr.id = set_match_element.id
         ;
     ELSE
-        CALL public.log_info(CONCAT(_info, ' : already done! (option force available)'));
+        CALL public.log_info(CONCAT(_info, ' : déjà traitée (option force disponible)'));
     END IF;
 END
 $proc$ LANGUAGE plpgsql;

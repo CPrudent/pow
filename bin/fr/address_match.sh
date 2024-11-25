@@ -62,16 +62,57 @@ get_definition() {
     return $SUCCESS_CODE
 }
 
+output_columns() {
+    bash_args \
+        --args_p "
+            columns_user:Liste des colonnes à traiter;
+            columns_set:Ensemble des colonnes disponibles;
+            columns_todo:Résultat
+        " \
+        --args_o '
+            columns_user;
+            columns_set;
+            columns
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local -n _user_ref=$get_arg_columns_user
+    local -n _todo_ref=$get_arg_columns_todo
+    local _item _minus _tmp
+
+    # clone default list
+    _tmp=$(declare -p ${get_arg_columns_set}) &&
+    echo "$_tmp" &&
+    eval "${_tmp/${get_arg_columns_set}=/_array_clone=}" &&
+    declare -p _array_clone
+
+    for _item in ${_user_ref[@]}; do
+        _minus=${_item:0:1}
+        [ "$_minus" = - ] &&
+        _array_clone=( "${_array_clone[@]/${_item:1}}" ) &&
+        continue
+
+        #in_array _array_clone "$_item" &&
+        _todo_ref+=( "$_item" )
+    done
+    _todo_ref+=( "${_array_clone[@]}" )
+
+    return $SUCCESS_CODE
+}
+
 bash_args \
     --args_p "
-        source_name:Fichier des Adresses à rapprocher;
-        source_query:Requête à appliquer pour obtenir les données entrantes;
+        source_name:Source des Adresses à rapprocher;
         source_filter:Filtre à appliquer sur les données entrantes;
+        source_query:Requête à appliquer pour obtenir les données entrantes;
+        steps:Ensemble des étapes à réaliser (séparées par une virgule, si plusieurs);
         format:Définition du Format des Adresses (ou fichier du Format);
         parameters:Définition des Paramètres du Rapprochement (ou fichier des Paramètres);
         import_options:Options import (du fichier) spécifiques à son type;
         import_limit:Limiter à n enregistrements;
-        steps:Ensemble des étapes à réaliser (séparées par une virgule, si plusieurs);
+        output_in_columns:Liste des données entrantes à inclure dans le rapport;
+        output_more_columns:Liste des données supplémentaires à inclure dans le rapport;
+        output_srid:code SRID des géométries dans le rapport;
         force:Forcer le traitement même si celui-ci a déjà été fait;
         only_info:Afficher les informations de la demande;
         verbose:Ajouter des détails sur les traitements
@@ -85,10 +126,11 @@ bash_args \
         verbose:yes|no
     ' \
     --args_d '
+        steps:ALL;
         force:no;
         only_info:NO;
-        verbose:no;
-        steps:ALL
+        output_srid:4326;
+        verbose:no
     ' \
     "$@" || exit $ERROR_CODE
 
@@ -108,25 +150,63 @@ declare -A match_vars=(
     [PARAMETERS_SQL]=''
     [STEPS]=${get_arg_steps// /}
     [VERBOSE]=$get_arg_verbose
+    [COLUMNS_IN]="${get_arg_output_in_columns^^}"
+    [COLUMNS_MORE]="${get_arg_output_more_columns^^}"
 )
+
 _k=0
-MATCH_REQUEST_ID=$((_k++))
-MATCH_REQUEST_IMPORT=$((_k++))
+MATCH_REQUEST_ID=$((_k++))                  # ID de la demande
+MATCH_REQUEST_IMPORT=$((_k++))              # table d'import des données
 MATCH_REQUEST_ITEMS=$_k
 declare -a match_request
 
-MATCH_STEPS=IMPORT,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT,MATCH_ADDRESS,REPORT,STATS
+MATCH_STEPS=IMPORT,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT,REPORT,STATS
 declare -a match_steps
 [ "${match_vars[STEPS]}" = ALL ] && match_vars[STEPS]=$MATCH_STEPS
 match_steps=( ${match_vars[STEPS]//,/ } )
+declare -A match_steps_index
+array_index --array match_steps --index match_steps_index
 declare -a match_steps_info=(
     [0]=Chargement
     [1]=Standardisation
     [2]='Calcul MATCH CODE'
     [3]='Rapprochement ELEMENT'
-    [4]='Rapprochement ADRESSE'
-    [5]=Rapport
-    [6]=Statistiques
+    [4]=Rapport
+    [5]=Statistiques
+)
+
+# columns to report
+# w/ predefined aliases: i for input, a for address and t for territory
+declare -A match_in_columns=(
+    [ROWID]=i.rowid
+)
+declare -A match_more_columns=(
+    # ADDRESS
+    [COMPLEMENT]='COALESCE(a.lb_ligne3_normalise, a.lb_ligne3)'
+    [HOUSENUMBER]=a.no_numero
+    [EXTENSION]=a.lb_extension_numero
+    [STREET]='COALESCE(a.lb_voie_normalise, a.lb_voie)'
+    [OLD_MUNICIPALITY]=a.lb_ligne5
+    [POSTCODE]=a.co_postal
+    [MUNICIPALITY]=a.lb_acheminement
+    # LA POSTE
+    [QL]=a.rao_co_tournee
+    [ROC]=a.co_roc_site
+    [REGATE]=a.rao_co_regate
+    # XY
+    [LOCALISATION]=a.no_type_localisation_coord
+    [GEOMETRY_X]='ST_X(ST_Transform(a.gm_coord, 4326))'
+    [GEOMETRY_Y]='ST_Y(ST_Transform(a.gm_coord, 4326))'
+    # HIERARCHY
+    [COM]=t.codgeo_com_parent
+    [CV]=t.codgeo_cv_parent
+    [ARR]=t.codgeo_arr_parent
+    [EPCI]=t.codgeo_epci_parent
+    [DEP]=t.codgeo_dep_parent
+    [REG]=t.codgeo_reg_parent
+    [PDC]=t.codgeo_pdc_ppdc_parent
+    [PPDC]=t.codgeo_ppdc_pdc_parent
+    [DEX]=t.codgeo_dex_parent
 )
 
 set_env --schema_name fr &&
@@ -199,7 +279,7 @@ match_request=($_request) &&
 
 # import todo? only for FILE input
 {
-    ([ "${match_vars[SOURCE_KIND]}" = FILE ] && in_array match_steps IMPORT _steps_id) && {
+    ([ "${match_vars[SOURCE_KIND]}" = FILE ] && in_array --array match_steps --index match_steps_index --item IMPORT --position _steps_id) && {
         ([ ${match_vars[FORCE]} = no ] && table_exists --schema_name fr --table_name ${match_request[MATCH_REQUEST_IMPORT]}) || {
             match_info --steps_info match_steps_info --steps_id $_steps_id &&
             import_file \
@@ -214,7 +294,7 @@ match_request=($_request) &&
 } &&
 
 {
-    in_array match_steps STANDARDIZE _steps_id && {
+    in_array --array match_steps --index match_steps_index --item STANDARDIZE --position _steps_id && {
         get_definition --property format --vars match_vars && {
             [ -n "${match_vars[FORMAT_SQL]}" ] && true || {
                 log_error "manque définition du format (option --format)"
@@ -235,7 +315,7 @@ match_request=($_request) &&
 } &&
 
 {
-    in_array match_steps MATCH_CODE _steps_id && {
+    in_array --array match_steps --index match_steps_index --item MATCH_CODE --position _steps_id && {
         match_info --steps_info match_steps_info --steps_id $_steps_id &&
         execute_query \
             --name MATCH_CODE_REQUEST \
@@ -247,7 +327,7 @@ match_request=($_request) &&
 } &&
 
 {
-    in_array match_steps MATCH_ELEMENT _steps_id && {
+    in_array --array match_steps --index match_steps_index --item MATCH_ELEMENT --position _steps_id && {
         match_info --steps_info match_steps_info --steps_id $_steps_id &&
         execute_query \
             --name MATCH_ELEMENT_REQUEST \
@@ -256,6 +336,32 @@ match_request=($_request) &&
                 force => ('${match_vars[FORCE]}' = 'yes'),
                 raise_notice => ('${match_vars[VERBOSE]}' = 'yes')
             )"
+    } || true
+} &&
+
+{
+    in_array --array match_steps --index match_steps_index --item REPORT --position _steps_id && {
+        match_info --steps_info match_steps_info --steps_id $_steps_id
+
+        declare -p match_vars &&
+        declare -a _list_in _list_more &&
+        declare -a match_columns_in=( ${match_vars[COLUMNS_IN]//,/ } ) &&
+        echo "IN: (${get_arg_output_in_columns}) $(declare -p match_columns_in)" &&
+        output_columns \
+            --columns_user match_columns_in \
+            --columns_set match_in_columns \
+            --columns_todo _list_in &&
+        declare -a match_columns_more=( ${match_vars[COLUMNS_MORE]//,/ } ) &&
+        echo "MORE: (${get_arg_output_more_columns}) $(declare -p match_columns_more)" &&
+        output_columns \
+            --columns_user match_columns_more \
+            --columns_set match_more_columns \
+            --columns_todo _list_more &&
+        echo RESULT &&
+        declare -p _list_in _list_more || {
+            log_error 'gestion des colonnes du rapport en erreur!'
+            false
+        }
     } || true
 } &&
 
