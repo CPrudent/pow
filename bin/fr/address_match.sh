@@ -62,11 +62,11 @@ get_definition() {
     return $SUCCESS_CODE
 }
 
-output_columns() {
+report_get_columns() {
     bash_args \
         --args_p "
             columns_set:Ensemble des colonnes;
-            columns_user:Liste des colonnes à traiter;
+            columns_user:Liste des colonnes mentionnées;
             columns_default:Ensemble des colonnes disponibles;
             columns_todo:Résultat
         " \
@@ -83,7 +83,7 @@ output_columns() {
 
     local -n _user_ref=$get_arg_columns_user
     local -n _todo_ref=$get_arg_columns_todo
-    local _item _minus _tmp _i _rc
+    local _item _1st _tmp _pos _i
 
     # clone default list
     _tmp=$(declare -p ${get_arg_columns_default}) &&
@@ -92,29 +92,130 @@ output_columns() {
     #declare -p _array_clone
 
     for _item in ${_user_ref[@]}; do
-        #echo "item=$_item (#${#_array_clone[@]})"
-        _minus=${_item:0:1}
-        if [ "$_minus" = - ]; then
-            #_array_clone=( "${_array_clone[@]/${_item:1}}" ) &&
-            for _i in "${!_array_clone[@]}"; do
-                [[ $_i = ${_item:1} ]] && {
-                    unset '_array_clone[$_i]'
-                    #echo "(#${#_array_clone[@]})"
-                    break
-                }
-            done
+        #echo "item=$_item clone(#${#_array_clone[@]})"
+        _1st=${_item:0:1}
+        [ "$_1st" = - ] && _item=${_item:1}
+        in_array --array _array_clone --item "$_item" --position _pos --search KEY
+        #echo "pos=$_pos"
+        ([ "$_1st" = - ] && [[ $_pos -ge 0 ]]) && {
+            unset '_array_clone[$_item]'
+            #echo "clone(#${#_array_clone[@]})"
             continue
-        fi
+        }
 
-        in_array --array _array_clone --item "$_item"
-        _rc=$?
-        [ "$get_arg_columns_set" = IN ] && _item="i.${_item,,}"
-        # column has to NOT exist if IN set (and vice versa if MORE)
-        (([ "$get_arg_columns_set" = IN ] && [ $_rc -eq 1 ]) ||
-        ([ "$get_arg_columns_set" = MORE ] && [ $_rc -eq 0 ])) &&
-        _todo_ref+=( "$_item" )
+        # adding new column if NOT exists (only for IN set)
+        ([ "$get_arg_columns_set" = IN ] && [[ $_pos -eq -1 ]]) &&
+        # SQL as syntax : item matchs the name of column (w/ alias as uppercase)
+        _todo_ref+=( "i.${_item,,} AS "'"'"$_item"'"'"" )
     done
-    _todo_ref+=( "${_array_clone[@]}" )
+    # add remaining columns
+    [[ ${#_array_clone[@]} -gt 0 ]] && {
+        for ((_i=0; _i<${#match_columns_order[@]}; _i++)); do
+            # if exists key
+            [ -v _array_clone[${match_columns_order[$_i]}] ] &&
+            _todo_ref+=( "${_array_clone[${match_columns_order[$_i]}]} AS "'"'"${match_columns_order[$_i]}"'"'"" )
+        done
+    }
+
+    return $SUCCESS_CODE
+}
+
+report_get_entry() {
+    bash_args \
+        --args_p "
+            request:Entité de la demande;
+            vars:Entité des variables globales;
+            entry:Entité des données entrantes
+        " \
+        --args_o '
+            request;
+            vars;
+            entry
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local -n _request_ref=$get_arg_request
+    local -n _vars_ref=$get_arg_vars
+    local -n _entry_ref=$get_arg_entry
+
+    case ${_vars_ref[SOURCE_KIND]} in
+    FILE)       _entry_ref=${_request_ref[MATCH_REQUEST_IMPORT]}        ;;
+    TABLE)      _entry_ref=${_vars_ref[SOURCE_NAME]}                    ;;
+    QUERY)      _entry_ref=NULL                                         ;;
+    esac
+
+    return $SUCCESS_CODE
+}
+
+report_build() {
+    bash_args \
+        --args_p "
+            columns_in:Ensemble des colonnes entrantes (Ensemble noté IN);
+            columns_more:Ensemble des colonnes supplémentaires (Ensemble noté MORE);
+            id:ID demande;
+            table_name:Table des données entrantes;
+            output_report:Fichier du rapport
+        " \
+        --args_o '
+            columns_in;
+            columns_more;
+            id;
+            table_name;
+            output_report
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local -n _in_ref=$get_arg_columns_in
+    local -n _more_ref=$get_arg_columns_more
+    local _sql_file
+
+    get_tmp_file --tmpext sql --tmpfile _sql_file --create yes &&
+    log_info "SQL rapport: $_sql_file" &&
+    echo 'SELECT' > $_sql_file &&
+    {
+        [[ ${#_in_ref[@]} -gt 0 ]] && {
+            printf '%s,\n' "${_in_ref[@]}" >> $_sql_file
+        } || true
+    } &&
+    {
+        [[ ${#_more_ref[@]} -gt 0 ]] && {
+            printf '%s,\n' "${_more_ref[@]}" | sed --expression '$s/,$//' >> $_sql_file
+        } || true
+    } &&
+    execute_query \
+        --name OUTPUT_REPORT \
+        --query "
+            COPY (
+                $(< $_sql_file)
+                FROM
+                    fr.address_match_result mr
+                        JOIN fr.address_match_element me
+                        ON (
+                            ((mr.standardized_address).level = me.level)
+                            AND (
+                                ((mr.standardized_address).match_code_street = me.match_code)
+                                OR
+                                ((mr.standardized_address).match_code_housenumber = me.match_code)
+                                OR
+                                ((mr.standardized_address).match_code_complement = me.match_code)
+                            )
+                        )
+
+                        JOIN fr.address_view a
+                        ON (me.matched_element).codes_address[1] = a.co_adr
+
+                        JOIN fr.territory t
+                        ON (t.nivgeo, t.codgeo) = ('ZA', a.co_adr_za)
+
+                        JOIN fr.$get_arg_table_name i
+                        ON mr.id_address = i.rowid
+                WHERE
+                    mr.id_request = $get_arg_id
+                    AND
+                    fr.is_match_element_ok(me.matched_element)
+            ) TO STDOUT WITH (DELIMITER E',', FORMAT CSV, HEADER TRUE, ENCODING UTF8)
+        " \
+        --output $get_arg_output_report || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -131,6 +232,7 @@ bash_args \
         import_limit:Limiter à n enregistrements;
         output_in_columns:Liste des données entrantes à inclure dans le rapport;
         output_more_columns:Liste des données supplémentaires à inclure dans le rapport;
+        output_report_path:Fichier du rapport;
         output_srid:code SRID des géométries dans le rapport;
         force:Forcer le traitement même si celui-ci a déjà été fait;
         only_info:Afficher les informations de la demande;
@@ -171,6 +273,7 @@ declare -A match_vars=(
     [VERBOSE]=$get_arg_verbose
     [COLUMNS_IN]="${get_arg_output_in_columns^^}"
     [COLUMNS_MORE]="${get_arg_output_more_columns^^}"
+    [REPORT_PATH]="$get_arg_output_report_path"
 )
 
 _k=0
@@ -199,6 +302,7 @@ declare -A match_in_columns=(
 )
 declare -A match_more_columns=(
     # ADDRESS
+    [CEA]=a.co_adr
     [COMPLEMENT]='COALESCE(a.lb_ligne3_normalise, a.lb_ligne3)'
     [HOUSENUMBER]=a.no_numero
     [EXTENSION]=a.lb_extension_numero
@@ -224,6 +328,39 @@ declare -A match_more_columns=(
     [PDC]=t.codgeo_pdc_ppdc_parent
     [PPDC]=t.codgeo_ppdc_pdc_parent
     [DEX]=t.codgeo_dex_parent
+)
+
+_k=0
+declare -a match_columns_order=(
+    # IN
+    [$((_k++))]=ROWID
+    # ADDRESS
+    [$((_k++))]=CEA
+    [$((_k++))]=COMPLEMENT
+    [$((_k++))]=HOUSENUMBER
+    [$((_k++))]=EXTENSION
+    [$((_k++))]=STREET
+    [$((_k++))]=OLD_MUNICIPALITY
+    [$((_k++))]=POSTCODE
+    [$((_k++))]=MUNICIPALITY
+    # LA POSTE
+    [$((_k++))]=QL
+    [$((_k++))]=ROC
+    [$((_k++))]=REGATE
+    # XY
+    [$((_k++))]=LOCALISATION
+    [$((_k++))]=GEOMETRY_X
+    [$((_k++))]=GEOMETRY_Y
+    # HIERARCHY
+    [$((_k++))]=COM
+    [$((_k++))]=CV
+    [$((_k++))]=ARR
+    [$((_k++))]=EPCI
+    [$((_k++))]=DEP
+    [$((_k++))]=REG
+    [$((_k++))]=PDC
+    [$((_k++))]=PPDC
+    [$((_k++))]=DEX
 )
 
 set_env --schema_name fr &&
@@ -361,21 +498,29 @@ match_request=($_request) &&
         match_info --steps_info match_steps_info --step REPORT &&
         declare -a _list_in _list_more &&
         declare -a match_columns_in=( ${match_vars[COLUMNS_IN]//,/ } ) &&
-        echo "IN: (${get_arg_output_in_columns}) $(declare -p match_columns_in)" &&
-        output_columns \
+        #echo "IN: (${get_arg_output_in_columns}) $(declare -p match_columns_in)" &&
+        report_get_columns \
             --columns_set IN \
             --columns_user match_columns_in \
             --columns_default match_in_columns \
             --columns_todo _list_in &&
         declare -a match_columns_more=( ${match_vars[COLUMNS_MORE]//,/ } ) &&
-        echo "MORE: (${get_arg_output_more_columns}) $(declare -p match_columns_more)" &&
-        output_columns \
+        #echo "MORE: (${get_arg_output_more_columns}) $(declare -p match_columns_more)" &&
+        report_get_columns \
             --columns_set MORE \
             --columns_user match_columns_more \
             --columns_default match_more_columns \
             --columns_todo _list_more &&
-        echo RESULT &&
-        declare -p _list_in _list_more || {
+        report_get_entry \
+            --request match_request \
+            --vars match_vars \
+            --entry _entry &&
+        report_build \
+            --columns_in _list_in \
+            --columns_more _list_more \
+            --id ${match_request[$MATCH_REQUEST_ID]} \
+            --table_name ${_entry} \
+            --output_report ${match_vars[REPORT_PATH]} || {
             log_error 'gestion des colonnes du rapport en erreur!'
             false
         }

@@ -144,31 +144,51 @@ in_array() {
         --args_p '
             array:Tableau;
             item:Elèment recherché;
+            search:Recherche Clé/Valeur;
             position:Position de l élément trouvé
         ' \
         --args_o '
             array;
             item
         ' \
+        --args_v '
+            search:KEY|VALUE
+        ' \
+        --args_d '
+            search:VALUE
+        ' \
         "$@" || return $ERROR_CODE
 
     local -n _array_ref=$get_arg_array
-    local _pos
+    local _rc
 
     [ ${#_array_ref[@]} -eq 0 ] && return 1
-    _pos=$(printf '%s\n' "${_array_ref[@]}" | grep --fixed-strings --line-number --line-regexp -- "$get_arg_item")
-    # exists item ?
-    [ $? -eq 0 ] && {
-        # returning position ?
-        [ -n "$get_arg_position" ] &&
-        local -n _pos_ref=$get_arg_position &&
-        _pos_ref=${_pos%:*}
-        # grep is 1-base
-        ((_pos_ref--))
-
-        return 0
+    case "$get_arg_search" in
+    VALUE)
+        _pos=$(printf '%s\n' "${_array_ref[@]}" | grep --fixed-strings --line-number --line-regexp -- "$get_arg_item")
+        ;;
+    KEY)
+        _pos=$(printf '%s\n' "${!_array_ref[@]}" | grep --fixed-strings --line-number --line-regexp -- "$get_arg_item")
+        ;;
+    esac
+    _rc=$?
+    # returning position ?
+    [ -n "$get_arg_position" ] && {
+        local -n _pos_ref=$get_arg_position
+        # exists item ?
+        [ $_rc -eq 0 ] && {
+            _pos_ref=${_pos%:*}
+            # decrement because grep is 1-base
+            ((--_pos_ref))
+            return 0
+        } || {
+            _pos_ref=-1
+        }
     }
 
+    # found
+    [ $_rc -eq 0 ] && return 0
+    # not found
     return 1
 
 #     local _ref=$1[@]
