@@ -139,9 +139,9 @@ report_get_entry() {
     local -n _entry_ref=$get_arg_entry
 
     case ${_vars_ref[SOURCE_KIND]} in
-    FILE)       _entry_ref=${_request_ref[MATCH_REQUEST_IMPORT]}        ;;
-    TABLE)      _entry_ref=${_vars_ref[SOURCE_NAME]}                    ;;
-    QUERY)      _entry_ref=NULL                                         ;;
+    FILE)       _entry_ref=fr.${_request_ref[MATCH_REQUEST_IMPORT]}        ;;
+    TABLE)      _entry_ref=fr.${_vars_ref[SOURCE_NAME]}                    ;;
+    QUERY)      _entry_ref=${_vars_ref[SOURCE_NAME]}                       ;;
     esac
 
     return $SUCCESS_CODE
@@ -154,6 +154,8 @@ report_build() {
             columns_more:Ensemble des colonnes supplémentaires (Ensemble noté MORE);
             id:ID demande;
             table_name:Table des données entrantes;
+            request:Entité de la demande;
+            vars:Entité des variables globales;
             output_report:Fichier du rapport
         " \
         --args_o '
@@ -161,17 +163,37 @@ report_build() {
             columns_more;
             id;
             table_name;
+            request;
+            vars;
             output_report
         ' \
         "$@" || return $ERROR_CODE
 
     local -n _in_ref=$get_arg_columns_in
     local -n _more_ref=$get_arg_columns_more
+    local -n _request_ref=$get_arg_request
+    local -n _vars_ref=$get_arg_vars
     local _sql_file
 
     get_tmp_file --tmpext sql --tmpfile _sql_file --create yes &&
     log_info "SQL rapport: $_sql_file" &&
-    echo 'SELECT' > $_sql_file &&
+    {
+        [ "${_vars_ref[SOURCE_KIND]}" = QUERY ] && {
+            [ -z "${_vars_ref[SOURCE_QUERY]}" ] && {
+                execute_query \
+                    --name SOURCE_QUERY \
+                    --query "
+                        SELECT source_query
+                        FROM fr.address_match_request
+                        WHERE id_request = ${_request_ref[MATCH_REQUEST_ID]}
+                    " \
+                    --psql_arguments 'tuples-only:pset=format=unaligned' \
+                    --return _vars_ref[SOURCE_QUERY]
+            }
+            echo "WITH ${_vars_ref[SOURCE_NAME]} AS (${_vars_ref[SOURCE_QUERY]})" >> $_sql_file
+        } || true
+    } &&
+    echo 'SELECT' >> $_sql_file &&
     {
         [[ ${#_in_ref[@]} -gt 0 ]] && {
             printf '%s,\n' "${_in_ref[@]}" >> $_sql_file
@@ -207,7 +229,7 @@ report_build() {
                         JOIN fr.territory t
                         ON (t.nivgeo, t.codgeo) = ('ZA', a.co_adr_za)
 
-                        JOIN fr.$get_arg_table_name i
+                        JOIN $get_arg_table_name i
                         ON mr.id_address = i.rowid
                 WHERE
                     mr.id_request = $get_arg_id
@@ -215,7 +237,8 @@ report_build() {
                     fr.is_match_element_ok(me.matched_element)
             ) TO STDOUT WITH (DELIMITER E',', FORMAT CSV, HEADER TRUE, ENCODING UTF8)
         " \
-        --output $get_arg_output_report || return $ERROR_CODE
+        --output $get_arg_output_report &&
+    mv $_sql_file $POW_DIR_ARCHIVE/report_${get_arg_id}.sql || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -403,6 +426,8 @@ execute_query \
 match_request=($_request) &&
 
 {
+    [ -z "${match_vars[REPORT_PATH]}" ] && match_vars[REPORT_PATH]="$POW_DIR_ARCHIVE/report_${match_request[MATCH_REQUEST_ID]}.csv"
+
     [ "${match_vars[VERBOSE]}" = yes ] && {
         log_info "$(declare -p match_request)"
         log_info "$(declare -p match_vars)"
@@ -520,6 +545,8 @@ match_request=($_request) &&
             --columns_more _list_more \
             --id ${match_request[$MATCH_REQUEST_ID]} \
             --table_name ${_entry} \
+            --request match_request \
+            --vars match_vars \
             --output_report ${match_vars[REPORT_PATH]} || {
             log_error 'gestion des colonnes du rapport en erreur!'
             false
