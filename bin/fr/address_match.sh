@@ -62,7 +62,7 @@ get_definition() {
     return $SUCCESS_CODE
 }
 
-report_get_columns() {
+export_get_columns() {
     bash_args \
         --args_p "
             columns_set:Ensemble des colonnes;
@@ -120,7 +120,7 @@ report_get_columns() {
     return $SUCCESS_CODE
 }
 
-report_get_entry() {
+export_get_entry() {
     bash_args \
         --args_p "
             request:Entité de la demande;
@@ -147,25 +147,21 @@ report_get_entry() {
     return $SUCCESS_CODE
 }
 
-report_build() {
+export_build() {
     bash_args \
         --args_p "
             columns_in:Ensemble des colonnes entrantes (Ensemble noté IN);
             columns_more:Ensemble des colonnes supplémentaires (Ensemble noté MORE);
-            id:ID demande;
             table_name:Table des données entrantes;
             request:Entité de la demande;
-            vars:Entité des variables globales;
-            output_report:Fichier du rapport
+            vars:Entité des variables globales
         " \
         --args_o '
             columns_in;
             columns_more;
-            id;
             table_name;
             request;
-            vars;
-            output_report
+            vars
         ' \
         "$@" || return $ERROR_CODE
 
@@ -232,13 +228,13 @@ report_build() {
                         JOIN $get_arg_table_name i
                         ON mr.id_address = i.rowid
                 WHERE
-                    mr.id_request = $get_arg_id
+                    mr.id_request = ${_request_ref[MATCH_REQUEST_ID]}
                     AND
                     fr.is_match_element_ok(me.matched_element)
             ) TO STDOUT WITH (DELIMITER E',', FORMAT CSV, HEADER TRUE, ENCODING UTF8)
         " \
-        --output $get_arg_output_report &&
-    mv $_sql_file $POW_DIR_ARCHIVE/report_${get_arg_id}.sql || return $ERROR_CODE
+        --output ${_vars_ref[EXPORT_PATH]} &&
+    mv $_sql_file $POW_DIR_ARCHIVE/export_${_request_ref[MATCH_REQUEST_ID]}.sql || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -253,10 +249,10 @@ bash_args \
         parameters:Définition des Paramètres du Rapprochement (ou fichier des Paramètres);
         import_options:Options import (du fichier) spécifiques à son type;
         import_limit:Limiter à n enregistrements;
-        output_in_columns:Liste des données entrantes à inclure dans le rapport;
-        output_more_columns:Liste des données supplémentaires à inclure dans le rapport;
-        output_report_path:Fichier du rapport;
-        output_srid:code SRID des géométries dans le rapport;
+        export_in_columns:Liste des données entrantes à inclure dans la sortie;
+        export_more_columns:Liste des données supplémentaires à inclure dans la sortie;
+        export_path:Fichier de sortie;
+        export_srid:code SRID des géométries dans la sortie;
         force:Forcer le traitement même si celui-ci a déjà été fait;
         only_info:Afficher les informations de la demande;
         verbose:Ajouter des détails sur les traitements
@@ -273,7 +269,7 @@ bash_args \
         steps:ALL;
         force:no;
         only_info:NO;
-        output_srid:4326;
+        export_srid:4326;
         verbose:no
     ' \
     "$@" || exit $ERROR_CODE
@@ -294,9 +290,9 @@ declare -A match_vars=(
     [PARAMETERS_SQL]=''
     [STEPS]=${get_arg_steps// /}
     [VERBOSE]=$get_arg_verbose
-    [COLUMNS_IN]="${get_arg_output_in_columns^^}"
-    [COLUMNS_MORE]="${get_arg_output_more_columns^^}"
-    [REPORT_PATH]="$get_arg_output_report_path"
+    [COLUMNS_IN]="${get_arg_export_in_columns^^}"
+    [COLUMNS_MORE]="${get_arg_export_more_columns^^}"
+    [EXPORT_PATH]="$get_arg_export_path"
 )
 
 _k=0
@@ -305,7 +301,7 @@ MATCH_REQUEST_IMPORT=$((_k++))              # table d'import des données
 MATCH_REQUEST_ITEMS=$_k
 declare -a match_request
 
-MATCH_STEPS=IMPORT,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT,REPORT,STATS
+MATCH_STEPS=IMPORT,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT,EXPORT,REPORT
 declare -a match_steps
 [ "${match_vars[STEPS]}" = ALL ] && match_vars[STEPS]=$MATCH_STEPS
 match_steps=( ${match_vars[STEPS]//,/ } )
@@ -314,8 +310,8 @@ declare -A match_steps_info=(
     [STANDARDIZE]=Standardisation
     [MATCH_CODE]='Calcul MATCH CODE'
     [MATCH_ELEMENT]='Rapprochement ELEMENT'
+    [EXPORT]='Adresses rapprochées'
     [REPORT]=Rapport
-    [STATS]=Statistiques
 )
 
 # columns to report
@@ -339,8 +335,8 @@ declare -A match_more_columns=(
     [REGATE]=a.rao_co_regate
     # XY
     [LOCALISATION]=a.no_type_localisation_coord
-    [GEOMETRY_X]='ST_X(ST_Transform(a.gm_coord, 4326))'
-    [GEOMETRY_Y]='ST_Y(ST_Transform(a.gm_coord, 4326))'
+    [GEOMETRY_X]='ST_X(ST_Transform(a.gm_coord, '$get_arg_export_srid'))'
+    [GEOMETRY_Y]='ST_Y(ST_Transform(a.gm_coord, '$get_arg_export_srid'))'
     # HIERARCHY
     [COM]=t.codgeo_com_parent
     [CV]=t.codgeo_cv_parent
@@ -426,7 +422,7 @@ execute_query \
 match_request=($_request) &&
 
 {
-    [ -z "${match_vars[REPORT_PATH]}" ] && match_vars[REPORT_PATH]="$POW_DIR_ARCHIVE/report_${match_request[MATCH_REQUEST_ID]}.csv"
+    [ -z "${match_vars[EXPORT_PATH]}" ] && match_vars[EXPORT_PATH]="$POW_DIR_ARCHIVE/export_${match_request[MATCH_REQUEST_ID]}.csv"
 
     [ "${match_vars[VERBOSE]}" = yes ] && {
         log_info "$(declare -p match_request)"
@@ -519,35 +515,33 @@ match_request=($_request) &&
 
 {
     # FIX-ME: bash_args don't accept argument beginning w/ a dash (-) !
-    in_array --array match_steps --item REPORT && {
-        match_info --steps_info match_steps_info --step REPORT &&
+    in_array --array match_steps --item EXPORT && {
+        match_info --steps_info match_steps_info --step EXPORT &&
         declare -a _list_in _list_more &&
         declare -a match_columns_in=( ${match_vars[COLUMNS_IN]//,/ } ) &&
-        #echo "IN: (${get_arg_output_in_columns}) $(declare -p match_columns_in)" &&
-        report_get_columns \
+        #echo "IN: (${get_arg_export_in_columns}) $(declare -p match_columns_in)" &&
+        export_get_columns \
             --columns_set IN \
             --columns_user match_columns_in \
             --columns_default match_in_columns \
             --columns_todo _list_in &&
         declare -a match_columns_more=( ${match_vars[COLUMNS_MORE]//,/ } ) &&
-        #echo "MORE: (${get_arg_output_more_columns}) $(declare -p match_columns_more)" &&
-        report_get_columns \
+        #echo "MORE: (${get_arg_export_more_columns}) $(declare -p match_columns_more)" &&
+        export_get_columns \
             --columns_set MORE \
             --columns_user match_columns_more \
             --columns_default match_more_columns \
             --columns_todo _list_more &&
-        report_get_entry \
+        export_get_entry \
             --request match_request \
             --vars match_vars \
             --entry _entry &&
-        report_build \
+        export_build \
             --columns_in _list_in \
             --columns_more _list_more \
-            --id ${match_request[$MATCH_REQUEST_ID]} \
             --table_name ${_entry} \
             --request match_request \
-            --vars match_vars \
-            --output_report ${match_vars[REPORT_PATH]} || {
+            --vars match_vars || {
             log_error 'gestion des colonnes du rapport en erreur!'
             false
         }
