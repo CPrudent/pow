@@ -8,10 +8,10 @@
 # log info about matching step
 match_info() {
     bash_args \
-        --args_p "
+        --args_p '
             steps_info:Table des libellés des étapes;
             step:Entrée dans cette table
-        " \
+        ' \
         --args_o '
             steps_info;
             step
@@ -27,10 +27,10 @@ match_info() {
 # get defintion of property (format or parameters) w/ OS file
 get_definition() {
     bash_args \
-        --args_p "
+        --args_p '
             property:Propriété à définir;
             vars:Entité des variables globales
-        " \
+        ' \
         --args_o '
             property;
             vars
@@ -62,14 +62,15 @@ get_definition() {
     return $SUCCESS_CODE
 }
 
+# eval requested columns (by set: IN|MORE)
 export_get_columns() {
     bash_args \
-        --args_p "
+        --args_p '
             columns_set:Ensemble des colonnes;
             columns_user:Liste des colonnes mentionnées;
             columns_default:Ensemble des colonnes disponibles;
             columns_todo:Résultat
-        " \
+        ' \
         --args_o '
             columns_set;
             columns_user;
@@ -106,27 +107,28 @@ export_get_columns() {
         # adding new column if NOT exists (only for IN set)
         ([ "$get_arg_columns_set" = IN ] && [[ $_pos -eq -1 ]]) &&
         # SQL as syntax : item matchs the name of column (w/ alias as uppercase)
-        _todo_ref+=( "i.${_item,,} AS "'"'"$_item"'"'"" )
+        _todo_ref+=( "i.${_item,,} AS "'"'"${_item,,}"'"'"" )
     done
     # add remaining columns
     [[ ${#_array_clone[@]} -gt 0 ]] && {
         for ((_i=0; _i<${#match_columns_order[@]}; _i++)); do
             # if exists key
             [ -v _array_clone[${match_columns_order[$_i]}] ] &&
-            _todo_ref+=( "${_array_clone[${match_columns_order[$_i]}]} AS "'"'"${match_columns_order[$_i]}"'"'"" )
+            _todo_ref+=( "${_array_clone[${match_columns_order[$_i]}]} AS "'"'"${match_columns_order[$_i],,}"'"'"" )
         done
     }
 
     return $SUCCESS_CODE
 }
 
+# eval entry (table name)
 export_get_entry() {
     bash_args \
-        --args_p "
+        --args_p '
             request:Entité de la demande;
             vars:Entité des variables globales;
             entry:Entité des données entrantes
-        " \
+        ' \
         --args_o '
             request;
             vars;
@@ -147,15 +149,16 @@ export_get_entry() {
     return $SUCCESS_CODE
 }
 
+# output matched addresses
 export_build() {
     bash_args \
-        --args_p "
+        --args_p '
             columns_in:Ensemble des colonnes entrantes (Ensemble noté IN);
             columns_more:Ensemble des colonnes supplémentaires (Ensemble noté MORE);
             table_name:Table des données entrantes;
             request:Entité de la demande;
             vars:Entité des variables globales
-        " \
+        ' \
         --args_o '
             columns_in;
             columns_more;
@@ -172,7 +175,7 @@ export_build() {
     local _sql_file
 
     get_tmp_file --tmpext sql --tmpfile _sql_file --create yes &&
-    log_info "SQL rapport: $_sql_file" &&
+    log_info "SQL export: $_sql_file" &&
     {
         [ "${_vars_ref[SOURCE_KIND]}" = QUERY ] && {
             [ -z "${_vars_ref[SOURCE_QUERY]}" ] && {
@@ -201,7 +204,7 @@ export_build() {
         } || true
     } &&
     execute_query \
-        --name OUTPUT_REPORT \
+        --name MATCH_EXPORT \
         --query "
             COPY (
                 $(< $_sql_file)
@@ -239,8 +242,96 @@ export_build() {
     return $SUCCESS_CODE
 }
 
+# get counters
+report_get_result() {
+    bash_args \
+        --args_p '
+            request:Entité de la demande;
+            vars:Entité des variables globales;
+            result:Entité du résultat
+        ' \
+        --args_o '
+            request;
+            vars;
+            result
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local -n _request_ref=$get_arg_request
+    local -n _vars_ref=$get_arg_vars
+    local -n _result_ref=$get_arg_result
+    local _counters _len _tmp
+
+    # get counters as {#,#, ...,#} array format
+    execute_query \
+        --name MATCH_REPORT \
+        --query "
+            SELECT counters FROM fr.set_match_result(id => ${_request_ref[MATCH_REQUEST_ID]})
+            " \
+        --psql_arguments 'tuples-only:pset=format=unaligned' \
+        --return _counters || return $ERROR_CODE
+
+    # to delete braces
+    _len=$((${#_counters} -2))
+    _tmp=${_counters:1:$_len}
+    _result_ref=( ${_tmp//,/ } )
+
+    return $SUCCESS_CODE
+}
+
+# build report, printing result counters
+report_build() {
+    bash_args \
+        --args_p '
+            request:Entité de la demande;
+            vars:Entité des variables globales;
+            result:Entité du résultat
+        ' \
+        --args_o '
+            request;
+            vars;
+            result
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local -n _request_ref=$get_arg_request
+    local -n _vars_ref=$get_arg_vars
+    local -n _result_ref=$get_arg_result
+    local _source
+
+    printf '\n%s\n' "Demande Rapprochement (ID): ${_request_ref[MATCH_REQUEST_ID]}"
+    case ${_vars_ref[SOURCE_KIND]} in
+    FILE)       _source="du fichier (${_vars_ref[SOURCE_NAME]})"        ;;
+    TABLE)      _source="de la table (${_vars_ref[SOURCE_NAME]})"       ;;
+    QUERY)      _source="de la requête (${_vars_ref[SOURCE_QUERY]})"    ;;
+    esac
+    echo 'Données issues '$_source
+    [ -n "${_vars_ref[SOURCE_FILTER]}" ] && {
+        echo 'Filtre: '${_vars_ref[SOURCE_FILTER]}
+    }
+    echo
+    printf '%-10s  %15s  %4s  %15s  %4s  %15s  %4s\n' \
+        'Total' \
+        'OK (Strict)' \
+        '%' \
+        'OK (Approchant)' \
+        '%' \
+        'KO' \
+        '%'
+    printf '%-10d  %15d  %2.1f  %15d  %2.1f  %15d  %2.1f\n\n' \
+        ${_result_ref[MATCH_RESULT_TOTAL]} \
+        ${_result_ref[MATCH_RESULT_OK_STRICT]/./,} \
+        ${_result_ref[MATCH_RESULT_PERCENT_STRICT]/./,} \
+        ${_result_ref[MATCH_RESULT_OK_NEAR]/./,} \
+        ${_result_ref[MATCH_RESULT_PERCENT_NEAR]/./,} \
+        ${_result_ref[MATCH_RESULT_KO]/./,} \
+        ${_result_ref[MATCH_RESULT_PERCENT_KO]/./,}
+
+    return $SUCCESS_CODE
+}
+
 bash_args \
-    --args_p "
+    --args_p '
         source_name:Source des Adresses à rapprocher;
         source_filter:Filtre à appliquer sur les données entrantes;
         source_query:Requête à appliquer pour obtenir les données entrantes;
@@ -256,7 +347,7 @@ bash_args \
         force:Forcer le traitement même si celui-ci a déjà été fait;
         only_info:Afficher les informations de la demande;
         verbose:Ajouter des détails sur les traitements
-    " \
+    ' \
     --args_o '
         source_name
     ' \
@@ -309,8 +400,8 @@ declare -A match_steps_info=(
     [IMPORT]=Chargement
     [STANDARDIZE]=Standardisation
     [MATCH_CODE]='Calcul MATCH CODE'
-    [MATCH_ELEMENT]='Rapprochement ELEMENT'
-    [EXPORT]='Adresses rapprochées'
+    [MATCH_ELEMENT]='Rapprochement par Niveau'
+    [EXPORT]='Export des Adresses rapprochées'
     [REPORT]=Rapport
 )
 
@@ -381,6 +472,16 @@ declare -a match_columns_order=(
     [$((_k++))]=PPDC
     [$((_k++))]=DEX
 )
+
+_k=0
+MATCH_RESULT_TOTAL=$((_k++))
+MATCH_RESULT_OK_STRICT=$((_k++))
+MATCH_RESULT_PERCENT_STRICT=$((_k++))
+MATCH_RESULT_OK_NEAR=$((_k++))
+MATCH_RESULT_PERCENT_NEAR=$((_k++))
+MATCH_RESULT_KO=$((_k++))
+MATCH_RESULT_PERCENT_KO=$((_k++))
+declare -a match_result
 
 set_env --schema_name fr &&
 # determine kind of source
@@ -542,7 +643,24 @@ match_request=($_request) &&
             --table_name ${_entry} \
             --request match_request \
             --vars match_vars || {
-            log_error 'gestion des colonnes du rapport en erreur!'
+            log_error 'export Rapprochement en erreur!'
+            false
+        }
+    } || true
+} &&
+
+{
+    in_array --array match_steps --item REPORT && {
+        match_info --steps_info match_steps_info --step REPORT &&
+        report_get_result \
+            --request match_request \
+            --vars match_vars \
+            --result match_result &&
+        report_build \
+            --request match_request \
+            --vars match_vars \
+            --result match_result || {
+            log_error 'rapport Rapprochement en erreur!'
             false
         }
     } || true

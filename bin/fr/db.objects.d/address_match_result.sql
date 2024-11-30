@@ -246,3 +246,63 @@ BEGIN
     END IF;
 END
 $proc$ LANGUAGE plpgsql;
+
+-- eval result as counters
+SELECT drop_all_functions_if_exists('fr', 'set_match_result');
+CREATE OR REPLACE FUNCTION fr.set_match_result(
+    id IN INT,
+    counters OUT NUMERIC[]
+)
+AS
+$func$
+DECLARE
+    _count1 NUMERIC;
+    _count2 NUMERIC;
+    _count3 NUMERIC;
+    _count4 NUMERIC;
+    _count5 NUMERIC;
+    _count6 NUMERIC;
+    _count7 NUMERIC;
+BEGIN
+    SELECT
+        COUNT(1) total,
+        SUM(CASE WHEN (me.matched_element).status = 'OK_1' THEN 1 ELSE 0 END) ok_strict,
+        ROUND((SUM(CASE WHEN (me.matched_element).status = 'OK_1' THEN 1 ELSE 0 END)::NUMERIC * 100) / COUNT(1), 1) percent_ok_strict,
+        SUM(CASE WHEN (me.matched_element).status = 'OK_2' THEN 1 ELSE 0 END) ok_near,
+        ROUND((SUM(CASE WHEN (me.matched_element).status = 'OK_2' THEN 1 ELSE 0 END)::NUMERIC * 100) / COUNT(1), 1) percent_ok_near,
+        SUM(CASE WHEN (me.matched_element).status ~ '^KO' THEN 1 ELSE 0 END) ko,
+        ROUND((SUM(CASE WHEN (me.matched_element).status ~ '^KO' THEN 1 ELSE 0 END)::NUMERIC * 100) / COUNT(1), 1) percent_ko
+    INTO
+        _count1,
+        _count2,
+        _count3,
+        _count4,
+        _count5,
+        _count6,
+        _count7
+    FROM
+        fr.address_match_result mr
+            LEFT OUTER JOIN fr.address_match_element me
+            ON (
+                ((mr.standardized_address).level = me.level)
+                AND (
+                    ((mr.standardized_address).match_code_street = me.match_code)
+                    OR
+                    ((mr.standardized_address).match_code_housenumber = me.match_code)
+                    OR
+                    ((mr.standardized_address).match_code_complement = me.match_code)
+                )
+            )
+    WHERE
+        mr.id_request = set_match_result.id
+    ;
+
+    counters[1] := _count1;
+    counters[2] := _count2;
+    counters[3] := _count3;
+    counters[4] := _count4;
+    counters[5] := _count5;
+    counters[6] := _count6;
+    counters[7] := _count7;
+END
+$func$ LANGUAGE plpgsql;
