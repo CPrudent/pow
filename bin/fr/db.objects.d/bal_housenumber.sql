@@ -2,17 +2,26 @@
  * FR: add BAL housenumber
  */
 
+DO $$
+BEGIN
+    -- old structure inherited from BCAA
+    IF column_exists('fr', 'bal_housenumber', 'dt_derniere_maj') THEN
+        DROP TABLE fr.bal_housenumber;
+    END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS fr.bal_housenumber (
-    id_bal_numero VARCHAR NOT NULL,
-    numero INTEGER NOT NULL,
-    suffixe VARCHAR,
-    id_bal_voie VARCHAR NOT NULL,
-    libelle_ancienne_commune VARCHAR,
-    parcelles VARCHAR[],
-    coordonnees FLOAT[],
-    co_postal VARCHAR NOT NULL,
-    type_position VARCHAR,
-    dt_derniere_maj TIMESTAMP WITHOUT TIME ZONE NOT NULL
+    id SERIAL NOT NULL,
+    id_street INT NOT NULL,
+    code VARCHAR NOT NULL,
+    number INTEGER NOT NULL,
+    extension VARCHAR,
+    postcode VARCHAR NOT NULL,
+    area VARCHAR,
+    parcels VARCHAR[],
+    geom FLOAT[],
+    location VARCHAR,
+    last_update TIMESTAMP WITHOUT TIME ZONE
 );
 
 SELECT drop_all_functions_if_exists('fr', 'set_bal_housenumber_index');
@@ -20,12 +29,9 @@ CREATE OR REPLACE PROCEDURE fr.set_bal_housenumber_index()
 AS
 $proc$
 BEGIN
-    -- uniq ID
-    IF index_exists('fr', 'idx_numero_id_bal_numero') AND NOT index_exists('fr', 'iux_bal_housenumber_id_bal_numero') THEN
-        ALTER INDEX idx_numero_id_bal_numero RENAME TO iux_bal_housenumber_id_bal_numero;
-    ELSE
-        CREATE UNIQUE INDEX IF NOT EXISTS iux_bal_housenumber_id_bal_numero ON fr.bal_housenumber (id_bal_numero);
-    END IF;
+    -- uniq ID, code
+    CREATE UNIQUE INDEX IF NOT EXISTS iux_bal_housenumber_id ON fr.bal_housenumber (id);
+    CREATE UNIQUE INDEX IF NOT EXISTS iux_bal_housenumber_code ON fr.bal_housenumber (code);
 END
 $proc$ LANGUAGE plpgsql;
 
@@ -47,6 +53,6 @@ BEGIN
             AND rel.relname = 'bal_housenumber'
             AND con.contype = 'f'
     ) THEN
-        ALTER TABLE fr.bal_housenumber ADD FOREIGN KEY (id_bal_voie) REFERENCES fr.bal_street (id_bal_voie);
+        ALTER TABLE fr.bal_housenumber ADD FOREIGN KEY (id_street) REFERENCES fr.bal_street (id);
     END IF;
 END $$;

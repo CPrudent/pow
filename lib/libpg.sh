@@ -702,3 +702,27 @@ restore_table() {
 
     return $SUCCESS_CODE
 }
+
+# convert Postgresql's array to Bash's one
+array_sql_to_bash() {
+    bash_args \
+        --args_p '
+            array_sql:Tableau SQL;
+            array_bash:Entité du résultat
+        ' \
+        --args_o '
+            array_sql;
+            array_bash
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local -n _array_ref=$get_arg_array_bash
+    local _len _tmp
+
+    # to delete braces
+    _len=$((${#get_arg_array_sql} -2))
+    _tmp=${get_arg_array_sql:1:$_len}
+    _array_ref=( ${_tmp//,/ } )
+
+    return $SUCCESS_CODE
+}

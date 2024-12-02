@@ -1473,17 +1473,21 @@ import_file() {
     application/vnd.openxmlformats-officedocument.spreadsheetml.sheet|application/vnd.ms-excel|application/vnd.oasis.opendocument.spreadsheet)
         _type_import=SPREADSHEET
         ;;
-    application/*dbf*|application/octet-stream|application/*json*)
+    application/*dbf*|application/octet-stream)
         _type_file=$(file "$file_path" | cut --delimiter : --fields 2)
         _type_file=${_type_file,,}
         [[ $_type_file =~ esri[[:space:]]shapefile|dbase|json ]] && _type_import=GEO
+        ;;
+    application/*json*)
+        _type_import=JSON
         ;;
     esac
     [ "$POW_DEBUG" = yes ] && echo "_type_import (MIME)=$_type_import"
     [ -z "$_type_import" ] &&
     case "${file_extension,,}" in
     txt|[cdt]sv)    _type_import=CSV            ;;
-    shp|dbf|json)   _type_import=GEO            ;;
+    shp|dbf)        _type_import=GEO            ;;
+    json)           _type_import=JSON           ;;
     xls|xlsx|ods)   _type_import=SPREADSHEET    ;;
     esac &&
     [ "$POW_DEBUG" = yes ] && {
@@ -1523,6 +1527,27 @@ import_file() {
             --limit "$limit" \
             --rowid "$rowid" \
             $import_options_string
+        ;;
+    JSON)
+        local _columns_str _columns_array
+        execute_query \
+            --name TABLE_COLUMNS \
+            --query "
+                $([ "${load_mode}" != APPEND ] && echo "TRUNCATE TABLE $schema_name.$table_name;")
+                SELECT get_table_columns('$schema_name', '$table_name');
+            " \
+            --psql_arguments 'tuples-only:pset=format=unaligned' \
+            --return _columns_str &&
+        array_sql_to_bash --array_sql "$_columns_str" --array_bash _columns_array &&
+        {
+            [[ ${#_columns_array[@]} -eq 1 ]] || {
+                log_error "Table de chargement JSON ($schema_name.$table_name) ne doit avoir qu'une colonne de type JSON!"
+                false
+            }
+        } &&
+        jq -rc '.' < "$file_path" | execute_query \
+            --name LOAD_JSON \
+            --query "COPY $schema_name.$table_name (${_columns_array[0]}) FROM STDIN"
         ;;
     *)
         log_error "Le fichier $file_path ne peut pas être traité!"

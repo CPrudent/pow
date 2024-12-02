@@ -269,12 +269,8 @@ report_get_result() {
             SELECT counters FROM fr.set_match_result(id => ${_request_ref[MATCH_REQUEST_ID]})
             " \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
-        --return _counters || return $ERROR_CODE
-
-    # to delete braces
-    _len=$((${#_counters} -2))
-    _tmp=${_counters:1:$_len}
-    _result_ref=( ${_tmp//,/ } )
+        --return _counters &&
+    array_sql_to_bash --array_sql "$_counters" --array_bash _result_ref || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
