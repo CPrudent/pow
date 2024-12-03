@@ -58,6 +58,7 @@ bal_load() {
             FROM fr.bal_municipality WHERE code='${_vars_ref[MUNICIPALITY_CODE]}'"
         ;;
     esac
+    _vars_ref[TABLE_NAME]=tmp_${_vars_ref[IO_NAME],,}
 
     io_todo_import \
         --force ${_vars_ref[FORCE]} \
@@ -73,7 +74,6 @@ bal_load() {
     esac
 
     log_info "Import BAL (${_vars_ref[IO_NAME]#*_})" &&
-    _vars_ref[TABLE_NAME]=tmp_${_vars_ref[IO_NAME],,} &&
     {
         _vars_ref[FILE_NAME]=$(basename "${_vars_ref[URL]}/${_vars_ref[URL_DATA]}") &&
         {
@@ -148,7 +148,7 @@ bal_integration() {
         case "${_vars_ref[MUNICIPALITY_CODE]}" in
         ALL)
             execute_query \
-                --name BAL_INTEGRATION_${_vars_ref[IO_NAME]#*_} \
+                --name "BAL_INTEGRATION_${_vars_ref[IO_NAME]#*_}" \
                 --query "
                     SELECT drop_table_indexes('fr', 'bal_municipality');
                     TRUNCATE TABLE fr.bal_municipality;
@@ -172,7 +172,7 @@ bal_integration() {
                         nb_numeros_certifies::INT,
                         composed_at::TIMESTAMP WITHOUT TIME ZONE
                     FROM
-                        fr.tmp_bal_summary
+                        ${_vars_ref[TABLE_NAME]}
                         ;
                     CALL fr.set_bal_municipality_index();
                     DROP TABLE fr.tmp_bal_summary;
@@ -188,6 +188,52 @@ bal_integration() {
                 --mode ANALYZE
             ;;
         *)
+            # insert/update streets, and delete old ones
+            execute_query \
+                --name "BAL_INTEGRATION_${_vars_ref[MUNICIPALITY_CODE]}_STREETS" \
+                --query "
+                    INSERT INTO fr.bal_street (
+                        id_municipality,
+                        code,
+                        name,
+                        kind,
+                        source,
+                        housenumbers,
+                        housenumbers_auth,
+                        last_update
+                    )
+                    SELECT
+                        m.id,
+                        v->>'idVoie',
+                        v->>'nomVoie',
+                        v->>'type',
+                        CASE
+                            WHEN v->'sources' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(v->'sources'))::TEXT[]
+                            ELSE ARRAY[v->>'sources']::TEXT[]
+                        END,
+                        (v->>'nbNumeros')::INT,
+                        (v->>'nbNumerosCertifies')::INT,
+                        NOW()
+                    FROM
+                        ${_vars_ref[TABLE_NAME]}
+                            CROSS JOIN JSON_ARRAY_ELEMENTS(data->'voies') v
+                            JOIN fr.bal_municipality m ON m.code = data->>'codeCommune'
+                    ON CONFLICT(code) DO UPDATE SET
+                        id_municipality = EXCLUDED.id_municipality,
+                        name = EXCLUDED.name,
+                        kind = EXCLUDED.kind,
+                        source = EXCLUDED.source,
+                        housenumbers_auth = EXCLUDED.housenumbers_auth,
+                            last_update = EXCLUDED.last_update
+                    ;
+                    DELETE FROM fr.bal_street s WHERE NOT EXISTS(
+                        SELECT 1
+                        FROM ${_vars_ref[TABLE_NAME]}
+                            CROSS JOIN JSON_ARRAY_ELEMENTS(data->'voies') v
+                        WHERE
+                            s.code = v->>'idVoie'
+                    );
+                "
             ;;
         esac
     }

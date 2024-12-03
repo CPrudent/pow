@@ -40,7 +40,7 @@ BEGIN
     -- manage indexes
     CALL fr.set_bal_housenumber_index();
 
-    -- add integrity constraint on table fr.bal_housenumber
+    -- add integrity constraint
     IF NOT EXISTS(
         SELECT 1
         FROM pg_catalog.pg_constraint con
