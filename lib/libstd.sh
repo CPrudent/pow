@@ -190,24 +190,6 @@ in_array() {
     [ $_rc -eq 0 ] && return 0
     # not found
     return 1
-
-#     local _ref=$1[@]
-#     local _array=("${!_ref}")
-#     local _rc=1 _i _return_id=0
-#     [ $# -eq 3 ] && {
-#         _return_id=1
-#         local -n _id_ref=$3
-#         [ "$3" = _i ] && log_error "retour indice vers _i (en conflit avec local _i) : changer le nom"
-#     }
-#     for ((_i=0; _i < ${#_array[@]}; _i++)); do
-#         #echo "$_i: ${_array[$_i]}"
-#         [ "${_array[$_i]}" = "$2" ] && {
-#             _rc=0
-#             break
-#         }
-#     done
-#     [ $_return_id -eq 1 ] && [ $_i -lt ${#_array[@]} ] && _id_ref=$_i
-#     return $_rc
 }
 
 # FIX ME: syntax error near unexpected token `('

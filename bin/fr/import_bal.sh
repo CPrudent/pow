@@ -15,13 +15,15 @@ on_import_error() {
         ' \
         "$@" || return $ERROR_CODE
 
-    local -n _vars_ref=$get_arg_vars
+    # careful at circular name reference, a trick is to use different name (_globals_ref) !
+    # due to other call, as: on_import_error --vars _vars_ref
+    local -n _globals_ref=$get_arg_vars
 
     # import created?
-    [ "$POW_DEBUG" = yes ] && { echo "io_history_id=${_vars_ref[IO_ID]}"; }
-    [ -n "${_vars_ref[IO_ID]}" ] && io_history_end_ko --id ${_vars_ref[IO_ID]}
+    [ "$POW_DEBUG" = yes ] && { echo "io_history_id=${_globals_ref[IO_ID]}"; }
+    [ -n "${_globals_ref[IO_ID]}" ] && io_history_end_ko --id ${_globals_ref[IO_ID]}
 
-    log_error "Erreur import BAL (${_vars_ref[IO_NAME]#*_})"
+    log_error "Erreur import BAL (${_globals_ref[IO_NAME]#*_})"
     exit $ERROR_CODE
 }
 
@@ -43,7 +45,10 @@ bal_load() {
     ALL)
         _vars_ref[IO_NAME]=BAL_SUMMARY
         _vars_ref[URL_DATA]='api/communes-summary.csv'
-        _query="SELECT COUNT(DISTINCT co_insee_commune) FROM fr.laposte_address_area WHERE fl_active"
+        _query="
+            SELECT COUNT(DISTINCT co_insee_commune)
+            FROM fr.laposte_address_area WHERE fl_active
+        "
         ;;
     *)
         _vars_ref[IO_NAME]=BAL_${_vars_ref[MUNICIPALITY_CODE]}
@@ -77,13 +82,21 @@ bal_load() {
                 execute_query \
                     --name BAL_TABLE_CREATE \
                     --query "
-                        CREATE TABLE IF NOT EXISTS fr.{$_vars_ref[TABLE_NAME]} (data JSON)
+                        CREATE TABLE IF NOT EXISTS fr.${_vars_ref[TABLE_NAME]} (data JSON)
                     " &&
                 execute_query \
-                    --name BAL_LAST_IO \
+                    --name BAL_IO_BEGIN \
                     --query "SELECT (get_last_io('${_vars_ref[IO_NAME]}')).date_data_end" \
                     --psql_arguments 'tuples-only:pset=format=unaligned' \
-                    --return _vars_ref[IO_BEGIN]
+                    --return _vars_ref[IO_BEGIN] &&
+                execute_query \
+                    --name BAL_IO_END \
+                    --query "
+                        SELECT last_update
+                        FROM fr.bal_municipality WHERE code='${_vars_ref[MUNICIPALITY_CODE]}'
+                    " \
+                    --psql_arguments 'tuples-only:pset=format=unaligned' \
+                    --return _vars_ref[IO_END]
             } || true
         }
     } &&
@@ -152,11 +165,12 @@ bal_integration() {
                     SELECT
                         code_commune,
                         nom_commune,
-                        population,
-                        nb_lieux_dits,
-                        nb_voies,
-                        nb_numeros_certifies
-                        composed_at
+                        population::INT,
+                        nb_lieux_dits::INT,
+                        nb_voies::INT,
+                        nb_numeros::INT,
+                        nb_numeros_certifies::INT,
+                        composed_at::TIMESTAMP WITHOUT TIME ZONE
                     FROM
                         fr.tmp_bal_summary
                         ;
@@ -181,19 +195,108 @@ bal_integration() {
     return $SUCCESS_CODE
 }
 
+# select municipalities (w/ criteria & order) from summary
 bal_list_municipalities() {
     bash_args \
         --args_p '
-            order:Ordre de sélection des communes;
+            vars:Entité des variables globales;
             list:Liste résultat
         ' \
         --args_o '
-            order;
+            vars;
             list
         ' \
-        "$@" || return $ERROR_CODE}
+        "$@" || return $ERROR_CODE
 
+    local -n _vars_ref=$get_arg_vars
     local -n _list_ref=$get_arg_list
+    local _query _list
+
+    case "${bal_vars[SELECT_CRITERIA]}" in
+    POPULATION)
+        _query="
+            SELECT
+                codgeo municipality,
+                population criteria
+            FROM
+                fr.territory
+            WHERE
+                nivgeo = 'COM'
+                AND
+                population IS NOT NULL
+        "
+        ;;
+    STREETS)
+        _query="
+            SELECT
+                co_insee_commune municipality,
+                COUNT(DISTINCT co_voie) criteria
+            FROM
+                fr.laposte_address_street
+            WHERE
+                fl_active
+            GROUP BY
+                co_insee_commune
+        "
+        ;;
+    REVISION)
+        _query="
+            SELECT
+                code municipality,
+                last_update criteria
+            FROM
+                fr.bal_municipality
+        "
+        ;;
+    esac &&
+    _query="
+        WITH
+        history AS (
+            SELECT
+                SUBSTR(io.name, 5) municipality,
+                MIN(l.date_data_end) date_date_end
+            FROM
+                io_history io
+                    CROSS JOIN get_last_io(io.name) l
+            WHERE
+                io.name ~ '^BAL_[0-9]'
+            GROUP BY
+                SUBSTR(io.name, 5)
+        )
+        , criteria AS (
+            $_query
+        )
+        SELECT ARRAY(
+            SELECT
+                c.municipality
+            FROM
+                criteria c
+                    JOIN fr.bal_municipality m ON c.municipality = m.code
+                    LEFT OUTER JOIN history h ON h.municipality = c.municipality
+            WHERE
+                h.date_date_end IS NULL
+                OR
+                m.last_update > h.date_date_end
+            ORDER BY
+                c.criteria DESC
+    " &&
+    {
+        [[ ${bal_vars[LIMIT]} -gt 0 ]] && {
+            _query+="
+                LIMIT
+                    ${bal_vars[LIMIT]}
+            "
+        } || true
+    } &&
+    _query+=")" &&
+    execute_query \
+        --name SELECT_MUNICIPALITIES \
+        --query "
+            $_query
+        " \
+        --psql_arguments 'tuples-only:pset=format=unaligned' \
+        --return _list &&
+    array_sql_to_bash --array_sql "$_list" --array_bash _list_ref || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -212,7 +315,7 @@ valid_municipality_code() {
     local _valid
 
     execute_query \
-        --name BAL_MUNICIPALITY_OK \
+        --name "BAL_MUNICIPALITY_$get_arg_municipality" \
         --query "
             SELECT EXISTS(
                 SELECT 1 FROM fr.laposte_address_area
@@ -232,20 +335,29 @@ valid_municipality_code() {
 bash_args \
     --args_p '
         municipality:Code Commune INSEE à traiter (ou ALL pour télécharger la liste complète);
+        select_criteria:Sélection des Communes;
+        select_order:Ordre de sélection des Communes;
         limit:Limiter à n communes;
         stop_time:Heure d arrêt du traitement (format: hh:mm:ss);
         force:Forcer le traitement même si celui-ci a déjà été fait;
+        dry_run:Simuler le traitement;
         verbose:Ajouter des détails sur les traitements
     ' \
     --args_o '
         municipality
     ' \
     --args_v '
+        select_criteria:REVISION|POPULATION|STREETS;
+        select_order:ASC|DESC;
         force:yes|no;
+        dry_run:yes|no;
         verbose:yes|no
     ' \
     --args_d '
+        select_criteria:REVISION;
+        select_order:DESC;
         force:no;
+        dry_run:no;
         limit:30;
         stop_time:0;
         verbose:no
@@ -263,9 +375,12 @@ declare -A bal_vars=(
     [IO_ROWS]=0
     [FILE_NAME]=
     [TABLE_NAME]=
+    [SELECT_CRITERIA]=$get_arg_select_criteria
+    [SELECT_ORDER]=$get_arg_select_order
     [LIMIT]=$get_arg_limit
     [STOP_TIME]=$get_arg_stop_time
     [FORCE]=$get_arg_force
+    [DRY_RUN]=$get_arg_dry_run
     [VERBOSE]=$get_arg_verbose
 )
 declare -a bal_codes=()
@@ -274,7 +389,8 @@ set_env --schema_name fr &&
 {
     [ "${bal_vars[MUNICIPALITY_CODE]}" = ALL ] && {
         bal_load --vars bal_vars &&
-        bal_integration --vars bal_vars || exit $ERROR_CODE
+        bal_integration --vars bal_vars &&
+        bal_list_municipalities --vars bal_vars --list bal_codes || exit $ERROR_CODE
     } || {
         bal_codes[0]=${bal_vars[MUNICIPALITY_CODE]}
     }
@@ -294,9 +410,11 @@ for ((_i=0; _i<${#bal_codes[@]}; _i++)); do
         continue
     }
 
-    bal_vars[MUNICIPALITY_CODE]=${bal_codes[$_i]} &&
-    bal_load --vars bal_vars &&
-    bal_integration --vars bal_vars || exit $ERROR_CODE
+    bal_vars[MUNICIPALITY_CODE]=${bal_codes[$_i]}
+    is_yes --var bal_vars[DRY_RUN] || {
+        bal_load --vars bal_vars &&
+        bal_integration --vars bal_vars || exit $ERROR_CODE
+    }
 done
 
 exit $SUCCESS_CODE
