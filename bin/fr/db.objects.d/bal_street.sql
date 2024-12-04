@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS fr.bal_street (
     code VARCHAR NOT NULL,
     name VARCHAR NOT NULL,
     kind VARCHAR NOT NULL,
-    source TEXT[],
+    sources VARCHAR[],
     housenumbers INTEGER,
     housenumbers_auth INTEGER,
     last_update TIMESTAMP WITHOUT TIME ZONE

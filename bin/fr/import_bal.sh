@@ -52,7 +52,7 @@ bal_load() {
         ;;
     *)
         _vars_ref[IO_NAME]=BAL_${_vars_ref[MUNICIPALITY_CODE]}
-        _vars_ref[URL_DATA]='lookup/'BAL_${_vars_ref[MUNICIPALITY_CODE]}
+        _vars_ref[URL_DATA]='lookup/'${_vars_ref[MUNICIPALITY_CODE]}
         _query="
             SELECT areas + streets + housenumbers_auth
             FROM fr.bal_municipality WHERE code='${_vars_ref[MUNICIPALITY_CODE]}'"
@@ -130,6 +130,26 @@ bal_load() {
     return $SUCCESS_CODE
 }
 
+# load BAL addresses (streets or housenumbers)
+bal_load_addresses() {
+    bash_args \
+        --args_p '
+            vars:Entité des variables globales;
+            level:Niveau Adresses
+        ' \
+        --args_o '
+            vars;
+            level
+        ' \
+        --args_v '
+            level:STREET|HOUSENUMBER
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local -n _vars_ref=$get_arg_vars
+
+}
+
 # integration BAL data (summary or one municipality)
 bal_integration() {
     bash_args \
@@ -142,6 +162,8 @@ bal_integration() {
         "$@" || return $ERROR_CODE
 
     local -n _vars_ref=$get_arg_vars
+    local _list _j
+    local -a _streets _housenumbers
 
     table_exists --schema_name fr --table_name "${_vars_ref[TABLE_NAME]}" &&
     {
@@ -188,7 +210,7 @@ bal_integration() {
                 --mode ANALYZE
             ;;
         *)
-            # insert/update streets, and delete old ones
+            # insert/update streets, and delete old ones (obsolete)
             execute_query \
                 --name "BAL_INTEGRATION_${_vars_ref[MUNICIPALITY_CODE]}_STREETS" \
                 --query "
@@ -197,7 +219,7 @@ bal_integration() {
                         code,
                         name,
                         kind,
-                        source,
+                        sources,
                         housenumbers,
                         housenumbers_auth,
                         last_update
@@ -222,9 +244,9 @@ bal_integration() {
                         id_municipality = EXCLUDED.id_municipality,
                         name = EXCLUDED.name,
                         kind = EXCLUDED.kind,
-                        source = EXCLUDED.source,
+                        sources = EXCLUDED.sources,
                         housenumbers_auth = EXCLUDED.housenumbers_auth,
-                            last_update = EXCLUDED.last_update
+                        last_update = EXCLUDED.last_update
                     ;
                     DELETE FROM fr.bal_street s WHERE NOT EXISTS(
                         SELECT 1
@@ -233,7 +255,152 @@ bal_integration() {
                         WHERE
                             s.code = v->>'idVoie'
                     );
-                "
+                    TRUNCATE TABLE ${_vars_ref[TABLE_NAME]};
+                " &&
+            # count areas
+            execute_query \
+                --name "MUNICIPALITY_${_vars_ref[MUNICIPALITY_CODE]}_AREAS" \
+                --query "
+                    SELECT
+                        COUNT(1)
+                    FROM
+                        fr.laposte_address_area
+                    WHERE
+                        fl_active
+                        AND
+                        co_insee_commune = '${_vars_ref[MUNICIPALITY_CODE]}'
+                " \
+                --psql_arguments 'tuples-only:pset=format=unaligned' \
+                --return _vars_ref[MUNICIPALITY_AREAS] &&
+            # select streets w/ certified housenumbers
+            execute_query \
+                --name "BAL_SELECT_${_vars_ref[MUNICIPALITY_CODE]}_STREETS" \
+                --query "
+                    SELECT
+                        ARRAY_AGG(s.code)
+                    FROM
+                        fr.bal_street s
+                            JOIN fr.bal_municipality m ON s.id_municipality = m.id
+                    WHERE
+                        m.code = '${_vars_ref[MUNICIPALITY_CODE]}'
+                        AND
+                        s.housenumbers_auth > 0
+                " \
+                --psql_arguments 'tuples-only:pset=format=unaligned' \
+                --return _list &&
+            array_sql_to_bash --array_sql "$_list" --array_bash _streets &&
+            # load housenumbers as JSON in table
+            for ((_j=0; _j<${#_streets[@]}; _j++)); do
+                _vars_ref[URL_DATA]='lookup/'${_streets[$_j]} &&
+                _vars_ref[FILE_NAME]=${_streets[$_j]}.json &&
+                io_download_file \
+                    --url "${_vars_ref[URL]}/${_vars_ref[URL_DATA]}" \
+                    --overwrite yes \
+                    --output_directory "$POW_DIR_IMPORT" \
+                    --output_file "${_vars_ref[FILE_NAME]}" &&
+                import_file \
+                    --file_path "$POW_DIR_IMPORT/${_vars_ref[FILE_NAME]}" \
+                    --table_name ${_vars_ref[TABLE_NAME]} \
+                    --load_mode OVERWRITE_DATA
+            done &&
+            # insert/update housenumbers, and delete old ones (obsolete)
+            execute_query \
+                --name "BAL_INTEGRATION_${_vars_ref[MUNICIPALITY_CODE]}_HOUSENUMBERS" \
+                --query "
+                    INSERT INTO fr.bal_housenumber (
+                        id_street,
+                        code,
+                        number,
+                        extension,
+                        sources,
+                        postcode,
+                        parcels,
+                        geom,
+                        location,
+                        last_update
+                    )
+                    SELECT
+                        s.id,
+                        n->>'id',
+                        (n->>'numero')::INT,
+                        NULLIF(n->>suffixe, 'null'),
+                        CASE
+                            WHEN n->'sources' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(n->'sources'))::VARCHAR[]
+                            ELSE ARRAY[n->>'sources']::VARCHAR[]
+                        END,
+                        n->>'postcode',
+                        CASE
+                            WHEN n->'parcelles' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(n->'parcelles'))::VARCHAR[]
+                            ELSE ARRAY[n->>'parcelles']::VARCHAR[]
+                        END,
+                        CASE
+                            WHEN n->'position'->'coordinates' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(j->'position'->'coordinates'))::TEXT[]::FLOAT[]
+                            ELSE NULL::FLOAT[]
+                        END,
+                        n->>'positionType',
+                        NOW()
+                    FROM
+                        ${_vars_ref[TABLE_NAME]}
+                            CROSS JOIN JSON_ARRAY_ELEMENTS(data->'numeros') n
+                            JOIN fr.bal_street s ON s.code = data->>'idVoie'
+                    WHERE
+                        UPPER(n->>'certifie') = 'TRUE'
+                    ON CONFLICT(code) DO UPDATE SET
+                        id_street = EXCLUDED.id_street,
+                        number = EXCLUDED.number,
+                        extension = EXCLUDED.extension,
+                        sources = EXCLUDED.sources,
+                        postcode = EXCLUDED.postcode,
+                        parcels = EXCLUDED.parcels,
+                        geom = EXCLUDED.geom,
+                        location = EXCLUDED.location,
+                        last_update = EXCLUDED.last_update
+                    ;
+                    DELETE FROM fr.bal_housenumber hn WHERE NOT EXISTS(
+                        SELECT 1
+                        FROM ${_vars_ref[TABLE_NAME]}
+                            CROSS JOIN JSON_ARRAY_ELEMENTS(data->'numeros') n
+                        WHERE
+                            hn.code = n->>'id'
+                    );
+                    TRUNCATE TABLE ${_vars_ref[TABLE_NAME]};
+                " &&
+                # need to request API on each housenumber, if many areas!
+                {
+                    [[ ${_vars_ref[MUNICIPALITY_AREAS]} -gt 0 ]] && {
+                        # select housenumbers
+                        execute_query \
+                            --name "BAL_SELECT_${_vars_ref[MUNICIPALITY_CODE]}_HOUSENUMBERS" \
+                            --query "
+                                SELECT
+                                    ARRAY_AGG(hn.code)
+                                FROM
+                                    fr.bal_housenumber hn
+                                        JOIN fr.bal_street s ON hn.id_street = s.id
+                                        JOIN fr.bal_municipality m ON s.id_municipality = m.id
+                                WHERE
+                                    m.code = '${_vars_ref[MUNICIPALITY_CODE]}'
+                            " \
+                            --psql_arguments 'tuples-only:pset=format=unaligned' \
+                            --return _list &&
+                        array_sql_to_bash --array_sql "$_list" --array_bash _housenumbers &&
+                        # load housenumbers as JSON in table
+                        for ((_j=0; _j<${#_housenumbers[@]}; _j++)); do
+                            _vars_ref[URL_DATA]='lookup/'${_housenumbers[$_j]} &&
+                            _vars_ref[FILE_NAME]=${_housenumbers[$_j]}.json &&
+                            io_download_file \
+                                --url "${_vars_ref[URL]}/${_vars_ref[URL_DATA]}" \
+                                --overwrite yes \
+                                --output_directory "$POW_DIR_IMPORT" \
+                                --output_file "${_vars_ref[FILE_NAME]}" &&
+                            import_file \
+                                --file_path "$POW_DIR_IMPORT/${_vars_ref[FILE_NAME]}" \
+                                --table_name ${_vars_ref[TABLE_NAME]} \
+                                --load_mode OVERWRITE_DATA
+                        done &&
+
+                    } || true
+                }
             ;;
         esac
     }
@@ -412,6 +579,7 @@ bash_args \
 
 declare -A bal_vars=(
     [MUNICIPALITY_CODE]="${get_arg_municipality^^}"
+    [MUNICIPALITY_AREAS]=0
     [URL]='https://plateforme.adresse.data.gouv.fr'
     [URL_DATA]=
     [IO_NAME]=
