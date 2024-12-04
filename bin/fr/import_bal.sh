@@ -56,6 +56,14 @@ bal_load() {
         _query="
             SELECT areas + streets + housenumbers_auth
             FROM fr.bal_municipality WHERE code='${_vars_ref[MUNICIPALITY_CODE]}'"
+        execute_query \
+            --name BAL_IO_END \
+            --query "
+                SELECT last_update
+                FROM fr.bal_municipality WHERE code='${_vars_ref[MUNICIPALITY_CODE]}'
+            " \
+            --psql_arguments 'tuples-only:pset=format=unaligned' \
+            --return _vars_ref[IO_END] || return $ERROR_CODE
         ;;
     esac
     _vars_ref[TABLE_NAME]=tmp_${_vars_ref[IO_NAME],,}
@@ -65,12 +73,9 @@ bal_load() {
         --name ${_vars_ref[IO_NAME]} \
         --date_end "${_vars_ref[IO_END]}"
     case $? in
-    $POW_IO_SUCCESSFUL)
-        return $SUCCESS_CODE
-        ;;
-    $POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
-        return $ERROR_CODE
-        ;;
+    $POW_IO_SUCCESSFUL)                 return $SUCCESS_CODE        ;;
+    $POW_IO_IN_PROGRESS)                exit $ERROR_CODE            ;;
+    $POW_IO_ERROR|$ERROR_CODE)          return $ERROR_CODE          ;;
     esac
 
     log_info "Import BAL (${_vars_ref[IO_NAME]#*_})" &&
@@ -80,7 +85,7 @@ bal_load() {
             [ "${_vars_ref[MUNICIPALITY_CODE]}" != ALL ] && {
                 _vars_ref[FILE_NAME]+=.json &&
                 execute_query \
-                    --name BAL_TABLE_CREATE \
+                    --name BAL_CREATE \
                     --query "
                         CREATE TABLE IF NOT EXISTS fr.${_vars_ref[TABLE_NAME]} (data JSON)
                     " &&
@@ -88,15 +93,7 @@ bal_load() {
                     --name BAL_IO_BEGIN \
                     --query "SELECT (get_last_io('${_vars_ref[IO_NAME]}')).date_data_end" \
                     --psql_arguments 'tuples-only:pset=format=unaligned' \
-                    --return _vars_ref[IO_BEGIN] &&
-                execute_query \
-                    --name BAL_IO_END \
-                    --query "
-                        SELECT last_update
-                        FROM fr.bal_municipality WHERE code='${_vars_ref[MUNICIPALITY_CODE]}'
-                    " \
-                    --psql_arguments 'tuples-only:pset=format=unaligned' \
-                    --return _vars_ref[IO_END]
+                    --return _vars_ref[IO_BEGIN]
             } || true
         }
     } &&
@@ -119,7 +116,7 @@ bal_load() {
         --id _vars_ref[IO_ID] &&
     io_download_file \
         --url "${_vars_ref[URL]}/${_vars_ref[URL_DATA]}" \
-        --overwrite yes \
+        --overwrite no \
         --output_directory "$POW_DIR_IMPORT" \
         --output_file "${_vars_ref[FILE_NAME]}" &&
     import_file \
@@ -151,7 +148,7 @@ bal_load_addresses() {
     # be careful at circular name reference, a trick is to use different name (_globals_ref) !
     # due to other call, as: --vars _vars_ref
     local -n _globals_ref=$get_arg_vars
-    local -n _count $get_arg_count
+    local -n _count=$get_arg_count
     local _name _query _list _addresses
 
     _name="BAL_SELECT_${_globals_ref[MUNICIPALITY_CODE]}" &&
@@ -194,7 +191,7 @@ bal_load_addresses() {
     array_sql_to_bash --array_sql "$_list" --array_bash _addresses &&
     execute_query \
         --name BAL_TRUNCATE \
-        --query "TRUNCATE TABLE ${_vars_ref[TABLE_NAME]}" &&
+        --query "TRUNCATE TABLE fr.${_vars_ref[TABLE_NAME]}" &&
     # load addresses as JSON in table (has to be empty!)
     _count=${#_addresses[@]} &&
     for ((_j=0; _j<${#_addresses[@]}; _j++)); do
@@ -202,13 +199,13 @@ bal_load_addresses() {
         _globals_ref[FILE_NAME]=${_addresses[$_j]}.json &&
         io_download_file \
             --url "${_globals_ref[URL]}/${_globals_ref[URL_DATA]}" \
-            --overwrite yes \
+            --overwrite no \
             --output_directory "$POW_DIR_IMPORT" \
             --output_file "${_globals_ref[FILE_NAME]}" &&
         import_file \
             --file_path "$POW_DIR_IMPORT/${_globals_ref[FILE_NAME]}" \
             --table_name ${_globals_ref[TABLE_NAME]} \
-            --load_mode OVERWRITE_DATA
+            --load_mode APPEND
     done || return $ERROR_CODE
 
     return $SUCCESS_CODE
@@ -257,15 +254,13 @@ bal_integration() {
                         nb_numeros_certifies::INT,
                         composed_at::TIMESTAMP WITHOUT TIME ZONE
                     FROM
-                        ${_vars_ref[TABLE_NAME]}
+                        fr.${_vars_ref[TABLE_NAME]}
                         ;
                     CALL fr.set_bal_municipality_index();
                     DROP TABLE fr.tmp_bal_summary;
                 " &&
             io_history_end_ok \
-                --nrows_processed '
-                    (SELECT COUNT(*) FROM fr.bal_municipality)
-                    ' \
+                --nrows_processed '(SELECT COUNT(*) FROM fr.bal_municipality)' \
                 --id ${_vars_ref[IO_ID]} &&
             vacuum \
                 --schema_name fr \
@@ -298,9 +293,9 @@ bal_integration() {
                         END,
                         (v->>'nbNumeros')::INT,
                         (v->>'nbNumerosCertifies')::INT,
-                        NOW()
+                        TIMEOFDAY()::TIMESTAMP WITHOUT TIME ZONE
                     FROM
-                        ${_vars_ref[TABLE_NAME]}
+                        fr.${_vars_ref[TABLE_NAME]}
                             CROSS JOIN JSON_ARRAY_ELEMENTS(data->'voies') v
                             JOIN fr.bal_municipality m ON m.code = data->>'codeCommune'
                     ON CONFLICT(code) DO UPDATE SET
@@ -313,7 +308,7 @@ bal_integration() {
                     ;
                     DELETE FROM fr.bal_street s WHERE NOT EXISTS(
                         SELECT 1
-                        FROM ${_vars_ref[TABLE_NAME]}
+                        FROM fr.${_vars_ref[TABLE_NAME]}
                             CROSS JOIN JSON_ARRAY_ELEMENTS(data->'voies') v
                         WHERE
                             s.code = v->>'idVoie'
@@ -356,7 +351,7 @@ bal_integration() {
                         s.id,
                         n->>'id',
                         (n->>'numero')::INT,
-                        NULLIF(n->>suffixe, 'null'),
+                        n->>'suffixe',
                         CASE
                             WHEN n->'sources' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(n->'sources'))::VARCHAR[]
                             ELSE ARRAY[n->>'sources']::VARCHAR[]
@@ -367,13 +362,13 @@ bal_integration() {
                             ELSE ARRAY[n->>'parcelles']::VARCHAR[]
                         END,
                         CASE
-                            WHEN n->'position'->'coordinates' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(j->'position'->'coordinates'))::TEXT[]::FLOAT[]
+                            WHEN n->'position'->'coordinates' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(n->'position'->'coordinates'))::TEXT[]::FLOAT[]
                             ELSE NULL::FLOAT[]
                         END,
                         n->>'positionType',
-                        NOW()
+                        TIMEOFDAY()::TIMESTAMP WITHOUT TIME ZONE
                     FROM
-                        ${_vars_ref[TABLE_NAME]}
+                        fr.${_vars_ref[TABLE_NAME]}
                             CROSS JOIN JSON_ARRAY_ELEMENTS(data->'numeros') n
                             JOIN fr.bal_street s ON s.code = data->>'idVoie'
                     WHERE
@@ -391,7 +386,7 @@ bal_integration() {
                     ;
                     DELETE FROM fr.bal_housenumber hn WHERE NOT EXISTS(
                         SELECT 1
-                        FROM ${_vars_ref[TABLE_NAME]}
+                        FROM fr.${_vars_ref[TABLE_NAME]}
                             CROSS JOIN JSON_ARRAY_ELEMENTS(data->'numeros') n
                         WHERE
                             hn.code = n->>'id'
@@ -399,7 +394,7 @@ bal_integration() {
                 " &&
                 # need to request API on each housenumber, if many areas! to obtain old municipality
                 {
-                    [[ ${_vars_ref[MUNICIPALITY_AREAS]} -gt 0 ]] && {
+                    [[ ${_vars_ref[MUNICIPALITY_AREAS]} -eq 0 ]] || {
                         # select housenumbers
                         bal_load_addresses --vars _vars_ref --level HOUSENUMBER --count _housenumbers &&
                         execute_query \
@@ -410,11 +405,11 @@ bal_integration() {
                                     SELECT
                                         data->>'id',
                                         CASE
-                                            WHEN j->'adressesOriginales' IS JSON ARRAY THEN
-                                                j->'adressesOriginales'->-1 #>> '{meta, bal, nomAncienneCommune}'
+                                            WHEN data->'adressesOriginales' IS JSON ARRAY THEN
+                                                data->'adressesOriginales'->-1 #>> '{meta, bal, nomAncienneCommune}'
                                         END old_municipality
                                     FROM
-                                        ${_vars_ref[TABLE_NAME]}
+                                        fr.${_vars_ref[TABLE_NAME]}
                                 )
                                 UPDATE fr.bal_housenumber hn SET
                                     area = om.old_municipality
@@ -423,13 +418,12 @@ bal_integration() {
                                         hn.code = om.id
                                         AND
                                         om.old_municipality IS NOT NULL
-                                ;
                             "
-                    } || true
+                    }
                 } &&
                 execute_query \
                     --name BAL_DROP \
-                    --query "DROP TABLE IF EXISTS ${_vars_ref[TABLE_NAME]}" &&
+                    --query "DROP TABLE IF EXISTS fr.${_vars_ref[TABLE_NAME]}" &&
                 io_history_end_ok \
                     --nrows_processed $((_streets+_housenumbers)) \
                     --id ${_vars_ref[IO_ID]} &&
@@ -538,10 +532,8 @@ bal_list_municipalities() {
     } &&
     _query+=")" &&
     execute_query \
-        --name SELECT_MUNICIPALITIES \
-        --query "
-            $_query
-        " \
+        --name BAL_MUNICIPALITIES \
+        --query "$_query" \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _list &&
     array_sql_to_bash --array_sql "$_list" --array_bash _list_ref || return $ERROR_CODE

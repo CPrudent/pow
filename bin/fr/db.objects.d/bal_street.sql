@@ -22,16 +22,6 @@ CREATE TABLE IF NOT EXISTS fr.bal_street (
     last_update TIMESTAMP WITHOUT TIME ZONE
 );
 
-DO $$
-BEGIN
-    IF NOT column_exists('fr', 'bal_street', 'housenumbers') THEN
-        ALTER TABLE fr.bal_street ADD COLUMN housenumbers INT;
-    END IF;
-    IF NOT column_exists('fr', 'bal_street', 'source') THEN
-        ALTER TABLE fr.bal_street ADD COLUMN source TEXT[];
-    END IF;
-END $$;
-
 SELECT drop_all_functions_if_exists('fr', 'set_bal_street_index');
 CREATE OR REPLACE PROCEDURE fr.set_bal_street_index()
 AS

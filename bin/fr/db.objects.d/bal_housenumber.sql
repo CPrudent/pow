@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS fr.bal_housenumber (
     number INTEGER NOT NULL,
     extension VARCHAR,
     sources VARCHAR[],
-    postcode VARCHAR NOT NULL,
+    postcode VARCHAR,
     area VARCHAR,
     parcels VARCHAR[],
     geom FLOAT[],

@@ -1389,7 +1389,7 @@ import_file() {
         load_mode:OVERWRITE_DATA|OVERWRITE_TABLE|APPEND;
         rowid:yes|no' \
     --args_d '
-        schema_name:$pg_default_schema_name;
+        schema_name:$POW_PG_DEFAULT_SCHEMA;
         load_mode:OVERWRITE_DATA;
         rowid:yes' \
     "$@" || return $ERROR_CODE
