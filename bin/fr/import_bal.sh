@@ -15,7 +15,7 @@ on_import_error() {
         ' \
         "$@" || return $ERROR_CODE
 
-    # careful at circular name reference, a trick is to use different name (_globals_ref) !
+    # be careful at circular name reference, a trick is to use different name (_globals_ref) !
     # due to other call, as: on_import_error --vars _vars_ref
     local -n _globals_ref=$get_arg_vars
 
@@ -69,7 +69,7 @@ bal_load() {
         return $SUCCESS_CODE
         ;;
     $POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
-        on_import_error --vars _vars_ref
+        return $ERROR_CODE
         ;;
     esac
 
@@ -125,7 +125,7 @@ bal_load() {
     import_file \
         --file_path "$POW_DIR_IMPORT/${_vars_ref[FILE_NAME]}" \
         --table_name ${_vars_ref[TABLE_NAME]} \
-        --load_mode OVERWRITE_DATA || on_import_error --vars _vars_ref
+        --load_mode OVERWRITE_DATA || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -135,19 +135,83 @@ bal_load_addresses() {
     bash_args \
         --args_p '
             vars:Entité des variables globales;
-            level:Niveau Adresses
+            level:Niveau Adresses;
+            count:Comptage des Adresses
         ' \
         --args_o '
             vars;
-            level
+            level;
+            count
         ' \
         --args_v '
             level:STREET|HOUSENUMBER
         ' \
         "$@" || return $ERROR_CODE
 
-    local -n _vars_ref=$get_arg_vars
+    # be careful at circular name reference, a trick is to use different name (_globals_ref) !
+    # due to other call, as: --vars _vars_ref
+    local -n _globals_ref=$get_arg_vars
+    local -n _count $get_arg_count
+    local _name _query _list _addresses
 
+    _name="BAL_SELECT_${_globals_ref[MUNICIPALITY_CODE]}" &&
+    case "$get_arg_level" in
+    STREET)
+        _name+=_STREETS
+        _query="
+            SELECT
+                ARRAY_AGG(s.code)
+            FROM
+                fr.bal_street s
+                    JOIN fr.bal_municipality m ON s.id_municipality = m.id
+            WHERE
+                s.housenumbers_auth > 0
+                AND
+        "
+        ;;
+    HOUSENUMBER)
+        _name+=_HOUSENUMBERS
+        _query="
+            SELECT
+                ARRAY_AGG(hn.code)
+            FROM
+                fr.bal_housenumber hn
+                    JOIN fr.bal_street s ON hn.id_street = s.id
+                    JOIN fr.bal_municipality m ON s.id_municipality = m.id
+            WHERE
+        "
+        ;;
+    esac &&
+    _query+="
+        m.code = '${_globals_ref[MUNICIPALITY_CODE]}'
+    " &&
+    # select streets|housenumbers
+    execute_query \
+        --name "$_name" \
+        --query "$_query" \
+        --psql_arguments 'tuples-only:pset=format=unaligned' \
+        --return _list &&
+    array_sql_to_bash --array_sql "$_list" --array_bash _addresses &&
+    execute_query \
+        --name BAL_TRUNCATE \
+        --query "TRUNCATE TABLE ${_vars_ref[TABLE_NAME]}" &&
+    # load addresses as JSON in table (has to be empty!)
+    _count=${#_addresses[@]} &&
+    for ((_j=0; _j<${#_addresses[@]}; _j++)); do
+        _globals_ref[URL_DATA]='lookup/'${_addresses[$_j]} &&
+        _globals_ref[FILE_NAME]=${_addresses[$_j]}.json &&
+        io_download_file \
+            --url "${_globals_ref[URL]}/${_globals_ref[URL_DATA]}" \
+            --overwrite yes \
+            --output_directory "$POW_DIR_IMPORT" \
+            --output_file "${_globals_ref[FILE_NAME]}" &&
+        import_file \
+            --file_path "$POW_DIR_IMPORT/${_globals_ref[FILE_NAME]}" \
+            --table_name ${_globals_ref[TABLE_NAME]} \
+            --load_mode OVERWRITE_DATA
+    done || return $ERROR_CODE
+
+    return $SUCCESS_CODE
 }
 
 # integration BAL data (summary or one municipality)
@@ -162,8 +226,7 @@ bal_integration() {
         "$@" || return $ERROR_CODE
 
     local -n _vars_ref=$get_arg_vars
-    local _list _j
-    local -a _streets _housenumbers
+    local _list _j _streets=0 _housenumbers=0
 
     table_exists --schema_name fr --table_name "${_vars_ref[TABLE_NAME]}" &&
     {
@@ -255,7 +318,6 @@ bal_integration() {
                         WHERE
                             s.code = v->>'idVoie'
                     );
-                    TRUNCATE TABLE ${_vars_ref[TABLE_NAME]};
                 " &&
             # count areas
             execute_query \
@@ -273,36 +335,7 @@ bal_integration() {
                 --psql_arguments 'tuples-only:pset=format=unaligned' \
                 --return _vars_ref[MUNICIPALITY_AREAS] &&
             # select streets w/ certified housenumbers
-            execute_query \
-                --name "BAL_SELECT_${_vars_ref[MUNICIPALITY_CODE]}_STREETS" \
-                --query "
-                    SELECT
-                        ARRAY_AGG(s.code)
-                    FROM
-                        fr.bal_street s
-                            JOIN fr.bal_municipality m ON s.id_municipality = m.id
-                    WHERE
-                        m.code = '${_vars_ref[MUNICIPALITY_CODE]}'
-                        AND
-                        s.housenumbers_auth > 0
-                " \
-                --psql_arguments 'tuples-only:pset=format=unaligned' \
-                --return _list &&
-            array_sql_to_bash --array_sql "$_list" --array_bash _streets &&
-            # load housenumbers as JSON in table
-            for ((_j=0; _j<${#_streets[@]}; _j++)); do
-                _vars_ref[URL_DATA]='lookup/'${_streets[$_j]} &&
-                _vars_ref[FILE_NAME]=${_streets[$_j]}.json &&
-                io_download_file \
-                    --url "${_vars_ref[URL]}/${_vars_ref[URL_DATA]}" \
-                    --overwrite yes \
-                    --output_directory "$POW_DIR_IMPORT" \
-                    --output_file "${_vars_ref[FILE_NAME]}" &&
-                import_file \
-                    --file_path "$POW_DIR_IMPORT/${_vars_ref[FILE_NAME]}" \
-                    --table_name ${_vars_ref[TABLE_NAME]} \
-                    --load_mode OVERWRITE_DATA
-            done &&
+            bal_load_addresses --vars _vars_ref --level STREET --count _streets &&
             # insert/update housenumbers, and delete old ones (obsolete)
             execute_query \
                 --name "BAL_INTEGRATION_${_vars_ref[MUNICIPALITY_CODE]}_HOUSENUMBERS" \
@@ -363,45 +396,47 @@ bal_integration() {
                         WHERE
                             hn.code = n->>'id'
                     );
-                    TRUNCATE TABLE ${_vars_ref[TABLE_NAME]};
                 " &&
-                # need to request API on each housenumber, if many areas!
+                # need to request API on each housenumber, if many areas! to obtain old municipality
                 {
                     [[ ${_vars_ref[MUNICIPALITY_AREAS]} -gt 0 ]] && {
                         # select housenumbers
+                        bal_load_addresses --vars _vars_ref --level HOUSENUMBER --count _housenumbers &&
                         execute_query \
-                            --name "BAL_SELECT_${_vars_ref[MUNICIPALITY_CODE]}_HOUSENUMBERS" \
+                            --name "BAL_INTEGRATION_${_vars_ref[MUNICIPALITY_CODE]}_HOUSENUMBERS_AREA" \
                             --query "
-                                SELECT
-                                    ARRAY_AGG(hn.code)
-                                FROM
-                                    fr.bal_housenumber hn
-                                        JOIN fr.bal_street s ON hn.id_street = s.id
-                                        JOIN fr.bal_municipality m ON s.id_municipality = m.id
-                                WHERE
-                                    m.code = '${_vars_ref[MUNICIPALITY_CODE]}'
-                            " \
-                            --psql_arguments 'tuples-only:pset=format=unaligned' \
-                            --return _list &&
-                        array_sql_to_bash --array_sql "$_list" --array_bash _housenumbers &&
-                        # load housenumbers as JSON in table
-                        for ((_j=0; _j<${#_housenumbers[@]}; _j++)); do
-                            _vars_ref[URL_DATA]='lookup/'${_housenumbers[$_j]} &&
-                            _vars_ref[FILE_NAME]=${_housenumbers[$_j]}.json &&
-                            io_download_file \
-                                --url "${_vars_ref[URL]}/${_vars_ref[URL_DATA]}" \
-                                --overwrite yes \
-                                --output_directory "$POW_DIR_IMPORT" \
-                                --output_file "${_vars_ref[FILE_NAME]}" &&
-                            import_file \
-                                --file_path "$POW_DIR_IMPORT/${_vars_ref[FILE_NAME]}" \
-                                --table_name ${_vars_ref[TABLE_NAME]} \
-                                --load_mode OVERWRITE_DATA
-                        done &&
-
+                                WITH
+                                old_municipality AS (
+                                    SELECT
+                                        data->>'id',
+                                        CASE
+                                            WHEN j->'adressesOriginales' IS JSON ARRAY THEN
+                                                j->'adressesOriginales'->-1 #>> '{meta, bal, nomAncienneCommune}'
+                                        END old_municipality
+                                    FROM
+                                        ${_vars_ref[TABLE_NAME]}
+                                )
+                                UPDATE fr.bal_housenumber hn SET
+                                    area = om.old_municipality
+                                    FROM old_municipality om
+                                    WHERE
+                                        hn.code = om.id
+                                        AND
+                                        om.old_municipality IS NOT NULL
+                                ;
+                            "
                     } || true
-                }
-            ;;
+                } &&
+                execute_query \
+                    --name BAL_DROP \
+                    --query "DROP TABLE IF EXISTS ${_vars_ref[TABLE_NAME]}" &&
+                io_history_end_ok \
+                    --nrows_processed $((_streets+_housenumbers)) \
+                    --id ${_vars_ref[IO_ID]} &&
+                vacuum \
+                    --schema_name fr \
+                    --table_name bal_street,bal_housenumber \
+                    --mode ANALYZE || return $ERROR_CODE
         esac
     }
 
@@ -604,7 +639,7 @@ set_env --schema_name fr &&
     [ "${bal_vars[MUNICIPALITY_CODE]}" = ALL ] && {
         bal_load --vars bal_vars &&
         bal_integration --vars bal_vars &&
-        bal_list_municipalities --vars bal_vars --list bal_codes || exit $ERROR_CODE
+        bal_list_municipalities --vars bal_vars --list bal_codes || on_import_error --vars bal_vars
     } || {
         bal_codes[0]=${bal_vars[MUNICIPALITY_CODE]}
     }
@@ -627,7 +662,7 @@ for ((_i=0; _i<${#bal_codes[@]}; _i++)); do
     bal_vars[MUNICIPALITY_CODE]=${bal_codes[$_i]}
     is_yes --var bal_vars[DRY_RUN] || {
         bal_load --vars bal_vars &&
-        bal_integration --vars bal_vars || exit $ERROR_CODE
+        bal_integration --vars bal_vars || on_import_error --vars bal_vars
     }
 done
 
