@@ -39,7 +39,7 @@ bal_load() {
         "$@" || return $ERROR_CODE
 
     local -n _vars_ref=$get_arg_vars
-    local _query
+    local _query _import_options=''
 
     case "${_vars_ref[MUNICIPALITY_CODE]}" in
     ALL)
@@ -56,6 +56,7 @@ bal_load() {
         _query="
             SELECT areas + streets + housenumbers_auth
             FROM fr.bal_municipality WHERE code='${_vars_ref[MUNICIPALITY_CODE]}'"
+        _import_options="--import_options column_name=data"
         execute_query \
             --name BAL_IO_END \
             --query "
@@ -122,8 +123,8 @@ bal_load() {
     import_file \
         --file_path "$POW_DIR_IMPORT/${_vars_ref[FILE_NAME]}" \
         --table_name ${_vars_ref[TABLE_NAME]} \
-        --import_options 'column_name=data' \
-        --load_mode OVERWRITE_DATA || return $ERROR_CODE
+        --load_mode OVERWRITE_DATA \
+        $_import_options || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -150,7 +151,8 @@ bal_load_addresses() {
     # due to other call, as: --vars _vars_ref
     local -n _globals_ref=$get_arg_vars
     local -n _count=$get_arg_count
-    local _name _query _list _addresses
+    local _name _query _list
+    local -a _addresses
 
     _name="BAL_SELECT_${_globals_ref[MUNICIPALITY_CODE]}" &&
     case "$get_arg_level" in
@@ -190,11 +192,11 @@ bal_load_addresses() {
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _list &&
     array_sql_to_bash --array_sql "$_list" --array_bash _addresses &&
+    _count=${#_addresses[@]} &&
     execute_query \
         --name BAL_TRUNCATE \
-        --query "TRUNCATE TABLE fr.${_vars_ref[TABLE_NAME]}" &&
+        --query "TRUNCATE TABLE fr.${_globals_ref[TABLE_NAME]}" &&
     # load addresses as JSON in table (has to be empty!)
-    _count=${#_addresses[@]} &&
     for ((_j=0; _j<${#_addresses[@]}; _j++)); do
         _globals_ref[URL_DATA]='lookup/'${_addresses[$_j]} &&
         _globals_ref[FILE_NAME]=${_addresses[$_j]}.json &&
@@ -206,7 +208,7 @@ bal_load_addresses() {
         import_file \
             --file_path "$POW_DIR_IMPORT/${_globals_ref[FILE_NAME]}" \
             --table_name ${_globals_ref[TABLE_NAME]} \
-            --import_options 'column_name=data' \
+            --import_options column_name=data \
             --load_mode APPEND
     done || return $ERROR_CODE
 
@@ -308,13 +310,21 @@ bal_integration() {
                         housenumbers_auth = EXCLUDED.housenumbers_auth,
                         last_update = EXCLUDED.last_update
                     ;
-                    DELETE FROM fr.bal_street s WHERE NOT EXISTS(
-                        SELECT 1
-                        FROM fr.${_vars_ref[TABLE_NAME]}
-                            CROSS JOIN JSON_ARRAY_ELEMENTS(data->'voies') v
-                        WHERE
-                            s.code = v->>'idVoie'
-                    );
+                    DELETE FROM fr.bal_street s
+                    USING fr.bal_municipality m
+                    WHERE
+                        m.id = s.id_municipality
+                        AND
+                        m.code = '${_vars_ref[MUNICIPALITY_CODE]}'
+                        AND
+                        NOT EXISTS(
+                            SELECT 1
+                            FROM fr.${_vars_ref[TABLE_NAME]}
+                                CROSS JOIN JSON_ARRAY_ELEMENTS(data->'voies') v
+                            WHERE
+                                s.code = v->>'idVoie'
+                        )
+                    ;
                 " &&
             # count areas
             execute_query \
@@ -386,13 +396,23 @@ bal_integration() {
                         location = EXCLUDED.location,
                         last_update = EXCLUDED.last_update
                     ;
-                    DELETE FROM fr.bal_housenumber hn WHERE NOT EXISTS(
-                        SELECT 1
-                        FROM fr.${_vars_ref[TABLE_NAME]}
-                            CROSS JOIN JSON_ARRAY_ELEMENTS(data->'numeros') n
-                        WHERE
-                            hn.code = n->>'id'
-                    );
+                    DELETE FROM fr.bal_housenumber hn
+                    USING fr.bal_municipality m, fr.bal_street s
+                    WHERE
+                        s.id = hn.id_street
+                        AND
+                        m.id = s.id_municipality
+                        AND
+                        m.code = '${_vars_ref[MUNICIPALITY_CODE]}'
+                        AND
+                        NOT EXISTS(
+                            SELECT 1
+                            FROM fr.${_vars_ref[TABLE_NAME]}
+                                CROSS JOIN JSON_ARRAY_ELEMENTS(data->'numeros') n
+                            WHERE
+                                hn.code = n->>'id'
+                        )
+                    ;
                 " &&
                 # need to request API on each housenumber, if many areas! to obtain old municipality
                 {
@@ -405,7 +425,7 @@ bal_integration() {
                                 WITH
                                 old_municipality AS (
                                     SELECT
-                                        data->>'id',
+                                        data->>'id' id,
                                         CASE
                                             WHEN data->'adressesOriginales' IS JSON ARRAY THEN
                                                 data->'adressesOriginales'->-1 #>> '{meta, bal, nomAncienneCommune}'
@@ -426,6 +446,7 @@ bal_integration() {
                 execute_query \
                     --name BAL_DROP \
                     --query "DROP TABLE IF EXISTS fr.${_vars_ref[TABLE_NAME]}" &&
+                # total can be less than waited, only streets w/ certified housenumbers
                 io_history_end_ok \
                     --nrows_processed $((_streets+_housenumbers)) \
                     --id ${_vars_ref[IO_ID]} &&

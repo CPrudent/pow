@@ -1537,30 +1537,36 @@ import_file() {
         local _i _column_name
         local -a _opt
         local -A _json_options
-        [[ ${#tmp_liste_import_options[@]} -gt 0 ]] && {
-            for ((_i=0; _i<${#tmp_liste_import_options[@]}; _i++)); do
-                IFS='=' read -ra _opt <<< ${tmp_liste_import_options[$_i]}
-                _json_options[${_opt[0]}]=${_opt[1]}
-            done
-            _column_name=${_json_options[column_name]}
-        }
+        declare -p tmp_liste_import_options
+        {
+            [[ ${#tmp_liste_import_options[@]} -eq 0 ]] || {
+                for ((_i=0; _i<${#tmp_liste_import_options[@]}; _i++)); do
+                    IFS='=' read -ra _opt <<< ${tmp_liste_import_options[$_i]}
+                    _json_options[${_opt[0]}]=${_opt[1]}
+                done
+                _column_name=${_json_options[column_name]}
+                declare -p _json_options _column_name
+            }
+        } &&
         # column undefined?
-        [ -z "$_column_name" ] && {
-            local _columns_str
-            local -a _columns_array
-            execute_query \
-                --name TABLE_COLUMNS \
-                --query "SELECT get_table_columns('$schema_name', '$table_name')" \
-                --psql_arguments 'tuples-only:pset=format=unaligned' \
-                --return _columns_str &&
-            array_sql_to_bash --array_sql "$_columns_str" --array_bash _columns_array &&
-            {
-                [[ ${#_columns_array[@]} -eq 1 ]] || {
-                    log_error "Table de chargement JSON ($schema_name.$table_name) ne doit avoir qu'une colonne de type JSON!"
-                    false
-                }
-            } &&
-            _column_name=${_columns_array[0]}
+        {
+            [ -n "$_column_name" ] || {
+                local _columns_str
+                local -a _columns_array
+                execute_query \
+                    --name TABLE_COLUMNS \
+                    --query "SELECT get_table_columns('$schema_name', '$table_name')" \
+                    --psql_arguments 'tuples-only:pset=format=unaligned' \
+                    --return _columns_str &&
+                array_sql_to_bash --array_sql "$_columns_str" --array_bash _columns_array &&
+                {
+                    [[ ${#_columns_array[@]} -eq 1 ]] || {
+                        log_error "Table de chargement JSON ($schema_name.$table_name) ne doit avoir qu'une colonne de type JSON!"
+                        false
+                    }
+                } &&
+                _column_name=${_columns_array[0]}
+            }
         } &&
         {
             [ "${load_mode}" = APPEND ] || {
@@ -1569,9 +1575,11 @@ import_file() {
                     --query "TRUNCATE TABLE $schema_name.$table_name"
             }
         } &&
-        jq --raw-output --compact-output '.' < "$file_path" | execute_query \
-            --name LOAD_JSON \
-            --query "COPY $schema_name.$table_name (${_column_name}) FROM STDIN"
+        {
+            jq --raw-output --compact-output '.' < "$file_path" | execute_query \
+                --name LOAD_JSON \
+                --query "COPY $schema_name.$table_name (${_column_name}) FROM STDIN"
+        }
         ;;
     *)
         log_error "Le fichier $file_path ne peut pas être traité!"
