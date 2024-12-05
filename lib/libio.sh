@@ -7,12 +7,16 @@
     # IO history
     #
 
+    # big crunch! w/ bash_args : get_arg_<var> can be modified by another call
+    # here, get_arg_name would be IO name, but also QUERY name
+    #  error on io_todo_import if exists EN_COURS status
+    #  because of get_arg_name containing IO_EXISTS_(get_arg_name)
 _io_history_manager() {
     bash_args \
         --args_p '
             method:méthode de mise à jour;
             status:état IO;
-            name:nom IO;
+            io:nom IO;
             date_begin:date de début des données (format connu PostgreSQL);
             date_end:date de fin des données (format connu PostgreSQL);
             nrows_todo:nombre de données à traiter;
@@ -39,9 +43,9 @@ _io_history_manager() {
         _return='--return _io_id_manager'
         _query="
             SELECT id FROM get_io(
-                name => '$get_arg_name'
-                , status => '$get_arg_status'
-                , date_end => '$get_arg_date_end'::TIMESTAMP
+                name => '$get_arg_io',
+                status => '$get_arg_status',
+                date_end => '$get_arg_date_end'::TIMESTAMP
             )
         "
         ;;
@@ -50,23 +54,23 @@ _io_history_manager() {
         _return='--return _io_id_manager'
         _query="
             INSERT INTO public.io_history(
-                name
-                , date_data_begin
-                , date_data_end
-                , status
-                , nb_rows_todo
-                , attributes
+                name,
+                date_data_begin,
+                date_data_end,
+                status,
+                nb_rows_todo,
+                attributes
             )
             VALUES (
-                '$get_arg_name'
-                , '$get_arg_date_begin'::TIMESTAMP
-                , '$get_arg_date_end'::TIMESTAMP
-                , '${get_arg_status:-EN_COURS}'
-                , ${get_arg_nrows_todo:-NULL}
-                ,
-                    CASE WHEN LENGTH('$get_arg_infos') = 0 THEN NULL
+                '$get_arg_io',
+                '$get_arg_date_begin'::TIMESTAMP,
+                '$get_arg_date_end'::TIMESTAMP,
+                '${get_arg_status:-EN_COURS}',
+                ${get_arg_nrows_todo:-NULL},
+                CASE
+                    WHEN LENGTH('$get_arg_infos') = 0 THEN NULL
                     ELSE '$get_arg_infos'
-                    END
+                END
             );
             SELECT CURRVAL('public.io_history_id_seq');
         "
@@ -75,12 +79,13 @@ _io_history_manager() {
         # itself (if no defined) to remain previous value
         _query="
             UPDATE public.io_history SET
-                date_exec_end = NOW()
-                , status = 'SUCCES'
-                , nb_rows_processed = ${get_arg_nrows_processed:-NULL}
-                , attributes =
-                    CASE WHEN LENGTH('$get_arg_infos') = 0 THEN attributes
-                    ELSE '$get_arg_infos'
+                date_exec_end = NOW(),
+                status = 'SUCCES',
+                nb_rows_processed = ${get_arg_nrows_processed:-NULL},
+                attributes =
+                    CASE
+                        WHEN LENGTH('$get_arg_infos') = 0 THEN attributes
+                        ELSE '$get_arg_infos'
                     END
             WHERE id = $get_arg_id
         "
@@ -88,8 +93,8 @@ _io_history_manager() {
     UPDATE_KO)
         _query="
             UPDATE public.io_history SET
-                date_exec_end = NOW()
-                , status = 'ERREUR'
+                date_exec_end = NOW(),
+                status = 'ERREUR'
             WHERE id = $get_arg_id
         "
         ;;
@@ -99,19 +104,19 @@ _io_history_manager() {
         _query="
             COPY (
                 SELECT
-                    name
-                    , date_exec_begin
-                    , date_exec_end
-                    , status
-                    , date_data_begin
-                    , date_data_end
-                    , nb_rows_todo
-                    , nb_rows_processed
-                    , attributes
+                    name,
+                    date_exec_begin,
+                    date_exec_end,
+                    status,
+                    date_data_begin,
+                    date_data_end,
+                    nb_rows_todo,
+                    nb_rows_processed,
+                    attributes
                 FROM
                     public.io_history
                 WHERE
-                    name ~ '$get_arg_name'
+                    name ~ '$get_arg_io'
                     AND
                     status = 'SUCCES'
                 ORDER BY
@@ -148,13 +153,13 @@ _io_history_manager() {
 io_history_exists() {
     bash_args \
         --args_p '
-            name:nom IO;
+            io:nom IO;
             date_end:date de fin des données (format connu PostgreSQL);
             status:état IO;
             id:variable pour récupérer ID de IO
         ' \
         --args_o '
-            name;
+            io;
             date
         ' \
         --args_v '
@@ -170,7 +175,7 @@ io_history_exists() {
     _io_history_manager \
         --method EXISTS \
         --status $get_arg_status \
-        --name $get_arg_name \
+        --io $get_arg_io \
         --date_end "$get_arg_date_end" \
         --id _io_id || return $ERROR_CODE
 
@@ -188,13 +193,13 @@ io_todo_import() {
     bash_args \
         --args_p '
             force:option de forçage du traitement;
-            name:nom IO;
+            io:nom IO;
             date_end:date de fin des données (format connu PostgreSQL);
             purge:purge historique précédent;
             id:variable pour récupérer ID de IO
         ' \
         --args_o '
-            name;
+            io;
             date_end
         ' \
         --args_v '
@@ -211,30 +216,30 @@ io_todo_import() {
 
     [ "$get_arg_force" = no ] && {
         io_history_exists \
-            --name $get_arg_name \
+            --io $get_arg_io \
             --date_end "${get_arg_date_end}" \
             --status SUCCES \
             --id _io_id_todo
     } && {
-        log_info "Le traitement $get_arg_name a déjà été réalisé avec succès"
+        log_info "Le traitement $get_arg_io a déjà été réalisé avec succès"
         return $POW_IO_SUCCESSFUL
     }
 
     {
         io_history_exists \
-            --name $get_arg_name \
+            --io $get_arg_io \
             --date_end "${get_arg_date_end}" \
             --status EN_COURS \
             --id _io_id_todo
     } && {
-        log_info "Le traitement $get_arg_name est déjà en cours"
+        log_info "Le traitement $get_arg_io est déjà en cours"
         return $POW_IO_IN_PROGRESS
     }
     [ "$get_arg_purge" = yes ] && {
         # purge previous history
         execute_query \
-            --name "DELETE_IO_${get_arg_name}" \
-            --query "DELETE FROM io_history WHERE name = '${get_arg_name}'" || return $POW_IO_ERROR
+            --name "DELETE_IO_${get_arg_io}" \
+            --query "DELETE FROM io_history WHERE name = '${get_arg_io}'" || return $POW_IO_ERROR
     }
 
     return $POW_IO_TODO
@@ -244,12 +249,12 @@ io_todo_import() {
 io_get_info_integration() {
     bash_args \
         --args_p '
-            name:nom IO;
+            io:nom IO;
             to_hash:variable pour récupérer la description de cette intégration;
             to_string:variable pour récupérer la description de cette intégration
         ' \
         --args_o '
-            name;
+            io;
             to_hash
         ' \
         "$@" || return $POW_IO_ERROR
@@ -260,7 +265,7 @@ io_get_info_integration() {
     get_tmp_file --tmpfile _tmpfile &&
     execute_query \
         --name IO_IS_TODO \
-        --query "SELECT io_is_todo('$get_arg_name')" \
+        --query "SELECT io_is_todo('$get_arg_io')" \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --output $_tmpfile || return $ERROR_CODE
     [ "$POW_DEBUG" = yes ] && cat $_tmpfile
@@ -359,7 +364,7 @@ io_get_ids_integration() {
 io_history_begin() {
     bash_args \
         --args_p '
-            name:nom IO;
+            io:nom IO;
             date_begin:date de début des données (format connu PostgreSQL);
             date_end:date de fin des données (format connu PostgreSQL);
             nrows_todo:nombre de données à traiter;
@@ -367,7 +372,7 @@ io_history_begin() {
             id:nom de la variable pour récupérer identifiant IO
         ' \
         --args_o '
-            name;
+            io;
             date_begin;
             date_end;
             nrows_todo;
@@ -379,7 +384,7 @@ io_history_begin() {
 
     _io_history_manager \
         --method APPEND \
-        --name $get_arg_name \
+        --io $get_arg_io \
         --status EN_COURS \
         --date_begin "$get_arg_date_begin" \
         --date_end "$get_arg_date_end" \
@@ -432,17 +437,17 @@ io_history_end_ko() {
 io_history_export_last() {
     bash_args \
         --args_p '
-            name:nom IO;
+            io:nom IO;
             output:sortie pour export
         ' \
         --args_o '
-            name;
+            io
         ' \
         "$@" || return $ERROR_CODE
 
     _io_history_manager \
         --method EXPORT_LAST \
-        --name $get_arg_name \
+        --io $get_arg_io \
         --output "$get_arg_output" || return $ERROR_CODE
 
     return $SUCCESS_CODE
@@ -1529,25 +1534,44 @@ import_file() {
             $import_options_string
         ;;
     JSON)
-        local _columns_str _columns_array
-        execute_query \
-            --name TABLE_COLUMNS \
-            --query "
-                $([ "${load_mode}" != APPEND ] && echo "TRUNCATE TABLE $schema_name.$table_name;")
-                SELECT get_table_columns('$schema_name', '$table_name');
-            " \
-            --psql_arguments 'tuples-only:pset=format=unaligned' \
-            --return _columns_str &&
-        array_sql_to_bash --array_sql "$_columns_str" --array_bash _columns_array &&
+        local _i _column_name
+        local -a _opt
+        local -A _json_options
+        [[ ${#tmp_liste_import_options[@]} -gt 0 ]] && {
+            for ((_i=0; _i<${#tmp_liste_import_options[@]}; _i++)); do
+                IFS='=' read -ra _opt <<< ${tmp_liste_import_options[$_i]}
+                _json_options[${_opt[0]}]=${_opt[1]}
+            done
+            _column_name=${_json_options[column_name]}
+        }
+        # column undefined?
+        [ -z "$_column_name" ] && {
+            local _columns_str
+            local -a _columns_array
+            execute_query \
+                --name TABLE_COLUMNS \
+                --query "SELECT get_table_columns('$schema_name', '$table_name')" \
+                --psql_arguments 'tuples-only:pset=format=unaligned' \
+                --return _columns_str &&
+            array_sql_to_bash --array_sql "$_columns_str" --array_bash _columns_array &&
+            {
+                [[ ${#_columns_array[@]} -eq 1 ]] || {
+                    log_error "Table de chargement JSON ($schema_name.$table_name) ne doit avoir qu'une colonne de type JSON!"
+                    false
+                }
+            } &&
+            _column_name=${_columns_array[0]}
+        } &&
         {
-            [[ ${#_columns_array[@]} -eq 1 ]] || {
-                log_error "Table de chargement JSON ($schema_name.$table_name) ne doit avoir qu'une colonne de type JSON!"
-                false
+            [ "${load_mode}" = APPEND ] || {
+                execute_query \
+                    --name TABLE_TRUNCATE \
+                    --query "TRUNCATE TABLE $schema_name.$table_name"
             }
         } &&
-        jq -rc '.' < "$file_path" | execute_query \
+        jq --raw-output --compact-output '.' < "$file_path" | execute_query \
             --name LOAD_JSON \
-            --query "COPY $schema_name.$table_name (${_columns_array[0]}) FROM STDIN"
+            --query "COPY $schema_name.$table_name (${_column_name}) FROM STDIN"
         ;;
     *)
         log_error "Le fichier $file_path ne peut pas être traité!"

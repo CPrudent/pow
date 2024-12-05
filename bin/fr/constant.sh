@@ -45,7 +45,7 @@ io_force=$get_arg_force
 declare -A io_hash
 
 set_env --schema_name fr &&
-io_get_info_integration --name $io_name --to_hash io_hash || exit $ERROR_CODE
+io_get_info_integration --io $io_name --to_hash io_hash || exit $ERROR_CODE
 
 ([ "$io_force" = no ] && (! is_yes --var io_hash[TODO])) && {
     log_info "IO '$io_name' déjà à jour!"
@@ -54,7 +54,7 @@ io_get_info_integration --name $io_name --to_hash io_hash || exit $ERROR_CODE
     # already done or in progress ?
     io_todo_import \
         --force $io_force \
-        --name $io_name \
+        --io $io_name \
         --date_end "$io_date"
     case $? in
     $POW_IO_SUCCESSFUL)
@@ -68,7 +68,7 @@ io_get_info_integration --name $io_name --to_hash io_hash || exit $ERROR_CODE
 
 log_info "$io_info" &&
 io_history_begin \
-    --name $io_name \
+    --io $io_name \
     --date_begin "$io_date" \
     --date_end "$io_date" \
     --id io_main_id && {
@@ -86,7 +86,7 @@ io_history_begin \
         ([ "$io_force" = no ] && (! is_yes --var io_hash[${_step}_t])) || {
             #breakpoint "${io_steps[$io_step]}: io begin"
             io_history_begin \
-                --name ${io_steps[$io_step]} \
+                --io ${io_steps[$io_step]} \
                 --date_begin "$io_date" \
                 --date_end "$io_date" \
                 --nrows_todo ${io_counts[$io_step]:-1} \

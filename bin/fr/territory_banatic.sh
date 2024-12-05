@@ -56,7 +56,7 @@ year=$(date -d ${years[$year_id]} +%Y)
 set_env --schema_name fr &&
 io_todo_import \
     --force $io_force \
-    --name $io_name \
+    --io $io_name \
     --date_end "${years[$year_id]}"
 case $? in
 $POW_IO_SUCCESSFUL)
@@ -80,7 +80,7 @@ url_compose=${url_base}/${url_compose}      &&
 } &&
 log_info "Import du millésime $year de $io_name" &&
 io_history_begin \
-    --name $io_name \
+    --io $io_name \
     --date_begin "${years[$year_id]}" \
     --date_end "${years[$year_id]}" \
     --nrows_todo 1250 \

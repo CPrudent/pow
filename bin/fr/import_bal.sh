@@ -70,7 +70,7 @@ bal_load() {
 
     io_todo_import \
         --force ${_vars_ref[FORCE]} \
-        --name ${_vars_ref[IO_NAME]} \
+        --io ${_vars_ref[IO_NAME]} \
         --date_end "${_vars_ref[IO_END]}"
     case $? in
     $POW_IO_SUCCESSFUL)                 return $SUCCESS_CODE        ;;
@@ -109,7 +109,7 @@ bal_load() {
         } || true
     } &&
     io_history_begin \
-        --name "${_vars_ref[IO_NAME]}" \
+        --io "${_vars_ref[IO_NAME]}" \
         --date_begin "${_vars_ref[IO_BEGIN]:-1970-01-01}" \
         --date_end "${_vars_ref[IO_END]}" \
         --nrows_todo ${_vars_ref[IO_ROWS]:-1} \
@@ -122,6 +122,7 @@ bal_load() {
     import_file \
         --file_path "$POW_DIR_IMPORT/${_vars_ref[FILE_NAME]}" \
         --table_name ${_vars_ref[TABLE_NAME]} \
+        --import_options 'column_name=data' \
         --load_mode OVERWRITE_DATA || return $ERROR_CODE
 
     return $SUCCESS_CODE
@@ -205,6 +206,7 @@ bal_load_addresses() {
         import_file \
             --file_path "$POW_DIR_IMPORT/${_globals_ref[FILE_NAME]}" \
             --table_name ${_globals_ref[TABLE_NAME]} \
+            --import_options 'column_name=data' \
             --load_mode APPEND
     done || return $ERROR_CODE
 
@@ -316,7 +318,7 @@ bal_integration() {
                 " &&
             # count areas
             execute_query \
-                --name "MUNICIPALITY_${_vars_ref[MUNICIPALITY_CODE]}_AREAS" \
+                --name "BAL_MUNICIPALITY_${_vars_ref[MUNICIPALITY_CODE]}_AREAS" \
                 --query "
                     SELECT
                         COUNT(1)

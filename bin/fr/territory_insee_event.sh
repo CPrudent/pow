@@ -29,7 +29,7 @@ on_import_error() {
     [ -n "$year_history_id" ] && io_history_end_ko --id $year_history_id
 
     # ignoring error if last year already exists
-    if io_history_exists --name $io_name --date_end "${years[$year_id]}"; then
+    if io_history_exists --io $io_name --date_end "${years[$year_id]}"; then
         if [ -z "$get_arg_year" ]; then
             log_info "Erreur ignorée car le millésime de l'année courante (${year}) a déjà été importé avec succès"
         else
@@ -76,7 +76,7 @@ rm --force "$years_list_path"
 set_env --schema_name fr &&
 io_todo_import \
     --force $io_force \
-    --name $io_name \
+    --io $io_name \
     --date_end "${years[$year_id]}"
 case $? in
 $POW_IO_SUCCESSFUL)
@@ -93,7 +93,7 @@ log_info "Import du millésime $year de $io_name" &&
 #     --name "DELETE_IO_${io_name}" \
 #     --query "DELETE FROM io_history WHERE name = '${io_name}'" &&
 io_history_begin \
-    --name $io_name \
+    --io $io_name \
     --date_begin "${years[$year_id]}" \
     --date_end "${years[$year_id]}" \
     --nrows_todo 35000 \
