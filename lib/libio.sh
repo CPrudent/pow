@@ -613,63 +613,117 @@ io_download_file() {
             url:URL à télécharger;
             output_directory:dossier de destination;
             output_file:fichier de destination;
-            overwrite:avec/sans écrasement;
+            overwrite_mode:avec/sans téléchargement, si fichier déjà présent;
+            overwrite_key:condition de gestion du téléchargement;
+            overwrite_value:valeur test de la condition (au delà téléchargement forcé);
             user:compte HTTP;
             password:mot de passe HTTP;
-            use_proxy:utilisation proxy
+            common_subdir:copie dans un sous-dossier du dépôt
         ' \
         --args_o '
             url;
             output_directory
         ' \
         --args_v '
-            overwrite:no|yes;
-            use_proxy:no|yes
+            overwrite_mode:no|yes|NEWER;
+            overwrite_key:DATE|TIME
         ' \
         --args_d '
-            overwrite:no;
-            use_proxy:no
+            overwrite_mode:no;
+            overwrite_key:DATE
         ' \
         "$@" || return $ERROR_CODE
 
-    local _download_url="$get_arg_url"
-    local _download_directory="$get_arg_output_directory"
-    local _download_file="$get_arg_output_file"
-    local _download_overwrite=$get_arg_overwrite
-    [ -z "$_download_file" ] && _download_file=$(basename "$_download_url")
-    local _download_name=${get_arg_name:-"$_download_file"}
+    local -A _download=(
+        [NAME]=
+        [URL]="$get_arg_url"
+        [DIR]="$get_arg_output_directory"
+        [FILE]="$get_arg_output_file"
+        [COMMON_SUBDIR]="$get_arg_common_subdir"
+        [OVERWRITE_MODE]=$get_arg_overwrite_mode
+        [OVERWRITE_KEY]=$get_arg_overwrite_key
+        [OVERWRITE_VALUE]=$get_arg_overwrite_value
+        [USER]="$get_arg_user"
+        [PASSWORD]="$get_arg_password"
+    )
 
-    [ "$_download_overwrite" = no ] && {
-        # already present
-        [ -f "$_download_directory/$_download_file" ] && {
-            log_info "Téléchargement de ${_download_name} inutile, car déjà présent dans ${_download_directory}"
-            return $SUCCESS_CODE
+    [ -z "${_download[FILE]}" ] && _download[FILE]=$(basename "${_download[URL]}")
+    _download[NAME]=${get_arg_name:-"${_download[FILE]}"}
+
+    local -a _files=(
+        [0]="${_download[DIR]}/${_download[FILE]}"
+        [1]="$POW_DIR_COMMON_GLOBAL_SCHEMA"
+    )
+    [ -n "${_download[COMMON_SUBDIR]}" ] && {
+        mkdir -p "${_files[1]}/${_download[COMMON_SUBDIR]}"
+        _files[1]+="/${_download[COMMON_SUBDIR]}"
+    }
+    _files[1]+="/${_download[FILE]}"
+    # not found as default
+    local _found=0
+
+    [ "${_download[OVERWRITE_MODE]}" = yes ] || {
+        [ "${_download[OVERWRITE_MODE]}" = NEWER ] &&
+        [ -z "${_download[OVERWRITE_VALUE]}" ] && {
+            log_error 'valeur test de la condition non renseignée (option --overwrite_value)'
+            return $ERROR_CODE
         }
 
-        # available into COMMON and import as target
-        [ -f "$POW_DIR_COMMON_GLOBAL_SCHEMA/$_download_file" ] &&
-        [[ "${_download_directory}" =~ ^"${POW_DIR_IMPORT}"/*$ ]] && {
-            cp "$POW_DIR_COMMON_GLOBAL_SCHEMA/$_download_file" "$POW_DIR_IMPORT"
-            log_info "Téléchargement de "$_download_name" inutile, car déjà présent dans le dossier POW_DIR_COMMON_GLOBAL_SCHEMA, copié dans import"
+        local _i
+        for ((_i=0; _i<${#_files[@]}; _i++)); do
+            [ -f "${_files[$_i]}" ] || continue
+            [ "${_download[OVERWRITE_MODE]}" = NEWER ] || {
+                _found=$((_i +1))
+                break
+            }
+            # time of last data modification
+            local _epoch1=$(stat --format '%Y' "${_files[$_i]}")
+            local _epoch2
+            case ${_download[OVERWRITE_KEY]} in
+            DATE)
+                # now - last_modification
+                _epoch2=$(date '+%s' --date "${_download[OVERWRITE_VALUE]}")
+                ;;
+            TIME)
+                # now - given time
+                _epoch2=$(($(date '+%s') - ${_download[OVERWRITE_VALUE]}))
+                ;;
+            esac
+            #declare -p _i _epoch1 _epoch2
+            [[ $_epoch1 -gt $_epoch2 ]] && {
+                _found=$((_i +1))
+                break
+            }
+        done
+
+        # found localy (1), common (2)
+        case $_found in
+        1)
+            log_info "Téléchargement de ${_download[FILE]} inutile, car déjà présent"
             return $SUCCESS_CODE
-        }
+            ;;
+        2)
+            cp "${_files[1]}" "${_download[DIR]}"
+            log_info "Téléchargement de ${_download[FILE]} inutile, car déjà présent dans le dépôt, copié dans ${_download[DIR]}"
+            return $SUCCESS_CODE
+            ;;
+        esac
     }
 
-    log_info "Téléchargement de $_download_name"
-    local _log_tmp_path="$POW_DIR_TMP/$_download_file.log"
-    local _log_archive_path="$POW_DIR_ARCHIVE/$_download_file.log"
-    local _cache_path _cache_dir
+    log_info "Téléchargement de ${_download[FILE]}"
+    local _log_tmp_path="$POW_DIR_TMP/${_download[FILE]}.log"
+    local _log_archive_path="$POW_DIR_ARCHIVE/${_download[FILE]}.log"
     # user/password
     local _user _password
-    [ -n "$get_arg_user" ] && _user="--user $get_arg_user"
-    [ -n "$get_arg_password" ] && _password="--password $get_arg_password"
+    [ -n "${_download[USER]}" ] && _user="--user ${_download[USER]}"
+    [ -n "${_download[PASSWORD]}" ] && _password="--password ${_download[PASSWORD]}"
     # temporary downloaded file
-    local _download_file_tmp
-    get_tmp_file --tmpfile _download_file_tmp
+    local _tmp_path
+    get_tmp_file --tmpfile _tmp_path
 
     wget \
-        $_download_url \
-        --output-document "$_download_file_tmp" \
+        ${_download[URL]} \
+        --output-document "$_tmp_path" \
         --no-check-certificate \
         --progress=dot:mega \
         --retry-on-http-error=503 \
@@ -680,42 +734,27 @@ io_download_file() {
         > $_log_tmp_path 2>&1 || {
 
         archive_file "$_log_tmp_path"
-        log_error "Erreur lors du téléchargement de $_download_name, veuillez consulter $_log_archive_path"
-        [ -f "$_download_file_tmp" ] && rm --force "$_download_file_tmp"
+        log_error "Erreur lors du téléchargement de ${_download[FILE]}, veuillez consulter $_log_archive_path"
+        [ -f "$_tmp_path" ] && rm --force "$_tmp_path"
         # use of previous file if present
-        [ -f "$_download_directory/$_download_file" ] && {
+        [ -f "${_files[0]}" ] && {
             log_info "Utilisation du fichier déjà présent pour contourner l'erreur de téléchargement"
-            return $SUCCESS_CODE
-        }
-        # available in cache?
-        _cache_path=$(echo "${POW_DIR_COMMON_GLOBAL}/public/cache/${_download_url//[:#]/_}" | sed 's|/$||')
-        [ -f "$_cache_path" ] && {
-            log_info "Utilisation du fichier déjà présent en cache pour contourner l'erreur de téléchargement"
-            cp "$_cache_path" "$_download_directory/$_download_file"
             return $SUCCESS_CODE
         }
 
         return $ERROR_CODE
     }
 
-    if [ "$_download_overwrite" = no ]; then
-        # not available into COMMON and import as target
-        [ ! -f "$POW_DIR_COMMON_GLOBAL_SCHEMA/$_download_file" ] &&
-        [[ "${_download_directory}" =~ ^"${POW_DIR_IMPORT}"/*$ ]] && {
-            log_info "Copie de ${_download_name} sur le COMMON"
-            cp "$_download_file_tmp" "${POW_DIR_COMMON_GLOBAL_SCHEMA}/${_download_file}"
-        }
-    else
-        _cache_path=$(echo "${POW_DIR_COMMON_GLOBAL}/public/cache/${_download_url//[:#]/_}" | sed 's|/$||')
-        _cache_dir=$(dirname "$_cache_path")
-        mkdir -p "$_cache_dir"
-        cp "$_download_file_tmp" "${_cache_path}"
-    fi
+    # not available into COMMON
+    [ ! -f "${_files[1]}" ] && {
+        log_info "Copie de ${_download[FILE]} sur le Dépôt"
+        cp "$_tmp_path" "${_files[1]}"
+    }
 
     # result
-    mv "$_download_file_tmp" "$_download_directory/$_download_file"
-    archive_file "$_log_tmp_path"
-    log_info "Téléchargement avec succès de $_download_name"
+    mv "$_tmp_path" "${_files[0]}" &&
+    archive_file "$_log_tmp_path" &&
+    log_info "Téléchargement avec succès de ${_download[FILE]}" || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -1537,7 +1576,7 @@ import_file() {
         local _i _column_name
         local -a _opt
         local -A _json_options
-        declare -p tmp_liste_import_options
+        #declare -p tmp_liste_import_options
         {
             [[ ${#tmp_liste_import_options[@]} -eq 0 ]] || {
                 for ((_i=0; _i<${#tmp_liste_import_options[@]}; _i++)); do
@@ -1545,7 +1584,7 @@ import_file() {
                     _json_options[${_opt[0]}]=${_opt[1]}
                 done
                 _column_name=${_json_options[column_name]}
-                declare -p _json_options _column_name
+                #declare -p _json_options _column_name
             }
         } &&
         # column undefined?

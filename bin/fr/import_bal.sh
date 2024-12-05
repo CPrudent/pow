@@ -3,7 +3,7 @@
     #--------------------------------------------------------------------------
     # synopsis
     #--
-    # import BAL addresses
+    # import BAL addresses: summary (municipality), street and only certified housenumber)
 
 on_import_error() {
     bash_args \
@@ -15,15 +15,13 @@ on_import_error() {
         ' \
         "$@" || return $ERROR_CODE
 
-    # be careful at circular name reference, a trick is to use different name (_globals_ref) !
-    # due to other call, as: on_import_error --vars _vars_ref
-    local -n _globals_ref=$get_arg_vars
+    local -n _vars_ref=$get_arg_vars
 
     # import created?
-    [ "$POW_DEBUG" = yes ] && { echo "io_history_id=${_globals_ref[IO_ID]}"; }
-    [ -n "${_globals_ref[IO_ID]}" ] && io_history_end_ko --id ${_globals_ref[IO_ID]}
+    [ "$POW_DEBUG" = yes ] && { echo "io_history_id=${_vars_ref[IO_ID]}"; }
+    [ -n "${_vars_ref[IO_ID]}" ] && io_history_end_ko --id ${_vars_ref[IO_ID]}
 
-    log_error "Erreur import BAL (${_globals_ref[IO_NAME]#*_})"
+    log_error "Erreur import BAL (${_vars_ref[IO_NAME]#*_})"
     exit $ERROR_CODE
 }
 
@@ -39,7 +37,7 @@ bal_load() {
         "$@" || return $ERROR_CODE
 
     local -n _vars_ref=$get_arg_vars
-    local _query _import_options=''
+    local _query _import_options='' _overwrite_key _overwrite_value
 
     case "${_vars_ref[MUNICIPALITY_CODE]}" in
     ALL)
@@ -49,6 +47,9 @@ bal_load() {
             SELECT COUNT(DISTINCT co_insee_commune)
             FROM fr.laposte_address_area WHERE fl_active
         "
+        # no download if present summary is max 2 days old
+        _overwrite_key=TIME
+        _overwrite_value=$((2*24*60*60))        # 2 days
         ;;
     *)
         _vars_ref[IO_NAME]=BAL_${_vars_ref[MUNICIPALITY_CODE]}
@@ -56,6 +57,7 @@ bal_load() {
         _query="
             SELECT areas + streets + housenumbers_auth
             FROM fr.bal_municipality WHERE code='${_vars_ref[MUNICIPALITY_CODE]}'"
+        # table w/ 1 column named 'data' to import JSON stream
         _import_options="--import_options column_name=data"
         execute_query \
             --name BAL_IO_END \
@@ -65,6 +67,10 @@ bal_load() {
             " \
             --psql_arguments 'tuples-only:pset=format=unaligned' \
             --return _vars_ref[IO_END] || return $ERROR_CODE
+        # no download if JSON file newer than municipality's last_update
+        _overwrite_key=DATE
+        _vars_ref[IO_END_EPOCH]=$(date '+%s' --date "${_vars_ref[IO_END]}")
+        _overwrite_value=${_vars_ref[IO_END_EPOCH]}
         ;;
     esac
     _vars_ref[TABLE_NAME]=tmp_${_vars_ref[IO_NAME],,}
@@ -117,7 +123,9 @@ bal_load() {
         --id _vars_ref[IO_ID] &&
     io_download_file \
         --url "${_vars_ref[URL]}/${_vars_ref[URL_DATA]}" \
-        --overwrite no \
+        --overwrite_mode NEWER \
+        --overwrite_key $_overwrite_key \
+        --overwrite_value $_overwrite_value \
         --output_directory "$POW_DIR_IMPORT" \
         --output_file "${_vars_ref[FILE_NAME]}" &&
     import_file \
@@ -202,7 +210,9 @@ bal_load_addresses() {
         _globals_ref[FILE_NAME]=${_addresses[$_j]}.json &&
         io_download_file \
             --url "${_globals_ref[URL]}/${_globals_ref[URL_DATA]}" \
-            --overwrite no \
+            --overwrite_mode NEWER \
+            --overwrite_key DATE \
+            --overwrite_value ${_vars_ref[IO_END_EPOCH]} \
             --output_directory "$POW_DIR_IMPORT" \
             --output_file "${_globals_ref[FILE_NAME]}" &&
         import_file \
@@ -636,6 +646,7 @@ declare -A bal_vars=(
     [IO_ID]=
     [IO_BEGIN]=
     [IO_END]="$(date +'%F')"
+    [IO_END_EPOCH]=
     [IO_ROWS]=0
     [FILE_NAME]=
     [TABLE_NAME]=
