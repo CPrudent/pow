@@ -5,6 +5,10 @@
     #--
     # import BAL addresses: summary (municipality), street and only certified housenumber)
 
+    # NOTE
+    # https://stackoverflow.com/questions/16908084/bash-script-to-calculate-time-elapsed
+    # https://stackoverflow.com/questions/3953645/ternary-operator-in-bash
+
 on_import_error() {
     bash_args \
         --args_p '
@@ -25,6 +29,34 @@ on_import_error() {
     exit $ERROR_CODE
 }
 
+# print progress as (ratio, percent)
+# $1= begin
+    # $2= label
+    # $3= size of (number of digits)
+    # $4= subscript
+    # $5= total
+    # $6= end of fine
+# $1= end
+    # $2= elapsed time
+    # $3= more information
+bal_progress_bar() {
+    case "${1^^}" in
+    BEGIN)
+        # if main display (municipality level) and only one then reduce informations
+        ([ "${2:0:5}" = INSEE ] && [ $5 -eq 1 ]) && {
+            printf '%-15s%b' "$2" $6
+        } || {
+            printf '%-15s\t%*d/%*d (%d%%)%b' "$2" $3 $4 $3 $5 $((($4*100)/$5)) $6
+        }
+        ;;
+    END)
+        printf "\t\t\t\t\t%s\n" "$2"
+        ;;
+    esac
+
+    return $SUCCESS_CODE
+}
+
 # load BAL data (summary or one municipality)
 bal_load() {
     bash_args \
@@ -37,12 +69,13 @@ bal_load() {
         "$@" || return $ERROR_CODE
 
     local -n _vars_ref=$get_arg_vars
-    local _query _import_options='' _overwrite_key _overwrite_value
+    local _query _import_options='' _overwrite_key _overwrite_value _info
 
     case "${_vars_ref[MUNICIPALITY_CODE]}" in
     ALL)
         _vars_ref[IO_NAME]=BAL_SUMMARY
         _vars_ref[URL_DATA]='api/communes-summary.csv'
+        # number of row(s)
         _query="
             SELECT COUNT(DISTINCT co_insee_commune)
             FROM fr.laposte_address_area WHERE fl_active
@@ -54,6 +87,7 @@ bal_load() {
     *)
         _vars_ref[IO_NAME]=BAL_${_vars_ref[MUNICIPALITY_CODE]}
         _vars_ref[URL_DATA]='lookup/'${_vars_ref[MUNICIPALITY_CODE]}
+        # number of row(s)
         _query="
             SELECT areas + streets + housenumbers_auth
             FROM fr.bal_municipality WHERE code='${_vars_ref[MUNICIPALITY_CODE]}'"
@@ -80,12 +114,25 @@ bal_load() {
         --io ${_vars_ref[IO_NAME]} \
         --date_end "${_vars_ref[IO_END]}"
     case $? in
-    $POW_IO_SUCCESSFUL)                 return $SUCCESS_CODE        ;;
-    $POW_IO_IN_PROGRESS)                exit $ERROR_CODE            ;;
-    $POW_IO_ERROR|$ERROR_CODE)          return $ERROR_CODE          ;;
+    $POW_IO_SUCCESSFUL)                                 return $SUCCESS_CODE        ;;
+    $POW_IO_IN_PROGRESS|$POW_IO_ERROR|$ERROR_CODE)      return $ERROR_CODE          ;;
     esac
 
-    log_info "Import BAL (${_vars_ref[IO_NAME]#*_})" &&
+    # take all following 'BAL_' as info
+    _info=${_vars_ref[IO_NAME]#*_}
+    log_info "Import BAL (${_info})" &&
+    {
+        (! is_yes --var _vars_ref[PROGRESS]) || {
+            _vars_ref[PROGRESS_START]=$(date '+%s')
+            bal_progress_bar \
+                BEGIN \
+                "INSEE ${_info}" \
+                4 \
+                ${_vars_ref[PROGRESS_CURRENT]} \
+                ${_vars_ref[PROGRESS_TOTAL]} \
+                '\r'
+        }
+    } &&
     {
         _vars_ref[FILE_NAME]=$(basename "${_vars_ref[URL]}/${_vars_ref[URL_DATA]}") &&
         {
@@ -126,6 +173,7 @@ bal_load() {
         --overwrite_mode NEWER \
         --overwrite_key $_overwrite_key \
         --overwrite_value $_overwrite_value \
+        --common_subdir bal \
         --output_directory "$POW_DIR_IMPORT" \
         --output_file "${_vars_ref[FILE_NAME]}" &&
     import_file \
@@ -158,14 +206,15 @@ bal_load_addresses() {
     # be careful at circular name reference, a trick is to use different name (_globals_ref) !
     # due to other call, as: --vars _vars_ref
     local -n _globals_ref=$get_arg_vars
-    local -n _count=$get_arg_count
-    local _name _query _list
+    local -n _count_ref=$get_arg_count
+    local _name _query _list _info
     local -a _addresses
 
     _name="BAL_SELECT_${_globals_ref[MUNICIPALITY_CODE]}" &&
     case "$get_arg_level" in
     STREET)
         _name+=_STREETS
+        _info=voies
         _query="
             SELECT
                 ARRAY_AGG(s.code)
@@ -179,6 +228,7 @@ bal_load_addresses() {
         ;;
     HOUSENUMBER)
         _name+=_HOUSENUMBERS
+        _info=numéros
         _query="
             SELECT
                 ARRAY_AGG(hn.code)
@@ -200,12 +250,23 @@ bal_load_addresses() {
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _list &&
     array_sql_to_bash --array_sql "$_list" --array_bash _addresses &&
-    _count=${#_addresses[@]} &&
+    _count_ref=${#_addresses[@]} &&
     execute_query \
         --name BAL_TRUNCATE \
         --query "TRUNCATE TABLE fr.${_globals_ref[TABLE_NAME]}" &&
     # load addresses as JSON in table (has to be empty!)
     for ((_j=0; _j<${#_addresses[@]}; _j++)); do
+        {
+            (! is_yes --var _globals_ref[PROGRESS]) || {
+                bal_progress_bar \
+                    BEGIN \
+                    "${_info}" \
+                    4 \
+                    $((_j +1)) \
+                    ${_count_ref} \
+                    '\r'
+            }
+        } &&
         _globals_ref[URL_DATA]='lookup/'${_addresses[$_j]} &&
         _globals_ref[FILE_NAME]=${_addresses[$_j]}.json &&
         io_download_file \
@@ -213,6 +274,7 @@ bal_load_addresses() {
             --overwrite_mode NEWER \
             --overwrite_key DATE \
             --overwrite_value ${_vars_ref[IO_END_EPOCH]} \
+            --common_subdir bal \
             --output_directory "$POW_DIR_IMPORT" \
             --output_file "${_globals_ref[FILE_NAME]}" &&
         import_file \
@@ -237,7 +299,7 @@ bal_integration() {
         "$@" || return $ERROR_CODE
 
     local -n _vars_ref=$get_arg_vars
-    local _list _j _streets=0 _housenumbers=0
+    local _list _j _streets=0 _housenumbers=0 _elapsed
 
     table_exists --schema_name fr --table_name "${_vars_ref[TABLE_NAME]}" &&
     {
@@ -273,6 +335,12 @@ bal_integration() {
                     CALL fr.set_bal_municipality_index();
                     DROP TABLE fr.tmp_bal_summary;
                 " &&
+            {
+                (! is_yes --var _vars_ref[PROGRESS]) || {
+                    _elapsed=$(($(date '+%s') - ${_vars_ref[PROGRESS_START]})) &&
+                    bal_progress_bar END "${_elapsed}"
+                }
+            } &&
             io_history_end_ok \
                 --nrows_processed '(SELECT COUNT(*) FROM fr.bal_municipality)' \
                 --id ${_vars_ref[IO_ID]} &&
@@ -317,6 +385,7 @@ bal_integration() {
                         name = EXCLUDED.name,
                         kind = EXCLUDED.kind,
                         sources = EXCLUDED.sources,
+                        housenumbers = EXCLUDED.housenumbers,
                         housenumbers_auth = EXCLUDED.housenumbers_auth,
                         last_update = EXCLUDED.last_update
                     ;
@@ -336,6 +405,13 @@ bal_integration() {
                         )
                     ;
                 " &&
+            {
+                (! is_yes --var _vars_ref[PROGRESS]) || {
+                    _elapsed=$(($(date '+%s') - ${_vars_ref[PROGRESS_START]})) &&
+                    bal_progress_bar END "${_elapsed}" &&
+                    _vars_ref[PROGRESS_START]=$(date '+%s')
+                }
+            } &&
             # count areas
             execute_query \
                 --name "BAL_MUNICIPALITY_${_vars_ref[MUNICIPALITY_CODE]}_AREAS" \
@@ -353,6 +429,13 @@ bal_integration() {
                 --return _vars_ref[MUNICIPALITY_AREAS] &&
             # select streets w/ certified housenumbers
             bal_load_addresses --vars _vars_ref --level STREET --count _streets &&
+            {
+                (! is_yes --var _vars_ref[PROGRESS]) || {
+                    _elapsed=$(($(date '+%s') - ${_vars_ref[PROGRESS_START]})) &&
+                    bal_progress_bar END "${_elapsed}" &&
+                    _vars_ref[PROGRESS_START]=$(date '+%s')
+                }
+            } &&
             # insert/update housenumbers, and delete old ones (obsolete)
             execute_query \
                 --name "BAL_INTEGRATION_${_vars_ref[MUNICIPALITY_CODE]}_HOUSENUMBERS" \
@@ -450,7 +533,13 @@ bal_integration() {
                                         hn.code = om.id
                                         AND
                                         om.old_municipality IS NOT NULL
-                            "
+                            " &&
+                        {
+                            (! is_yes --var _vars_ref[PROGRESS]) || {
+                                _elapsed=$(($(date '+%s') - ${_vars_ref[PROGRESS_START]})) &&
+                                bal_progress_bar END "${_elapsed}"
+                            }
+                        }
                     }
                 } &&
                 execute_query \
@@ -553,7 +642,7 @@ bal_list_municipalities() {
                 OR
                 m.last_update > h.date_date_end
             ORDER BY
-                c.criteria DESC
+                c.criteria ${bal_vars[SELECT_ORDER]}
     " &&
     {
         [[ ${bal_vars[LIMIT]} -gt 0 ]] && {
@@ -610,10 +699,11 @@ bash_args \
         municipality:Code Commune INSEE à traiter (ou ALL pour télécharger la liste complète);
         select_criteria:Sélection des Communes;
         select_order:Ordre de sélection des Communes;
-        limit:Limiter à n communes;
+        limit:Limiter à n communes (0 sans limite);
         stop_time:Heure d arrêt du traitement (format: hh:mm:ss);
         force:Forcer le traitement même si celui-ci a déjà été fait;
         dry_run:Simuler le traitement;
+        progress:Afficher une jauge de progression;
         verbose:Ajouter des détails sur les traitements
     ' \
     --args_o '
@@ -624,6 +714,7 @@ bash_args \
         select_order:ASC|DESC;
         force:yes|no;
         dry_run:yes|no;
+        progress:yes|no;
         verbose:yes|no
     ' \
     --args_d '
@@ -633,6 +724,7 @@ bash_args \
         dry_run:no;
         limit:30;
         stop_time:0;
+        progress:no;
         verbose:no
     ' \
     "$@" || exit $ERROR_CODE
@@ -656,11 +748,18 @@ declare -A bal_vars=(
     [STOP_TIME]=$get_arg_stop_time
     [FORCE]=$get_arg_force
     [DRY_RUN]=$get_arg_dry_run
+    [PROGRESS]=$get_arg_progress
+    [PROGRESS_START]=
+    [PROGRESS_CURRENT]=
+    [PROGRESS_TOTAL]=1
     [VERBOSE]=$get_arg_verbose
 )
 declare -a bal_codes=()
 
 set_env --schema_name fr &&
+{
+    (! is_yes --var bal_vars[PROGRESS]) || set_log_echo no
+} &&
 {
     [ "${bal_vars[MUNICIPALITY_CODE]}" = ALL ] && {
         bal_load --vars bal_vars &&
@@ -672,6 +771,8 @@ set_env --schema_name fr &&
 } &&
 
 _count=0
+_error=0
+bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
 for ((_i=0; _i<${#bal_codes[@]}; _i++)); do
     _count=$((_count++))
     [[ ${bal_vars[LIMIT]} -gt 0 ]] &&
@@ -682,9 +783,11 @@ for ((_i=0; _i<${#bal_codes[@]}; _i++)); do
 
     valid_municipality_code --municipality "${bal_codes[$_i]}" || {
         log_error "commune BAL '${bal_codes[$_i]}' non valide!"
+        _error=1
         continue
     }
 
+    bal_vars[PROGRESS_CURRENT]=$_count
     bal_vars[MUNICIPALITY_CODE]=${bal_codes[$_i]}
     is_yes --var bal_vars[DRY_RUN] || {
         bal_load --vars bal_vars &&
@@ -692,4 +795,5 @@ for ((_i=0; _i<${#bal_codes[@]}; _i++)); do
     }
 done
 
-exit $SUCCESS_CODE
+_rc=$(( _error == 1 ? ERROR_CODE : SUCCESS_CODE ))
+exit $_rc

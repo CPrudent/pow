@@ -23,25 +23,25 @@ set_log_echo() {
 [ -z "$POW_LOG_ECHO" ] && set_log_echo yes
 
 log() {
-    local severity=${1:-info}
-    local message=$(echo $2 | tr \| \_)
-    local status=$3
-    local cmd_name="$(realpath $0)"
-    local log_entry="$(date --utc +%FT%TZ)|$1|$$|${USER}|$cmd_name|$message"
-    [ "$POW_LOG_ECHO" = yes ] && echo $log_entry
-    [ "$POW_LOG_ACTIVE" = yes ] && echo $log_entry >> $POW_DIR_LOG/$POW_LOG_FILE
+    local _severity=${1:-info}
+    local _message=$(echo $2 | tr \| \_)
+    local _state=$3
+    local _command="$(realpath $0)"
+    local _log_entry="$(date --utc +%FT%TZ)|$1|$$|${USER}|$_command|$_message"
+    ([ "$POW_LOG_ECHO" = yes ] || [ "$_severity" = error ]) && echo $_log_entry
+    [ "$POW_LOG_ACTIVE" = yes ] && echo $_log_entry >> $POW_DIR_LOG/$POW_LOG_FILE
 
     return $SUCCESS_CODE
 }
 
 log_info() {
-    log "info" "$1" "$2"
+    log info "$1" "$2"
 
     return $?
 }
 
 log_error() {
-    log "error" "$1" "$2"
+    log error "$1" "$2"
 
     return $?
 }
