@@ -251,38 +251,46 @@ bal_load_addresses() {
         --return _list &&
     array_sql_to_bash --array_sql "$_list" --array_bash _addresses &&
     _count_ref=${#_addresses[@]} &&
-    execute_query \
-        --name BAL_TRUNCATE \
-        --query "TRUNCATE TABLE fr.${_globals_ref[TABLE_NAME]}" &&
-    # load addresses as JSON in table (has to be empty!)
-    for ((_j=0; _j<${#_addresses[@]}; _j++)); do
-        {
+    {
+        [[ $_count_ref -gt 0 ]] && {
+            execute_query \
+                --name BAL_TRUNCATE \
+                --query "TRUNCATE TABLE fr.${_globals_ref[TABLE_NAME]}" &&
+            # load addresses as JSON in table (has to be empty!)
+            for ((_j=0; _j<${#_addresses[@]}; _j++)); do
+                {
+                    (! is_yes --var _globals_ref[PROGRESS]) || {
+                        bal_progress_bar \
+                            BEGIN \
+                            "${_info}" \
+                            4 \
+                            $((_j +1)) \
+                            ${_count_ref} \
+                            '\r'
+                    }
+                } &&
+                _globals_ref[URL_DATA]='lookup/'${_addresses[$_j]} &&
+                _globals_ref[FILE_NAME]=${_addresses[$_j]}.json &&
+                io_download_file \
+                    --url "${_globals_ref[URL]}/${_globals_ref[URL_DATA]}" \
+                    --overwrite_mode NEWER \
+                    --overwrite_key DATE \
+                    --overwrite_value ${_globals_ref[IO_END_EPOCH]} \
+                    --common_subdir bal \
+                    --output_directory "$POW_DIR_IMPORT" \
+                    --output_file "${_globals_ref[FILE_NAME]}" &&
+                import_file \
+                    --file_path "$POW_DIR_IMPORT/${_globals_ref[FILE_NAME]}" \
+                    --table_name ${_globals_ref[TABLE_NAME]} \
+                    --import_options column_name=data \
+                    --load_mode APPEND
+            done
+        } || {
             (! is_yes --var _globals_ref[PROGRESS]) || {
-                bal_progress_bar \
-                    BEGIN \
-                    "${_info}" \
-                    4 \
-                    $((_j +1)) \
-                    ${_count_ref} \
-                    '\r'
+                echo 'pas de numéros certifiés'
             }
-        } &&
-        _globals_ref[URL_DATA]='lookup/'${_addresses[$_j]} &&
-        _globals_ref[FILE_NAME]=${_addresses[$_j]}.json &&
-        io_download_file \
-            --url "${_globals_ref[URL]}/${_globals_ref[URL_DATA]}" \
-            --overwrite_mode NEWER \
-            --overwrite_key DATE \
-            --overwrite_value ${_vars_ref[IO_END_EPOCH]} \
-            --common_subdir bal \
-            --output_directory "$POW_DIR_IMPORT" \
-            --output_file "${_globals_ref[FILE_NAME]}" &&
-        import_file \
-            --file_path "$POW_DIR_IMPORT/${_globals_ref[FILE_NAME]}" \
-            --table_name ${_globals_ref[TABLE_NAME]} \
-            --import_options column_name=data \
-            --load_mode APPEND
-    done || return $ERROR_CODE
+        }
+    } || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -338,7 +346,7 @@ bal_integration() {
             {
                 (! is_yes --var _vars_ref[PROGRESS]) || {
                     _elapsed=$(($(date '+%s') - ${_vars_ref[PROGRESS_START]})) &&
-                    bal_progress_bar END "${_elapsed}"
+                    bal_progress_bar END "$(date --date @${_elapsed} --utc +%H:%M:%S)"
                 }
             } &&
             io_history_end_ok \
@@ -408,7 +416,7 @@ bal_integration() {
             {
                 (! is_yes --var _vars_ref[PROGRESS]) || {
                     _elapsed=$(($(date '+%s') - ${_vars_ref[PROGRESS_START]})) &&
-                    bal_progress_bar END "${_elapsed}" &&
+                    bal_progress_bar END "$(date --date @${_elapsed} --utc +%H:%M:%S)" &&
                     _vars_ref[PROGRESS_START]=$(date '+%s')
                 }
             } &&
@@ -430,114 +438,119 @@ bal_integration() {
             # select streets w/ certified housenumbers
             bal_load_addresses --vars _vars_ref --level STREET --count _streets &&
             {
-                (! is_yes --var _vars_ref[PROGRESS]) || {
-                    _elapsed=$(($(date '+%s') - ${_vars_ref[PROGRESS_START]})) &&
-                    bal_progress_bar END "${_elapsed}" &&
-                    _vars_ref[PROGRESS_START]=$(date '+%s')
-                }
-            } &&
-            # insert/update housenumbers, and delete old ones (obsolete)
-            execute_query \
-                --name "BAL_INTEGRATION_${_vars_ref[MUNICIPALITY_CODE]}_HOUSENUMBERS" \
-                --query "
-                    INSERT INTO fr.bal_housenumber (
-                        id_street,
-                        code,
-                        number,
-                        extension,
-                        sources,
-                        postcode,
-                        parcels,
-                        geom,
-                        location,
-                        last_update
-                    )
-                    SELECT
-                        s.id,
-                        n->>'id',
-                        (n->>'numero')::INT,
-                        n->>'suffixe',
-                        CASE
-                            WHEN n->'sources' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(n->'sources'))::VARCHAR[]
-                            ELSE ARRAY[n->>'sources']::VARCHAR[]
-                        END,
-                        n->>'postcode',
-                        CASE
-                            WHEN n->'parcelles' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(n->'parcelles'))::VARCHAR[]
-                            ELSE ARRAY[n->>'parcelles']::VARCHAR[]
-                        END,
-                        CASE
-                            WHEN n->'position'->'coordinates' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(n->'position'->'coordinates'))::TEXT[]::FLOAT[]
-                            ELSE NULL::FLOAT[]
-                        END,
-                        n->>'positionType',
-                        TIMEOFDAY()::TIMESTAMP WITHOUT TIME ZONE
-                    FROM
-                        fr.${_vars_ref[TABLE_NAME]}
-                            CROSS JOIN JSON_ARRAY_ELEMENTS(data->'numeros') n
-                            JOIN fr.bal_street s ON s.code = data->>'idVoie'
-                    WHERE
-                        UPPER(n->>'certifie') = 'TRUE'
-                    ON CONFLICT(code) DO UPDATE SET
-                        id_street = EXCLUDED.id_street,
-                        number = EXCLUDED.number,
-                        extension = EXCLUDED.extension,
-                        sources = EXCLUDED.sources,
-                        postcode = EXCLUDED.postcode,
-                        parcels = EXCLUDED.parcels,
-                        geom = EXCLUDED.geom,
-                        location = EXCLUDED.location,
-                        last_update = EXCLUDED.last_update
-                    ;
-                    DELETE FROM fr.bal_housenumber hn
-                    USING fr.bal_municipality m, fr.bal_street s
-                    WHERE
-                        s.id = hn.id_street
-                        AND
-                        m.id = s.id_municipality
-                        AND
-                        m.code = '${_vars_ref[MUNICIPALITY_CODE]}'
-                        AND
-                        NOT EXISTS(
-                            SELECT 1
-                            FROM fr.${_vars_ref[TABLE_NAME]}
-                                CROSS JOIN JSON_ARRAY_ELEMENTS(data->'numeros') n
+                # w/ auth housenumbers ?
+                [[ $_streets -eq 0 ]] || {
+                    {
+                        (! is_yes --var _vars_ref[PROGRESS]) || {
+                            _elapsed=$(($(date '+%s') - ${_vars_ref[PROGRESS_START]})) &&
+                            bal_progress_bar END "$(date --date @${_elapsed} --utc +%H:%M:%S)" &&
+                            _vars_ref[PROGRESS_START]=$(date '+%s')
+                        }
+                    } &&
+                    # insert/update housenumbers, and delete old ones (obsolete)
+                    execute_query \
+                        --name "BAL_INTEGRATION_${_vars_ref[MUNICIPALITY_CODE]}_HOUSENUMBERS" \
+                        --query "
+                            INSERT INTO fr.bal_housenumber (
+                                id_street,
+                                code,
+                                number,
+                                extension,
+                                sources,
+                                postcode,
+                                parcels,
+                                geom,
+                                location,
+                                last_update
+                            )
+                            SELECT
+                                s.id,
+                                n->>'id',
+                                (n->>'numero')::INT,
+                                n->>'suffixe',
+                                CASE
+                                    WHEN n->'sources' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(n->'sources'))::VARCHAR[]
+                                    ELSE ARRAY[n->>'sources']::VARCHAR[]
+                                END,
+                                n->>'postcode',
+                                CASE
+                                    WHEN n->'parcelles' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(n->'parcelles'))::VARCHAR[]
+                                    ELSE ARRAY[n->>'parcelles']::VARCHAR[]
+                                END,
+                                CASE
+                                    WHEN n->'position'->'coordinates' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(n->'position'->'coordinates'))::TEXT[]::FLOAT[]
+                                    ELSE NULL::FLOAT[]
+                                END,
+                                n->>'positionType',
+                                TIMEOFDAY()::TIMESTAMP WITHOUT TIME ZONE
+                            FROM
+                                fr.${_vars_ref[TABLE_NAME]}
+                                    CROSS JOIN JSON_ARRAY_ELEMENTS(data->'numeros') n
+                                    JOIN fr.bal_street s ON s.code = data->>'idVoie'
                             WHERE
-                                hn.code = n->>'id'
-                        )
-                    ;
-                " &&
-                # need to request API on each housenumber, if many areas! to obtain old municipality
-                {
-                    [[ ${_vars_ref[MUNICIPALITY_AREAS]} -eq 0 ]] || {
-                        # select housenumbers
-                        bal_load_addresses --vars _vars_ref --level HOUSENUMBER --count _housenumbers &&
-                        execute_query \
-                            --name "BAL_INTEGRATION_${_vars_ref[MUNICIPALITY_CODE]}_HOUSENUMBERS_AREA" \
-                            --query "
-                                WITH
-                                old_municipality AS (
-                                    SELECT
-                                        data->>'id' id,
-                                        CASE
-                                            WHEN data->'adressesOriginales' IS JSON ARRAY THEN
-                                                data->'adressesOriginales'->-1 #>> '{meta, bal, nomAncienneCommune}'
-                                        END old_municipality
-                                    FROM
-                                        fr.${_vars_ref[TABLE_NAME]}
-                                )
-                                UPDATE fr.bal_housenumber hn SET
-                                    area = om.old_municipality
-                                    FROM old_municipality om
+                                UPPER(n->>'certifie') = 'TRUE'
+                            ON CONFLICT(code) DO UPDATE SET
+                                id_street = EXCLUDED.id_street,
+                                number = EXCLUDED.number,
+                                extension = EXCLUDED.extension,
+                                sources = EXCLUDED.sources,
+                                postcode = EXCLUDED.postcode,
+                                parcels = EXCLUDED.parcels,
+                                geom = EXCLUDED.geom,
+                                location = EXCLUDED.location,
+                                last_update = EXCLUDED.last_update
+                            ;
+                            DELETE FROM fr.bal_housenumber hn
+                            USING fr.bal_municipality m, fr.bal_street s
+                            WHERE
+                                s.id = hn.id_street
+                                AND
+                                m.id = s.id_municipality
+                                AND
+                                m.code = '${_vars_ref[MUNICIPALITY_CODE]}'
+                                AND
+                                NOT EXISTS(
+                                    SELECT 1
+                                    FROM fr.${_vars_ref[TABLE_NAME]}
+                                        CROSS JOIN JSON_ARRAY_ELEMENTS(data->'numeros') n
                                     WHERE
-                                        hn.code = om.id
-                                        AND
-                                        om.old_municipality IS NOT NULL
-                            " &&
+                                        hn.code = n->>'id'
+                                )
+                            ;
+                        " &&
+                        # need to request API on each housenumber, if many areas! to obtain old municipality
                         {
-                            (! is_yes --var _vars_ref[PROGRESS]) || {
-                                _elapsed=$(($(date '+%s') - ${_vars_ref[PROGRESS_START]})) &&
-                                bal_progress_bar END "${_elapsed}"
+                            [[ ${_vars_ref[MUNICIPALITY_AREAS]} -eq 0 ]] || {
+                                # select housenumbers
+                                bal_load_addresses --vars _vars_ref --level HOUSENUMBER --count _housenumbers &&
+                                execute_query \
+                                    --name "BAL_INTEGRATION_${_vars_ref[MUNICIPALITY_CODE]}_HOUSENUMBERS_AREA" \
+                                    --query "
+                                        WITH
+                                        old_municipality AS (
+                                            SELECT
+                                                data->>'id' id,
+                                                CASE
+                                                    WHEN data->'adressesOriginales' IS JSON ARRAY THEN
+                                                        data->'adressesOriginales'->-1 #>> '{meta, bal, nomAncienneCommune}'
+                                                END old_municipality
+                                            FROM
+                                                fr.${_vars_ref[TABLE_NAME]}
+                                        )
+                                        UPDATE fr.bal_housenumber hn SET
+                                            area = om.old_municipality
+                                            FROM old_municipality om
+                                            WHERE
+                                                hn.code = om.id
+                                                AND
+                                                om.old_municipality IS NOT NULL
+                                    " &&
+                                {
+                                    (! is_yes --var _vars_ref[PROGRESS]) || {
+                                        _elapsed=$(($(date '+%s') - ${_vars_ref[PROGRESS_START]})) &&
+                                        bal_progress_bar END "$(date --date @${_elapsed} --utc +%H:%M:%S)"
+                                    }
+                                }
                             }
                         }
                     }
@@ -548,6 +561,7 @@ bal_integration() {
                 # total can be less than waited, only streets w/ certified housenumbers
                 io_history_end_ok \
                     --nrows_processed $((_streets+_housenumbers)) \
+                    --infos ""'"'"STREETS"'"'" => $_streets, "'"'"HOUSENUMBERS_AUTH"'"'" => $_housenumbers" \
                     --id ${_vars_ref[IO_ID]} &&
                 vacuum \
                     --schema_name fr \
