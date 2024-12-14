@@ -35,15 +35,15 @@ on_import_error() {
     # $3= size of (number of digits)
     # $4= subscript
     # $5= total
-    # $6= end of fine
+    # $6= end of line
 # $1= end
     # $2= elapsed time
-    # $3= more information
 bal_progress_bar() {
     case "${1^^}" in
     BEGIN)
+        expect argc bal_progress_bar $# 6 || exit $ERROR_CODE
         # if main display (municipality level) and only one then reduce informations
-        ([ "${2:0:5}" = INSEE ] && [ $5 -eq 1 ]) && {
+        ([ "${2:0:5}" = INSEE ] && [[ $5 -eq 1 ]]) && {
             printf '%-15s%b' "$2" $6
         } || {
             printf '%-15s\t%*d/%*d (%d%%)%b' "$2" $3 $4 $3 $5 $((($4*100)/$5)) $6
@@ -269,8 +269,9 @@ bal_load_addresses() {
                             '\r'
                     }
                 } &&
-                _globals_ref[URL_DATA]='lookup/'${_addresses[$_j]} &&
-                _globals_ref[FILE_NAME]=${_addresses[$_j]}.json &&
+                # deal w/ space!
+                _globals_ref[URL_DATA]=lookup/${_addresses[$_j]// /%20} &&
+                _globals_ref[FILE_NAME]="${_addresses[$_j]}.json" &&
                 io_download_file \
                     --url "${_globals_ref[URL]}/${_globals_ref[URL_DATA]}" \
                     --overwrite_mode NEWER \
@@ -316,7 +317,6 @@ bal_integration() {
             execute_query \
                 --name "BAL_INTEGRATION_${_vars_ref[IO_NAME]#*_}" \
                 --query "
-                    SELECT drop_table_indexes('fr', 'bal_municipality');
                     TRUNCATE TABLE fr.bal_municipality;
                     INSERT INTO fr.bal_municipality(
                         code,
@@ -340,7 +340,6 @@ bal_integration() {
                     FROM
                         fr.${_vars_ref[TABLE_NAME]}
                         ;
-                    CALL fr.set_bal_municipality_index();
                     DROP TABLE fr.tmp_bal_summary;
                 " &&
             {
@@ -355,7 +354,7 @@ bal_integration() {
             vacuum \
                 --schema_name fr \
                 --table_name bal_municipality \
-                --mode ANALYZE
+                --mode ANALYZE || return $ERROR_CODE
             ;;
         *)
             # insert/update streets, and delete old ones (obsolete)
@@ -448,6 +447,7 @@ bal_integration() {
                         }
                     } &&
                     # insert/update housenumbers, and delete old ones (obsolete)
+                    # update street's geometry
                     execute_query \
                         --name "BAL_INTEGRATION_${_vars_ref[MUNICIPALITY_CODE]}_HOUSENUMBERS" \
                         --query "
@@ -516,6 +516,24 @@ bal_integration() {
                                     WHERE
                                         hn.code = n->>'id'
                                 )
+                            ;
+                            WITH
+                            street_geometry AS (
+                                SELECT
+                                    s.id,
+                                    CASE
+                                        WHEN data->'position'->'coordinates' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(data->'position'->'coordinates'))::TEXT[]::FLOAT[]
+                                        ELSE NULL::FLOAT[]
+                                    END geom
+                                FROM
+                                    fr.${_vars_ref[TABLE_NAME]}
+                                        JOIN fr.bal_street s ON s.code = data->>'idVoie'
+                            )
+                            UPDATE fr.bal_street s SET
+                                geom = g.geom
+                                FROM street_geometry g
+                                WHERE
+                                    s.id = g.id
                             ;
                         " &&
                         # need to request API on each housenumber, if many areas! to obtain old municipality
@@ -768,7 +786,7 @@ declare -A bal_vars=(
     [CLEAN]=$get_arg_clean
     [PROGRESS]=$get_arg_progress
     [PROGRESS_START]=
-    [PROGRESS_CURRENT]=
+    [PROGRESS_CURRENT]=1
     [PROGRESS_TOTAL]=1
     [VERBOSE]=$get_arg_verbose
 )
@@ -789,32 +807,25 @@ set_env --schema_name fr &&
     }
 } &&
 
-_count=0
 _error=0
 bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
 for ((_i=0; _i<${#bal_codes[@]}; _i++)); do
-    _count=$((_count++))
-    [[ ${bal_vars[LIMIT]} -gt 0 ]] &&
-    [[ $_count -gt ${bal_vars[LIMIT]} ]] && {
-        log_info "Limite '${bal_vars[LIMIT]}' atteinte: fin de traitement"
-        exit $SUCCESS_CODE
-    }
     # check municipality
     valid_municipality_code --municipality "${bal_codes[$_i]}" || {
         log_error "commune BAL '${bal_codes[$_i]}' non valide!"
         _error=1
         continue
     }
-    # progress bar
-    bal_vars[PROGRESS_CURRENT]=$_count
     bal_vars[MUNICIPALITY_CODE]=${bal_codes[$_i]}
+    # progress bar
+    bal_vars[PROGRESS_CURRENT]=$((_i +1))
     # do it ?
     is_yes --var bal_vars[DRY_RUN] || {
         bal_load --vars bal_vars &&
         bal_integration --vars bal_vars || on_import_error --vars bal_vars
     }
     # purge ?
-    is_yes --var bal_vars[CLEAN] && rm --force $POW_DIR_IMPORT/${bal_vars[MUNICIPALITY_CODE]}_*.json
+    is_yes --var bal_vars[CLEAN] && rm --force $POW_DIR_IMPORT/${bal_vars[MUNICIPALITY_CODE]}*.json
 done
 
 _rc=$(( _error == 1 ? ERROR_CODE : SUCCESS_CODE ))

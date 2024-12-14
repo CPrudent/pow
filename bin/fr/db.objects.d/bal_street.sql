@@ -19,8 +19,16 @@ CREATE TABLE IF NOT EXISTS fr.bal_street (
     sources VARCHAR[],
     housenumbers INTEGER,
     housenumbers_auth INTEGER,
+    geom FLOAT[],
     last_update TIMESTAMP WITHOUT TIME ZONE
 );
+
+DO $$
+BEGIN
+    IF NOT column_exists('fr', 'bal_street', 'geom') THEN
+        ALTER TABLE fr.bal_street ADD COLUMN geom FLOAT[];
+    END IF;
+END $$;
 
 SELECT drop_all_functions_if_exists('fr', 'set_bal_street_index');
 CREATE OR REPLACE PROCEDURE fr.set_bal_street_index()
