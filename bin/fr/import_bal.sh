@@ -718,6 +718,7 @@ bash_args \
         force:Forcer le traitement même si celui-ci a déjà été fait;
         dry_run:Simuler le traitement;
         progress:Afficher une jauge de progression;
+        clean:Effectuer la purge des fichiers temporaires;
         verbose:Ajouter des détails sur les traitements
     ' \
     --args_o '
@@ -729,6 +730,7 @@ bash_args \
         force:yes|no;
         dry_run:yes|no;
         progress:yes|no;
+        clean:yes|no;
         verbose:yes|no
     ' \
     --args_d '
@@ -739,6 +741,7 @@ bash_args \
         limit:30;
         stop_time:0;
         progress:no;
+        clean:yes;
         verbose:no
     ' \
     "$@" || exit $ERROR_CODE
@@ -762,6 +765,7 @@ declare -A bal_vars=(
     [STOP_TIME]=$get_arg_stop_time
     [FORCE]=$get_arg_force
     [DRY_RUN]=$get_arg_dry_run
+    [CLEAN]=$get_arg_clean
     [PROGRESS]=$get_arg_progress
     [PROGRESS_START]=
     [PROGRESS_CURRENT]=
@@ -779,6 +783,7 @@ set_env --schema_name fr &&
         bal_load --vars bal_vars &&
         bal_integration --vars bal_vars &&
         bal_list_municipalities --vars bal_vars --list bal_codes || on_import_error --vars bal_vars
+        is_yes --var bal_vars[CLEAN] && rm --force $POW_DIR_IMPORT/communes-summary.csv
     } || {
         bal_codes[0]=${bal_vars[MUNICIPALITY_CODE]}
     }
@@ -794,19 +799,22 @@ for ((_i=0; _i<${#bal_codes[@]}; _i++)); do
         log_info "Limite '${bal_vars[LIMIT]}' atteinte: fin de traitement"
         exit $SUCCESS_CODE
     }
-
+    # check municipality
     valid_municipality_code --municipality "${bal_codes[$_i]}" || {
         log_error "commune BAL '${bal_codes[$_i]}' non valide!"
         _error=1
         continue
     }
-
+    # progress bar
     bal_vars[PROGRESS_CURRENT]=$_count
     bal_vars[MUNICIPALITY_CODE]=${bal_codes[$_i]}
+    # do it ?
     is_yes --var bal_vars[DRY_RUN] || {
         bal_load --vars bal_vars &&
         bal_integration --vars bal_vars || on_import_error --vars bal_vars
     }
+    # purge ?
+    is_yes --var bal_vars[CLEAN] && rm --force $POW_DIR_IMPORT/${bal_vars[MUNICIPALITY_CODE]}_*.json
 done
 
 _rc=$(( _error == 1 ? ERROR_CODE : SUCCESS_CODE ))
