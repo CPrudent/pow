@@ -160,7 +160,7 @@ io_history_exists() {
         ' \
         --args_o '
             io;
-            date
+            date_end
         ' \
         --args_v '
             status:EN_COURS|SUCCES|ERREUR
@@ -618,7 +618,8 @@ io_download_file() {
             overwrite_value:valeur test de la condition (au delà téléchargement forcé);
             user:compte HTTP;
             password:mot de passe HTTP;
-            common_subdir:copie dans un sous-dossier du dépôt
+            common_subdir:copie dans un sous-dossier du dépôt;
+            verbose:Ajouter des détails sur les traitements
         ' \
         --args_o '
             url;
@@ -626,17 +627,20 @@ io_download_file() {
         ' \
         --args_v '
             overwrite_mode:no|yes|NEWER;
-            overwrite_key:DATE|TIME
+            overwrite_key:DATE|TIME;
+            verbose:yes|no
         ' \
         --args_d '
             overwrite_mode:no;
-            overwrite_key:DATE
+            overwrite_key:DATE;
+            verbose:no
         ' \
         "$@" || return $ERROR_CODE
 
     local -A _download=(
         [NAME]=
-        [URL]="$get_arg_url"
+        # deal space in URL, https://stackoverflow.com/questions/497908/is-a-url-allowed-to-contain-a-space
+        [URL]="${get_arg_url// /%20}"
         [DIR]="$get_arg_output_directory"
         [FILE]="$get_arg_output_file"
         [COMMON_SUBDIR]="$get_arg_common_subdir"
@@ -645,6 +649,7 @@ io_download_file() {
         [OVERWRITE_VALUE]=$get_arg_overwrite_value
         [USER]="$get_arg_user"
         [PASSWORD]="$get_arg_password"
+        [VERBOSE]=$get_arg_verbose
     )
 
     [ -z "${_download[FILE]}" ] && _download[FILE]=$(basename "${_download[URL]}")
@@ -661,6 +666,7 @@ io_download_file() {
     _files[1]+="/${_download[FILE]}"
     # not found as default
     local _found=0
+    [ "${_download[VERBOSE]}" = yes ] && declare -p _download _files
 
     [ "${_download[OVERWRITE_MODE]}" = yes ] || {
         [ "${_download[OVERWRITE_MODE]}" = NEWER ] &&
@@ -682,7 +688,7 @@ io_download_file() {
             case ${_download[OVERWRITE_KEY]} in
             DATE)
                 # now - last_modification
-                _epoch2=$(date '+%s' --date "${_download[OVERWRITE_VALUE]}")
+                _epoch2=$(date '+%s' --date "@${_download[OVERWRITE_VALUE]}")
                 ;;
             TIME)
                 # now - given time
@@ -695,6 +701,7 @@ io_download_file() {
                 break
             }
         done
+        [ "${_download[VERBOSE]}" = yes ] && declare -p _found
 
         # found localy (1), common (2)
         case $_found in
@@ -720,6 +727,7 @@ io_download_file() {
     # temporary downloaded file
     local _tmp_path
     get_tmp_file --tmpfile _tmp_path
+    [ "${_download[VERBOSE]}" = yes ] && declare -p _log_tmp_path _log_archive_path _tmp_path
 
     wget \
         ${_download[URL]} \
@@ -731,7 +739,7 @@ io_download_file() {
         --random-wait \
         $_user \
         $_password \
-        > $_log_tmp_path 2>&1 || {
+        > "$_log_tmp_path" 2>&1 || {
 
         archive_file "$_log_tmp_path"
         log_error "Erreur lors du téléchargement de ${_download[FILE]}, veuillez consulter $_log_archive_path"

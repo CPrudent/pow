@@ -722,7 +722,7 @@ array_sql_to_bash() {
     # to delete braces
     _len=$((${#get_arg_array_sql} -2))
     _tmp=${get_arg_array_sql:1:$_len}
-    _array_ref=( ${_tmp//,/ } )
+    IFS=',' read -ra _array_ref <<< "${_tmp}"
 
     return $SUCCESS_CODE
 }

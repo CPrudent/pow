@@ -108,7 +108,7 @@ BEGIN
         FROM public.io_history h
         WHERE h.name = get_last_io.name
             AND h.status = get_last_io.status
-        ORDER BY h.date_data_end DESC
+        ORDER BY h.date_data_end DESC, h.date_exec_end DESC
         LIMIT 1
     ;
 END

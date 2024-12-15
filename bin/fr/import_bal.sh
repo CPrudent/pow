@@ -9,6 +9,9 @@
     # https://stackoverflow.com/questions/16908084/bash-script-to-calculate-time-elapsed
     # https://stackoverflow.com/questions/3953645/ternary-operator-in-bash
 
+    # TODO
+    # assign PROGRESS_SIZE w/ max (municipalities, streets, housenumbers) of selection
+
 on_import_error() {
     bash_args \
         --args_p '
@@ -123,11 +126,11 @@ bal_load() {
     log_info "Import BAL (${_info})" &&
     {
         (! is_yes --var _vars_ref[PROGRESS]) || {
-            _vars_ref[PROGRESS_START]=$(date '+%s')
+            _vars_ref[PROGRESS_START]=$(date '+%s') &&
             bal_progress_bar \
                 BEGIN \
                 "INSEE ${_info}" \
-                4 \
+                ${_vars_ref[PROGRESS_SIZE]} \
                 ${_vars_ref[PROGRESS_CURRENT]} \
                 ${_vars_ref[PROGRESS_TOTAL]} \
                 '\r'
@@ -150,6 +153,10 @@ bal_load() {
                     --return _vars_ref[IO_BEGIN]
             } || true
         }
+    } &&
+    {
+        # reset BEGIN if equal (force running w/o change of END date)
+        [ "${_vars_ref[IO_BEGIN]}" != "${_vars_ref[IO_END]}" ] || _vars_ref[IO_BEGIN]=
     } &&
     execute_query \
         --name BAL_IO_ROWS \
@@ -263,14 +270,14 @@ bal_load_addresses() {
                         bal_progress_bar \
                             BEGIN \
                             "${_info}" \
-                            4 \
+                            ${_globals_ref[PROGRESS_SIZE]} \
                             $((_j +1)) \
                             ${_count_ref} \
                             '\r'
                     }
                 } &&
                 # deal w/ space!
-                _globals_ref[URL_DATA]=lookup/${_addresses[$_j]// /%20} &&
+                _globals_ref[URL_DATA]="lookup/${_addresses[$_j]}" &&
                 _globals_ref[FILE_NAME]="${_addresses[$_j]}.json" &&
                 io_download_file \
                     --url "${_globals_ref[URL]}/${_globals_ref[URL_DATA]}" \
@@ -772,7 +779,7 @@ declare -A bal_vars=(
     [IO_NAME]=
     [IO_ID]=
     [IO_BEGIN]=
-    [IO_END]="$(date +'%F')"
+    [IO_END]="$(date +%F)"
     [IO_END_EPOCH]=
     [IO_ROWS]=0
     [FILE_NAME]=
@@ -788,6 +795,7 @@ declare -A bal_vars=(
     [PROGRESS_START]=
     [PROGRESS_CURRENT]=1
     [PROGRESS_TOTAL]=1
+    [PROGRESS_SIZE]=5
     [VERBOSE]=$get_arg_verbose
 )
 declare -a bal_codes=()
@@ -801,7 +809,7 @@ set_env --schema_name fr &&
         bal_load --vars bal_vars &&
         bal_integration --vars bal_vars &&
         bal_list_municipalities --vars bal_vars --list bal_codes || on_import_error --vars bal_vars
-        is_yes --var bal_vars[CLEAN] && rm --force $POW_DIR_IMPORT/communes-summary.csv
+        is_yes --var bal_vars[CLEAN] && rm --force "$POW_DIR_IMPORT/${bal_vars[FILE_NAME]}"
     } || {
         bal_codes[0]=${bal_vars[MUNICIPALITY_CODE]}
     }
