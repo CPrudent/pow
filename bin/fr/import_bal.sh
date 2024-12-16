@@ -289,7 +289,6 @@ bal_load_addresses() {
                             '\r'
                     }
                 } &&
-                # deal w/ space!
                 _globals_ref[URL_DATA]="lookup/${_addresses[$_j]}" &&
                 _globals_ref[FILE_NAME]="${_addresses[$_j]}.json" &&
                 io_download_file \
@@ -890,18 +889,18 @@ set_env --schema_name fr &&
     }
 } &&
 
-_error=0
+bal_error=0
 bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
-for ((_i=0; _i<${#bal_codes[@]}; _i++)); do
+for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
     # check municipality
-    valid_municipality_code --municipality "${bal_codes[$_i]}" || {
-        log_error "commune BAL '${bal_codes[$_i]}' non valide!"
-        _error=1
+    valid_municipality_code --municipality "${bal_codes[$bal_i]}" || {
+        log_error "commune BAL '${bal_codes[$bal_i]}' non valide!"
+        bal_error=1
         continue
     }
-    bal_vars[MUNICIPALITY_CODE]=${bal_codes[$_i]}
+    bal_vars[MUNICIPALITY_CODE]=${bal_codes[$bal_i]}
     # progress bar
-    bal_vars[PROGRESS_CURRENT]=$((_i +1))
+    bal_vars[PROGRESS_CURRENT]=$((bal_i +1))
     # do it ?
     is_yes --var bal_vars[DRY_RUN] || {
         bal_load --vars bal_vars &&
@@ -911,5 +910,5 @@ for ((_i=0; _i<${#bal_codes[@]}; _i++)); do
     is_yes --var bal_vars[CLEAN] && rm --force $POW_DIR_IMPORT/${bal_vars[MUNICIPALITY_CODE]}*.json
 done
 
-_rc=$(( _error == 1 ? ERROR_CODE : SUCCESS_CODE ))
+_rc=$(( bal_error == 1 ? ERROR_CODE : SUCCESS_CODE ))
 exit $_rc
