@@ -193,6 +193,67 @@ bal_load() {
     return $SUCCESS_CODE
 }
 
+# get list of code(s), checking count
+bal_get_list() {
+    bash_args \
+        --args_p '
+            name:Nommage de la sélection;
+            query:Requête de sélection;
+            as_string:Retour en tant que chaîne;
+            as_array:Retour en tant que tableau
+        ' \
+        --args_o '
+            name;
+            query
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local _result _return=0
+    local -a _results
+
+    execute_query \
+        --name "$get_arg_name" \
+        --query "$get_arg_query" \
+        --psql_arguments 'tuples-only:pset=format=unaligned' \
+        --return _result &&
+    {
+        IFS='|' read -ra _results <<< "$_result"
+    } &&
+    {
+        [[ ${#_results[@]} -eq 2 ]] || {
+            log_error 'liste attendue avec comptage pour contrôle!'
+            false
+        }
+    } &&
+    {
+        [ -z "$get_arg_as_array" ] || {
+            local -n _as_array_ref=$get_arg_as_array
+
+            array_sql_to_bash \
+                --array_sql "${_results[0]}" \
+                --count ${_results[1]} \
+                --array_bash _as_array_ref &&
+            _return=$((_return +1))
+        }
+    } &&
+    {
+        [ -z "$get_arg_as_string" ] || {
+            local -n _as_string_ref=$get_arg_as_string
+
+            # TODO check count!
+            [[ ${_results[1]} -gt 0 ]] && _as_string_ref="${_results[0]}" || _as_string_ref=''
+            _return=$((_return +1))
+        }
+    } &&
+    {
+        [[ $_return -gt 0 ]] || {
+            log_error 'pas de retour demandé?'
+        }
+    } || return $ERROR_CODE
+
+    return $SUCCESS_CODE
+}
+
 # load BAL addresses (streets or housenumbers)
 bal_load_addresses() {
     bash_args \
@@ -215,8 +276,7 @@ bal_load_addresses() {
     # due to other call, as: --vars _vars_ref
     local -n _globals_ref=$get_arg_vars
     local -n _count_ref=$get_arg_count
-    local _name _query _result _info
-    local -a _results
+    local _name _query _info
     local -a _addresses
 
     _name="BAL_SELECT_${_globals_ref[MUNICIPALITY_CODE]}" &&
@@ -255,22 +315,11 @@ bal_load_addresses() {
         m.code = '${_globals_ref[MUNICIPALITY_CODE]}'
     " &&
     # select streets|housenumbers w/ count (to check conversion)
-    execute_query \
+    bal_get_list \
         --name "$_name" \
         --query "$_query" \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
-        --return _result &&
-    {
-        IFS='|' read -ra _results <<< "$_result"
-    } &&
-    array_sql_to_bash --array_sql "${_results[0]}" --array_bash _addresses &&
+        --as_array _addresses &&
     _count_ref=${#_addresses[@]} &&
-    {
-        [[ $_count_ref -eq ${_results[1]} ]] || {
-            log_error "écart liste($get_arg_level) : obtenu=$_count_ref, attendu=${_results[1]}"
-            false
-        }
-    } &&
     {
         [[ $_count_ref -gt 0 ]] && {
             execute_query \
@@ -327,7 +376,7 @@ bal_integration() {
         "$@" || return $ERROR_CODE
 
     local -n _vars_ref=$get_arg_vars
-    local _list _j _streets=0 _housenumbers=0 _elapsed
+    local _list _j _streets=0 _housenumbers=0 _elapsed _obsolete _counters
 
     table_exists --schema_name fr --table_name "${_vars_ref[TABLE_NAME]}" &&
     {
@@ -335,7 +384,7 @@ bal_integration() {
         ALL)
             # manage municipality, deleting obsolete ones w/ {housenumbers, streets} dependences
             execute_query \
-                --name "BAL_INTEGRATION_${_vars_ref[IO_NAME]#*_}" \
+                --name "BAL_INTEGRATION_SUMMARY" \
                 --query "
                     INSERT INTO fr.bal_municipality(
                         code,
@@ -366,63 +415,41 @@ bal_integration() {
                         housenumbers = EXCLUDED.housenumbers,
                         housenumbers_auth = EXCLUDED.housenumbers_auth,
                         last_update = EXCLUDED.last_update
-                        ;
-                    WITH
-                    obsolete_municipality AS (
-                        SELECT code
-                        FROM fr.bal_municipality m
-                        WHERE
-                            NOT EXISTS(
-                                SELECT 1
-                                FROM fr.${_vars_ref[TABLE_NAME]} tm
-                                WHERE m.code = tm.code_commune
-                            )
-                    )
-                    DELETE FROM fr.bal_housenumber n
-                    USING fr.bal_street s, fr.bal_municipality m, obsolete_municipality om
-                    WHERE
-                        n.id_street = s.id
-                        AND
-                        s.id_municipality = m.id
-                        AND
-                        m.code = om.code
-                    ;
-                    WITH
-                    obsolete_municipality AS (
-                        SELECT code
-                        FROM fr.bal_municipality m
-                        WHERE
-                            NOT EXISTS(
-                                SELECT 1
-                                FROM fr.${_vars_ref[TABLE_NAME]} tm
-                                WHERE m.code = tm.code_commune
-                            )
-                    )
-                    DELETE FROM fr.bal_street s
-                    USING fr.bal_municipality m, obsolete_municipality om
-                    WHERE
-                        s.id_municipality = m.id
-                        AND
-                        m.code = om.code
-                    ;
-                    WITH
-                    obsolete_municipality AS (
-                        SELECT code
-                        FROM fr.bal_municipality m
-                        WHERE
-                            NOT EXISTS(
-                                SELECT 1
-                                FROM fr.${_vars_ref[TABLE_NAME]} tm
-                                WHERE m.code = tm.code_commune
-                            )
-                    )
-                    DELETE FROM fr.bal_municipality m
-                    USING obsolete_municipality om
-                    WHERE
-                        m.code = om.code
-                    ;
-                    DROP TABLE fr.${_vars_ref[TABLE_NAME]};
                 " &&
+            bal_get_list \
+                --name "BAL_SELECT_OBSOLETE_SUMMARY" \
+                --query "
+                    SELECT
+                        ARRAY_AGG(m.code),
+                        COUNT(1)
+                    FROM
+                        fr.bal_municipality m
+                    WHERE
+                        NOT EXISTS(
+                            SELECT 1
+                            FROM fr.${_vars_ref[TABLE_NAME]} tm
+                            WHERE m.code = tm.code_commune
+                        )
+                "
+                --as_string _obsolete &&
+            {
+                [ -z "$_obsolete" ] || {
+                    log_info "liste Communes obsolètes ($_obsolete)" &&
+                    execute_query \
+                        --name "BAL_DELETE_OBSOLETE_SUMMARY" \
+                        --query "
+                            SELECT counters FROM fr.bal_delete_obsolete_addresses(
+                                list => '$_obsolete'
+                            )
+                        " \
+                        --psql_arguments 'tuples-only:pset=format=unaligned' \
+                        --return _counters &&
+                    log_info "comptage: ${_counters}"
+                }
+            } &&
+            execute_query \
+                --name "BAL_DROP_SUMMARY" \
+                --query "DROP TABLE fr.${_vars_ref[TABLE_NAME]}" &&
             {
                 (! is_yes --var _vars_ref[PROGRESS]) || {
                     _elapsed=$(($(date '+%s') - ${_vars_ref[PROGRESS_START]})) &&
@@ -476,23 +503,43 @@ bal_integration() {
                         housenumbers = EXCLUDED.housenumbers,
                         housenumbers_auth = EXCLUDED.housenumbers_auth,
                         last_update = EXCLUDED.last_update
-                    ;
-                    DELETE FROM fr.bal_street s
-                    USING fr.bal_municipality m
+                " &&
+            bal_get_list \
+                --name "BAL_SELECT_OBSOLETE_${_vars_ref[MUNICIPALITY_CODE]}_STREETS" \
+                --query "
+                    SELECT
+                        ARRAY_AGG(s.code),
+                        COUNT(1)
+                    FROM
+                        fr.bal_street s
+                            JOIN fr.bal_municipality m ON m.id = s.id_municipality
                     WHERE
-                        m.id = s.id_municipality
-                        AND
                         m.code = '${_vars_ref[MUNICIPALITY_CODE]}'
                         AND
                         NOT EXISTS(
                             SELECT 1
                             FROM fr.${_vars_ref[TABLE_NAME]}
-                                CROSS JOIN JSON_ARRAY_ELEMENTS(data->'voies') v
+                                CROSS JOIN JSON_ARRAY_ELEMENTS(data->'voies') s2
                             WHERE
-                                s.code = v->>'idVoie'
+                                s.code = s2->>'idVoie'
                         )
-                    ;
-                " &&
+                "
+                --as_string _obsolete &&
+            {
+                [ -z "$_obsolete" ] || {
+                    log_info "liste Voies obsolètes ($_obsolete)" &&
+                    execute_query \
+                        --name "BAL_DELETE_OBSOLETE_${_vars_ref[MUNICIPALITY_CODE]}_STREETS" \
+                        --query "
+                            SELECT counters FROM fr.bal_delete_obsolete_addresses(
+                                list => '$_obsolete'
+                            )
+                        " \
+                        --psql_arguments 'tuples-only:pset=format=unaligned' \
+                        --return _counters &&
+                    log_info "comptage: ${_counters}"
+                }
+            } &&
             {
                 (! is_yes --var _vars_ref[PROGRESS]) || {
                     _elapsed=$(($(date '+%s') - ${_vars_ref[PROGRESS_START]})) &&
@@ -581,23 +628,6 @@ bal_integration() {
                                 location = EXCLUDED.location,
                                 last_update = EXCLUDED.last_update
                             ;
-                            DELETE FROM fr.bal_housenumber hn
-                            USING fr.bal_municipality m, fr.bal_street s
-                            WHERE
-                                s.id = hn.id_street
-                                AND
-                                m.id = s.id_municipality
-                                AND
-                                m.code = '${_vars_ref[MUNICIPALITY_CODE]}'
-                                AND
-                                NOT EXISTS(
-                                    SELECT 1
-                                    FROM fr.${_vars_ref[TABLE_NAME]}
-                                        CROSS JOIN JSON_ARRAY_ELEMENTS(data->'numeros') n
-                                    WHERE
-                                        hn.code = n->>'id'
-                                )
-                            ;
                             WITH
                             street_geometry AS (
                                 SELECT
@@ -617,6 +647,43 @@ bal_integration() {
                                     s.id = g.id
                             ;
                         " &&
+                        bal_get_list \
+                            --name "BAL_SELECT_OBSOLETE_${_vars_ref[MUNICIPALITY_CODE]}_HOUSENUMBERS" \
+                            --query "
+                                SELECT
+                                    ARRAY_AGG(n.code),
+                                    COUNT(1)
+                                FROM
+                                    fr.bal_housenumber n
+                                        JOIN fr.bal_street s ON s.id = n.id_street
+                                        JOIN fr.bal_municipality m ON m.id = s.id_municipality
+                                WHERE
+                                    m.code = '${_vars_ref[MUNICIPALITY_CODE]}'
+                                    AND
+                                    NOT EXISTS(
+                                        SELECT 1
+                                        FROM fr.${_vars_ref[TABLE_NAME]}
+                                            CROSS JOIN JSON_ARRAY_ELEMENTS(data->'numeros') n2
+                                        WHERE
+                                            n.code = n2->>'id'
+                                    )
+                            "
+                            --as_string _obsolete &&
+                        {
+                            [ -z "$_obsolete" ] || {
+                                log_info "liste Numéros obsolètes ($_obsolete)" &&
+                                execute_query \
+                                    --name "BAL_DELETE_OBSOLETE_${_vars_ref[MUNICIPALITY_CODE]}_HOUSENUMBERS" \
+                                    --query "
+                                        SELECT counters FROM fr.bal_delete_obsolete_addresses(
+                                            list => '$_obsolete'
+                                        )
+                                    " \
+                                    --psql_arguments 'tuples-only:pset=format=unaligned' \
+                                    --return _counters &&
+                                log_info "comptage: ${_counters}"
+                            }
+                        } &&
                         # need to request API on each housenumber, if many areas! to obtain old municipality
                         {
                             [[ ${_vars_ref[MUNICIPALITY_AREAS]} -eq 0 ]] || {

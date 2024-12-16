@@ -703,11 +703,12 @@ restore_table() {
     return $SUCCESS_CODE
 }
 
-# convert Postgresql's array to Bash's one
+# convert Postgresql's array to Bash's one, checking waited count
 array_sql_to_bash() {
     bash_args \
         --args_p '
             array_sql:Tableau SQL;
+            count:Taille attendue;
             array_bash:Entité du résultat
         ' \
         --args_o '
@@ -720,9 +721,19 @@ array_sql_to_bash() {
     local _len _tmp
 
     # to delete braces
-    _len=$((${#get_arg_array_sql} -2))
-    _tmp=${get_arg_array_sql:1:$_len}
-    IFS=',' read -ra _array_ref <<< "${_tmp}"
+    _len=$((${#get_arg_array_sql} -2)) &&
+    _tmp=${get_arg_array_sql:1:$_len} &&
+    {
+        IFS=',' read -ra _array_ref <<< "${_tmp}"
+    } &&
+    {
+        [ -z "$get_arg_count" ] || {
+            [[ ${#_array_ref[@]} -eq $get_arg_count ]] || {
+                log_error "écart liste: obtenu=${#_array_ref[@]}, attendu=${get_arg_count}"
+                false
+            }
+        }
+    } || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }

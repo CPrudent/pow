@@ -38,27 +38,40 @@ $proc$ LANGUAGE plpgsql;
 SELECT public.drop_all_functions_if_exists('fr', 'bal_delete_obsolete_addresses');
 CREATE OR REPLACE FUNCTION fr.bal_delete_obsolete_addresses(
     list IN VARCHAR,
-    level IN VARCHAR DEFAULT 'MUNICIPALITY',
-    municipality IN VARCHAR DEFAULT NULL,
     simulation IN BOOLEAN DEFAULT FALSE,
     counters OUT INT[]
 )
 AS
 $func$
 DECLARE
-    _queries    TEXT[];
-    _i          INT;
-    _nrows      INT;
+    _queries        TEXT[];
+    _code           VARCHAR;
+    _level          VARCHAR;
+    _municipality   VARCHAR;
+    _i              INT;
+    _nrows          INT;
 BEGIN
-    IF NOT level = ANY('{MUNICIPALITY,STREET,HOUSENUMBER}') THEN
-        RAISE 'niveau Adresse non géré! (%)', level;
+    IF list IS NULL OR list = '{}' THEN
+        RAISE 'liste des codes vide!';
     END IF;
-    IF level != 'MUNICIPALITY' AND municipality IS NULL THEN
-        RAISE 'code Commune obligatoire pour niveau(%)', level;
+    _code := (list::VARCHAR[])[1];
+    _level := CASE
+        WHEN _code ~ '^[^_]{5}_[^_]{4}$' THEN 'STREET'
+        WHEN _code ~ '^[^_]{5}_[^_]{4}_' THEN 'HOUSENUMBER'
+        WHEN LENGTH(_code) = 5 THEN 'MUNICIPALITY'
+        ELSE 'UNKNOWN'
+        END
+        ;
+    IF _level = 'UNKNOWN' THEN
+        RAISE 'typologie des codes non reconnue (%)', _code;
+    END IF;
+    _municipality := (REGEXP_MATCH(_code, '^([^_]{5})'))[1];
+    IF simulation THEN
+        RAISE NOTICE 'level=% municipality=%', _level, _municipality;
     END IF;
 
     _queries := ARRAY_FILL(NULL::TEXT, ARRAY[3]);
-    IF level = 'HOUSENUMBER' THEN
+    IF _level = 'HOUSENUMBER' THEN
         _queries[3] := '
             DELETE FROM fr.bal_housenumber n
             USING fr.bal_municipality m, fr.bal_street s
@@ -71,7 +84,7 @@ BEGIN
                 AND
                 n.code = ANY($1)
         ';
-    ELSIF level = 'STREET' THEN
+    ELSIF _level = 'STREET' THEN
         _queries[3] := '
             DELETE FROM fr.bal_housenumber n
             USING fr.bal_municipality m, fr.bal_street s
@@ -134,7 +147,7 @@ BEGIN
             RAISE NOTICE '%: query=%', _i, _queries[_i];
         ELSE
             EXECUTE _queries[_i]
-                USING list, municipality
+                USING list::VARCHAR[], _municipality
                 ;
             GET DIAGNOSTICS _nrows = ROW_COUNT;
             counters[_i] := _nrows;
