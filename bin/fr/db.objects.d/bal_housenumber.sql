@@ -54,6 +54,9 @@ BEGIN
             AND rel.relname = 'bal_housenumber'
             AND con.contype = 'f'
     ) THEN
-        ALTER TABLE fr.bal_housenumber ADD FOREIGN KEY (id_street) REFERENCES fr.bal_street (id);
+        ALTER TABLE fr.bal_housenumber
+            ADD FOREIGN KEY (id_street) REFERENCES fr.bal_street (id)
+            --DEFERRABLE INITIALLY IMMEDIATE
+            ;
     END IF;
 END $$;

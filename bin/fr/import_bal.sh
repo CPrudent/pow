@@ -8,6 +8,7 @@
     # NOTE
     # https://stackoverflow.com/questions/16908084/bash-script-to-calculate-time-elapsed
     # https://stackoverflow.com/questions/3953645/ternary-operator-in-bash
+    # https://stackoverflow.com/questions/10586153/how-to-split-a-string-into-an-array-in-bash
 
     # TODO
     # assign PROGRESS_SIZE w/ max (municipalities, streets, housenumbers) of selection
@@ -214,7 +215,8 @@ bal_load_addresses() {
     # due to other call, as: --vars _vars_ref
     local -n _globals_ref=$get_arg_vars
     local -n _count_ref=$get_arg_count
-    local _name _query _list _info
+    local _name _query _result _info
+    local -a _results
     local -a _addresses
 
     _name="BAL_SELECT_${_globals_ref[MUNICIPALITY_CODE]}" &&
@@ -224,7 +226,8 @@ bal_load_addresses() {
         _info=voies
         _query="
             SELECT
-                ARRAY_AGG(s.code)
+                ARRAY_AGG(s.code),
+                COUNT(1)
             FROM
                 fr.bal_street s
                     JOIN fr.bal_municipality m ON s.id_municipality = m.id
@@ -238,7 +241,8 @@ bal_load_addresses() {
         _info=numéros
         _query="
             SELECT
-                ARRAY_AGG(hn.code)
+                ARRAY_AGG(hn.code),
+                COUNT(1)
             FROM
                 fr.bal_housenumber hn
                     JOIN fr.bal_street s ON hn.id_street = s.id
@@ -250,14 +254,23 @@ bal_load_addresses() {
     _query+="
         m.code = '${_globals_ref[MUNICIPALITY_CODE]}'
     " &&
-    # select streets|housenumbers
+    # select streets|housenumbers w/ count (to check conversion)
     execute_query \
         --name "$_name" \
         --query "$_query" \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
-        --return _list &&
-    array_sql_to_bash --array_sql "$_list" --array_bash _addresses &&
+        --return _result &&
+    {
+        IFS='|' read -ra _results <<< "$_result"
+    } &&
+    array_sql_to_bash --array_sql "${_results[0]}" --array_bash _addresses &&
     _count_ref=${#_addresses[@]} &&
+    {
+        [[ $_count_ref -eq ${_results[1]} ]] || {
+            log_error "écart liste($get_arg_level) : obtenu=$_count_ref, attendu=${_results[1]}"
+            false
+        }
+    } &&
     {
         [[ $_count_ref -gt 0 ]] && {
             execute_query \
@@ -321,10 +334,10 @@ bal_integration() {
     {
         case "${_vars_ref[MUNICIPALITY_CODE]}" in
         ALL)
+            # manage municipality, deleting obsolete ones w/ {housenumbers, streets} dependences
             execute_query \
                 --name "BAL_INTEGRATION_${_vars_ref[IO_NAME]#*_}" \
                 --query "
-                    TRUNCATE TABLE fr.bal_municipality;
                     INSERT INTO fr.bal_municipality(
                         code,
                         name,
@@ -334,7 +347,7 @@ bal_integration() {
                         housenumbers,
                         housenumbers_auth,
                         last_update
-                        )
+                    )
                     SELECT
                         code_commune,
                         nom_commune,
@@ -346,8 +359,70 @@ bal_integration() {
                         composed_at::TIMESTAMP WITHOUT TIME ZONE
                     FROM
                         fr.${_vars_ref[TABLE_NAME]}
+                    ON CONFLICT(code) DO UPDATE SET
+                        name = EXCLUDED.name,
+                        population = EXCLUDED.population,
+                        areas = EXCLUDED.areas,
+                        streets = EXCLUDED.streets,
+                        housenumbers = EXCLUDED.housenumbers,
+                        housenumbers_auth = EXCLUDED.housenumbers_auth,
+                        last_update = EXCLUDED.last_update
                         ;
-                    DROP TABLE fr.tmp_bal_summary;
+                    WITH
+                    obsolete_municipality AS (
+                        SELECT code
+                        FROM fr.bal_municipality m
+                        WHERE
+                            NOT EXISTS(
+                                SELECT 1
+                                FROM fr.${_vars_ref[TABLE_NAME]} tm
+                                WHERE m.code = tm.code_commune
+                            )
+                    )
+                    DELETE FROM fr.bal_housenumber n
+                    USING fr.bal_street s, fr.bal_municipality m, obsolete_municipality om
+                    WHERE
+                        n.id_street = s.id
+                        AND
+                        s.id_municipality = m.id
+                        AND
+                        m.code = om.code
+                    ;
+                    WITH
+                    obsolete_municipality AS (
+                        SELECT code
+                        FROM fr.bal_municipality m
+                        WHERE
+                            NOT EXISTS(
+                                SELECT 1
+                                FROM fr.${_vars_ref[TABLE_NAME]} tm
+                                WHERE m.code = tm.code_commune
+                            )
+                    )
+                    DELETE FROM fr.bal_street s
+                    USING fr.bal_municipality m, obsolete_municipality om
+                    WHERE
+                        s.id_municipality = m.id
+                        AND
+                        m.code = om.code
+                    ;
+                    WITH
+                    obsolete_municipality AS (
+                        SELECT code
+                        FROM fr.bal_municipality m
+                        WHERE
+                            NOT EXISTS(
+                                SELECT 1
+                                FROM fr.${_vars_ref[TABLE_NAME]} tm
+                                WHERE m.code = tm.code_commune
+                            )
+                    )
+                    DELETE FROM fr.bal_municipality m
+                    USING obsolete_municipality om
+                    WHERE
+                        m.code = om.code
+                    ;
+                    DROP TABLE fr.${_vars_ref[TABLE_NAME]};
                 " &&
             {
                 (! is_yes --var _vars_ref[PROGRESS]) || {
@@ -657,7 +732,7 @@ bal_list_municipalities() {
         history AS (
             SELECT
                 SUBSTR(io.name, 5) municipality,
-                MIN(l.date_data_end) date_date_end
+                MAX(l.date_data_end) date_date_end
             FROM
                 io_history io
                     CROSS JOIN get_last_io(io.name) l
