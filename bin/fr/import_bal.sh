@@ -77,7 +77,7 @@ bal_load() {
         "$@" || return $ERROR_CODE
 
     local -n _vars_ref=$get_arg_vars
-    local _query _import_options='' _overwrite_key _overwrite_value _info
+    local _file _query _import_options='' _overwrite_key _overwrite_value _info
 
     case "${_vars_ref[MUNICIPALITY_CODE]}" in
     ALL)
@@ -142,9 +142,10 @@ bal_load() {
         }
     } &&
     {
-        _vars_ref[FILE_NAME]=$(basename "${_vars_ref[URL]}/${_vars_ref[URL_DATA]}") &&
+        _file=$(basename "${_vars_ref[URL]}/${_vars_ref[URL_DATA]}")
+        _vars_ref[FILE_NAME]="$_file" &&
         {
-            [ "${_vars_ref[MUNICIPALITY_CODE]}" != ALL ] && {
+            [ "${_vars_ref[MUNICIPALITY_CODE]}" = ALL ] || {
                 _vars_ref[FILE_NAME]+=.json &&
                 execute_query \
                     --name BAL_CREATE \
@@ -156,7 +157,7 @@ bal_load() {
                     --query "SELECT (get_last_io('${_vars_ref[IO_NAME]}')).date_data_end" \
                     --psql_arguments 'tuples-only:pset=format=unaligned' \
                     --return _vars_ref[IO_BEGIN]
-            } || true
+            }
         }
     } &&
     {
@@ -169,10 +170,10 @@ bal_load() {
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _vars_ref[IO_ROWS] &&
     {
-        [ -z "${_vars_ref[IO_ROWS]}" ] && {
+        [ -n "${_vars_ref[IO_ROWS]}" ] || {
             log_error "Import préalable de l'ensemble des Communes (--municipality ALL)"
             false
-        } || true
+        }
     } &&
     io_history_begin \
         --io "${_vars_ref[IO_NAME]}" \
@@ -966,6 +967,8 @@ set_env --schema_name fr &&
         bal_load --vars bal_vars &&
         bal_integration --vars bal_vars &&
         bal_list_municipalities --vars bal_vars --list bal_codes || on_import_error --vars bal_vars
+
+        declare -p bal_vars
         is_yes --var bal_vars[CLEAN] && rm --force "$POW_DIR_IMPORT/${bal_vars[FILE_NAME]}"
     } || {
         bal_codes[0]=${bal_vars[MUNICIPALITY_CODE]}
@@ -977,7 +980,6 @@ bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
 for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
     # check municipality
     valid_municipality_code --municipality "${bal_codes[$bal_i]}" || {
-        log_error "commune BAL '${bal_codes[$bal_i]}' non valide!"
         bal_error=1
         continue
     }

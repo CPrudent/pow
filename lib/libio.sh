@@ -640,7 +640,7 @@ io_download_file() {
     local -A _download=(
         [NAME]=
         # deal space in URL, https://stackoverflow.com/questions/497908/is-a-url-allowed-to-contain-a-space
-        [URL]="${get_arg_url// /%20}"
+        [URL]=${get_arg_url// /%20}
         [DIR]="$get_arg_output_directory"
         [FILE]="$get_arg_output_file"
         [COMMON_SUBDIR]="$get_arg_common_subdir"
@@ -652,7 +652,7 @@ io_download_file() {
         [VERBOSE]=$get_arg_verbose
     )
 
-    [ -z "${_download[FILE]}" ] && _download[FILE]=$(basename "${_download[URL]}")
+    [ -z "${_download[FILE]}" ] && _download[FILE]=$(basename "${get_arg_url}")
     _download[NAME]=${get_arg_name:-"${_download[FILE]}"}
 
     local -a _files=(
@@ -740,18 +740,17 @@ io_download_file() {
         $_user \
         $_password \
         > "$_log_tmp_path" 2>&1 || {
+            archive_file "$_log_tmp_path"
+            log_error "Erreur lors du téléchargement de ${_download[FILE]}, veuillez consulter $_log_archive_path"
+            [ -f "$_tmp_path" ] && rm --force "$_tmp_path"
+            # use of previous file if present
+            [ -f "${_files[0]}" ] && {
+                log_info "Utilisation du fichier déjà présent pour contourner l'erreur de téléchargement"
+                return $SUCCESS_CODE
+            }
 
-        archive_file "$_log_tmp_path"
-        log_error "Erreur lors du téléchargement de ${_download[FILE]}, veuillez consulter $_log_archive_path"
-        [ -f "$_tmp_path" ] && rm --force "$_tmp_path"
-        # use of previous file if present
-        [ -f "${_files[0]}" ] && {
-            log_info "Utilisation du fichier déjà présent pour contourner l'erreur de téléchargement"
-            return $SUCCESS_CODE
+            return $ERROR_CODE
         }
-
-        return $ERROR_CODE
-    }
 
     # not available into COMMON
     [ ! -f "${_files[1]}" ] && {

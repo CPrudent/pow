@@ -56,8 +56,8 @@ BEGIN
     END IF;
     _code := (list::VARCHAR[])[1];
     _level := CASE
-        WHEN _code ~ '^[^_]{5}_[^_]{4}$' THEN 'STREET'
-        WHEN _code ~ '^[^_]{5}_[^_]{4}_' THEN 'HOUSENUMBER'
+        WHEN _code ~ '^[^_]{5}_[^_]*$' THEN 'STREET'
+        WHEN _code ~ '^[^_]{5}_[^_]*_' THEN 'HOUSENUMBER'
         WHEN LENGTH(_code) = 5 THEN 'MUNICIPALITY'
         ELSE 'UNKNOWN'
         END

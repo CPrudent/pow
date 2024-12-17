@@ -400,6 +400,7 @@ set_env() {
 archive_file() {
     expect file "$1" || return $ERROR_CODE
     [ ! -d $POW_DIR_ARCHIVE ] && mkdir --parents $POW_DIR_ARCHIVE
-    mv --force "$1" $POW_DIR_ARCHIVE/"$(basename $1)"
+    local _file=$(basename "$1")
+    mv --force "$1" $POW_DIR_ARCHIVE/"$_file"
     return $?
 }
