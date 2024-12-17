@@ -17,6 +17,11 @@
     # TODO
     # assign PROGRESS_SIZE w/ max (municipalities, streets, housenumbers) of selection
 
+
+on_break() {
+    on_import_error --vars bal_vars
+}
+
 on_import_error() {
     bash_args \
         --args_p '
@@ -36,6 +41,9 @@ on_import_error() {
     log_error "Erreur import BAL (${_vars_ref[IO_NAME]#*_})"
     exit $ERROR_CODE
 }
+
+# deal w/ interrupt signal (CTRL-C, kill)
+trap on_break SIGINT
 
 # print progress as (ratio, percent)
 # $1= begin
@@ -963,17 +971,21 @@ set_env --schema_name fr &&
     (! is_yes --var bal_vars[PROGRESS]) || set_log_echo no
 } &&
 {
-    [ "${bal_vars[MUNICIPALITY_CODE]}" = ALL ] && {
+    [ "${bal_vars[MUNICIPALITY_CODE]}" != ALL ] && {
+        bal_codes[0]=${bal_vars[MUNICIPALITY_CODE]}
+    } || {
         bal_load --vars bal_vars &&
         bal_integration --vars bal_vars &&
-        bal_list_municipalities --vars bal_vars --list bal_codes || on_import_error --vars bal_vars
-
-        declare -p bal_vars
-        is_yes --var bal_vars[CLEAN] && rm --force "$POW_DIR_IMPORT/${bal_vars[FILE_NAME]}"
-    } || {
-        bal_codes[0]=${bal_vars[MUNICIPALITY_CODE]}
+        bal_list_municipalities --vars bal_vars --list bal_codes &&
+        {
+            (! is_yes --var bal_vars[CLEAN]) || {
+                [ -z "${bal_vars[FILE_NAME]}" ] || {
+                    rm --force "$POW_DIR_IMPORT/${bal_vars[FILE_NAME]}"
+                }
+            }
+        }
     }
-} &&
+} || on_import_error --vars bal_vars
 
 bal_error=0
 bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
@@ -987,7 +999,9 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
     # progress bar
     bal_vars[PROGRESS_CURRENT]=$((bal_i +1))
     # do it ?
-    is_yes --var bal_vars[DRY_RUN] || {
+    is_yes --var bal_vars[DRY_RUN] && {
+        echo "INSEE ${bal_vars[MUNICIPALITY_CODE]}"
+    } || {
         bal_load --vars bal_vars &&
         bal_integration --vars bal_vars || on_import_error --vars bal_vars
     }
