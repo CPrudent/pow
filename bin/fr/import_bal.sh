@@ -430,7 +430,7 @@ bal_integration() {
                             FROM fr.${_vars_ref[TABLE_NAME]} tm
                             WHERE m.code = tm.code_commune
                         )
-                "
+                " \
                 --as_string _obsolete &&
             {
                 [ -z "$_obsolete" ] || {
@@ -523,7 +523,7 @@ bal_integration() {
                             WHERE
                                 s.code = s2->>'idVoie'
                         )
-                "
+                " \
                 --as_string _obsolete &&
             {
                 [ -z "$_obsolete" ] || {
@@ -667,7 +667,7 @@ bal_integration() {
                                         WHERE
                                             n.code = n2->>'id'
                                     )
-                            "
+                            " \
                             --as_string _obsolete &&
                         {
                             [ -z "$_obsolete" ] || {
