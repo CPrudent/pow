@@ -569,7 +569,6 @@ io_get_list_online_available() {
     get_tmp_file --tmpext html --tmpfile _details_file_ref &&
     # download available dates
     io_download_file \
-        --name $get_arg_name \
         --url "$_url" \
         --output_directory "$POW_DIR_TMP" \
         --output_file "$(basename $_details_file_ref)" \
@@ -609,7 +608,6 @@ io_get_list_online_available() {
 io_download_file() {
     bash_args \
         --args_p '
-            name:nommage du fichier à télécharger;
             url:URL à télécharger;
             output_directory:dossier de destination;
             output_file:fichier de destination;
@@ -638,7 +636,6 @@ io_download_file() {
         "$@" || return $ERROR_CODE
 
     local -A _download=(
-        [NAME]=
         # deal space in URL, https://stackoverflow.com/questions/497908/is-a-url-allowed-to-contain-a-space
         [URL]=${get_arg_url// /%20}
         [DIR]="$get_arg_output_directory"
@@ -653,7 +650,6 @@ io_download_file() {
     )
 
     [ -z "${_download[FILE]}" ] && _download[FILE]=$(basename "${get_arg_url}")
-    _download[NAME]=${get_arg_name:-"${_download[FILE]}"}
 
     local -a _files=(
         [0]="${_download[DIR]}/${_download[FILE]}"
@@ -740,7 +736,7 @@ io_download_file() {
         $_user \
         $_password \
         > "$_log_tmp_path" 2>&1 || {
-            archive_file "$_log_tmp_path"
+            archive_file "$_log_tmp_path" &&
             log_error "Erreur lors du téléchargement de ${_download[FILE]}, veuillez consulter $_log_archive_path"
             [ -f "$_tmp_path" ] && rm --force "$_tmp_path"
             # use of previous file if present

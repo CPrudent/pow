@@ -13,6 +13,7 @@
     # https://stackoverflow.com/questions/16908084/bash-script-to-calculate-time-elapsed
     # https://stackoverflow.com/questions/3953645/ternary-operator-in-bash
     # https://stackoverflow.com/questions/10586153/how-to-split-a-string-into-an-array-in-bash
+    # https://linuxhint.com/bash_arithmetic_operations/
 
     # TODO
     # assign PROGRESS_SIZE w/ max (municipalities, streets, housenumbers) of selection
@@ -62,13 +63,47 @@ bal_progress_bar() {
         ([ "${2:0:5}" = INSEE ] && [[ $5 -eq 1 ]]) && {
             printf '%-15s%b' "$2" $6
         } || {
-            printf '%-15s\t%*d/%*d (%d%%)%b' "$2" $3 $4 $3 $5 $((($4*100)/$5)) $6
+            printf '%-15s\t%*d/%*d (%3d%%)%b' "$2" $3 $4 $3 $5 $((($4*100)/$5)) $6
         }
         ;;
     END)
         printf "\t\t\t\t\t%s\n" "$2"
         ;;
     esac
+
+    return $SUCCESS_CODE
+}
+
+# get average time
+bal_average_time() {
+    bash_args \
+        --args_p '
+            avg:Temps moyen nécessaire pour télécharger une adresse (voie ou numéro)
+        ' \
+        --args_o '
+            avg
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local -n _avg_ref=$get_arg_avg
+
+    execute_query \
+        --name BAL_TIMEX \
+        --query "
+            SELECT AVG(timex) FROM (
+                SELECT
+                    (EXTRACT(SECONDS FROM h2.date_exec_end - h2.date_exec_begin) / NULLIF(h2.nb_rows_processed, 0)) timex
+                FROM
+                    io_history h1
+                        JOIN get_last_io(h1.name) h2 ON h1.id = h2.id
+                WHERE
+                    h1.name ~ '^BAL_[0-9]'
+                    AND
+                    h2.nb_rows_processed > 0
+            )
+        " \
+        --psql_arguments 'tuples-only:pset=format=unaligned' \
+        --return _avg_ref || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -94,7 +129,8 @@ bal_load() {
         # number of row(s)
         _query="
             SELECT COUNT(DISTINCT co_insee_commune)
-            FROM fr.laposte_address_area WHERE fl_active
+            FROM fr.laposte_address_area
+            WHERE fl_active
         "
         # no download if present summary is max 2 days old
         _overwrite_key=TIME
@@ -106,14 +142,16 @@ bal_load() {
         # number of row(s)
         _query="
             SELECT areas + streets + housenumbers_auth
-            FROM fr.bal_municipality WHERE code='${_vars_ref[MUNICIPALITY_CODE]}'"
+            FROM fr.bal_municipality
+            WHERE code = '${_vars_ref[MUNICIPALITY_CODE]}'"
         # table w/ 1 column named 'data' to import JSON stream
         _import_options="--import_options column_name=data"
         execute_query \
             --name BAL_IO_END \
             --query "
                 SELECT last_update
-                FROM fr.bal_municipality WHERE code='${_vars_ref[MUNICIPALITY_CODE]}'
+                FROM fr.bal_municipality
+                WHERE code='${_vars_ref[MUNICIPALITY_CODE]}'
             " \
             --psql_arguments 'tuples-only:pset=format=unaligned' \
             --return _vars_ref[IO_END] || return $ERROR_CODE
@@ -287,7 +325,7 @@ bal_load_addresses() {
 
     local -n _globals_ref=$get_arg_vars
     local -n _count_ref=$get_arg_count
-    local _name _query _info
+    local _name _query _info _j
     local -a _addresses
 
     _name="BAL_SELECT_${_globals_ref[MUNICIPALITY_CODE]}" &&
@@ -349,8 +387,8 @@ bal_load_addresses() {
                             '\r'
                     }
                 } &&
-                _globals_ref[URL_DATA]="lookup/${_addresses[$_j]}" &&
-                _globals_ref[FILE_NAME]="${_addresses[$_j]}.json" &&
+                _globals_ref[URL_DATA]=lookup/${_addresses[$_j]} &&
+                _globals_ref[FILE_NAME]=${_addresses[$_j]}.json &&
                 io_download_file \
                     --url "${_globals_ref[URL]}/${_globals_ref[URL_DATA]}" \
                     --overwrite_mode NEWER \
@@ -496,7 +534,7 @@ bal_integration() {
         "$@" || return $ERROR_CODE
 
     local -n _vars_ref=$get_arg_vars
-    local _list _j _streets=0 _housenumbers=0 _elapsed
+    local _list _streets=0 _housenumbers=0 _elapsed
 
     table_exists --schema_name fr --table_name "${_vars_ref[TABLE_NAME]}" &&
     {
@@ -987,6 +1025,7 @@ set_env --schema_name fr &&
     }
 } || on_import_error --vars bal_vars
 
+is_yes --var bal_vars[DRY_RUN] && bal_average_time --avg bal_average
 bal_error=0
 bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
 for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
@@ -1000,7 +1039,25 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
     bal_vars[PROGRESS_CURRENT]=$((bal_i +1))
     # do it ?
     is_yes --var bal_vars[DRY_RUN] && {
-        echo "INSEE ${bal_vars[MUNICIPALITY_CODE]}"
+        {
+            ([ -n "$bal_average" ] && [[ $bal_average -gt 0 ]]) && {
+                execute_query \
+                    --name BAL_${bal_vars[MUNICIPALITY_CODE]}_ROWS \
+                    --query "
+                        SELECT areas + streets + housenumbers_auth
+                        FROM fr.bal_municipality
+                        WHERE code = '${bal_vars[MUNICIPALITY_CODE]}'
+                    " \
+                    --psql_arguments 'tuples-only:pset=format=unaligned' \
+                    --return bal_rows &&
+                echo -n "INSEE ${bal_vars[MUNICIPALITY_CODE]}" &&
+                bal_run=$(echo "${bal_rows}*${bal_average}" | bc -l) &&
+                bal_progress_bar END "Estimation: $(date --date @${bal_run} --utc +%H:%M:%S)"
+            } || {
+                echo -n "INSEE ${bal_vars[MUNICIPALITY_CODE]}" &&
+                bal_progress_bar END "Pas d'estimation disponible"
+            }
+        } || true
     } || {
         bal_load --vars bal_vars &&
         bal_integration --vars bal_vars || on_import_error --vars bal_vars
