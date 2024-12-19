@@ -21,6 +21,7 @@
     # assign PROGRESS_SIZE w/ max (municipalities, streets, housenumbers) of selection
 
 on_break() {
+    log_error 'arrêt utilisateur' &&
     on_import_error
 }
 
@@ -170,7 +171,7 @@ bal_get_list() {
                 --array_sql "${_results[0]}" \
                 --count ${_results[1]} \
                 --array_bash _as_array_ref &&
-            ((_return++))
+            _return=$((_return +1))
         }
     } &&
     {
@@ -179,7 +180,7 @@ bal_get_list() {
 
             # TODO check count!
             [[ ${_results[1]} -gt 0 ]] && _as_string_ref="${_results[0]}" || _as_string_ref=''
-            ((_return++))
+            _return=$((_return +1))
         }
     } &&
     {
@@ -279,7 +280,7 @@ bal_load_addresses() {
                     _rc=$?
                     [[ $_rc -lt $POW_DOWNLOAD_ERROR ]] && {
                         # nothing todo (already downloaded and so imported) ?
-                        ([ "${bal_vars[FORCE]}" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
+                        ([ "${bal_vars[FORCE_LOAD]}" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
                             import_file \
                                 --file_path "$POW_DIR_IMPORT/${bal_vars[FILE_NAME]}" \
                                 --table_name ${bal_vars[TABLE_NAME]} \
@@ -313,9 +314,8 @@ bal_deal_obsolescence() {
         ' \
         "$@" || return $ERROR_CODE
 
-    local _label1 _label2 _query _info _obsolete _counters
+    local _label1=SELECT _label2 _query _info _obsolete _counters
 
-    _label1=SELECT
     case "$get_arg_level" in
     MUNICIPALITY)
         _label2=SUMMARY
@@ -336,7 +336,7 @@ bal_deal_obsolescence() {
         "
         ;;
     STREET)
-        _label2=${bal_vars[MUNICIPALITY_CODE]}_${get_arg_level}}S
+        _label2=${bal_vars[MUNICIPALITY_CODE]}_${get_arg_level}S
         _info=Voies
         _query="
             SELECT
@@ -358,7 +358,7 @@ bal_deal_obsolescence() {
         "
         ;;
     HOUSENUMBER)
-        _label2=${bal_vars[MUNICIPALITY_CODE]}_${get_arg_level}}S
+        _label2=${bal_vars[MUNICIPALITY_CODE]}_${get_arg_level}S
         _info=Numéros
         _query="
             SELECT
@@ -558,23 +558,7 @@ bal_integration() {
                     housenumbers_auth = EXCLUDED.housenumbers_auth,
                     last_update = EXCLUDED.last_update
             " &&
-        bal_deal_obsolescence --level MUNICIPALITY &&
-        execute_query \
-            --name "BAL_DROP_SUMMARY" \
-            --query "DROP TABLE fr.${bal_vars[TABLE_NAME]}" &&
-        {
-            (! is_yes --var bal_vars[PROGRESS]) || {
-                _elapsed=$(($(date '+%s') - ${bal_vars[PROGRESS_START]})) &&
-                bal_progress_bar END "$(date --date @${_elapsed} --utc +%H:%M:%S)"
-            }
-        } &&
-        io_history_end_ok \
-            --nrows_processed '(SELECT COUNT(*) FROM fr.bal_municipality)' \
-            --id ${bal_vars[IO_ID]} &&
-        vacuum \
-            --schema_name fr \
-            --table_name bal_municipality \
-            --mode ANALYZE
+        bal_deal_obsolescence --level MUNICIPALITY
         ;;
     STREET)
         # insert/update streets, and delete old ones (obsolete)
@@ -624,19 +608,7 @@ bal_integration() {
                 bal_vars[PROGRESS_START]=$(date '+%s')
             }
         } &&
-        bal_load --level STREET &&
-        execute_query \
-            --name BAL_DROP \
-            --query "DROP TABLE IF EXISTS fr.${bal_vars[TABLE_NAME]}" &&
-        # total can be less than waited (only streets w/ certified housenumbers)
-        io_history_end_ok \
-            --nrows_processed $((_streets+_housenumbers)) \
-            --infos ""'"'"STREETS"'"'" => $_streets, "'"'"HOUSENUMBERS_AUTH"'"'" => $_housenumbers" \
-            --id ${bal_vars[IO_ID]} &&
-        vacuum \
-            --schema_name fr \
-            --table_name bal_street,bal_housenumber \
-            --mode ANALYZE
+        bal_load --level STREET
         ;;
     HOUSENUMBER)
         # insert/update housenumbers, and delete old ones (obsolete)
@@ -728,6 +700,13 @@ bal_integration() {
             " \
             --psql_arguments 'tuples-only:pset=format=unaligned' \
             --return bal_vars[MUNICIPALITY_AREAS] &&
+        {
+            (! is_yes --var bal_vars[PROGRESS]) || {
+                _elapsed=$(($(date '+%s') - ${bal_vars[PROGRESS_START]})) &&
+                bal_progress_bar END "$(date --date @${_elapsed} --utc +%H:%M:%S)" &&
+                bal_vars[PROGRESS_START]=$(date '+%s')
+            }
+        }
         # need to request API on each housenumber, if many areas! to obtain old municipality
         {
             [[ ${bal_vars[MUNICIPALITY_AREAS]} -eq 0 ]] || {
@@ -757,7 +736,13 @@ bal_integration() {
                         hn.code = om.id
                         AND
                         om.old_municipality IS NOT NULL
-            "
+            " &&
+        {
+            (! is_yes --var bal_vars[PROGRESS]) || {
+                _elapsed=$(($(date '+%s') - ${bal_vars[PROGRESS_START]})) &&
+                bal_progress_bar END "$(date --date @${_elapsed} --utc +%H:%M:%S)"
+            }
+        }
         ;;
     esac || return $ERROR_CODE
 
@@ -778,10 +763,11 @@ bal_load() {
         ' \
         "$@" || return $ERROR_CODE
 
-    local _next_level _query _import_options='' _overwrite_key _overwrite_value _info _file
-    local _rc
+    local _level=${get_arg_level} _next_level
+    local _query _import_options='' _overwrite_key _overwrite_value _info _file
+    local _rc _vacuum_tables
 
-    case "${get_arg_level}" in
+    case "${_level}" in
     SUMMARY)
         _next_level=MUNICIPALITY
         bal_vars[IO_NAME]=BAL_SUMMARY
@@ -823,7 +809,7 @@ bal_load() {
         ;;
     esac
 
-    case "${get_arg_level}" in
+    case "${_level}" in
     SUMMARY|MUNICIPALITY)
         bal_vars[TABLE_NAME]=tmp_${bal_vars[IO_NAME],,}
         io_todo_import \
@@ -854,7 +840,7 @@ bal_load() {
             _file=$(basename "${bal_vars[URL]}/${bal_vars[URL_DATA]}")
             bal_vars[FILE_NAME]="$_file" &&
             {
-                [ "${bal_vars[MUNICIPALITY_CODE]}" = ALL ] || {
+                [ "${_level}" = SUMMARY ] || {
                     bal_vars[FILE_NAME]+=.json &&
                     execute_query \
                         --name BAL_CREATE \
@@ -900,17 +886,49 @@ bal_load() {
                 --output_directory "$POW_DIR_IMPORT" \
                 --output_file "${bal_vars[FILE_NAME]}"
             _rc=$?
+#echo "download ${bal_vars[FILE_NAME]} (rc=$_rc)"
             [[ $_rc -lt $POW_DOWNLOAD_ERROR ]] && {
                 # nothing todo (already downloaded and so imported) ?
-                ([ "${bal_vars[FORCE]}" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
+                ([ "${bal_vars[FORCE_LOAD]}" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
+#echo "chargement ${bal_vars[FILE_NAME]}" &&
                     import_file \
                         --file_path "$POW_DIR_IMPORT/${bal_vars[FILE_NAME]}" \
                         --table_name ${bal_vars[TABLE_NAME]} \
                         --load_mode OVERWRITE_DATA \
                         $_import_options &&
+#echo "intégration $_next_level" &&
                     bal_integration --level $_next_level
                 }
-            }
+            } &&
+            execute_query \
+                --name BAL_DROP \
+                --query "DROP TABLE IF EXISTS fr.${bal_vars[TABLE_NAME]}" &&
+            case "${_level}" in
+            SUMMARY)
+                {
+                    (! is_yes --var bal_vars[PROGRESS]) || {
+                        _elapsed=$(($(date '+%s') - ${bal_vars[PROGRESS_START]})) &&
+                        bal_progress_bar END "$(date --date @${_elapsed} --utc +%H:%M:%S)"
+                    }
+                } &&
+                io_history_end_ok \
+                    --nrows_processed '(SELECT COUNT(*) FROM fr.bal_municipality)' \
+                    --id ${bal_vars[IO_ID]} &&
+                _vacuum_tables=bal_municipality
+                ;;
+            MUNICIPALITY)
+                # total can be less than waited (only streets w/ certified housenumbers)
+                io_history_end_ok \
+                    --nrows_processed $((bal_vars[STREETS]+bal_vars[HOUSENUMBERS])) \
+                    --infos ""'"'"STREETS"'"'" => ${bal_vars[STREETS]}, "'"'"HOUSENUMBERS_AUTH"'"'" => ${bal_vars[HOUSENUMBERS]}" \
+                    --id ${bal_vars[IO_ID]} &&
+                _vacuum_tables=bal_street,bal_housenumber
+                ;;
+            esac &&
+            vacuum \
+                --schema_name fr \
+                --table_name "$_vacuum_tables" \
+                --mode ANALYZE
         }
         ;;
     STREET)
@@ -918,28 +936,15 @@ bal_load() {
         bal_load_addresses --level STREET &&
         {
             # at least one street w/ auth housenumbers ?
-            [[ $_streets -eq 0 ]] || {
-                bal_integration --level HOUSENUMBER &&
-                {
-                    (! is_yes --var bal_vars[PROGRESS]) || {
-                        _elapsed=$(($(date '+%s') - ${bal_vars[PROGRESS_START]})) &&
-                        bal_progress_bar END "$(date --date @${_elapsed} --utc +%H:%M:%S)" &&
-                        bal_vars[PROGRESS_START]=$(date '+%s')
-                    }
-                }
+            [[ ${bal_vars[STREETS]} -eq 0 ]] || {
+                bal_integration --level HOUSENUMBER
             }
         }
         ;;
     HOUSENUMBER)
         # select housenumbers
         bal_load_addresses --level HOUSENUMBER &&
-        bal_integration --level AREA  &&
-        {
-            (! is_yes --var bal_vars[PROGRESS]) || {
-                _elapsed=$(($(date '+%s') - ${bal_vars[PROGRESS_START]})) &&
-                bal_progress_bar END "$(date --date @${_elapsed} --utc +%H:%M:%S)"
-            }
-        }
+        bal_integration --level AREA
         ;;
     esac || return $ERROR_CODE
 
@@ -954,6 +959,7 @@ bash_args \
         limit:Limiter à n communes (0 sans limite);
         stop_time:Heure d arrêt du traitement (format: hh:mm:ss);
         force:Forcer le traitement même si celui-ci a déjà été fait;
+        force_load:Forcer le chargement même si celui-ci a déjà été fait;
         dry_run:Simuler le traitement;
         progress:Afficher une jauge de progression;
         clean:Effectuer la purge des fichiers temporaires;
@@ -966,6 +972,7 @@ bash_args \
         select_criteria:REVISION|POPULATION|STREETS;
         select_order:ASC|DESC;
         force:yes|no;
+        force_load:yes|no;
         dry_run:yes|no;
         progress:yes|no;
         clean:yes|no;
@@ -975,6 +982,7 @@ bash_args \
         select_criteria:REVISION;
         select_order:DESC;
         force:no;
+        force_load:no;
         dry_run:no;
         limit:30;
         stop_time:0;
@@ -1000,10 +1008,11 @@ declare -A bal_vars=(
     [SELECT_CRITERIA]=$get_arg_select_criteria
     [SELECT_ORDER]=$get_arg_select_order
     [LIMIT]=$get_arg_limit
-    [STREETS]=
-    [HOUSENUMBERS]=
+    [STREETS]=0
+    [HOUSENUMBERS]=0
     [STOP_TIME]=$get_arg_stop_time
     [FORCE]=$get_arg_force
+    [FORCE_LOAD]=$get_arg_force_load
     [DRY_RUN]=$get_arg_dry_run
     [CLEAN]=$get_arg_clean
     [PROGRESS]=$get_arg_progress
@@ -1024,7 +1033,6 @@ set_env --schema_name fr &&
         bal_codes[0]=${bal_vars[MUNICIPALITY_CODE]}
     } || {
         bal_load --level SUMMARY &&
-        bal_integration --level SUMMARY &&
         bal_list_municipalities --list bal_codes &&
         {
             (! is_yes --var bal_vars[CLEAN]) || {
@@ -1074,8 +1082,7 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
             }
         } || true
     } || {
-        bal_load --level MUNICIPALITY &&
-        bal_integration --level MUNICIPALITY || on_import_error
+        bal_load --level MUNICIPALITY || on_import_error
     }
     # purge ?
     is_yes --var bal_vars[CLEAN] && rm --force $POW_DIR_IMPORT/${bal_vars[MUNICIPALITY_CODE]}*.json
