@@ -55,6 +55,7 @@ trap on_break SIGINT
     # $6= end of line
 # $1= end
     # $2= elapsed time
+    # $3= more information
 bal_progress_bar() {
     case "${1^^}" in
     BEGIN)
@@ -67,7 +68,7 @@ bal_progress_bar() {
         }
         ;;
     END)
-        printf "\t\t\t\t\t%s\n" "$2"
+        printf "\t\t\t\t\t%s\t\t%s\n" "$2" "$3"
         ;;
     esac
 
@@ -92,7 +93,7 @@ bal_average_time() {
         --query "
             SELECT AVG(timex) FROM (
                 SELECT
-                    (EXTRACT(SECONDS FROM h2.date_exec_end - h2.date_exec_begin) / NULLIF(h2.nb_rows_processed, 0)) timex
+                    (EXTRACT(EPOCH FROM h2.date_exec_end) - EXTRACT(EPOCH FROM h2.date_exec_begin)) / NULLIF(h2.nb_rows_processed, 0) timex
                 FROM
                     io_history h1
                         JOIN get_last_io(h1.name) h2 ON h1.id = h2.id
@@ -1025,7 +1026,11 @@ set_env --schema_name fr &&
     }
 } || on_import_error --vars bal_vars
 
-is_yes --var bal_vars[DRY_RUN] && bal_average_time --avg bal_average
+is_yes --var bal_vars[DRY_RUN] && {
+    bal_average_time --avg bal_average
+    echo -n Communes
+    bal_progress_bar END Estimation Adresses
+}
 bal_error=0
 bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
 for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
@@ -1040,7 +1045,7 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
     # do it ?
     is_yes --var bal_vars[DRY_RUN] && {
         {
-            ([ -n "$bal_average" ] && [[ $bal_average -gt 0 ]]) && {
+            ([ -n "$bal_average" ] && [[ $bal_average > 0 ]]) && {
                 execute_query \
                     --name BAL_${bal_vars[MUNICIPALITY_CODE]}_ROWS \
                     --query "
@@ -1052,10 +1057,10 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
                     --return bal_rows &&
                 echo -n "INSEE ${bal_vars[MUNICIPALITY_CODE]}" &&
                 bal_run=$(echo "${bal_rows}*${bal_average}" | bc -l) &&
-                bal_progress_bar END "Estimation: $(date --date @${bal_run} --utc +%H:%M:%S)"
+                bal_progress_bar END "$(date --date @${bal_run} --utc +%H:%M:%S)" "#${bal_rows}"
             } || {
                 echo -n "INSEE ${bal_vars[MUNICIPALITY_CODE]}" &&
-                bal_progress_bar END "Pas d'estimation disponible"
+                bal_progress_bar END 'Non disponible'
             }
         } || true
     } || {
