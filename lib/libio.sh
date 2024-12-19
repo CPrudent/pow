@@ -605,6 +605,13 @@ io_get_list_online_available() {
     return $SUCCESS_CODE
 }
 
+# download ressource (wget)
+POW_DOWNLOAD_OK=0                       # no problems
+POW_DOWNLOAD_ALREADY_AVAILABLE=1        # file already available
+POW_DOWNLOAD_BUT_AVAILABLE=2            # error (download), but present file can be used
+POW_DOWNLOAD_ERROR=3                    # error (download)
+POW_DOWNLOAD_ERROR_CONDITION=4          # error (missing condition)
+POW_DOWNLOAD_ERROR_PROVISION=5          # error (provision)
 io_download_file() {
     bash_args \
         --args_p '
@@ -629,7 +636,7 @@ io_download_file() {
             verbose:yes|no
         ' \
         --args_d '
-            overwrite_mode:no;
+            overwrite_mode:yes;
             overwrite_key:DATE;
             verbose:no
         ' \
@@ -668,7 +675,7 @@ io_download_file() {
         [ "${_download[OVERWRITE_MODE]}" = NEWER ] &&
         [ -z "${_download[OVERWRITE_VALUE]}" ] && {
             log_error 'valeur test de la condition non renseignée (option --overwrite_value)'
-            return $ERROR_CODE
+            return $POW_DOWNLOAD_ERROR_CONDITION
         }
 
         local _i
@@ -700,17 +707,21 @@ io_download_file() {
         [ "${_download[VERBOSE]}" = yes ] && declare -p _found
 
         # found localy (1), common (2)
+        local _info
         case $_found in
         1)
-            log_info "Téléchargement de ${_download[FILE]} inutile, car déjà présent"
-            return $SUCCESS_CODE
+            _info="Téléchargement de ${_download[FILE]} inutile, car déjà présent"
             ;;
         2)
             cp "${_files[1]}" "${_download[DIR]}"
-            log_info "Téléchargement de ${_download[FILE]} inutile, car déjà présent dans le dépôt, copié dans ${_download[DIR]}"
-            return $SUCCESS_CODE
+            _info="Téléchargement de ${_download[FILE]} inutile, car déjà présent dans le dépôt, copié dans ${_download[DIR]}"
             ;;
         esac
+
+        [[ $_found -gt 0 ]] && {
+            log_info "$_info"
+            return $POW_DOWNLOAD_ALREADY_AVAILABLE
+        }
     }
 
     log_info "Téléchargement de ${_download[FILE]}"
@@ -742,10 +753,10 @@ io_download_file() {
             # use of previous file if present
             [ -f "${_files[0]}" ] && {
                 log_info "Utilisation du fichier déjà présent pour contourner l'erreur de téléchargement"
-                return $SUCCESS_CODE
+                return $POW_DOWNLOAD_BUT_AVAILABLE
             }
 
-            return $ERROR_CODE
+            return $POW_DOWNLOAD_ERROR
         }
 
     # not available into COMMON
@@ -757,9 +768,9 @@ io_download_file() {
     # result
     mv "$_tmp_path" "${_files[0]}" &&
     archive_file "$_log_tmp_path" &&
-    log_info "Téléchargement avec succès de ${_download[FILE]}" || return $ERROR_CODE
+    log_info "Téléchargement avec succès de ${_download[FILE]}" || return $POW_DOWNLOAD_ERROR_PROVISION
 
-    return $SUCCESS_CODE
+    return $POW_DOWNLOAD_OK
 }
 
     #

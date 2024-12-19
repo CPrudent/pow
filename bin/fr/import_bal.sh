@@ -121,7 +121,7 @@ bal_load() {
         "$@" || return $ERROR_CODE
 
     local -n _vars_ref=$get_arg_vars
-    local _file _query _import_options='' _overwrite_key _overwrite_value _info
+    local _file _query _import_options='' _overwrite_key _overwrite_value _info _rc
 
     case "${_vars_ref[MUNICIPALITY_CODE]}" in
     ALL)
@@ -228,19 +228,27 @@ bal_load() {
         --date_end "${_vars_ref[IO_END]}" \
         --nrows_todo ${_vars_ref[IO_ROWS]:-1} \
         --id _vars_ref[IO_ID] &&
-    io_download_file \
-        --url "${_vars_ref[URL]}/${_vars_ref[URL_DATA]}" \
-        --overwrite_mode NEWER \
-        --overwrite_key $_overwrite_key \
-        --overwrite_value $_overwrite_value \
-        --common_subdir bal \
-        --output_directory "$POW_DIR_IMPORT" \
-        --output_file "${_vars_ref[FILE_NAME]}" &&
-    import_file \
-        --file_path "$POW_DIR_IMPORT/${_vars_ref[FILE_NAME]}" \
-        --table_name ${_vars_ref[TABLE_NAME]} \
-        --load_mode OVERWRITE_DATA \
-        $_import_options || return $ERROR_CODE
+    {
+        io_download_file \
+            --url "${_vars_ref[URL]}/${_vars_ref[URL_DATA]}" \
+            --overwrite_mode NEWER \
+            --overwrite_key $_overwrite_key \
+            --overwrite_value $_overwrite_value \
+            --common_subdir bal \
+            --output_directory "$POW_DIR_IMPORT" \
+            --output_file "${_vars_ref[FILE_NAME]}"
+        _rc=$?
+        [[ $_rc -lt $POW_DOWNLOAD_ERROR ]] && {
+            # nothing todo (already downloaded and so imported) ?
+            ([ "${_vars_ref[FORCE]}" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
+                import_file \
+                    --file_path "$POW_DIR_IMPORT/${_vars_ref[FILE_NAME]}" \
+                    --table_name ${_vars_ref[TABLE_NAME]} \
+                    --load_mode OVERWRITE_DATA \
+                    $_import_options
+            }
+        }
+    } || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -326,7 +334,7 @@ bal_load_addresses() {
 
     local -n _globals_ref=$get_arg_vars
     local -n _count_ref=$get_arg_count
-    local _name _query _info _j
+    local _name _query _info _j _rc
     local -a _addresses
 
     _name="BAL_SELECT_${_globals_ref[MUNICIPALITY_CODE]}" &&
@@ -390,19 +398,27 @@ bal_load_addresses() {
                 } &&
                 _globals_ref[URL_DATA]=lookup/${_addresses[$_j]} &&
                 _globals_ref[FILE_NAME]=${_addresses[$_j]}.json &&
-                io_download_file \
-                    --url "${_globals_ref[URL]}/${_globals_ref[URL_DATA]}" \
-                    --overwrite_mode NEWER \
-                    --overwrite_key DATE \
-                    --overwrite_value ${_globals_ref[IO_END_EPOCH]} \
-                    --common_subdir bal \
-                    --output_directory "$POW_DIR_IMPORT" \
-                    --output_file "${_globals_ref[FILE_NAME]}" &&
-                import_file \
-                    --file_path "$POW_DIR_IMPORT/${_globals_ref[FILE_NAME]}" \
-                    --table_name ${_globals_ref[TABLE_NAME]} \
-                    --import_options column_name=data \
-                    --load_mode APPEND
+                {
+                    io_download_file \
+                        --url "${_globals_ref[URL]}/${_globals_ref[URL_DATA]}" \
+                        --overwrite_mode NEWER \
+                        --overwrite_key DATE \
+                        --overwrite_value ${_globals_ref[IO_END_EPOCH]} \
+                        --common_subdir bal \
+                        --output_directory "$POW_DIR_IMPORT" \
+                        --output_file "${_globals_ref[FILE_NAME]}"
+                    _rc=$?
+                    [[ $_rc -lt $POW_DOWNLOAD_ERROR ]] && {
+                        # nothing todo (already downloaded and so imported) ?
+                        ([ "${_globals_ref[FORCE]}" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
+                            import_file \
+                                --file_path "$POW_DIR_IMPORT/${_globals_ref[FILE_NAME]}" \
+                                --table_name ${_globals_ref[TABLE_NAME]} \
+                                --import_options column_name=data \
+                                --load_mode APPEND
+                        }
+                    }
+                }
             done
         } || {
             (! is_yes --var _globals_ref[PROGRESS]) || {
