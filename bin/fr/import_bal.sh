@@ -479,7 +479,7 @@ bal_list_municipalities() {
                     SELECT 1
                     FROM
                         fr.bal_street s
-                            JOIN fr.bal_housenumber n ON n.id = s.id_street
+                            JOIN fr.bal_housenumber n ON n.id_street = s.id
                     WHERE
                         s.id_municipality = m.id
                         AND
@@ -1118,10 +1118,10 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
                             COUNT(1)
                         FROM
                             fr.bal_housenumber n
-                                JOIN fr.bal_street s ON n.id = s.id_street
+                                JOIN fr.bal_street s ON n.id_street = s.id
                                 JOIN fr.bal_municipality m ON s.id_municipality = m.id
                         WHERE
-                            POSITION(' ' IN n.code) > 0)
+                            POSITION(' ' IN n.code) > 0
                             AND
                             m.code = '${bal_vars[MUNICIPALITY_CODE]}'
                     "
