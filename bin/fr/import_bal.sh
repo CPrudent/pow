@@ -67,32 +67,48 @@ bal_progress_bar() {
 }
 
 # is code OK ?
-valid_municipality_code() {
+bal_check_municipality() {
     bash_args \
         --args_p '
-            municipality:Code Commune
+            code:Code Commune
         ' \
         --args_o '
-            municipality
+            code
         ' \
         "$@" || return $ERROR_CODE
 
     local _valid
 
     execute_query \
-        --name "BAL_MUNICIPALITY_${get_arg_municipality}" \
+        --name "BAL_MUNICIPALITY_${get_arg_code}" \
         --query "
             SELECT EXISTS(
                 SELECT 1 FROM fr.laposte_address_area
-                WHERE co_insee_commune = COALESCE('${get_arg_municipality}', '99999') AND fl_active
+                WHERE co_insee_commune = COALESCE('${get_arg_code}', '99999') AND fl_active
             )" \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _valid || return $ERROR_CODE
 
     [ "$_valid" = f ] && {
-        log_error "code Commune '${get_arg_municipality}' non valide!"
+        log_error "code Commune '${get_arg_code}' non valide!"
         return $ERROR_CODE
     }
+
+    return $SUCCESS_CODE
+}
+
+# get last update
+bal_last_update_municipality() {
+    execute_query \
+        --name BAL_IO_END \
+        --query "
+            SELECT last_update
+            FROM fr.bal_municipality
+            WHERE code = '${bal_vars[MUNICIPALITY_CODE]}'
+        " \
+        --psql_arguments 'tuples-only:pset=format=unaligned' \
+        --return bal_vars[IO_END] &&
+    bal_vars[IO_END_EPOCH]=$(date '+%s' --date "${bal_vars[IO_END]}") || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -127,6 +143,42 @@ bal_average_time() {
         " \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _avg_ref || return $ERROR_CODE
+
+    return $SUCCESS_CODE
+}
+
+# deal w/ temporary import table
+bal_import_table() {
+    bash_args \
+        --args_p '
+            command:Action SQL à faire
+        ' \
+        --args_o '
+            command
+        ' \
+        --args_v '
+            command:CREATE|DROP
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local _query
+
+    {
+        [ -n "${bal_vars[IO_NAME]}" ] \
+            && bal_vars[TABLE_NAME]=tmp_${bal_vars[IO_NAME],,} \
+            || bal_vars[TABLE_NAME]=tmp_bal_${bal_vars[MUNICIPALITY_CODE]}
+    } &&
+    case "$get_arg_command" in
+    CREATE)
+        _query="CREATE TABLE IF NOT EXISTS fr.${bal_vars[TABLE_NAME]} (data JSON)"
+        ;;
+    DROP)
+        _query="DROP TABLE IF EXISTS fr.${bal_vars[TABLE_NAME]}"
+        ;;
+    esac &&
+    execute_query \
+        --name BAL_${get_arg_command} \
+        --query "$_query" || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -206,7 +258,7 @@ bal_load_addresses() {
         ' \
         "$@" || return $ERROR_CODE
 
-    local _name _query _info _j _rc _field=${get_arg_level}S
+    local _name _query _info _j _rc _field=${get_arg_level}S _code _len
     local -a _addresses
 
     _name="BAL_SELECT_${bal_vars[MUNICIPALITY_CODE]}_${_field}" &&
@@ -278,8 +330,16 @@ bal_load_addresses() {
                             '\r'
                     }
                 } &&
-                bal_vars[URL_DATA]=lookup/${_addresses[$_j]} &&
-                bal_vars[FILE_NAME]=${_addresses[$_j]}.json &&
+                # code between quotes (w/ space) ?
+                {
+                    _code=
+                    [[ ${_addresses[$_j]:0:1} != '"' ]] || {
+                        _len=$((${#_addresses[$_j]} -2)) &&
+                        _code=${_addresses[$_j]:1:$_len}
+                    }
+                } &&
+                bal_vars[URL_DATA]=lookup/${_code:-${_addresses[$_j]}} &&
+                bal_vars[FILE_NAME]=${_code:-${_addresses[$_j]}}.json &&
                 {
                     io_download_file \
                         --url "${bal_vars[URL]}/${bal_vars[URL_DATA]}" \
@@ -288,7 +348,8 @@ bal_load_addresses() {
                         --overwrite_value ${bal_vars[IO_END_EPOCH]} \
                         --common_subdir bal \
                         --output_directory "$POW_DIR_IMPORT" \
-                        --output_file "${bal_vars[FILE_NAME]}"
+                        --output_file "${bal_vars[FILE_NAME]}" \
+                        --verbose ${bal_vars[VERBOSE]}
                     _rc=$?
                     [[ $_rc -lt $POW_DOWNLOAD_ERROR ]] && {
                         # nothing todo (already downloaded and so imported) ?
@@ -835,25 +896,15 @@ bal_load() {
             WHERE code = '${bal_vars[MUNICIPALITY_CODE]}'"
         # table w/ 1 column named 'data' to import JSON stream
         _import_options="--import_options column_name=data"
-        execute_query \
-            --name BAL_IO_END \
-            --query "
-                SELECT last_update
-                FROM fr.bal_municipality
-                WHERE code='${bal_vars[MUNICIPALITY_CODE]}'
-            " \
-            --psql_arguments 'tuples-only:pset=format=unaligned' \
-            --return bal_vars[IO_END] || return $ERROR_CODE
+        bal_last_update_municipality || return $ERROR_CODE
         # no download if JSON file newer than municipality's last_update
         _overwrite_key=DATE
-        bal_vars[IO_END_EPOCH]=$(date '+%s' --date "${bal_vars[IO_END]}")
         _overwrite_value=${bal_vars[IO_END_EPOCH]}
         ;;
     esac
 
     case "${_level}" in
     SUMMARY|MUNICIPALITY)
-        bal_vars[TABLE_NAME]=tmp_${bal_vars[IO_NAME],,}
         io_todo_import \
             --force ${bal_vars[FORCE]} \
             --io ${bal_vars[IO_NAME]} \
@@ -884,11 +935,7 @@ bal_load() {
             {
                 [ "${_level}" = SUMMARY ] || {
                     bal_vars[FILE_NAME]+=.json &&
-                    execute_query \
-                        --name BAL_CREATE \
-                        --query "
-                            CREATE TABLE IF NOT EXISTS fr.${bal_vars[TABLE_NAME]} (data JSON)
-                        " &&
+                    bal_import_table --command CREATE &&
                     execute_query \
                         --name BAL_IO_BEGIN \
                         --query "SELECT (get_last_io('${bal_vars[IO_NAME]}')).date_data_end" \
@@ -939,9 +986,7 @@ bal_load() {
                     bal_integration --level $_next_level
                 }
             } &&
-            execute_query \
-                --name BAL_DROP \
-                --query "DROP TABLE IF EXISTS fr.${bal_vars[TABLE_NAME]}" &&
+            bal_import_table --command DROP &&
             case "${_level}" in
             SUMMARY)
                 {
@@ -984,6 +1029,35 @@ bal_load() {
         # select housenumbers
         bal_load_addresses --level HOUSENUMBER &&
         bal_integration --level AREA
+        ;;
+    esac || return $ERROR_CODE
+
+    return $SUCCESS_CODE
+}
+
+# fix problems
+bal_fix() {
+    case "${bal_vars[FIX]}" in
+    # some housenumber's codes have space!
+    # for these, list returned by PostgreSQL (bal_get_list) contains code between quotes
+    # these quotes are now deleted, and don't worry download...
+    SPACE_IN_CODE)
+        {
+            (! is_yes --var bal_vars[PROGRESS]) || {
+                bal_vars[PROGRESS_START]=$(date '+%s') &&
+                bal_progress_bar \
+                    BEGIN \
+                    "INSEE ${bal_vars[MUNICIPALITY_CODE]}" \
+                    ${bal_vars[PROGRESS_SIZE]} \
+                    ${bal_vars[PROGRESS_CURRENT]} \
+                    ${bal_vars[PROGRESS_TOTAL]} \
+                    '\r'
+            }
+        } &&
+        bal_import_table --command CREATE &&
+        bal_last_update_municipality &&
+        bal_load --level HOUSENUMBER &&
+        bal_import_table --command DROP
         ;;
     esac || return $ERROR_CODE
 
@@ -1099,8 +1173,8 @@ is_yes --var bal_vars[DRY_RUN] && {
 bal_error=0
 bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
 for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
-    # check municipality
-    valid_municipality_code --municipality "${bal_codes[$bal_i]}" || {
+    # check municipality code
+    bal_check_municipality --code "${bal_codes[$bal_i]}" || {
         bal_error=1
         continue
     }
@@ -1148,15 +1222,11 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
             }
         } || true
     } || {
-        case "${bal_vars[FIX]}" in
-        SPACE_IN_CODE)
-            (! is_yes --var bal_vars[PROGRESS]) || bal_vars[PROGRESS_START]=$(date '+%s')
-            bal_load --level HOUSENUMBER
-            ;;
-        *)
-            bal_load --level MUNICIPALITY
-            ;;
-        esac || on_import_error
+        {
+            [ -n "${bal_vars[FIX]}" ] \
+                && bal_fix \
+                || bal_load --level MUNICIPALITY
+        } || on_import_error
     }
     # purge ?
     is_yes --var bal_vars[CLEAN] && rm --force $POW_DIR_IMPORT/${bal_vars[MUNICIPALITY_CODE]}*.json
