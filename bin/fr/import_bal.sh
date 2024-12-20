@@ -229,11 +229,11 @@ bal_load_addresses() {
         _info=numéros
         _query="
             SELECT
-                ARRAY_AGG(hn.code),
+                ARRAY_AGG(n.code),
                 COUNT(1)
             FROM
-                fr.bal_housenumber hn
-                    JOIN fr.bal_street s ON hn.id_street = s.id
+                fr.bal_housenumber n
+                    JOIN fr.bal_street s ON n.id_street = s.id
                     JOIN fr.bal_municipality m ON s.id_municipality = m.id
             WHERE
         "
@@ -242,6 +242,18 @@ bal_load_addresses() {
     _query+="
         m.code = '${bal_vars[MUNICIPALITY_CODE]}'
     " &&
+    {
+        [ -z "${bal_vars[FIX]}" ] || {
+            case "${bal_vars[FIX]}" in
+            SPACE_IN_CODE)
+                _query+="
+                    AND
+                    POSITION(' ' IN n.code) > 0
+                "
+                ;;
+            esac
+        }
+    } &&
     # select streets|housenumbers w/ count (to check conversion)
     bal_get_list \
         --name "$_name" \
@@ -419,7 +431,7 @@ bal_list_municipalities() {
     local -n _list_ref=$get_arg_list
     local _query _list
 
-    case "${bal_vars[SELECT_CRITERIA]}" in
+    case "${bal_vars[FIX]:-${bal_vars[SELECT_CRITERIA]}}" in
     POPULATION)
         _query="
             SELECT
@@ -455,13 +467,33 @@ bal_list_municipalities() {
                 fr.bal_municipality
         "
         ;;
+    SPACE_IN_CODE)
+        _query="
+            SELECT
+                m.code municipality,
+                m.code criteria
+            FROM
+                fr.bal_municipality m
+            WHERE
+                EXISTS(
+                    SELECT 1
+                    FROM
+                        fr.bal_street s
+                            JOIN fr.bal_housenumber n ON n.id = s.id_street
+                    WHERE
+                        s.id_municipality = m.id
+                        AND
+                        POSITION(' ' IN n.code) > 0
+                )
+        "
+        ;;
     esac &&
     _query="
         WITH
         history AS (
             SELECT
                 SUBSTR(io.name, 5) municipality,
-                MAX(l.date_data_end) date_date_end
+                MAX(l.date_data_end) date_data_end
             FROM
                 io_history io
                     CROSS JOIN get_last_io(io.name) l
@@ -481,9 +513,19 @@ bal_list_municipalities() {
                     JOIN fr.bal_municipality m ON c.municipality = m.code
                     LEFT OUTER JOIN history h ON h.municipality = c.municipality
             WHERE
-                h.date_date_end IS NULL
+    "
+    [ -n "${bal_vars[FIX]}" ] && {
+        _query+="
+                h.date_data_end IS NOT NULL
+        "
+    } || {
+        _query+="
+                h.date_data_end IS NULL
                 OR
-                m.last_update > h.date_date_end
+                m.last_update > h.date_data_end
+        "
+    }
+    _query+="
             ORDER BY
                 c.criteria ${bal_vars[SELECT_ORDER]}
     " &&
@@ -886,17 +928,14 @@ bal_load() {
                 --output_directory "$POW_DIR_IMPORT" \
                 --output_file "${bal_vars[FILE_NAME]}"
             _rc=$?
-#echo "download ${bal_vars[FILE_NAME]} (rc=$_rc)"
             [[ $_rc -lt $POW_DOWNLOAD_ERROR ]] && {
                 # nothing todo (already downloaded and so imported) ?
                 ([ "${bal_vars[FORCE_LOAD]}" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
-#echo "chargement ${bal_vars[FILE_NAME]}" &&
                     import_file \
                         --file_path "$POW_DIR_IMPORT/${bal_vars[FILE_NAME]}" \
                         --table_name ${bal_vars[TABLE_NAME]} \
                         --load_mode OVERWRITE_DATA \
                         $_import_options &&
-#echo "intégration $_next_level" &&
                     bal_integration --level $_next_level
                 }
             } &&
@@ -960,6 +999,7 @@ bash_args \
         stop_time:Heure d arrêt du traitement (format: hh:mm:ss);
         force:Forcer le traitement même si celui-ci a déjà été fait;
         force_load:Forcer le chargement même si celui-ci a déjà été fait;
+        fix:Corriger une erreur;
         dry_run:Simuler le traitement;
         progress:Afficher une jauge de progression;
         clean:Effectuer la purge des fichiers temporaires;
@@ -973,6 +1013,7 @@ bash_args \
         select_order:ASC|DESC;
         force:yes|no;
         force_load:yes|no;
+        fix:NONE|SPACE_IN_CODE;
         dry_run:yes|no;
         progress:yes|no;
         clean:yes|no;
@@ -983,6 +1024,7 @@ bash_args \
         select_order:DESC;
         force:no;
         force_load:no;
+        fix:NONE;
         dry_run:no;
         limit:30;
         stop_time:0;
@@ -1013,6 +1055,7 @@ declare -A bal_vars=(
     [STOP_TIME]=$get_arg_stop_time
     [FORCE]=$get_arg_force
     [FORCE_LOAD]=$get_arg_force_load
+    [FIX]=$get_arg_fix
     [DRY_RUN]=$get_arg_dry_run
     [CLEAN]=$get_arg_clean
     [PROGRESS]=$get_arg_progress
@@ -1023,6 +1066,7 @@ declare -A bal_vars=(
     [VERBOSE]=$get_arg_verbose
 )
 declare -a bal_codes=()
+[ "${bal_vars[FIX]}" = NONE ] && bal_vars[FIX]=
 
 set_env --schema_name fr &&
 {
@@ -1032,7 +1076,10 @@ set_env --schema_name fr &&
     [ "${bal_vars[MUNICIPALITY_CODE]}" != ALL ] && {
         bal_codes[0]=${bal_vars[MUNICIPALITY_CODE]}
     } || {
-        bal_load --level SUMMARY &&
+        {
+            # running fix ? (don't need to refresh SUMMARY)
+            [ -n "${bal_vars[FIX]}" ] || bal_load --level SUMMARY
+        } &&
         bal_list_municipalities --list bal_codes &&
         {
             (! is_yes --var bal_vars[CLEAN]) || {
@@ -1064,13 +1111,32 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
     is_yes --var bal_vars[DRY_RUN] && {
         {
             ([ -n "$bal_average" ] && [[ $bal_average > 0 ]]) && {
-                execute_query \
-                    --name BAL_${bal_vars[MUNICIPALITY_CODE]}_ROWS \
-                    --query "
+                case "${bal_vars[FIX]}" in
+                SPACE_IN_CODE)
+                    bal_query="
+                        SELECT
+                            COUNT(1)
+                        FROM
+                            fr.bal_housenumber n
+                                JOIN fr.bal_street s ON n.id = s.id_street
+                                JOIN fr.bal_municipality m ON s.id_municipality = m.id
+                        WHERE
+                            POSITION(' ' IN n.code) > 0)
+                            AND
+                            m.code = '${bal_vars[MUNICIPALITY_CODE]}'
+                    "
+                    ;;
+                *)
+                    bal_query="
                         SELECT areas + streets + housenumbers_auth
                         FROM fr.bal_municipality
                         WHERE code = '${bal_vars[MUNICIPALITY_CODE]}'
-                    " \
+                    "
+                    ;;
+                esac
+                execute_query \
+                    --name BAL_${bal_vars[MUNICIPALITY_CODE]}_ROWS \
+                    --query "$bal_query" \
                     --psql_arguments 'tuples-only:pset=format=unaligned' \
                     --return bal_rows &&
                 echo -n "INSEE ${bal_vars[MUNICIPALITY_CODE]}" &&
@@ -1082,7 +1148,15 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
             }
         } || true
     } || {
-        bal_load --level MUNICIPALITY || on_import_error
+        case "${bal_vars[FIX]}" in
+        SPACE_IN_CODE)
+            (! is_yes --var bal_vars[PROGRESS]) || bal_vars[PROGRESS_START]=$(date '+%s')
+            bal_load --level HOUSENUMBER
+            ;;
+        *)
+            bal_load --level MUNICIPALITY
+            ;;
+        esac || on_import_error
     }
     # purge ?
     is_yes --var bal_vars[CLEAN] && rm --force $POW_DIR_IMPORT/${bal_vars[MUNICIPALITY_CODE]}*.json
