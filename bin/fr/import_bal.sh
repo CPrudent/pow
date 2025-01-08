@@ -50,7 +50,7 @@ trap on_break SIGINT
 bal_progress_bar() {
     case "${1^^}" in
     BEGIN)
-        expect argc bal_progress_bar $# 6 || exit $ERROR_CODE
+        expect argc bal_progress_bar $# 6 || return $ERROR_CODE
         # if main display (municipality level) and only one then reduce informations
         ([ "${2:0:5}" = INSEE ] && [[ $5 -eq 1 ]]) && {
             printf '%-15s%b' "$2" $6
@@ -240,6 +240,38 @@ bal_get_list() {
             log_error 'pas de retour demandé?'
         }
     } || return $ERROR_CODE
+
+    return $SUCCESS_CODE
+}
+
+bal_count_addresses() {
+    execute_query \
+        --name BAL_${bal_vars[MUNICIPALITY_CODE]}_STREETS \
+        --query "
+            SELECT
+                COUNT(1)
+            FROM
+                fr.bal_street s
+                    JOIN fr.bal_municipality m ON s.id_municipality = m.id
+            WHERE
+                m.code = '${bal_vars[MUNICIPALITY_CODE]}'
+        " \
+        --psql_arguments 'tuples-only:pset=format=unaligned' \
+        --return bal_vars[STREETS] &&
+    execute_query \
+        --name BAL_${bal_vars[MUNICIPALITY_CODE]}_HOUSENUMBERS \
+        --query "
+            SELECT
+                COUNT(1)
+            FROM
+                fr.bal_housenumber n
+                    JOIN fr.bal_street s ON n.id_street = s.id
+                    JOIN fr.bal_municipality m ON s.id_municipality = m.id
+            WHERE
+                m.code = '${bal_vars[MUNICIPALITY_CODE]}'
+        " \
+        --psql_arguments 'tuples-only:pset=format=unaligned' \
+        --return bal_vars[HOUSENUMBERS] || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -548,20 +580,32 @@ bal_list_municipalities() {
                 )
         "
         ;;
+    CONVERT_ATTRIBUTES)
+        _query="
+            SELECT
+                SUBSTR(l.name, 5) municipality,
+                SUBSTR(l.name, 5) criteria
+            FROM
+                io_history io
+                    JOIN get_last_io(io.name) l ON io.id = l.id
+            WHERE
+                io.name ~ '^BAL_[0-9]'
+                AND
+                l.attributes ~ '"'"'"STREETS"'"'" => [0-9]*, "'"'"HOUSENUMBERS_AUTH"'"'" => [0-9]*'
+        "
+        ;;
     esac &&
     _query="
         WITH
         history AS (
             SELECT
-                SUBSTR(io.name, 5) municipality,
-                MAX(l.date_data_end) date_data_end
+                SUBSTR(l.name, 5) municipality,
+                l.date_data_end
             FROM
                 io_history io
-                    CROSS JOIN get_last_io(io.name) l
+                    JOIN get_last_io(io.name) l ON io.id = l.id
             WHERE
                 io.name ~ '^BAL_[0-9]'
-            GROUP BY
-                SUBSTR(io.name, 5)
         )
         , criteria AS (
             $_query
@@ -963,7 +1007,7 @@ bal_load() {
             --io "${bal_vars[IO_NAME]}" \
             --date_begin "${bal_vars[IO_BEGIN]:-1970-01-01}" \
             --date_end "${bal_vars[IO_END]}" \
-            --nrows_todo ${bal_vars[IO_ROWS]:-1} \
+            --nrows_todo ${bal_vars[IO_ROWS]:-0} \
             --id bal_vars[IO_ID] &&
         {
             io_download_file \
@@ -1001,10 +1045,16 @@ bal_load() {
                 _vacuum_tables=bal_municipality
                 ;;
             MUNICIPALITY)
+                {
+                    # ok counters ?
+                    ([[ ${bal_vars[STREETS]} > -1 ]] && [[ ${bal_vars[HOUSENUMBERS]} > -1 ]]) || {
+                        bal_count_addresses
+                    }
+                } &&
                 # total can be less than waited (only streets w/ certified housenumbers)
                 io_history_end_ok \
                     --nrows_processed $((bal_vars[STREETS]+bal_vars[HOUSENUMBERS])) \
-                    --infos ""'"'"STREETS"'"'" => ${bal_vars[STREETS]}, "'"'"HOUSENUMBERS_AUTH"'"'" => ${bal_vars[HOUSENUMBERS]}" \
+                    --infos '{"streets":'${bal_vars[STREETS]}',"housenumbers":'${bal_vars[HOUSENUMBERS]}'}' \
                     --id ${bal_vars[IO_ID]} &&
                 _vacuum_tables=bal_street,bal_housenumber
                 ;;
@@ -1035,31 +1085,114 @@ bal_load() {
     return $SUCCESS_CODE
 }
 
+# fix already exists (not todo)
+bal_fix_exists() {
+    bash_args \
+        --args_p '
+            state:Correctif réalisé (o|n)
+        ' \
+        --args_o '
+            state
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local _io=BAL_${bal_vars[MUNICIPALITY_CODE]} _fix _tmpfile
+    local -n _state_ref=$get_arg_state
+
+    execute_query \
+        --name BAL_IO_ID \
+        --query "SELECT (get_last_io('$_io')).id" \
+        --psql_arguments 'tuples-only:pset=format=unaligned' \
+        --return bal_vars[IO_ID] &&
+    get_tmp_file --tmpfile _tmpfile &&
+    cat <<EOC > $_tmpfile &&
+    SELECT
+        (JSONB_PATH_QUERY(
+            io.attributes::JSONB,
+            '$ ? (@.integration.fixes[*].name == "${bal_vars[FIX]}")'
+        ))->'integration'->'fixes' ->> 0
+    FROM
+        get_last_io('$_io') io
+    WHERE
+        io.attributes IS JSON OBJECT
+EOC
+    execute_query \
+        --name BAL_FIX_EXISTS \
+        --query "$_tmpfile" \
+        --psql_arguments 'tuples-only:pset=format=unaligned' \
+        --return _fix &&
+    {
+        _state_ref=$( [ -n "$_fix" ] && echo 'yes' || echo 'no' )
+    } || return $ERROR_CODE
+
+    [ "$_state_ref" = yes ] &&
+    [ "${bal_vars[FORCE]}" = no ] &&
+    log_info "Le correctif ${bal_vars[FIX]} a déjà été appliqué avec succès"
+
+    rm $_tmpfile
+    return $SUCCESS_CODE
+}
+
 # fix problems
-bal_fix() {
-    case "${bal_vars[FIX]}" in
-    # some housenumber's codes have space!
-    # for these, list returned by PostgreSQL (bal_get_list) contains code between quotes
-    # these quotes are now deleted, and don't worry download...
-    SPACE_IN_CODE)
-        {
-            (! is_yes --var bal_vars[PROGRESS]) || {
-                bal_vars[PROGRESS_START]=$(date '+%s') &&
-                bal_progress_bar \
-                    BEGIN \
-                    "INSEE ${bal_vars[MUNICIPALITY_CODE]}" \
-                    ${bal_vars[PROGRESS_SIZE]} \
-                    ${bal_vars[PROGRESS_CURRENT]} \
-                    ${bal_vars[PROGRESS_TOTAL]} \
-                    '\r'
-            }
-        } &&
-        bal_import_table --command CREATE &&
-        bal_last_update_municipality &&
-        bal_load --level HOUSENUMBER &&
-        bal_import_table --command DROP
-        ;;
-    esac || return $ERROR_CODE
+bal_fix_apply() {
+    local _todo
+
+    bal_fix_exists --state _todo &&
+    {
+        ([ "${bal_vars[FORCE]}" = no ] && is_yes --var _todo) || {
+            {
+                (! is_yes --var bal_vars[PROGRESS]) || {
+                    bal_vars[PROGRESS_START]=$(date '+%s') &&
+                    bal_progress_bar \
+                        BEGIN \
+                        "INSEE ${bal_vars[MUNICIPALITY_CODE]}" \
+                        ${bal_vars[PROGRESS_SIZE]} \
+                        ${bal_vars[PROGRESS_CURRENT]} \
+                        ${bal_vars[PROGRESS_TOTAL]} \
+                        '\r'
+                }
+            } &&
+            case "${bal_vars[FIX]}" in
+            # some housenumber's codes have space!
+            # for these, list returned by PostgreSQL (bal_get_list) contains code between quotes
+            # these quotes are now deleted, and don't worry download...
+            SPACE_IN_CODE)
+                bal_import_table --command CREATE &&
+                bal_last_update_municipality &&
+                bal_load --level HOUSENUMBER &&
+                bal_import_table --command DROP
+                ;;
+            CONVERT_ATTRIBUTES)
+                execute_query \
+                    --name BAL_FIX_ATTRIBUTES \
+                    --query "
+                        WITH
+                        addresses AS (
+                            SELECT
+                                id,
+                                (attributes::HSTORE->'STREETS')::INT streets,
+                                (attributes::HSTORE->'HOUSENUMBERS_AUTH')::INT housenumbers
+                            FROM
+                                io_history
+                            WHERE
+                                id = ${bal_vars[IO_ID]}
+                        )
+                        UPDATE io_history io SET
+                        attributes = CONCAT(
+                            '{"'"'"integration"'"'":{"'"'"streets"'"'":',
+                            a.streets,
+                            '"'"'"housenumbers"'"'":',
+                            a.housenumbers,
+                            '}}'
+                        )
+                        FROM addresses a
+                        WHERE
+                            io.id = a.id
+                    "
+                ;;
+            esac
+        }
+    } || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -1087,7 +1220,7 @@ bash_args \
         select_order:ASC|DESC;
         force:yes|no;
         force_load:yes|no;
-        fix:NONE|SPACE_IN_CODE;
+        fix:NONE|SPACE_IN_CODE|CONVERT_ATTRIBUTES;
         dry_run:yes|no;
         progress:yes|no;
         clean:yes|no;
@@ -1124,8 +1257,8 @@ declare -A bal_vars=(
     [SELECT_CRITERIA]=$get_arg_select_criteria
     [SELECT_ORDER]=$get_arg_select_order
     [LIMIT]=$get_arg_limit
-    [STREETS]=0
-    [HOUSENUMBERS]=0
+    [STREETS]=-1
+    [HOUSENUMBERS]=-1
     [STOP_TIME]=$get_arg_stop_time
     [FORCE]=$get_arg_force
     [FORCE_LOAD]=$get_arg_force_load
@@ -1150,10 +1283,7 @@ set_env --schema_name fr &&
     [ "${bal_vars[MUNICIPALITY_CODE]}" != ALL ] && {
         bal_codes[0]=${bal_vars[MUNICIPALITY_CODE]}
     } || {
-        {
-            # running fix ? (don't need to refresh SUMMARY)
-            [ -n "${bal_vars[FIX]}" ] || bal_load --level SUMMARY
-        } &&
+        bal_load --level SUMMARY &&
         bal_list_municipalities --list bal_codes &&
         {
             (! is_yes --var bal_vars[CLEAN]) || {
@@ -1165,13 +1295,14 @@ set_env --schema_name fr &&
     }
 } || on_import_error
 
+bal_error=0
+bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
+[[ ${bal_vars[PROGRESS_TOTAL]} > 0 ]] &&
 is_yes --var bal_vars[DRY_RUN] && {
     bal_average_time --avg bal_average
     echo -n Communes
     bal_progress_bar END Estimation Adresses
 }
-bal_error=0
-bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
 for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
     # check municipality code
     bal_check_municipality --code "${bal_codes[$bal_i]}" || {
@@ -1200,6 +1331,18 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
                             m.code = '${bal_vars[MUNICIPALITY_CODE]}'
                     "
                     ;;
+                CONVERT_ATTRIBUTES)
+                    bal_query="
+                        SELECT
+                            (io.attributes::HSTORE->'STREETS')::INT +
+                            (io.attributes::HSTORE->'HOUSENUMBERS_AUTH')::INT
+                        FROM
+                            io_history io
+                                JOIN get_last_io(io.name) l ON io.id = l.id
+                        WHERE
+                            io.name = CONCAT('BAL_', '${bal_vars[MUNICIPALITY_CODE]}')
+                    "
+                    ;;
                 *)
                     bal_query="
                         SELECT areas + streets + housenumbers_auth
@@ -1223,9 +1366,13 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
         } || true
     } || {
         {
-            [ -n "${bal_vars[FIX]}" ] \
-                && bal_fix \
-                || bal_load --level MUNICIPALITY
+            [ -n "${bal_vars[FIX]}" ] && {
+                # don't raise error to not loss history (specially exec time, attributes)
+                bal_fix_apply || {
+                    log_error "consulter dossier $POW_DIR_ARCHIVE !"
+                    true
+                }
+            } || bal_load --level MUNICIPALITY
         } || on_import_error
     }
     # purge ?
