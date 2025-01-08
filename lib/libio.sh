@@ -68,11 +68,29 @@ _io_history_manager() {
                 '${get_arg_status:-EN_COURS}',
                 ${get_arg_nrows_todo:-NULL},
                 CASE
-                    WHEN LENGTH('$get_arg_infos') = 0 THEN NULL
-                    ELSE '$get_arg_infos'
+                WHEN LENGTH('$get_arg_infos') = 0 THEN NULL
+                ELSE '$get_arg_infos'
                 END
             );
             SELECT CURRVAL('public.io_history_id_seq');
+        "
+        ;;
+    UPDATE)
+        _query="
+            UPDATE public.io_history SET
+                attributes =
+                    CASE
+                    WHEN LENGTH('$get_arg_infos') = 0 THEN attributes
+                    ELSE
+                        CASE
+                        WHEN attributes IS JSON OBJECT THEN
+                            (jsonb_merge(attributes::JSONB, '$get_arg_infos'::JSONB))::VARCHAR
+                        ELSE '$get_arg_infos'
+                        END
+                    END
+                $([ -n "${get_arg_nrows_todo}" ] && echo ", nb_rows_todo = ${get_arg_nrows_todo}")
+                $([ -n "${get_arg_nrows_processed}" ] && echo ", nb_rows_processed = ${get_arg_nrows_processed}")
+            WHERE id = $get_arg_id
         "
         ;;
     UPDATE_OK)
@@ -449,6 +467,33 @@ io_history_export_last() {
         --method EXPORT_LAST \
         --io $get_arg_io \
         --output "$get_arg_output" || return $ERROR_CODE
+
+    return $SUCCESS_CODE
+}
+
+io_history_update() {
+    bash_args \
+        --args_p '
+            nrows_todo:nombre de données à traiter;
+            nrows_processed:nombre de données traitées;
+            infos:compléments infos (souvent au format JSON);
+            id:identifiant IO
+        ' \
+        --args_o '
+            id
+        ' \
+        "$@" || return $ERROR_CODE
+
+    local _todo _processed
+    [ -n "$get_arg_nrows_todo" ] && _todo="--nrows_todo $get_arg_nrows_todo"
+    [ -n "$get_arg_nrows_processed" ] && _processed="--nrows_processed $get_arg_nrows_processed"
+
+    _io_history_manager \
+        --method UPDATE \
+        $_todo \
+        $_processed \
+        --infos "$get_arg_infos" \
+        --id $get_arg_id || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }

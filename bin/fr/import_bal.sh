@@ -26,11 +26,13 @@ on_break() {
 }
 
 on_import_error() {
+    local _info=$( [ -n "${bal_vars[FIX]}" ] && echo ${bal_vars[FIX]} || echo ${bal_vars[IO_NAME]#*_} )
+
     # import created?
     [ "$POW_DEBUG" = yes ] && { echo "io_history_id=${bal_vars[IO_ID]}"; }
     [ -n "${bal_vars[IO_ID]}" ] && io_history_end_ko --id ${bal_vars[IO_ID]}
 
-    log_error "Erreur import BAL (${bal_vars[IO_NAME]#*_})"
+    log_error "Erreur import BAL ($_info)"
     exit $ERROR_CODE
 }
 
@@ -52,7 +54,7 @@ bal_progress_bar() {
     BEGIN)
         expect argc bal_progress_bar $# 6 || return $ERROR_CODE
         # if main display (municipality level) and only one then reduce informations
-        ([ "${2:0:5}" = INSEE ] && [[ $5 -eq 1 ]]) && {
+        ([[ "${2:0:5}" =~ INSEE|Commu ]] && [[ $5 -eq 1 ]]) && {
             printf '%-15s%b' "$2" $6
         } || {
             printf '%-15s\t%*d/%*d (%3d%%)%b' "$2" $3 $4 $3 $5 $((($4*100)/$5)) $6
@@ -522,7 +524,7 @@ bal_list_municipalities() {
         "$@" || return $ERROR_CODE
 
     local -n _list_ref=$get_arg_list
-    local _query _list
+    local _query _list _date_before_fix
 
     case "${bal_vars[FIX]:-${bal_vars[SELECT_CRITERIA]}}" in
     POPULATION)
@@ -561,6 +563,7 @@ bal_list_municipalities() {
         "
         ;;
     SPACE_IN_CODE)
+        _date_before_fix='2025-01-01'
         _query="
             SELECT
                 m.code municipality,
@@ -581,6 +584,7 @@ bal_list_municipalities() {
         "
         ;;
     CONVERT_ATTRIBUTES)
+        _date_before_fix='2025-01-01'
         _query="
             SELECT
                 SUBSTR(l.name, 5) municipality,
@@ -600,7 +604,8 @@ bal_list_municipalities() {
         history AS (
             SELECT
                 SUBSTR(l.name, 5) municipality,
-                l.date_data_end
+                l.date_data_end,
+                l.attributes
             FROM
                 io_history io
                     JOIN get_last_io(io.name) l ON io.id = l.id
@@ -622,6 +627,10 @@ bal_list_municipalities() {
     [ -n "${bal_vars[FIX]}" ] && {
         _query+="
                 h.date_data_end IS NOT NULL
+                AND
+                h.date_data_end < '$_date_before_fix'::DATE
+                AND
+                POSITION('${bal_vars[FIX]}' IN h.attributes) = 0
         "
     } || {
         _query+="
@@ -1054,7 +1063,7 @@ bal_load() {
                 # total can be less than waited (only streets w/ certified housenumbers)
                 io_history_end_ok \
                     --nrows_processed $((bal_vars[STREETS]+bal_vars[HOUSENUMBERS])) \
-                    --infos '{"streets":'${bal_vars[STREETS]}',"housenumbers":'${bal_vars[HOUSENUMBERS]}'}' \
+                    --infos '{"integration":{"streets":'${bal_vars[STREETS]}',"housenumbers":'${bal_vars[HOUSENUMBERS]}'}}' \
                     --id ${bal_vars[IO_ID]} &&
                 _vacuum_tables=bal_street,bal_housenumber
                 ;;
@@ -1135,11 +1144,11 @@ EOC
 
 # fix problems
 bal_fix_apply() {
-    local _todo
+    local _exists
 
-    bal_fix_exists --state _todo &&
+    bal_fix_exists --state _exists &&
     {
-        ([ "${bal_vars[FORCE]}" = no ] && is_yes --var _todo) || {
+        ([ "${bal_vars[FORCE]}" = no ] && is_yes --var _exists) || {
             {
                 (! is_yes --var bal_vars[PROGRESS]) || {
                     bal_vars[PROGRESS_START]=$(date '+%s') &&
@@ -1149,7 +1158,7 @@ bal_fix_apply() {
                         ${bal_vars[PROGRESS_SIZE]} \
                         ${bal_vars[PROGRESS_CURRENT]} \
                         ${bal_vars[PROGRESS_TOTAL]} \
-                        '\r'
+                        '\n'
                 }
             } &&
             case "${bal_vars[FIX]}" in
@@ -1160,7 +1169,10 @@ bal_fix_apply() {
                 bal_import_table --command CREATE &&
                 bal_last_update_municipality &&
                 bal_load --level HOUSENUMBER &&
-                bal_import_table --command DROP
+                bal_import_table --command DROP &&
+                io_history_update \
+                    --id ${bal_vars[IO_ID]} \
+                    --infos '{"integration":{"fixes":[{"name":"SPACE_IN_CODE", "housenumbers":'${bal_vars[HOUSENUMBERS]}'}]}}'
                 ;;
             CONVERT_ATTRIBUTES)
                 execute_query \
@@ -1181,7 +1193,7 @@ bal_fix_apply() {
                         attributes = CONCAT(
                             '{"'"'"integration"'"'":{"'"'"streets"'"'":',
                             a.streets,
-                            '"'"'"housenumbers"'"'":',
+                            ',"'"'"housenumbers"'"'":',
                             a.housenumbers,
                             '}}'
                         )
@@ -1299,8 +1311,8 @@ bal_error=0
 bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
 [[ ${bal_vars[PROGRESS_TOTAL]} > 0 ]] &&
 is_yes --var bal_vars[DRY_RUN] && {
-    bal_average_time --avg bal_average
-    echo -n Communes
+    bal_average_time --avg bal_average &&
+    bal_progress_bar BEGIN Communes 0 0 1 '\r' &&
     bal_progress_bar END Estimation Adresses
 }
 for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
@@ -1315,6 +1327,7 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
     # do it ?
     is_yes --var bal_vars[DRY_RUN] && {
         {
+            bal_progress_bar BEGIN "INSEE ${bal_vars[MUNICIPALITY_CODE]}" 0 0 1 '\r' &&
             ([ -n "$bal_average" ] && [[ $bal_average > 0 ]]) && {
                 case "${bal_vars[FIX]}" in
                 SPACE_IN_CODE)
@@ -1356,11 +1369,9 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
                     --query "$bal_query" \
                     --psql_arguments 'tuples-only:pset=format=unaligned' \
                     --return bal_rows &&
-                echo -n "INSEE ${bal_vars[MUNICIPALITY_CODE]}" &&
                 bal_run=$(echo "${bal_rows}*${bal_average}" | bc -l) &&
                 bal_progress_bar END "$(date --date @${bal_run} --utc +%H:%M:%S)" "#${bal_rows}"
             } || {
-                echo -n "INSEE ${bal_vars[MUNICIPALITY_CODE]}" &&
                 bal_progress_bar END 'Non disponible'
             }
         } || true
