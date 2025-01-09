@@ -983,12 +983,12 @@ bal_load() {
             }
         } &&
         {
-            _file=$(basename "${bal_vars[URL]}/${bal_vars[URL_DATA]}")
+            bal_import_table --command CREATE &&
+            _file=$(basename "${bal_vars[URL]}/${bal_vars[URL_DATA]}") &&
             bal_vars[FILE_NAME]="$_file" &&
             {
                 [ "${_level}" = SUMMARY ] || {
                     bal_vars[FILE_NAME]+=.json &&
-                    bal_import_table --command CREATE &&
                     execute_query \
                         --name BAL_IO_BEGIN \
                         --query "SELECT (get_last_io('${bal_vars[IO_NAME]}')).date_data_end" \
@@ -1113,6 +1113,8 @@ bal_fix_exists() {
         --query "SELECT (get_last_io('$_io')).id" \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return bal_vars[IO_ID] &&
+    # use a file as argument (because of inside *)
+    # CONVERT_ATTRIBUTES will be always false, but selection of municipalities too !
     get_tmp_file --tmpfile _tmpfile &&
     cat <<EOC > $_tmpfile &&
     SELECT
@@ -1174,6 +1176,7 @@ bal_fix_apply() {
                     --id ${bal_vars[IO_ID]} \
                     --infos '{"integration":{"fixes":[{"name":"SPACE_IN_CODE", "housenumbers":'${bal_vars[HOUSENUMBERS]}'}]}}'
                 ;;
+            # no log into history, but no problem due to empty selection of municipalities
             CONVERT_ATTRIBUTES)
                 execute_query \
                     --name BAL_FIX_ATTRIBUTES \
