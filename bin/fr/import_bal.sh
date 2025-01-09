@@ -919,7 +919,7 @@ bal_load() {
         ' \
         "$@" || return $ERROR_CODE
 
-    local _level=${get_arg_level} _next_level
+    local _level=${get_arg_level} _next_level _elapsed
     local _query _import_options='' _overwrite_key _overwrite_value _info _file
     local _rc _vacuum_tables
 
@@ -1055,9 +1055,15 @@ bal_load() {
                 ;;
             MUNICIPALITY)
                 {
-                    # ok counters ?
+                    # already present (nor import neither integration)
                     ([[ ${bal_vars[STREETS]} > -1 ]] && [[ ${bal_vars[HOUSENUMBERS]} > -1 ]]) || {
-                        bal_count_addresses
+                        bal_count_addresses &&
+                        # finalize progress
+                        _elapsed=$(($(date '+%s') - ${bal_vars[PROGRESS_START]})) &&
+                        bal_progress_bar \
+                            END \
+                            "$(date --date @${_elapsed} --utc +%H:%M:%S)" \
+                            "#${bal_vars[STREETS]} voies, #${bal_vars[HOUSENUMBERS]} numéros"
                     }
                 } &&
                 # total can be less than waited (only streets w/ certified housenumbers)
