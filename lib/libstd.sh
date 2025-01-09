@@ -294,6 +294,59 @@ set_delimiter() {
     # command line
     #
 
+# improve bash_args
+pow_argv() {
+    local _step=1 _key _value
+
+    # read from command line
+    while :; do
+        case $_step in
+        # name of argument
+        1)
+            [ $1 = -- ] && _step=9 || {
+                [[ $1 =~ ^--(.*)$ ]] && {
+                    _key=${BASH_REMATCH[1]}
+                    _value=
+                    _step=2
+                } || {
+                    _step=10
+                    _error='premier argument attendu --args_p'
+                }
+            }
+            ;;
+
+        # value of argument
+        2)
+            [ -n "$_value" ] && _value="$_value $1" || _value=$1
+            [[ ! $1 =~ ^[\'\"]$ ]] && _step=1
+            ;;
+
+        # end OK
+        9)
+            break
+            ;;
+
+        # end ERROR
+        10)
+            >&2 echo "$_error"
+            return $ERROR_CODE
+            ;;
+        esac
+
+        case "$1" in
+        --)
+            break
+            ;;
+        --[^ ]*)
+            _key=${1#--*}
+            shift
+            ;;
+        *)
+            ;;
+        esac
+    done
+}
+
 # getopts improved (w/ list of values, default value, ...)
 # voir wiki https://wiki.net.extra.laposte.fr/confluence/pages/viewpage.action?pageId=824282297
 bash_args() {

@@ -23,3 +23,6 @@ declare -A POW_DELIMITER=(
     [SEMICOLON]=';'
     [TAB]='\t'
 )
+
+declare -A POW_ARGV
+declare -i POW_ARGC
