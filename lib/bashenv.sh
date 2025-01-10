@@ -3,9 +3,11 @@
     #--
     # BASH environment
 
+    # HELP
+    # https://unix.stackexchange.com/questions/393091/unable-to-use-an-array-as-environment-variable
+
 # global config
 # remember that BASH can't export array!
-# https://unix.stackexchange.com/questions/393091/unable-to-use-an-array-as-environment-variable
 declare -A POW_CONF=(
     [JAVA_HOME]=/usr/lib/jvm/default-java
     [PG_DBNAME]=pow
@@ -25,4 +27,8 @@ declare -A POW_DELIMITER=(
 )
 
 declare -A POW_ARGV
+declare -A POW_ARGV_OPTIONS=(
+    [CASE]=UPPER
+    [RESET]=yes
+)
 declare -i POW_ARGC
