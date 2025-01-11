@@ -27,7 +27,7 @@ declare -A POW_DELIMITER=(
 )
 
 declare -A POW_ARGV
-declare -A POW_ARGV_OPTIONS=(
+declare -A POW_ARGV_PROPERTIES=(
     [CASE]=UPPER
     [RESET]=yes
 )
