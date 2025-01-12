@@ -301,30 +301,77 @@ set_delimiter() {
     #
 
 # custom getopt (clone bash_args w/ some improvements)
+
+# option(s) are defined by list (items separated by ;)
+# --args_n : name (as key:value)
+# --args_m : mandatory (or optional if none)
+# --args_v : values (as ORed declaration, va1|val2, ...)
+# --args_d : defaults (or NULL if none)
+# --args_p : property (to custom returns)
+#            RESET (no|yes)     reset returned hash, before
+#            CASE (UPPER|LOWER|USER)
+#                               apply to keys (of returned hash), USER takes name from given list
+
+# --pow_argv <user variable>    to overload default POW_ARGV    (hash w/ argument(s))
+# --pow_argc <user variable>    to overload default POW_ARGC    (count of argument(s))
+
 # NOTE
-# if other name than default POW_ARGV is requested, caller code has to declare it before as HASH
-    # local -A _opts
-    # pow_argv \
-    #    --args_p '
-    #        opt1:Option 1;
-    #        opt2:Option 2;
-    #        opt3:Option 3;
-    #    ' \
-    #    --args_m '
-    #        opt1|opt3
-    #    ' \
-    #    --pow_argv _opts "$@" || return $ERROR_CODE
+# if other name than default POW_ARGV is requested, caller code has to declare it before (as HASH)
+# or as above in implementation of a function
+#
+# local -A _opts
+# pow_argv \
+#    --args_n '
+#        opt1:Option 1;
+#        opt2:Option 2;
+#        opt3:Option 3;
+#    ' \
+#    --args_m '
+#        opt1|opt3
+#    ' \
+#    --pow_argv _opts "$@" || return $ERROR_CODE
 pow_argv() {
     local _step=1 _end=0 _key _value _i _info _valid _property _k
     local _trick=", astuce : utilisez l'option --help pour l'aide ou --interactive pour une utilisation intéractive"
     local _argv_name _argc_name _argv_ref _argc_ref
     local -A _argv
-    local -a _args_p_list _args_m_list _args_v_list _args_d_list _args_o_list
+    local -a _args_n_list _args_m_list _args_v_list _args_d_list _args_p_list
+    local -A _args_n_kv _args_v_kv _args_d_kv _args_p_kv
     local -a _args_items
-    local -A _args_p_kv _args_v_kv _args_d_kv _args_o_kv
+
+    # prepare user parameters (from given lists)
+    _pow_argv_list() {
+        #echo "$#: $@"
+
+        # $1= list value
+        # $2= list array (result)
+        # $3= optional 'key/value' hash (result)
+        local _list="$1" _tmp _with_kv=0
+        local -n _list_ref=$2
+        [ -n "$3" ] && {
+            local -n _kv_ref=$3
+            _with_kv=1
+        }
+
+        # be careful w/ <<< if list contains '\n' and spaces (prefix, suffix)
+        #  often so w/ declaration of bash_args's parameters convention
+        # other solution can be built w/ substitution (same needing of deleting \n and spaces)
+        #  IFS=';' read -a _args_n_list < <(printf "${_argv[args_n]}" | sed ...)
+        IFS=';' read -a _list_ref <<< $(printf "${_list}" | sed -e 's/^[ ]*//' -e 's/[ ]*$//' | tr -d '\n')
+        #declare -p _list_ref ; read
+        [ $_with_kv -eq 1 ] && {
+            for _tmp in "${_list_ref[@]}"; do
+                #echo "$_tmp"
+                _kv_ref+=([${_tmp%:*}]=${_tmp#*:})
+            done
+            #declare -p _kv_ref ; read
+        }
+
+        return $SUCCESS_CODE
+    }
 
     # get value of property (user if defined, or default)
-    pow_argv_property() {
+    _pow_argv_property() {
         # can't call pow_argv due to deallock!
 
         # $1= user values (array)
@@ -351,42 +398,12 @@ pow_argv() {
         return $ERROR_CODE
     }
 
-    # prepare user parameters (from given lists)
-    pow_argv_list() {
-        #echo "$#: $@"
-
-        # $1= list value
-        # $2= list array (result)
-        # $3= optional 'key/value' hash (result)
-        local _list="$1" _tmp _with_kv=0
-        local -n _list_ref=$2
-        [ -n "$3" ] && {
-            local -n _kv_ref=$3
-            _with_kv=1
-        }
-
-        # be careful w/ <<< if list contains '\n' and spaces (prefix, suffix)
-        # often so w/ declaration of bash_args's parameters convention
-        # other solution can be built w/ substitution (same needing of deleting \n and spaces)
-        # IFS=';' read -a _args_p_list < <(printf "${_argv[args_p]}" | sed ...)
-        IFS=';' read -a _list_ref <<< $(printf "${_list}" | sed -e 's/^[ ]*//' -e 's/[ ]*$//' | tr -d '\n')
-        #declare -p _list_ref ; read
-        [ $_with_kv -eq 1 ] && {
-            for _tmp in "${_list_ref[@]}"; do
-                #echo "$_tmp"
-                _kv_ref+=([${_tmp%:*}]=${_tmp#*:})
-            done
-            #declare -p _kv_ref ; read
-        }
-
-        return $SUCCESS_CODE
-    }
-
     # read from command line
     while :; do
+        #echo "step=($_step) key=($_key) \$1=$1"
         case $_step in
         # name of argument
-        1|2)
+        1)
             ([ $1 = -- ] || [ -z "$1" ]) && _step=90 || {
                 [[ $1 =~ ^--(.*)$ ]] && {
                     _key=${BASH_REMATCH[1]}
@@ -395,11 +412,8 @@ pow_argv() {
                     _step=10
                     shift
                 } || {
+                    _error="premier argument attendu --args_n (au lieu de: $1)"
                     _step=99
-                    case $_step in
-                    1)  _error='premier argument attendu --args_p'  ;;
-                    2)  _error='option attendue, du type --option'  ;;
-                    esac
                 }
             }
             ;;
@@ -411,8 +425,19 @@ pow_argv() {
             elif [ -z "$1" ]; then
                 _step=90
             else
-                [ -n "$_value" ] && _value="$_value $1" || _value=$1
-                shift
+                [ -n "$_value" ] && {
+                    # args_? has only one list value
+                    if [[ $_key =~ args_[nmvdp] ]]; then
+                        _error="option attendue, du type --option (au lieu de: $1)"
+                        _step=99
+                    else
+                        _value="$_value $1"
+                        shift
+                    fi
+                } || {
+                    _value=$1
+                    shift
+                }
             fi
             ;;
         11)
@@ -421,10 +446,10 @@ pow_argv() {
 
             case $_key in
             # lists
-            args_[pmvdo])
+            args_[nmvdp])
                         _step=12    ;;
             pow_arg[cv]|help|interactive)
-                        _step=$(( _end == 1 ? 91 : 2 )) ;;
+                        _step=$(( _end == 1 ? 91 : 1 )) ;;
             # user parameters
             *)          _step=20    ;;
             esac
@@ -433,49 +458,24 @@ pow_argv() {
             local _argx_list_name=_${_key}_list
             local _argx_kv_name=_${_key}_kv
             local -n _argx_list_ref="$_argx_list_name"
+            # no key/value for mandatory list
             [ "$_key" = args_m ] && _argx_kv_name=
 
             if [ ${#_argx_list_ref[@]} -eq 0 ]; then
                 #declare -p _argv ; read
-                pow_argv_list "${_argv[$_key]}" $_argx_list_name $_argx_kv_name
+                _pow_argv_list "${_argv[$_key]}" $_argx_list_name $_argx_kv_name
                 #[ -n "$_argx_kv_name" ] && declare -p $_argx_kv_name ; read
-                _step=2
+                _step=1
             else
                 _error="définition --$_key multiple!"
                 _step=99
             fi
             ;;
 
-#         13)
-#             IFS=';' read -ra _args_m_list <<< "${_argv[args_o]}"
-#             _step=2
-#             ;;
-#         14)
-#             IFS=';' read -ra _args_v_list <<< "${_argv[args_v]}"
-#             for _tmp in "${_args_v_list[@]}"; do
-#                 _args_v_kv+=([${_tmp%:*}]=${_tmp#*:})
-#             done
-#             _step=2
-#             ;;
-#         15)
-#             IFS=';' read -ra _args_d_list <<< "${_argv[args_d]}"
-#             for _tmp in "${_args_d_list[@]}"; do
-#                 _args_d_kv+=([${_tmp%:*}]=${_tmp#*:})
-#             done
-#             _step=2
-#             ;;
-#         16)
-#             IFS=';' read -ra _args_o_list <<< "${_argv[args_o]}"
-#             for _tmp in "${_args_o_list[@]}"; do
-#                 _args_o_kv+=([${_tmp%:*}]=${_tmp#*:})
-#             done
-#             _step=2
-#             ;;
-
         # check argument (among allowed ones)
         20)
-            #declare -p _args_p_kv
-            in_array --array _args_p_kv --item $_key --search KEY && _step=$(( _end == 1 ? 91 : 2 )) || {
+            #declare -p _args_n_kv
+            in_array --array _args_n_kv --item $_key --search KEY && _step=$(( _end == 1 ? 91 : 2 )) || {
                 _error="L'argument $_key ne fait pas partie des arguments possibles"
                 _step=99
             }
@@ -503,15 +503,17 @@ pow_argv() {
 
     # help requested ?
     [ "${_argv[help]}" = yes ] && {
-        for _key in ${!_args_p_kv[@]}; do
-            _info="${_key} : ${_args_p_kv[$_key]}"
+        for _key in ${!_args_n_kv[@]}; do
+            _info="${_key} : ${_args_n_kv[$_key]}"
             in_array --array _args_m_list --item $_key && _tmp=obligatoire || _tmp=facultatif
             _info+=", $_tmp"
             [ ${_args_v_kv[$_key]+_} ] && _info+=", valeurs possibles : ${_args_v_kv[$_key]}"
-            [ ${_args_d_kv[$_key]+_} ] && _info+=", valeurs par défaut : ${_args_d_kv[$_key]}"
+            [ ${_args_d_kv[$_key]+_} ] && _info+=", valeur par défaut : ${_args_d_kv[$_key]}"
 
             echo $_info
         done
+
+        return $SUCCESS_CODE
     }
 
     # default values
@@ -521,7 +523,7 @@ pow_argv() {
 
     # respect of mandatory option(s)
     for ((_i=0; _i<${#_args_m_list[@]}; _i++)); do
-        IFS='|' read -ra _args_items <<< "${_args_m_list[$_i]}"
+        IFS='|' read -a _args_items <<< "${_args_m_list[$_i]}"
         _valid=0
         for _key in ${_args_items[@]}; do
             [ ${_argv[$_key]+_} ] && {
@@ -550,18 +552,18 @@ pow_argv() {
     [ ${_argv[pow_argc]+_} ] && _argc_name="${_argv[pow_argc]}" || _argc_name="POW_ARGC"
     local -n _argc_ref="$_argc_name"
     #echo "pow_argv_property=(RESET)"
-    pow_argv_property _args_o_kv RESET _property &&
+    _pow_argv_property _args_p_kv RESET _property &&
     #echo "reset=($_property)" &&
     is_yes --var _property &&
     #echo 'reset ARGV' &&
     _argv_ref=()
     #echo "pow_argv_property=(CASE)"
-    pow_argv_property _args_o_kv CASE _property
+    _pow_argv_property _args_p_kv CASE _property
     #echo "case=($_property)"
     _argc_ref=0
     for _key in ${!_argv[@]}; do
         #echo "key=($_key)"
-        [[ "$_key" =~ pow_arg[cv]|args_[pmvdo] ]] && continue
+        [[ "$_key" =~ pow_arg[cv]|args_[nmvdp] ]] && continue
         case $_property in
         UPPER)  _k=${_key^^}    ;;
         LOWER)  _k=${_key,,}    ;;
