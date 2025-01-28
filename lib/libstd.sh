@@ -475,7 +475,7 @@ pow_argv() {
         # check argument (among allowed ones)
         20)
             #declare -p _args_n_kv
-            in_array --array _args_n_kv --item $_key --search KEY && _step=$(( _end == 1 ? 91 : 2 )) || {
+            in_array --array _args_n_kv --item $_key --search KEY && _step=$(( _end == 1 ? 91 : 1 )) || {
                 _error="L'argument $_key ne fait pas partie des arguments possibles"
                 _step=99
             }
@@ -522,6 +522,7 @@ pow_argv() {
     done
 
     # respect of mandatory option(s)
+    # TODO implements mandatory grammar w/ |&^ operators (OR, AND, XOR) and () combinaisons
     for ((_i=0; _i<${#_args_m_list[@]}; _i++)); do
         IFS='|' read -a _args_items <<< "${_args_m_list[$_i]}"
         _valid=0
