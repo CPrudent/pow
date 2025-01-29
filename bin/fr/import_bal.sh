@@ -163,7 +163,7 @@ bal_import_table() {
         ' \
         "$@" || return $ERROR_CODE
 
-    local _query
+    local _query _ddl=1
 
     {
         [ -n "${bal_vars[IO_NAME]}" ] \
@@ -172,15 +172,20 @@ bal_import_table() {
     } &&
     case "$get_arg_command" in
     CREATE)
+        [ "${bal_vars[IO_NAME]}" = SUMMARY ] && _ddl=0
         _query="CREATE TABLE IF NOT EXISTS fr.${bal_vars[TABLE_NAME]} (data JSON)"
         ;;
     DROP)
         _query="DROP TABLE IF EXISTS fr.${bal_vars[TABLE_NAME]}"
         ;;
     esac &&
-    execute_query \
-        --name BAL_${get_arg_command} \
-        --query "$_query" || return $ERROR_CODE
+    {
+        [ $_ddl -eq 0 ] || {
+            execute_query \
+                --name BAL_${get_arg_command} \
+                --query "$_query"
+        }
+    } || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }

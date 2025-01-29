@@ -804,13 +804,9 @@ io_download_file() {
             return $POW_DOWNLOAD_ERROR
         }
 
-    # not available into COMMON
-    [ ! -f "${_files[1]}" ] && {
-        log_info "Copie de ${_download[FILE]} sur le Dépôt"
-        cp "$_tmp_path" "${_files[1]}"
-    }
-
     # result
+    log_info "Copie de ${_download[FILE]} sur le Dépôt" &&
+    cp "$_tmp_path" "${_files[1]}" &&
     mv "$_tmp_path" "${_files[0]}" &&
     archive_file "$_log_tmp_path" &&
     log_info "Téléchargement avec succès de ${_download[FILE]}" || return $POW_DOWNLOAD_ERROR_PROVISION
