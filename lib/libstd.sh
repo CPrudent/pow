@@ -226,17 +226,38 @@ get_elapsed_time() {
     bash_args \
         --args_p '
             start:Horodatage du début de traitement;
+            format:Format de présentation;
             result:Durée calculée
         ' \
         --args_o '
             start;
             result
         ' \
+        --args_v '
+            format:BCAA|POW
+        ' \
+        --args_d '
+            format:BCAA
+        ' \
         "$@" || return $ERROR_CODE
 
     local -n _result_ref=$get_arg_result
     local _end=$(date +%s)
-    _result_ref="$((($_end-$get_arg_start)/3600))h:$((($_end-$get_arg_start)%3600/60))m:$((($_end-$get_arg_start)%60))s"
+    local _timex _days
+
+    _timex=$(($_end - $get_arg_start))
+    case $get_arg_format in
+    BCAA)
+        _result_ref="$((_timex/3600))h:$((_timex%3600/60))m:$((_timex%60))s"
+        ;;
+    POW)
+        _result_ref="$(date --date @${_timex} --utc +%-Hh:%-Mm:%-Ss)"
+        [[ $_timex > 86400 ]] && {
+            _days=$(($(date --date @${_timex} --utc +%d) -1))
+            _result_ref="${_days}j:$_result_ref"
+        }
+        ;;
+    esac
 
     return $SUCCESS_CODE
 }
