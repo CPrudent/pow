@@ -174,12 +174,10 @@ bal_get_counters() {
         [[ ${bal_vars[WITH_OLD_AREA]} > 0 ]] && _value_ref=$((_value_ref + bal_vars[HOUSENUMBERS]))
         ;;
     ATTRIBUTES)
-        _value_ref='{"integration":{"streets":'${bal_vars[STREETS]}'}}'
-        [[ ${bal_vars[WITH_OLD_AREA]} > 0 ]] && _value_ref=${_value_ref%%\}*}',"housenumbers":'${bal_vars[HOUSENUMBERS]}'}}'
+        _value_ref='{"integration":{"streets":'${bal_vars[STREETS]}',"housenumbers":'${bal_vars[HOUSENUMBERS]}'}}'
         ;;
     PROGRESS)
-        _value_ref="#${bal_vars[STREETS]} voies"
-        [[ ${bal_vars[WITH_OLD_AREA]} > 0 ]] && _value_ref+=", #${bal_vars[HOUSENUMBERS]} numéros"
+        _value_ref="#${bal_vars[STREETS]} voies, #${bal_vars[HOUSENUMBERS]} numéros"
         ;;
     esac
 
@@ -339,23 +337,29 @@ bal_get_list() {
 }
 
 bal_count_addresses() {
-    execute_query \
-        --name BAL_${bal_vars[MUNICIPALITY_CODE]}_STREETS \
-        --query "
-            SELECT
-                COUNT(1)
-            FROM
-                fr.bal_street s
-                    JOIN fr.bal_municipality m ON s.id_municipality = m.id
-            WHERE
-                m.code = '${bal_vars[MUNICIPALITY_CODE]}'
-        " \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
-        --return bal_vars[STREETS] &&
     {
-        [[ ${bal_vars[WITH_OLD_AREA]} == 0 ]] || {
+        [[ ${bal_vars[STREETS]} != -1 ]] || {
             execute_query \
-                --name BAL_${bal_vars[MUNICIPALITY_CODE]}_HOUSENUMBERS \
+                --name BAL_${bal_vars[MUNICIPALITY_CODE]}_NSTREETS \
+                --query "
+                    SELECT
+                        COUNT(1)
+                    FROM
+                        fr.bal_street s
+                            JOIN fr.bal_municipality m ON s.id_municipality = m.id
+                    WHERE
+                        s.housenumbers_auth > 0
+                        AND
+                        m.code = '${bal_vars[MUNICIPALITY_CODE]}'
+                " \
+                --psql_arguments 'tuples-only:pset=format=unaligned' \
+                --return bal_vars[STREETS]
+        }
+    } &&
+    {
+        [[ ${bal_vars[HOUSENUMBERS]} != -1 ]] || {
+            execute_query \
+                --name BAL_${bal_vars[MUNICIPALITY_CODE]}_NHOUSENUMBERS \
                 --query "
                     SELECT
                         COUNT(1)
@@ -364,12 +368,14 @@ bal_count_addresses() {
                             JOIN fr.bal_street s ON n.id_street = s.id
                             JOIN fr.bal_municipality m ON s.id_municipality = m.id
                     WHERE
+                        s.housenumbers_auth > 0
+                        AND
                         m.code = '${bal_vars[MUNICIPALITY_CODE]}'
                 " \
                 --psql_arguments 'tuples-only:pset=format=unaligned' \
                 --return bal_vars[HOUSENUMBERS]
         }
-    }  || return $ERROR_CODE
+    } || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -418,6 +424,8 @@ bal_load_addresses() {
                     JOIN fr.bal_street s ON n.id_street = s.id
                     JOIN fr.bal_municipality m ON s.id_municipality = m.id
             WHERE
+                s.housenumbers_auth > 0
+                AND
         "
         ;;
     esac &&
@@ -443,7 +451,7 @@ bal_load_addresses() {
         --as_array _addresses &&
     bal_vars[$_field]=${#_addresses[@]} &&
     {
-        [[ ${bal_vars[$_field]} -gt 0 ]] && {
+        [[ ${bal_vars[$_field]} > 0 ]] && {
             execute_query \
                 --name BAL_TRUNCATE \
                 --query "TRUNCATE TABLE fr.${bal_vars[TABLE_NAME]}" &&
@@ -778,38 +786,28 @@ bal_context() {
 
     case "${_opts[LEVEL]}" in
     SUMMARY)
-        _vars_ref[URL_DATA]='api/communes-summary.csv'
-        _vars_ref[NEXT_LEVEL]=MUNICIPALITY
+        _vars_ref[URL_DATA]='api/communes-summary.csv' &&
+        _vars_ref[NEXT_LEVEL]=MUNICIPALITY &&
         # no download if present summary is max 3 days old
-        _vars_ref[OVERWRITE_KEY]=TIME
-        _vars_ref[OVERWRITE_VALUE]=$((3*24*60*60))
+        _vars_ref[OVERWRITE_KEY]=TIME &&
+        _vars_ref[OVERWRITE_VALUE]=$((3*24*60*60)) &&
         # no option for CSV summary
-        _vars_ref[IMPORT_OPTIONS]=
+        _vars_ref[IMPORT_OPTIONS]= &&
         # vacuum list
         _vars_ref[VACUUM]=bal_municipality
         ;;
     MUNICIPALITY)
-        _vars_ref[URL_DATA]='lookup/'${bal_vars[MUNICIPALITY_CODE]}
-        _vars_ref[NEXT_LEVEL]=STREET
+        _vars_ref[URL_DATA]='lookup/'${bal_vars[MUNICIPALITY_CODE]} &&
+        _vars_ref[NEXT_LEVEL]=STREET &&
         # no download if JSON file newer than municipality's last_update
-        _vars_ref[OVERWRITE_KEY]=DATE
+        _vars_ref[OVERWRITE_KEY]=DATE &&
         # get last update (as epoch)
-        bal_last_update_municipality || return $ERROR_CODE
-        _vars_ref[OVERWRITE_VALUE]=${bal_vars[IO_END_EPOCH]}
+        bal_last_update_municipality &&
+        _vars_ref[OVERWRITE_VALUE]=${bal_vars[IO_END_EPOCH]} &&
         # table w/ 1 column named 'data' to import JSON stream
-        _vars_ref[IMPORT_OPTIONS]="--import_options column_name=data"
+        _vars_ref[IMPORT_OPTIONS]="--import_options column_name=data" &&
         # vacuum list
         _vars_ref[VACUUM]=bal_street,bal_housenumber
-        {
-             if [[ ${bal_vars[WITH_OLD_AREA]} = 0 ]]; then
-                _vars_ref[DEFINED_COUNTERS]=$(( bal_vars[STREETS] > 0 ? yes : no ))
-             else
-                _vars_ref[DEFINED_COUNTERS]=$(( (bal_vars[STREETS] > 0 && bal_vars[HOUSENUMBERS] > 0) ? yes : no ))
-             fi
-        } &&
-        bal_get_counters --usage PROGRESS --value _vars_ref[PROGRESS] &&
-        bal_get_counters --usage NROWS --value _vars_ref[NROWS] &&
-        bal_get_counters --usage ATTRIBUTES --value _vars_ref[ATTRIBUTES]
         ;;
     STREET)
         _vars_ref[NEXT_LEVEL]=HOUSENUMBER
@@ -817,7 +815,7 @@ bal_context() {
     HOUSENUMBER)
         _vars_ref[NEXT_LEVEL]=AREA
         ;;
-    esac
+    esac || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -1007,10 +1005,10 @@ bal_integration() {
                 bal_progress_bar END "${_elapsed}" &&
                 bal_vars[PROGRESS_START]=$(date '+%s')
             }
-        }
+        } &&
         # need to request API on each housenumber, if many areas! to obtain old municipality
         {
-            [[ ${bal_vars[WITH_OLD_AREA]} -eq 0 ]] || {
+            [[ ${bal_vars[WITH_OLD_AREA]} == 0 ]] || {
                 bal_load --level HOUSENUMBER
             }
         }
@@ -1083,7 +1081,8 @@ bal_load() {
         io_todo_import \
             --force ${bal_vars[FORCE]} \
             --io ${bal_vars[IO_NAME]} \
-            --date_end "${bal_vars[IO_END]}"
+            --date_end "${bal_vars[IO_END]}" \
+            --id bal_vars[IO_ID]
         case $? in
         $POW_IO_SUCCESSFUL)                                 return $SUCCESS_CODE    ;;
         $POW_IO_IN_PROGRESS|$POW_IO_ERROR|$ERROR_CODE)      return $ERROR_CODE      ;;
@@ -1124,6 +1123,7 @@ bal_load() {
             [ "${bal_vars[IO_BEGIN]}" != "${bal_vars[IO_END]}" ] || bal_vars[IO_BEGIN]=
         } &&
         {
+            # rows already defined ?
             [ "${_level}" = MUNICIPALITY ] || {
                 execute_query \
                     --name BAL_IO_ROWS \
@@ -1178,21 +1178,15 @@ bal_load() {
                 ;;
             MUNICIPALITY)
                 {
-                    # already defined (nor import neither integration) ?
-                    (! is_yes --var _context[DEFINED_COUNTERS]) || {
-                        bal_count_addresses &&
-                        # finalize progress
-                        get_elapsed_time --start ${bal_vars[PROGRESS_START]} --result _elapsed &&
-                        bal_progress_bar \
-                            END \
-                            "${_elapsed}" \
-                            "${_context[PROGRESS]}"
-                    }
+                    # case when counters aren't initialized (specially housenumbers)
+                    bal_count_addresses &&
+                    bal_get_counters --usage NROWS --value bal_vars[NROWS_PROCESSED] &&
+                    bal_get_counters --usage ATTRIBUTES --value bal_vars[ATTRIBUTES]
                 } &&
                 # total can be less than waited (only streets w/ certified housenumbers)
                 io_history_end_ok \
-                    --nrows_processed ${_context[NROWS]} \
-                    --infos ${_context[ATTRIBUTES]} \
+                    --nrows_processed ${bal_vars[NROWS_PROCESSED]} \
+                    --infos "${bal_vars[ATTRIBUTES]}" \
                     --id ${bal_vars[IO_ID]}
                 ;;
             esac &&
@@ -1207,7 +1201,7 @@ bal_load() {
         bal_load_addresses --level STREET &&
         {
             # at least one street w/ auth housenumbers ?
-            [[ ${bal_vars[STREETS]} -eq 0 ]] || {
+            [[ ${bal_vars[STREETS]} == 0 ]] || {
                 bal_integration --level HOUSENUMBER
             }
         }
@@ -1495,9 +1489,9 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
                     bal_query=
                     bal_rows=${bal_vars[IO_ROWS]}
                     ;;
-                esac
+                esac &&
                 {
-                    [ -z "$_query" ] || {
+                    [ -z "$bal_query" ] || {
                         execute_query \
                             --name BAL_${bal_vars[MUNICIPALITY_CODE]}_ROWS \
                             --query "$bal_query" \

@@ -230,15 +230,17 @@ io_todo_import() {
         ' \
         "$@" || return $POW_IO_ERROR
 
+    local _rc
     [ -n "$get_arg_id" ] && local -n _io_id_todo=$get_arg_id || local _io_id_todo
 
-    [ "$get_arg_force" = no ] && {
-        io_history_exists \
-            --io $get_arg_io \
-            --date_end "${get_arg_date_end}" \
-            --status SUCCES \
-            --id _io_id_todo
-    } && {
+    io_history_exists \
+        --io $get_arg_io \
+        --date_end "${get_arg_date_end}" \
+        --status SUCCES \
+        --id _io_id_todo
+    _rc=$?
+    [ "$get_arg_force" = no ] &&
+    [ $_rc -eq 0 ] && {
         log_info "Le traitement $get_arg_io a déjà été réalisé avec succès"
         return $POW_IO_SUCCESSFUL
     }
@@ -699,6 +701,8 @@ io_download_file() {
         [USER]="$get_arg_user"
         [PASSWORD]="$get_arg_password"
         [VERBOSE]=$get_arg_verbose
+        [ID]=-1                             # found file ID (not necessary newer!)
+        [FOUND]=0                           # (0) no, (1) output_directory, (2) common
     )
 
     [ -z "${_download[FILE]}" ] && _download[FILE]=$(basename "${get_arg_url}")
@@ -712,10 +716,9 @@ io_download_file() {
         _files[1]+="/${_download[COMMON_SUBDIR]}"
     }
     _files[1]+="/${_download[FILE]}"
-    # not found as default
-    local _found=0
     [ "${_download[VERBOSE]}" = yes ] && declare -p _download _files
 
+    # yes mode, nothing to test!
     [ "${_download[OVERWRITE_MODE]}" = yes ] || {
         [ "${_download[OVERWRITE_MODE]}" = NEWER ] &&
         [ -z "${_download[OVERWRITE_VALUE]}" ] && {
@@ -726,16 +729,21 @@ io_download_file() {
         local _i
         for ((_i=0; _i<${#_files[@]}; _i++)); do
             [ -f "${_files[$_i]}" ] || continue
-            [ "${_download[OVERWRITE_MODE]}" = NEWER ] || {
-                _found=$((_i +1))
+
+            # no mode, break (already found)
+            [ "${_download[OVERWRITE_MODE]}" = no ] || {
+                _download[FOUND]=$((_i +1))
                 break
             }
+
+            # NEWER mode
+            _download[ID]=$_i
             # time of last data modification
             local _epoch1=$(stat --format '%Y' "${_files[$_i]}")
             local _epoch2
             case ${_download[OVERWRITE_KEY]} in
             DATE)
-                # now - last_modification
+                # epoch of given date
                 _epoch2=$(date '+%s' --date "@${_download[OVERWRITE_VALUE]}")
                 ;;
             TIME)
@@ -745,7 +753,7 @@ io_download_file() {
             esac
             #declare -p _i _epoch1 _epoch2
             [[ $_epoch1 -gt $_epoch2 ]] && {
-                _found=$((_i +1))
+                _download[FOUND]=$((_i +1))
                 break
             }
         done
@@ -753,7 +761,7 @@ io_download_file() {
 
         # found localy (1), common (2)
         local _info
-        case $_found in
+        case ${_download[FOUND]} in
         1)
             _info="Téléchargement de ${_download[FILE]} inutile, car déjà présent"
             ;;
@@ -763,7 +771,7 @@ io_download_file() {
             ;;
         esac
 
-        [[ $_found -gt 0 ]] && {
+        [[ ${_download[FOUND]} -gt 0 ]] && {
             log_info "$_info"
             return $POW_DOWNLOAD_ALREADY_AVAILABLE
         }
@@ -803,6 +811,19 @@ io_download_file() {
 
             return $POW_DOWNLOAD_ERROR
         }
+
+    [ "${_download[OVERWRITE_MODE]}" = NEWER ] &&
+    [[ ${_download[ID]} > -1 ]] && {
+        # different from available version (not necessary newer) ?
+        diff --brief "$_tmp_path" "${_files[${_download[ID]}]}" > /dev/null
+        [ $? -eq 0 ] && {
+            log_info "Téléchargement de ${_download[FILE]} inutile, car sans changement"
+            # update modification date
+            touch -m -r "$_tmp_path" "${_files[${_download[ID]}]}"
+            archive_file "$_log_tmp_path"
+            return $POW_DOWNLOAD_ALREADY_AVAILABLE
+        }
+    }
 
     # result
     log_info "Copie de ${_download[FILE]} sur le Dépôt" &&
