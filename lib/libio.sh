@@ -820,7 +820,9 @@ io_download_file() {
         [ $? -eq 0 ] && {
             log_info "Téléchargement de ${_download[FILE]} inutile, car sans changement"
             # update common
-            [ -f "${_files[1]}" ] && touch -m -r "$_tmp_path" "${_files[1]}" || mv "$_tmp_path" "${_files[1]}"
+            [ -f "${_files[1]}" ] && {
+                touch -m -r "$_tmp_path" "${_files[1]}" && rm "$_tmp_path"
+            } || mv "$_tmp_path" "${_files[1]}"
             # copy on target (if not exists)
             [ ! -f "${_files[0]}" ] && cp "${_files[1]}" "${_download[DIR]}"
             archive_file "$_log_tmp_path"

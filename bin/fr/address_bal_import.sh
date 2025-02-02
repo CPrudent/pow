@@ -394,7 +394,7 @@ bal_load_addresses() {
         ' \
         "$@" || return $ERROR_CODE
 
-    local _name _query _info _j _rc _field=${get_arg_level}S _code _len
+    local _name _query _info _j _rc _field=${get_arg_level}S _code _len _url _file
     local -a _addresses
 
     _name="BAL_SELECT_${bal_vars[MUNICIPALITY_CODE]}_${_field}" &&
@@ -476,11 +476,11 @@ bal_load_addresses() {
                         _code=${_addresses[$_j]:1:$_len}
                     }
                 } &&
-                bal_vars[URL_DATA]=lookup/${_code:-${_addresses[$_j]}} &&
+                _url=lookup/${_code:-${_addresses[$_j]}} &&
                 bal_vars[FILE_NAME]=${_code:-${_addresses[$_j]}}.json &&
                 {
                     io_download_file \
-                        --url "${bal_vars[URL]}/${bal_vars[URL_DATA]}" \
+                        --url "${bal_vars[URL]}/$_url" \
                         --overwrite_mode NEWER \
                         --overwrite_key DATE \
                         --overwrite_value ${bal_vars[IO_END_EPOCH]} \
@@ -1409,7 +1409,7 @@ declare -A bal_vars=(
     [PROGRESS_TOTAL]=1
     [PROGRESS_SIZE]=5
     [VERBOSE]=$get_arg_verbose
-    [LEVELS]=
+    [LEVELS]=$get_arg_levels
 )
 declare -a bal_codes=()
 [ "${bal_vars[FIX]}" = NONE ] && bal_vars[FIX]=
