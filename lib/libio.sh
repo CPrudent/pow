@@ -818,8 +818,9 @@ io_download_file() {
         diff --brief "$_tmp_path" "${_files[${_download[ID]}]}" > /dev/null
         [ $? -eq 0 ] && {
             log_info "Téléchargement de ${_download[FILE]} inutile, car sans changement"
-            # update modification date
-            touch -m -r "$_tmp_path" "${_files[${_download[ID]}]}"
+            # update common, copy on target (if not exists)
+            [ -f "${_files[1]}" ] && touch -m -r "$_tmp_path" "${_files[1]}" || mv "$_tmp_path" "${_files[1]}"
+            [ ! -f "${_files[0]}" ] && cp "${_files[1]}" "${_download[DIR]}"
             archive_file "$_log_tmp_path"
             return $POW_DOWNLOAD_ALREADY_AVAILABLE
         }
