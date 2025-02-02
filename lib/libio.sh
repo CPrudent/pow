@@ -730,6 +730,9 @@ io_download_file() {
         for ((_i=0; _i<${#_files[@]}; _i++)); do
             [ -f "${_files[$_i]}" ] || continue
 
+            # file found
+            _download[ID]=$_i
+
             # no mode, break (already found)
             [ "${_download[OVERWRITE_MODE]}" = no ] || {
                 _download[FOUND]=$((_i +1))
@@ -737,7 +740,6 @@ io_download_file() {
             }
 
             # NEWER mode
-            _download[ID]=$_i
             # time of last data modification
             local _epoch1=$(stat --format '%Y' "${_files[$_i]}")
             local _epoch2
@@ -812,14 +814,14 @@ io_download_file() {
             return $POW_DOWNLOAD_ERROR
         }
 
-    [ "${_download[OVERWRITE_MODE]}" = NEWER ] &&
     [[ ${_download[ID]} > -1 ]] && {
-        # different from available version (not necessary newer) ?
+        # different from available version ?
         diff --brief "$_tmp_path" "${_files[${_download[ID]}]}" > /dev/null
         [ $? -eq 0 ] && {
             log_info "Téléchargement de ${_download[FILE]} inutile, car sans changement"
-            # update common, copy on target (if not exists)
+            # update common
             [ -f "${_files[1]}" ] && touch -m -r "$_tmp_path" "${_files[1]}" || mv "$_tmp_path" "${_files[1]}"
+            # copy on target (if not exists)
             [ ! -f "${_files[0]}" ] && cp "${_files[1]}" "${_download[DIR]}"
             archive_file "$_log_tmp_path"
             return $POW_DOWNLOAD_ALREADY_AVAILABLE
