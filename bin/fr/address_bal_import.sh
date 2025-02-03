@@ -490,7 +490,7 @@ bal_load_addresses() {
                         --verbose ${bal_vars[VERBOSE]}
                     _rc=$?
                     [[ $_rc -lt $POW_DOWNLOAD_ERROR ]] && {
-                        # nothing todo (already downloaded and so imported) ?
+                        # same data has to be loaded again ?
                         ([ "${bal_vars[FORCE_LOAD]}" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
                             import_file \
                                 --file_path "$POW_DIR_IMPORT/${bal_vars[FILE_NAME]}" \
@@ -1153,7 +1153,7 @@ bal_load() {
                 --output_file "${bal_vars[FILE_NAME]}"
             _rc=$?
             [[ $_rc -lt $POW_DOWNLOAD_ERROR ]] && {
-                # nothing todo (already downloaded and so imported) ?
+                # same data has to be loaded again ?
                 ([ "${bal_vars[FORCE_LOAD]}" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
                     import_file \
                         --file_path "$POW_DIR_IMPORT/${bal_vars[FILE_NAME]}" \
@@ -1368,7 +1368,7 @@ bash_args \
         select_criteria:REVISION;
         select_order:DESC;
         force:no;
-        force_load:no;
+        force_load:yes;
         fix:NONE;
         levels:ALL;
         dry_run:no;
@@ -1399,6 +1399,11 @@ declare -A bal_vars=(
     [HOUSENUMBERS]=-1
     [STOP_TIME]=$get_arg_stop_time
     [FORCE]=$get_arg_force
+        # same data (POW_DOWNLOAD_ALREADY_AVAILABLE)
+        # nothing todo (already downloaded and so imported) ? but 2 problems (if not)
+        #  1) obsolescence can wrongly delete elements
+        #  2) no change on higher level don't prevent changes on lower one!
+        #     by example, same streets, but new housenumbers
     [FORCE_LOAD]=$get_arg_force_load
     [FIX]=$get_arg_fix
     [DRY_RUN]=$get_arg_dry_run
