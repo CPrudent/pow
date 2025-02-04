@@ -145,6 +145,11 @@ bal_check_municipality() {
             log_error "Import préalable de l'ensemble des Communes (--municipality ALL)"
             false
         }
+    } &&
+    {
+        # reset counters
+        bal_vars[STREETS]=-1
+        bal_vars[HOUSENUMBERS]=-1
     } || return $ERROR_CODE
 
     return $SUCCESS_CODE
