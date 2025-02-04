@@ -740,13 +740,13 @@ io_download_file() {
             }
 
             # NEWER mode
-            # time of last data modification
+            # last modification (of available data)
             local _epoch1=$(stat --format '%Y' "${_files[$_i]}")
             local _epoch2
             case ${_download[OVERWRITE_KEY]} in
             DATE)
-                # epoch of given date
-                _epoch2=$(date '+%s' --date "@${_download[OVERWRITE_VALUE]}")
+                # given date
+                _epoch2=${_download[OVERWRITE_VALUE]}
                 ;;
             TIME)
                 # now - given time
@@ -754,7 +754,8 @@ io_download_file() {
                 ;;
             esac
             #declare -p _i _epoch1 _epoch2
-            [[ $_epoch1 -gt $_epoch2 ]] && {
+            [[ $_epoch1 -lt $_epoch2 ]] && {
+                # target data is more recent than available one
                 _download[FOUND]=$((_i +1))
                 break
             }
