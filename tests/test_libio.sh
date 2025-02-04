@@ -26,6 +26,7 @@ pow_argv \
 set_log_echo no
 case "${test_libio[TEST]}" in
 NEWER_DATE)
+    echo 'FROM TMPFILE'
     get_tmp_file --tmpfile _tmp1 --create yes
     _epoch1=$(stat --format '%Y' "$_tmp1")
     ls -l $_tmp1
@@ -45,6 +46,8 @@ NEWER_DATE)
     echo -n "epoch1=$_epoch1 epoch2=$_epoch2 delta=$_delta "
     [[ $_delta -lt 0 ]] && echo 'NEWER (yes)' || echo 'NEWER (no)'
 
+    echo
+    echo 'FROM DB (INSEE 44109 if exists)'
     execute_query \
         --name BAL_44109_DATE \
         --query "
@@ -56,7 +59,14 @@ NEWER_DATE)
         --return _date
     [ -n "$_date" ] && {
         _epoch2=$(date '+%s' --date "$_date")
-        echo "epoch2=$_epoch2 "
+
+        _ref=$POW_DIR_COMMON_GLOBAL/fr/bal/44109.json
+        [ -f "$_ref" ] && {
+            _epoch1=$(stat --format '%Y' "$_ref")
+            _delta=$((_epoch1 - _epoch2))
+            echo -n "epoch1=$_epoch1 epoch2=$_epoch2 delta=$_delta "
+            [[ $_delta -lt 0 ]] && echo 'NEWER (yes)' || echo 'NEWER (no)'
+        }
     }
 
     rm $_tmp1

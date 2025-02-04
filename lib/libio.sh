@@ -728,13 +728,14 @@ io_download_file() {
 
         local _i
         for ((_i=0; _i<${#_files[@]}; _i++)); do
+            # search for available data
             [ -f "${_files[$_i]}" ] || continue
 
             # file found
             _download[ID]=$_i
 
             # no mode, break (already found)
-            [ "${_download[OVERWRITE_MODE]}" = no ] || {
+            [ "${_download[OVERWRITE_MODE]}" = no ] && {
                 _download[FOUND]=$((_i +1))
                 break
             }
@@ -753,9 +754,13 @@ io_download_file() {
                 _epoch2=$(($(date '+%s') - ${_download[OVERWRITE_VALUE]}))
                 ;;
             esac
+            [ "${_download[VERBOSE]}" = yes ] && {
+                log_info "epoch(${_files[$_i]})=$_epoch1"
+                log_info "epoch(OVERWRITE_VALUE)=$_epoch2"
+            }
             #declare -p _i _epoch1 _epoch2
-            [[ $_epoch1 -lt $_epoch2 ]] && {
-                # target data is more recent than available one
+            [[ $_epoch1 -ge $_epoch2 ]] && {
+                # available data is enough (not need to download again)
                 _download[FOUND]=$((_i +1))
                 break
             }
@@ -815,7 +820,7 @@ io_download_file() {
             return $POW_DOWNLOAD_ERROR
         }
 
-    [[ ${_download[ID]} > -1 ]] && {
+    [[ ${_download[ID]} -gt -1 ]] && {
         # different from available version ?
         diff --brief "$_tmp_path" "${_files[${_download[ID]}]}" > /dev/null
         [ $? -eq 0 ] && {
