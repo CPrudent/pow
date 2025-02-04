@@ -1400,10 +1400,9 @@ declare -A bal_vars=(
     [STOP_TIME]=$get_arg_stop_time
     [FORCE]=$get_arg_force
         # same data (POW_DOWNLOAD_ALREADY_AVAILABLE)
-        # nothing todo (already downloaded and so imported) ? but 2 problems (if not)
-        #  1) obsolescence can wrongly delete elements
-        #  2) no change on higher level don't prevent changes on lower one!
-        #     by example, same streets, but new housenumbers
+        # nothing todo (already downloaded and so imported) ? but problem (if not) !
+        #  obsolescence (diff between level-table and json-table) can wrongly delete elements
+        #  if there are not loaded
     [FORCE_LOAD]=$get_arg_force_load
     [FIX]=$get_arg_fix
     [DRY_RUN]=$get_arg_dry_run
