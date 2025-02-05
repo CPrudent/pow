@@ -1195,10 +1195,16 @@ bal_load() {
                     --id ${bal_vars[IO_ID]}
                 ;;
             esac &&
-            vacuum \
-                --schema_name fr \
-                --table_name "${_context[VACUUM]}" \
-                --mode ANALYZE
+            {
+                # vacuum only for last municipality (or summary)
+                ([ "${_level}" = MUNICIPALITY ] &&
+                [[ ${bal_vars[PROGRESS_CURRENT]} -lt ${bal_vars[PROGRESS_TOTAL]} ]]) || {
+                    vacuum \
+                        --schema_name fr \
+                        --table_name "${_context[VACUUM]}" \
+                        --mode ANALYZE
+                }
+            }
         }
         ;;
     STREET)

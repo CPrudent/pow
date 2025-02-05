@@ -802,7 +802,7 @@ io_download_file() {
         --output-document "$_tmp_path" \
         --no-check-certificate \
         --progress=dot:mega \
-        --retry-on-http-error=503 \
+        --retry-on-http-error=429,503 \
         --wait=10 \
         --random-wait \
         $_user \
