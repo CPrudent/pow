@@ -1086,8 +1086,7 @@ bal_load() {
         io_todo_import \
             --force ${bal_vars[FORCE]} \
             --io ${bal_vars[IO_NAME]} \
-            --date_end "${bal_vars[IO_END]}" \
-            --id bal_vars[IO_ID]
+            --date_end "${bal_vars[IO_END]}"
         case $? in
         $POW_IO_SUCCESSFUL)                                 return $SUCCESS_CODE    ;;
         $POW_IO_IN_PROGRESS|$POW_IO_ERROR|$ERROR_CODE)      return $ERROR_CODE      ;;
@@ -1517,7 +1516,7 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
                 _start=$(echo "$(date '+%s') - (${bal_rows}*${bal_average})" | bc -l) &&
                 # remove decimal part
                 get_elapsed_time --start ${_start%.*} --result _elapsed &&
-                bal_progress_bar END "${_elapsed}" "#${bal_rows}"
+                bal_progress_bar END "${_elapsed}" "#${bal_rows} (#OLD=${bal_vars[WITH_OLD_AREA]})"
 
             } || {
                 bal_progress_bar END 'Non disponible'
