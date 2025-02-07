@@ -4,6 +4,10 @@
     # synopsis
     #--
     # import BAL addresses: summary (municipality), street and only certified housenumber
+    #  summary : all municipalities
+    #  municipality : municipality and its streets
+    #  street : street ans its housenumbers
+    #  housenumber : housenumber details (some are not present into street stream!)
 
     # NOTE
     # be careful at circular name reference (passing array to function)
@@ -68,8 +72,8 @@ bal_progress_bar() {
     return $SUCCESS_CODE
 }
 
-# is code OK ?
-bal_check_municipality() {
+# prepare municipality
+bal_set_municipality() {
     bash_args \
         --args_p '
             code:Code Commune
@@ -79,26 +83,52 @@ bal_check_municipality() {
         ' \
         "$@" || return $ERROR_CODE
 
-    local _valid
+    local _valid _error _io _tmp
+    local -a _last_io
+    local -a _counters
 
+    {
+        # reset
+        bal_vars[STREETS]=-1
+        bal_vars[HOUSENUMBERS]=-1
+        bal_vars[IO_LAST_ID]=
+        bal_vars[IO_LAST_BEGIN]=
+        bal_vars[IO_LAST_END]=
+        bal_vars[IO_LAST_ATTRIBUTES]=
+    } &&
     execute_query \
         --name "BAL_MUNICIPALITY_${get_arg_code}" \
         --query "
             SELECT EXISTS(
-                SELECT 1 FROM fr.laposte_address_area
-                WHERE co_insee_commune = COALESCE('${get_arg_code}', '99999') AND fl_active
+                SELECT 1 FROM fr.bal_municipality
+                WHERE code = '${get_arg_code}'
             )" \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
-        --return _valid || return $ERROR_CODE
-
-    [ "$_valid" = f ] && {
-        log_error "code Commune '${get_arg_code}' non valide!"
-        return $ERROR_CODE
-    }
-
+        --return _valid &&
+    {
+        [ "$_valid" = t ] || {
+            execute_query \
+                --name "LAPOSTE_MUNICIPALITY_${get_arg_code}" \
+                --query "
+                    SELECT EXISTS(
+                        SELECT 1 FROM fr.laposte_address_area
+                        WHERE co_insee_commune = '${get_arg_code}' AND fl_active
+                    )" \
+                --psql_arguments 'tuples-only:pset=format=unaligned' \
+                --return _valid &&
+            {
+                case "$_valid" in
+                f)  _error="code Commune '${get_arg_code}' non valide!"                         ;;
+                t)  _error="Import préalable de l'ensemble des Communes (--municipality ALL)"   ;;
+                esac
+                log_error "$_error"
+                false
+            }
+        }
+    } &&
     # count areas (w/ old municipality owning at least one address)
     execute_query \
-        --name "BAL_MUNICIPALITY_${get_arg_code}_AREAS" \
+        --name "LAPOSTE_MUNICIPALITY_${get_arg_code}_AREAS" \
         --query "
             SELECT
                 COUNT(1)
@@ -124,34 +154,65 @@ bal_check_municipality() {
                 )
         " \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
-        --return bal_vars[WITH_OLD_AREA] &&
-    execute_query \
-        --name "BAL_MUNICIPALITY_${get_arg_code}_ROWS" \
-        --query "
-            SELECT
-                CASE
-                WHEN ${bal_vars[WITH_OLD_AREA]} > 0 THEN
-                    areas + streets + housenumbers_auth
-                ELSE
-                    areas + streets
-                END
-            FROM fr.bal_municipality
-            WHERE code = '${get_arg_code}'
-        " \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
-        --return bal_vars[IO_ROWS] &&
+        --return bal_vars[AREAS_OLD_MUNICIPALITY] &&
     {
-        [ -n "${bal_vars[IO_ROWS]}" ] || {
-            log_error "Import préalable de l'ensemble des Communes (--municipality ALL)"
-            false
+        execute_query \
+            --name "BAL_MUNICIPALITY_${get_arg_code}_LAST_IO" \
+            --query "
+                SELECT id, date_data_begin, date_data_end, attributes
+                FROM get_last_io('${bal_vars[IO_NAME]}')
+            " \
+            --psql_arguments 'tuples-only:pset=format=unaligned' \
+            --return _tmp &&
+        {
+            [ -z "$_tmp" ] || {
+                IFS='|' read -a _last_io <<< "$_tmp"
+
+                bal_vars[IO_LAST_ID]=${_last_io[0]}
+                bal_vars[IO_LAST_BEGIN]=${_last_io[1]}
+                bal_vars[IO_LAST_END]=${_last_io[2]}
+                bal_vars[IO_LAST_ATTRIBUTES]=${_last_io[3]}
+            }
         }
     } &&
     {
-        # reset counters
-        bal_vars[STREETS]=-1
-        bal_vars[HOUSENUMBERS]=-1
+        # check levels
+        (is_yes --var bal_vars[LEVEL_MUNICIPALITY]) || {
+            _tmp=$(jq --raw-output '.integration.levels // empty' <<< "${bal_vars[IO_LAST_ATTRIBUTES]}")
+            [ -n "$(expr index ${_tmp} M)" ] || {
+                log_error "étape Commune $get_arg_code (--levels MSN|MS) est nécessaire!"
+                false
+            }
+        }
+    } &&
+    {
+        execute_query \
+            --name "BAL_MUNICIPALITY_${get_arg_code}_ROWS" \
+            --query "
+                SELECT
+                    (areas + streets) streets,
+                    housenumbers_auth
+                FROM fr.bal_municipality
+                WHERE code = '${get_arg_code}'
+        " \
+        --psql_arguments 'tuples-only:pset=format=unaligned' \
+        --return _tmp &&
+        {
+            IFS='|' read -a _counters <<< "$_tmp"
+            bal_vars[IO_ROWS]=$_counters[0]
+            (! is_yes --var bal_vars[LEVEL_HOUSENUMBER]) || {
+                [[ ${bal_vars[AREAS_OLD_MUNICIPALITY]} -gt 0 ]] || {
+                    bal_vars[IO_ROWS]=$((bal_vars[IO_ROWS] + _counters[1]))
+                }
+            }
+        }
     } || return $ERROR_CODE
 
+    [ "${bal_vars[VERBOSE]}" = yes ] && {
+        echo Contexte
+        declare -p bal_vars
+        echo
+    }
     return $SUCCESS_CODE
 }
 
@@ -176,7 +237,7 @@ bal_get_counters() {
     case "${_opts[USAGE]}" in
     NROWS)
         _value_ref=${bal_vars[STREETS]}
-        [[ ${bal_vars[WITH_OLD_AREA]} > 0 ]] && _value_ref=$((_value_ref + bal_vars[HOUSENUMBERS]))
+        [[ ${bal_vars[AREAS_OLD_MUNICIPALITY]} > 0 ]] && _value_ref=$((_value_ref + bal_vars[HOUSENUMBERS]))
         ;;
     ATTRIBUTES)
         _value_ref='{"integration":{"streets":'${bal_vars[STREETS]}',"housenumbers":'${bal_vars[HOUSENUMBERS]}'}}'
@@ -1013,7 +1074,7 @@ bal_integration() {
         } &&
         # need to request API on each housenumber, if many areas! to obtain old municipality
         {
-            [[ ${bal_vars[WITH_OLD_AREA]} == 0 ]] || {
+            [[ ${bal_vars[AREAS_OLD_MUNICIPALITY]} == 0 ]] || {
                 bal_load --level HOUSENUMBER
             }
         }
@@ -1113,12 +1174,8 @@ bal_load() {
             bal_vars[FILE_NAME]="$_file" &&
             {
                 [ "${_level}" = SUMMARY ] || {
-                    bal_vars[FILE_NAME]+=.json &&
-                    execute_query \
-                        --name BAL_IO_BEGIN \
-                        --query "SELECT (get_last_io('${bal_vars[IO_NAME]}')).date_data_end" \
-                        --psql_arguments 'tuples-only:pset=format=unaligned' \
-                        --return bal_vars[IO_BEGIN]
+                    bal_vars[FILE_NAME]+=.json
+                    bal_vars[IO_BEGIN]=${bal_vars[IO_LAST_END]}
                 }
             }
         } &&
@@ -1127,15 +1184,11 @@ bal_load() {
             [ "${bal_vars[IO_BEGIN]}" != "${bal_vars[IO_END]}" ] || bal_vars[IO_BEGIN]=
         } &&
         {
-            # rows already defined ?
             [ "${_level}" = MUNICIPALITY ] || {
+                # summary
                 execute_query \
                     --name BAL_IO_ROWS \
-                    --query "
-                        SELECT COUNT(DISTINCT co_insee_commune)
-                        FROM fr.laposte_address_area
-                        WHERE fl_active
-                    " \
+                    --query "SELECT COUNT(1) FROM fr.bal_municipality" \
                     --psql_arguments 'tuples-only:pset=format=unaligned' \
                     --return bal_vars[IO_ROWS]
             }
@@ -1144,7 +1197,7 @@ bal_load() {
             --io "${bal_vars[IO_NAME]}" \
             --date_begin "${bal_vars[IO_BEGIN]:-1970-01-01}" \
             --date_end "${bal_vars[IO_END]}" \
-            --nrows_todo ${bal_vars[IO_ROWS]:-0} \
+            --nrows_todo ${bal_vars[IO_ROWS]} \
             --id bal_vars[IO_ID] &&
         {
             io_download_file \
@@ -1369,6 +1422,7 @@ bash_args \
         force:yes|no;
         force_load:yes|no;
         fix:NONE|SPACE_IN_CODE|CONVERT_ATTRIBUTES;
+        levels:MSN|MS|N;
         dry_run:yes|no;
         progress:yes|no;
         clean:yes|no;
@@ -1380,7 +1434,7 @@ bash_args \
         force:no;
         force_load:yes;
         fix:NONE;
-        levels:ALL;
+        levels:MSN;
         dry_run:no;
         limit:30;
         stop_time:0;
@@ -1392,7 +1446,6 @@ bash_args \
 
 declare -A bal_vars=(
     [MUNICIPALITY_CODE]="${get_arg_municipality^^}"
-    [WITH_OLD_AREA]=0
     [URL]='https://plateforme.adresse.data.gouv.fr'
     [IO_NAME]=
     [IO_ID]=
@@ -1400,11 +1453,16 @@ declare -A bal_vars=(
     [IO_END]="$(date +%F)"
     [IO_END_EPOCH]=
     [IO_ROWS]=0
+    [IO_LAST_ID]=
+    [IO_LAST_BEGIN]=
+    [IO_LAST_END]=
+    [IO_LAST_ATTRIBUTES]=
     [FILE_NAME]=
     [TABLE_NAME]=
     [SELECT_CRITERIA]=$get_arg_select_criteria
     [SELECT_ORDER]=$get_arg_select_order
     [LIMIT]=$get_arg_limit
+    [AREAS_OLD_MUNICIPALITY]=0
     [STREETS]=-1
     [HOUSENUMBERS]=-1
     [STOP_TIME]=$get_arg_stop_time
@@ -1424,10 +1482,19 @@ declare -A bal_vars=(
     [PROGRESS_SIZE]=5
     [VERBOSE]=$get_arg_verbose
     [LEVELS]=$get_arg_levels
+    [LEVEL_MUNICIPALITY]=
+    [LEVEL_STREET]=
+    [LEVEL_HOUSENUMBER]=
 )
 declare -a bal_codes=()
 [ "${bal_vars[FIX]}" = NONE ] && bal_vars[FIX]=
-[ "${bal_vars[LEVELS]}" = ALL ] && bal_vars[LEVELS]=MUNICIPALITY,STREET,HOUSENUMBER
+# with level(s)
+_tmp=$(expr index ${bal_vars[LEVELS]} M)
+[ $_tmp -eq 0 ] && bal_vars[LEVEL_MUNICIPALITY]=no || bal_vars[LEVEL_MUNICIPALITY]=yes
+_tmp=$(expr index ${bal_vars[LEVELS]} S)
+[ $_tmp -eq 0 ] && bal_vars[LEVEL_STREET]=no || bal_vars[LEVEL_STREET]=yes
+_tmp=$(expr index ${bal_vars[LEVELS]} N)
+[ $_tmp -eq 0 ] && bal_vars[LEVEL_HOUSENUMBER]=no || bal_vars[LEVEL_HOUSENUMBER]=yes
 
 set_env --schema_name fr &&
 {
@@ -1458,8 +1525,8 @@ is_yes --var bal_vars[DRY_RUN] && {
     bal_progress_bar END Estimation Adresses
 }
 for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
-    # check municipality code
-    bal_check_municipality --code "${bal_codes[$bal_i]}" || {
+    # check municipality code, prepare properties
+    bal_set_municipality --code "${bal_codes[$bal_i]}" || {
         bal_error=1
         continue
     }
@@ -1516,7 +1583,7 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
                 _start=$(echo "$(date '+%s') - (${bal_rows}*${bal_average})" | bc -l) &&
                 # remove decimal part
                 get_elapsed_time --start ${_start%.*} --result _elapsed &&
-                bal_progress_bar END "${_elapsed}" "#${bal_rows} (#OLD=${bal_vars[WITH_OLD_AREA]})"
+                bal_progress_bar END "${_elapsed}" "#${bal_rows} (#OLD=${bal_vars[AREAS_OLD_MUNICIPALITY]})"
 
             } || {
                 bal_progress_bar END 'Non disponible'
