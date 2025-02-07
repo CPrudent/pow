@@ -82,7 +82,7 @@ bal_set_levels() {
         S)  _key=LEVEL_STREET           ;;
         N)  _key=LEVEL_HOUSENUMBER      ;;
         esac
-        _tmp=$(expr index ${bal_vars[LEVELS]} $_level)
+        _tmp=$(expr index "${bal_vars[LEVELS]}" $_level)
         [ $_tmp -eq 0 ] && bal_vars[$_key]=no || bal_vars[$_key]=yes
     done
 
@@ -205,7 +205,7 @@ bal_set_municipality() {
             --name "BAL_MUNICIPALITY_${get_arg_code}_LAST_IO" \
             --query "
                 SELECT id, date_data_begin, date_data_end, attributes
-                FROM get_last_io('BAL_${bal_vars[MUNICIPALITY_CODE]}')
+                FROM get_last_io('BAL_${get_arg_code}')
             " \
             --psql_arguments 'tuples-only:pset=format=unaligned' \
             --return _tmp &&
@@ -1581,9 +1581,8 @@ set_env --schema_name fr &&
     (! is_yes --var bal_vars[PROGRESS]) || set_log_echo no
 } &&
 {
-    [ "${bal_vars[MUNICIPALITY_CODE]}" != ALL ] && {
-        bal_codes[0]=${bal_vars[MUNICIPALITY_CODE]}
-    } || {
+    case "${bal_vars[MUNICIPALITY_CODE]}" in
+    ALL)
         bal_load --level SUMMARY &&
         bal_list_municipalities --list bal_codes &&
         {
@@ -1593,7 +1592,11 @@ set_env --schema_name fr &&
                 }
             }
         }
-    }
+        ;;
+    *)
+        bal_codes[0]=${bal_vars[MUNICIPALITY_CODE]}
+        ;;
+    esac
 } || on_import_error
 
 bal_error=0
