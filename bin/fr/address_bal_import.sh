@@ -1253,7 +1253,11 @@ bal_load() {
                 # summary
                 execute_query \
                     --name BAL_IO_ROWS \
-                    --query "SELECT COUNT(1) FROM fr.bal_municipality" \
+                    --query "
+                        SELECT COUNT(DISTINCT co_insee_commune)
+                        FROM fr.laposte_address_area
+                        WHERE fl_active
+                    " \
                     --psql_arguments 'tuples-only:pset=format=unaligned' \
                     --return bal_vars[IO_ROWS]
             }
@@ -1516,7 +1520,7 @@ bash_args \
         force:no;
         force_load:yes;
         fix:NONE;
-        levels:MSN;
+        levels:MS;
         dry_run:no;
         limit:3;
         stop_time:0;
