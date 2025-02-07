@@ -765,7 +765,6 @@ io_download_file() {
                 break
             }
         done
-        [ "${_download[VERBOSE]}" = yes ] && declare -p _found
 
         # found localy (1), common (2)
         local _info
