@@ -494,6 +494,64 @@ bal_count_addresses() {
     return $SUCCESS_CODE
 }
 
+# import downloaded file (dealing w/ some error)
+bal_import_file() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            option:Option de chargement du fichier;
+            mode:Mode de chargement du fichier
+        ' \
+        --args_m '
+            option;mode
+        ' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
+
+    local _try _ext _rc _file="$POW_DIR_IMPORT/${bal_vars[FILE_NAME]}" _tmpfile
+
+    # FIXME delete header (first one character)
+    [ -n "${_opts[OPTION]}" ] && _opts[OPTION]=${_opts[OPTION]:1}
+
+    for ((_try=0; _try<2; _try++)); do
+        case $_try in
+        0)
+            # null command
+            :
+            ;;
+        1)
+            _ext=$(get_file_extension --file_path "$_file")
+            [ "$_ext" != json ] && return $ERROR_CODE
+
+            get_tmp_file --tmpfile _tmpfile --tmpext json
+            # double quote inside value ?
+            grep --perl-regexp ':"[^"]*"[^"]+"[^"]*",?' $_file > /dev/null
+            # no : other error (not catched yet)
+            [[ $? -eq 0 ]] || return $ERROR_CODE
+            # need to protect \"
+            # https://stackoverflow.com/questions/15637429/how-to-escape-double-quotes-in-json
+            sed --expression 's/\\"/\\\\\\"/g' < $_file > $_tmpfile
+            _file=$_tmpfile
+            log_info "Chargement (${bal_vars[FILE_NAME]}) : double apostrophe"
+            ;;
+        *)
+            [ -n "$_tmpfile" ] && rm $_tmpfile
+            log_error "Chargement (${bal_vars[FILE_NAME]}) : erreur non gérée!"
+            return $ERROR_CODE
+            ;;
+        esac
+
+        import_file \
+            --file_path "$_file" \
+            --table_name ${bal_vars[TABLE_NAME]} \
+            ${_opts[OPTION]} \
+            --load_mode ${_opts[MODE]}
+        [[ $? -eq 0 ]] && break
+    done
+    [ -n "$_tmpfile" ] && rm $_tmpfile
+
+    return $SUCCESS_CODE
+}
+
 # load BAL addresses (streets or housenumbers)
 bal_load_addresses() {
     bash_args \
@@ -606,11 +664,10 @@ bal_load_addresses() {
                     [[ $_rc -lt $POW_DOWNLOAD_ERROR ]] && {
                         # same data has to be loaded again ?
                         ([ "${bal_vars[FORCE_LOAD]}" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
-                            import_file \
-                                --file_path "$POW_DIR_IMPORT/${bal_vars[FILE_NAME]}" \
-                                --table_name ${bal_vars[TABLE_NAME]} \
-                                --import_options column_name=data \
-                                --load_mode APPEND
+                            # FIXME argument value beginning w/ --
+                            bal_import_file \
+                                --mode APPEND \
+                                --option ":--import_options column_name=data"
                         }
                     }
                 }
@@ -1193,7 +1250,7 @@ bal_load() {
         ' \
         "$@" || return $ERROR_CODE
 
-    local _level=${get_arg_level} _elapsed _info _file _rc
+    local _level=${get_arg_level} _elapsed _info _file _rc _option
     local -A _context
 
     case "$_level" in
@@ -1283,11 +1340,15 @@ bal_load() {
                     [[ $_rc -lt $POW_DOWNLOAD_ERROR ]] && {
                         # same data has to be loaded again ?
                         ([ "${bal_vars[FORCE_LOAD]}" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
-                            import_file \
-                                --file_path "$POW_DIR_IMPORT/${bal_vars[FILE_NAME]}" \
-                                --table_name ${bal_vars[TABLE_NAME]} \
-                                --load_mode OVERWRITE_DATA \
-                                ${_context[IMPORT_OPTIONS]} &&
+                            # FIXME need to protect value beginning w/ --
+                            #       will be considered as boolean and one more option!
+                            #       --option "--import_options column_name=data"
+                            #       _opts[OPTION]=yes
+                            #       _opts[IMPORT_OPTIONS]="column_name=data"
+                            [ -n "${_context[IMPORT_OPTIONS]}" ] && _option=:${_context[IMPORT_OPTIONS]}
+                            bal_import_file \
+                                --mode OVERWRITE_DATA \
+                                --option "$_option" &&
                             bal_integration --level ${_context[NEXT_LEVEL]}
                         }
                     }

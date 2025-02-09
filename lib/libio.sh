@@ -1707,8 +1707,9 @@ import_file() {
         }
         ;;
     *)
-        log_error "Le fichier $file_path ne peut pas être traité!"
+        log_error "Le fichier $file_path ne peut pas être traité (extension non gérée)!"
         false
+        ;;
     esac || return $ERROR_CODE
 
     [ -n "$file_archive_extract_dir" ] && rm --recursive --force "$file_archive_extract_dir"
