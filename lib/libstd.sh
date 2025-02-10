@@ -446,17 +446,19 @@ pow_argv() {
             elif [ -z "$1" ]; then
                 _step=90
             else
+                # deal w/ protected '\--option' as value (and not as option!), stripping anti-slash
+                [[ $1 =~ ^\\ ]] && _from=1 || _from=0
                 [ -n "$_value" ] && {
                     # args_? has only one list value
                     if [[ $_key =~ args_[nmvdp] ]]; then
                         _error="option attendue, du type --option (au lieu de: $1)"
                         _step=99
                     else
-                        _value="$_value $1"
+                        _value+=" ${1:$_from}"
                         shift
                     fi
                 } || {
-                    _value=$1
+                    _value=${1:$_from}
                     shift
                 }
             fi

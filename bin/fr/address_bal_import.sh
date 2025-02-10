@@ -503,14 +503,14 @@ bal_import_file() {
             mode:Mode de chargement du fichier
         ' \
         --args_m '
-            option;mode
+            mode
         ' \
         --pow_argv _opts "$@" || return $ERROR_CODE
 
     local _try _ext _rc _file="$POW_DIR_IMPORT/${bal_vars[FILE_NAME]}" _tmpfile
 
     # FIXME delete header (first one character)
-    [ -n "${_opts[OPTION]}" ] && _opts[OPTION]=${_opts[OPTION]:1}
+    #[ -n "${_opts[OPTION]}" ] && _opts[OPTION]=${_opts[OPTION]:1}
 
     for ((_try=0; _try<2; _try++)); do
         case $_try in
@@ -664,10 +664,9 @@ bal_load_addresses() {
                     [[ $_rc -lt $POW_DOWNLOAD_ERROR ]] && {
                         # same data has to be loaded again ?
                         ([ "${bal_vars[FORCE_LOAD]}" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
-                            # FIXME argument value beginning w/ --
                             bal_import_file \
                                 --mode APPEND \
-                                --option ":--import_options column_name=data"
+                                --option '\--import_options column_name=data'
                         }
                     }
                 }
@@ -993,7 +992,8 @@ bal_context() {
         bal_last_update_municipality &&
         _vars_ref[OVERWRITE_VALUE]=${bal_vars[IO_END_EPOCH]} &&
         # table w/ 1 column named 'data' to import JSON stream
-        _vars_ref[IMPORT_OPTIONS]="--import_options column_name=data" &&
+        # protect (\) to be not interpret as an option, but a value
+        _vars_ref[IMPORT_OPTIONS]='\--import_options column_name=data' &&
         # vacuum list
         _vars_ref[VACUUM]=bal_street,bal_housenumber
         ;;
@@ -1340,15 +1340,10 @@ bal_load() {
                     [[ $_rc -lt $POW_DOWNLOAD_ERROR ]] && {
                         # same data has to be loaded again ?
                         ([ "${bal_vars[FORCE_LOAD]}" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
-                            # FIXME need to protect value beginning w/ --
-                            #       will be considered as boolean and one more option!
-                            #       --option "--import_options column_name=data"
-                            #       _opts[OPTION]=yes
-                            #       _opts[IMPORT_OPTIONS]="column_name=data"
-                            [ -n "${_context[IMPORT_OPTIONS]}" ] && _option=:${_context[IMPORT_OPTIONS]}
+                            [ -n "${_context[IMPORT_OPTIONS]}" ] && _option="--option ${_context[IMPORT_OPTIONS]}"
                             bal_import_file \
                                 --mode OVERWRITE_DATA \
-                                --option "$_option" &&
+                                $_option &&
                             bal_integration --level ${_context[NEXT_LEVEL]}
                         }
                     }
