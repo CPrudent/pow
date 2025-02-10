@@ -509,21 +509,18 @@ bal_import_file() {
 
     local _try _ext _rc _file="$POW_DIR_IMPORT/${bal_vars[FILE_NAME]}" _tmpfile
 
-    # FIXME delete header (first one character)
-    #[ -n "${_opts[OPTION]}" ] && _opts[OPTION]=${_opts[OPTION]:1}
-
     for ((_try=0; _try<2; _try++)); do
         case $_try in
         0)
-            # null command
+            # normal case (no error yet)
+            # null command, to fill this case
             :
             ;;
         1)
+            # error: double quote inside value ?
             _ext=$(get_file_extension --file_path "$_file")
             [ "$_ext" != json ] && return $ERROR_CODE
-
             get_tmp_file --tmpfile _tmpfile --tmpext json
-            # double quote inside value ?
             grep --perl-regexp ':"[^"]*"[^"]+"[^"]*",?' $_file > /dev/null
             # no : other error (not catched yet)
             [[ $? -eq 0 ]] || return $ERROR_CODE
@@ -534,6 +531,7 @@ bal_import_file() {
             log_info "Chargement (${bal_vars[FILE_NAME]}) : double apostrophe"
             ;;
         *)
+            # error: other, not catched
             [ -n "$_tmpfile" ] && rm $_tmpfile
             log_error "Chargement (${bal_vars[FILE_NAME]}) : erreur non gérée!"
             return $ERROR_CODE

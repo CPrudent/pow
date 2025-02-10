@@ -352,7 +352,7 @@ set_delimiter() {
 #    ' \
 #    --pow_argv _opts "$@" || return $ERROR_CODE
 pow_argv() {
-    local _step=1 _end=0 _key _value _i _info _valid _property _k
+    local _step=1 _end=0 _key _value _i _info _valid _property _k _from
     local _trick=", astuce : utilisez l'option --help pour l'aide ou --interactive pour une utilisation intéractive"
     local _argv_name _argc_name _argv_ref _argc_ref
     local -A _argv
