@@ -34,7 +34,10 @@ on_import_error() {
 
     # IO created?
     [ "$POW_DEBUG" = yes ] && { echo "io_history_id=${bal_vars[IO_ID]}"; }
-    [ -n "${bal_vars[IO_ID]}" ] && io_history_end_ko --id ${bal_vars[IO_ID]}
+
+    [ "${bal_vars[DRY_RUN]}" = no ] &&
+    [ -n "${bal_vars[IO_ID]}" ] &&
+    io_history_end_ko --id ${bal_vars[IO_ID]}
 
     log_error "Erreur import BAL ($_info)"
     exit $ERROR_CODE
