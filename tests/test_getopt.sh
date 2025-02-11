@@ -90,13 +90,17 @@ POW_ARGV)
     }
     echo "TEST4 (print default hash)" &&
     t_pow_argv_1 --mandatory TEST4 --optional_wo_d VALUE4 &&
-    declare -p POW_ARGV &&
+    declare -p POW_ARGV
     echo "TEST5 (print user hash)" &&
     t_pow_argv_1 --mandatory TEST5 --optional_wo_d VALUE5 --optional_w_d yes --pow_argv argv &&
     declare -p argv
-
     echo "TEST6 (w/o value, as boolean)" &&
     t_pow_argv_1 --args_p 'RESET:yes' --mandatory TEST6 --optional_w_d --optional_wo_d &&
+    declare -p POW_ARGV
+    echo "TEST7 (value w/ --)" &&
+    t_pow_argv_1 --mandatory TEST7A --optional_wo_d "\--opt1 VALUE1 \--opt2 VALUE2" &&
+    declare -p POW_ARGV
+    t_pow_argv_1 --mandatory TEST7B --optional_wo_d \\--opt1 VALUE1 \\--opt2 VALUE2 &&
     declare -p POW_ARGV
     ;;
 esac

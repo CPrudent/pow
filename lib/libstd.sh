@@ -352,7 +352,7 @@ set_delimiter() {
 #    ' \
 #    --pow_argv _opts "$@" || return $ERROR_CODE
 pow_argv() {
-    local _step=1 _end=0 _key _value _i _info _valid _property _k _from
+    local _step=1 _end=0 _key _value _i _info _valid _property _k _as_opt
     local _trick=", astuce : utilisez l'option --help pour l'aide ou --interactive pour une utilisation intéractive"
     local _argv_name _argc_name _argv_ref _argc_ref
     local -A _argv
@@ -447,18 +447,25 @@ pow_argv() {
                 _step=90
             else
                 # deal w/ protected '\--option' as value (and not as option!), stripping anti-slash
-                [[ $1 =~ ^\\ ]] && _from=1 || _from=0
+                _as_opt=0
+                [[ $1 =~ ^\\-- ]] && _as_opt=1
                 [ -n "$_value" ] && {
                     # args_? has only one list value
                     if [[ $_key =~ args_[nmvdp] ]]; then
                         _error="option attendue, du type --option (au lieu de: $1)"
                         _step=99
                     else
-                        _value+=" ${1:$_from}"
+                        case $_as_opt in
+                        0)  _value+=" $1"               ;;
+                        1)  _value+=" ${1//\\--/--}"    ;;
+                        esac
                         shift
                     fi
                 } || {
-                    _value=${1:$_from}
+                    case $_as_opt in
+                    0)  _value="$1"                 ;;
+                    1)  _value="${1//\\--/--}"      ;;
+                    esac
                     shift
                 }
             fi
