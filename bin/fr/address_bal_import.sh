@@ -1750,7 +1750,8 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
         } || on_import_error
     }
     # purge ?
-    is_yes --var bal_vars[CLEAN] && find $POW_DIR_IMPORT -name "${bal_vars[MUNICIPALITY_CODE]}*.json" -exec rm {} \;
+    # case insensitive! (Corse 2A|2B) but codes are (2a|2b)*
+    is_yes --var bal_vars[CLEAN] && find $POW_DIR_IMPORT -iname "${bal_vars[MUNICIPALITY_CODE]}*.json" -exec rm {} \;
     [ "${bal_vars[STOP_TIME]}" != 0 ] && {
         # stop loop if allowed time is expired
         [[ "$(date +'%m-%d-%T')" > "${bal_vars[STOP_TIME]}" ]] && break
