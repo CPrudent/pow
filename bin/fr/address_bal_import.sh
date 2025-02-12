@@ -1757,5 +1757,14 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
     }
 done
 
+[ "${bal_vars[STOP_TIME]}" != 0 ] && {
+    [[ ${bal_vars[PROGRESS_CURRENT]} -eq ${bal_vars[PROGRESS_TOTAL]} ]] || {
+        vacuum \
+            --schema_name fr \
+            --table_name 'bal_street,bal_housenumber' \
+            --mode ANALYZE
+    }
+}
+
 _rc=$(( bal_error == 1 ? ERROR_CODE : SUCCESS_CODE ))
 exit $_rc
