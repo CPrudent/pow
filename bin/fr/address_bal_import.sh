@@ -1540,13 +1540,16 @@ bal_fix_apply() {
     return $SUCCESS_CODE
 }
 
+# allow runing 3 hours
+# --stop_time "$(date -d 'today + 3 hours' +'%m-%d-%T')"
+
 bash_args \
     --args_p '
         municipality:Code Commune INSEE à traiter (ou ALL pour télécharger la liste complète);
         select_criteria:Sélection des Communes;
         select_order:Ordre de sélection des Communes;
         limit:Limiter à n communes (0 sans limite);
-        stop_time:Heure d arrêt du traitement (format: hh:mm:ss);
+        stop_time:Temps d arrêt du traitement (format: MM-jj-hh:mm:ss);
         force:Forcer le traitement même si celui-ci a déjà été fait;
         force_load:Forcer le chargement même si celui-ci a déjà été fait;
         fix:Corriger une erreur;
@@ -1605,10 +1608,10 @@ declare -A bal_vars=(
     [SELECT_CRITERIA]=$get_arg_select_criteria
     [SELECT_ORDER]=$get_arg_select_order
     [LIMIT]=$get_arg_limit
+    [STOP_TIME]=$get_arg_stop_time
     [AREAS_OLD_MUNICIPALITY]=0
     [STREETS]=-1
     [HOUSENUMBERS]=-1
-    [STOP_TIME]=$get_arg_stop_time
     [FORCE]=$get_arg_force
         # same data (POW_DOWNLOAD_ALREADY_AVAILABLE)
         # nothing todo (already downloaded and so imported) ? but problem (if not) !
@@ -1631,6 +1634,8 @@ declare -A bal_vars=(
 )
 declare -a bal_codes=()
 [ "${bal_vars[FIX]}" = NONE ] && bal_vars[FIX]=
+# reset LIMIT if STOP_TIME
+[ "${bal_vars[STOP_TIME]}" != 0 ] && [ ${bal_vars[LIMIT]} -gt 0 ] && bal_vars[LIMIT]=0
 # with level(s)
 bal_set_levels &&
 set_env --schema_name fr &&
@@ -1746,6 +1751,10 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
     }
     # purge ?
     is_yes --var bal_vars[CLEAN] && find $POW_DIR_IMPORT -name "${bal_vars[MUNICIPALITY_CODE]}*.json" -exec rm {} \;
+    [ "${bal_vars[STOP_TIME]}" != 0 ] && {
+        # stop loop if allowed time is expired
+        [[ "$(date +'%m-%d-%T')" > "${bal_vars[STOP_TIME]}" ]] && break
+    }
 done
 
 _rc=$(( bal_error == 1 ? ERROR_CODE : SUCCESS_CODE ))
