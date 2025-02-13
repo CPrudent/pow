@@ -15,6 +15,25 @@
     # a trick is to use different name (_globals_ref)
     # but limited to low imbrication, so finally use global variable !
 
+    # NOTE
+    # w/ parallel
+    # need to update array to avoid code w/ space! as "code1 code2" (tr to code1%20code2)
+
+    # all INSEE, ::25 by subset of 25, ...
+    # parallel --tag --line-buffer wget --limit-rate=100k \
+    #  --output-document=$POW_DIR_COMMON_GLOBAL/fr/bal/{}.json \
+    #  https://plateforme.adresse.data.gouv.fr/lookup/{} \
+    #  ::: "${bal_codes[@]::25}"
+
+    # bal_load_addresses
+    # parallel wget --quiet --limit-rate=100k \
+    #  --output-document=$POW_DIR_COMMON_GLOBAL/fr/bal/{}.json \
+    #  https://plateforme.adresse.data.gouv.fr/lookup/{} \
+    #  ::: "${_addresses[@]}"
+    #
+    # deal w/ quote and space
+    # parallel echo '{= uq() ; s/ /%20/g =}' ::: 12345_abcd '"12345_abcd_wq"' aa bb "aa bb xx"
+
     # HELP
     # https://stackoverflow.com/questions/16908084/bash-script-to-calculate-time-elapsed
     # https://stackoverflow.com/questions/3953645/ternary-operator-in-bash
@@ -1279,6 +1298,11 @@ bal_load() {
         # take all following 'BAL_' as info (SUMMARY or municipality code)
         _info=${bal_vars[IO_NAME]#*_}
         log_info "Import BAL (${_info})" &&
+        {
+            [ "${bal_vars[STOP_TIME]}" = 0 ] || {
+                log_info "Durée de traitement allouée jusqu'à ${bal_vars[STOP_TIME]}"
+            }
+        } &&
         {
             (! is_yes --var bal_vars[PROGRESS]) || {
                 bal_vars[PROGRESS_START]=$(date '+%s') &&
