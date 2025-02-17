@@ -80,7 +80,7 @@ bal_print_progress() {
     BEGIN)
         expect argc bal_print_progress $# 6 || return $ERROR_CODE
         # if main display (municipality level) and only one then reduce informations
-        ([[ "${2:0:5}" =~ INSEE|Commu ]] && [[ $5 -eq 1 ]]) && {
+        ([[ "${2:0:5}" =~ INSEE|Commu|Temps ]] && [[ $5 -eq 1 ]]) && {
             printf '%-15s%b' "$2" $6
         } || {
             printf '%-15s\t%*d/%*d (%3d%%)%b' "$2" $3 $4 $3 $5 $((($4*100)/$5)) $6
@@ -1677,6 +1677,7 @@ declare -A bal_vars=(
     [LEVEL_HOUSENUMBER]=
 )
 declare -a bal_codes=()
+bal_start=$(date '+%s')
 [ "${bal_vars[FIX]}" = NONE ] && bal_vars[FIX]=
 # reset LIMIT if STOP_TIME
 [ "${bal_vars[STOP_TIME]}" != 0 ] && [ ${bal_vars[LIMIT]} -gt 0 ] && bal_vars[LIMIT]=0
@@ -1809,6 +1810,13 @@ done
             --table_name 'bal_street,bal_housenumber' \
             --mode ANALYZE
     }
+}
+
+(! is_yes --var bal_vars[PROGRESS]) || {
+    # trick to print global timex
+    bal_print_progress BEGIN "Temps Traitement" 0 0 1 '\r' &&
+    get_elapsed_time --start ${bal_start} --result _elapsed &&
+    bal_print_progress END "${_elapsed}"
 }
 
 _rc=$(( bal_error == 1 ? ERROR_CODE : SUCCESS_CODE ))
