@@ -522,14 +522,15 @@ bal_import_file() {
     pow_argv \
         --args_n '
             option:Option de chargement du fichier;
+            source:Dossier source du fichier;
             mode:Mode de chargement du fichier
         ' \
         --args_m '
-            mode
+            mode;source
         ' \
         --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local _try _ext _rc _file="$POW_DIR_IMPORT/${bal_vars[FILE_NAME]}" _tmpfile
+    local _try _ext _rc _file="${_opts[SOURCE]}/${bal_vars[FILE_NAME]}" _tmpfile
 
     for ((_try=0; _try<2; _try++)); do
         case $_try in
@@ -644,53 +645,67 @@ bal_load_addresses() {
     bal_vars[$_field]=${#_addresses[@]} &&
     {
         [[ ${bal_vars[$_field]} > 0 ]] && {
+            # load addresses as JSON in table (has to be empty!)
             execute_query \
                 --name BAL_TRUNCATE \
                 --query "TRUNCATE TABLE fr.${bal_vars[TABLE_NAME]}" &&
-            # load addresses as JSON in table (has to be empty!)
-            for ((_j=0; _j<${#_addresses[@]}; _j++)); do
-                {
-                    (! is_yes --var bal_vars[PROGRESS]) || {
-                        bal_print_progress \
-                            BEGIN \
-                            "${_info}" \
-                            ${bal_vars[PROGRESS_SIZE]} \
-                            $((_j +1)) \
-                            ${bal_vars[$_field]} \
-                            '\r'
-                    }
-                } &&
-                # code between quotes (w/ space) ?
-                {
-                    _code=
-                    [[ ${_addresses[$_j]:0:1} != '"' ]] || {
-                        _len=$((${#_addresses[$_j]} -2)) &&
-                        _code=${_addresses[$_j]:1:$_len}
-                    }
-                } &&
-                _url=lookup/${_code:-${_addresses[$_j]}} &&
-                bal_vars[FILE_NAME]=${_code:-${_addresses[$_j]}}.json &&
-                {
-                    io_download_file \
-                        --url "${bal_vars[URL]}/$_url" \
-                        --overwrite_mode NEWER \
-                        --overwrite_key DATE \
-                        --overwrite_value ${bal_vars[IO_END_EPOCH]} \
-                        --common_subdir bal \
-                        --output_directory "$POW_DIR_IMPORT" \
-                        --output_file "${bal_vars[FILE_NAME]}" \
-                        --verbose ${bal_vars[VERBOSE]}
-                    _rc=$?
-                    [[ $_rc -lt $POW_DOWNLOAD_ERROR ]] && {
-                        # same data has to be loaded again ?
-                        ([ "${bal_vars[FORCE_LOAD]}" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
-                            bal_import_file \
-                                --mode APPEND \
-                                --option '\--import_options column_name=data'
+            {
+                if [ "${bal_vars[PARALLEL]}" = no ]; then
+                    for ((_j=0; _j<${#_addresses[@]}; _j++)); do
+                        {
+                            (! is_yes --var bal_vars[PROGRESS]) || {
+                                bal_print_progress \
+                                    BEGIN \
+                                    "${_info}" \
+                                    ${bal_vars[PROGRESS_SIZE]} \
+                                    $((_j +1)) \
+                                    ${bal_vars[$_field]} \
+                                    '\r'
+                            }
+                        } &&
+                        # code between quotes (w/ space) ?
+                        {
+                            _code=
+                            [[ ${_addresses[$_j]:0:1} != '"' ]] || {
+                                _len=$((${#_addresses[$_j]} -2)) &&
+                                _code=${_addresses[$_j]:1:$_len}
+                            }
+                        } &&
+                        _url=lookup/${_code:-${_addresses[$_j]}} &&
+                        bal_vars[FILE_NAME]=${_code:-${_addresses[$_j]}}.json &&
+                        {
+                            io_download_file \
+                                --url "${bal_vars[URL]}/$_url" \
+                                --overwrite_mode NEWER \
+                                --overwrite_key DATE \
+                                --overwrite_value ${bal_vars[IO_END_EPOCH]} \
+                                --common_subdir bal \
+                                --output_directory "$POW_DIR_IMPORT" \
+                                --output_file "${bal_vars[FILE_NAME]}" \
+                                --verbose ${bal_vars[VERBOSE]}
+                            _rc=$?
+                            [[ $_rc -lt $POW_DOWNLOAD_ERROR ]] && {
+                                # same data has to be loaded again ?
+                                ([ "${bal_vars[FORCE_LOAD]}" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
+                                    bal_import_file \
+                                        --mode APPEND \
+                                        --source "$POW_DIR_IMPORT" \
+                                        --option '\--import_options column_name=data'
+                                }
+                            }
                         }
-                    }
-                }
-            done
+                    done
+                else
+                    # download
+                    parallel -j5 wget --quiet --limit-rate=100k \
+                        --output-document="$POW_DIR_COMMON_GLOBAL/fr/bal/{=1 uq() =}.json" \
+                        https://plateforme.adresse.data.gouv.fr/lookup/'{=2 uq() ; s/ /%20/g =}' \
+                        ::: "${_addresses[@]}" :::+ "${_addresses[@]}" &&
+                    # load into db
+                    parallel -j5 jq --raw-output --compact-output '.' \
+                        "$POW_DIR_COMMON_GLOBAL/fr/bal/{=1 uq() =}.json" ::: "${_addresses[@]}" | execute_query --name LOAD_JSON --query 'COPY fr.'${bal_vars[TABLE_NAME]}'(data) FROM STDIN'
+                fi
+            }
         } || {
             (! is_yes --var bal_vars[PROGRESS]) || {
                 echo 'aucune voie avec numéros certifiés'
@@ -1368,6 +1383,7 @@ bal_load() {
                             [ -n "${_context[IMPORT_OPTIONS]}" ] && _option="--option ${_context[IMPORT_OPTIONS]}"
                             bal_import_file \
                                 --mode OVERWRITE_DATA \
+                                --source "$POW_DIR_IMPORT" \
                                 $_option &&
                             bal_integration --level ${_context[NEXT_LEVEL]}
                         }
@@ -1580,6 +1596,7 @@ bash_args \
         levels:Ensemble des niveaux Adresse à traiter;
         dry_run:Simuler le traitement;
         progress:Afficher une jauge de progression;
+        parallel:Obtenir les addresses en parallèle;
         clean:Effectuer la purge des fichiers temporaires;
         verbose:Ajouter des détails sur les traitements
     ' \
@@ -1595,6 +1612,7 @@ bash_args \
         levels:MSN|MS|N;
         dry_run:yes|no;
         progress:yes|no;
+        parallel:yes|no;
         clean:yes|no;
         verbose:yes|no
     ' \
@@ -1609,6 +1627,7 @@ bash_args \
         limit:3;
         stop_time:0;
         progress:no;
+        parallel:no;
         clean:yes;
         verbose:no
     ' \
@@ -1650,6 +1669,7 @@ declare -A bal_vars=(
     [PROGRESS_CURRENT]=1
     [PROGRESS_TOTAL]=1
     [PROGRESS_SIZE]=5
+    [PARALLEL]=$get_arg_parallel
     [VERBOSE]=$get_arg_verbose
     [LEVELS]=$get_arg_levels
     [LEVEL_MUNICIPALITY]=
