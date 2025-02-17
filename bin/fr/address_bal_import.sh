@@ -704,6 +704,17 @@ bal_load_addresses() {
                     # load into db
                     parallel -j5 jq --raw-output --compact-output '.' \
                         "$POW_DIR_COMMON_GLOBAL/fr/bal/{=1 uq() =}.json" ::: "${_addresses[@]}" | execute_query --name LOAD_JSON --query 'COPY fr.'${bal_vars[TABLE_NAME]}'(data) FROM STDIN'
+
+#                     # one command
+#                     FIXME
+#                     -rw-r--r-- 1 christophe prudent  720419 févr. 17 17:34 '{=1 uq() =}.json'
+
+#                     parallel -j5 wget --limit-rate=100k \
+#                         --output-document - \
+#                         https://plateforme.adresse.data.gouv.fr/lookup/'{=2 uq() ; s/ /%20/g =}' \
+#                         ::: "${_addresses[@]}" :::+ "${_addresses[@]}" | \
+#                         tee "$POW_DIR_COMMON_GLOBAL/fr/bal/{=1 uq() =}.json" |
+#                         execute_query --name LOAD_JSON --query 'COPY fr.'${bal_vars[TABLE_NAME]}'(data) FROM STDIN'
                 fi
             }
         } || {
