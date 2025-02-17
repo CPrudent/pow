@@ -587,7 +587,7 @@ bal_load_addresses() {
         ' \
         "$@" || return $ERROR_CODE
 
-    local _name _query _info _j _rc _field=${get_arg_level}S _code _len _url _file
+    local _name _query _info _j _rc _field=${get_arg_level}S _code _len _url _file _log_jq _log_db
     local -a _addresses
 
     _name="BAL_SELECT_${bal_vars[MUNICIPALITY_CODE]}_${_field}" &&
@@ -696,25 +696,18 @@ bal_load_addresses() {
                         }
                     done
                 else
+                    _log_jq=$POW_DIR_ARCHIVE/${bal_vars[MUNICIPALITY_CODE]}_jq_${_field,,}.log &&
+                    _log_db=$POW_DIR_ARCHIVE/${bal_vars[MUNICIPALITY_CODE]}_db_${_field,,}.log &&
                     # download
-                    parallel -j5 wget --quiet --limit-rate=100k \
+                    parallel --joblog "$_log_jq" --jobs 5 \
+                        wget --quiet --limit-rate=100k \
                         --output-document="$POW_DIR_COMMON_GLOBAL/fr/bal/{=1 uq() =}.json" \
                         https://plateforme.adresse.data.gouv.fr/lookup/'{=2 uq() ; s/ /%20/g =}' \
                         ::: "${_addresses[@]}" :::+ "${_addresses[@]}" &&
                     # load into db
-                    parallel -j5 jq --raw-output --compact-output '.' \
-                        "$POW_DIR_COMMON_GLOBAL/fr/bal/{=1 uq() =}.json" ::: "${_addresses[@]}" | execute_query --name LOAD_JSON --query 'COPY fr.'${bal_vars[TABLE_NAME]}'(data) FROM STDIN'
-
-#                     # one command
-#                     FIXME
-#                     -rw-r--r-- 1 christophe prudent  720419 févr. 17 17:34 '{=1 uq() =}.json'
-
-#                     parallel -j5 wget --limit-rate=100k \
-#                         --output-document - \
-#                         https://plateforme.adresse.data.gouv.fr/lookup/'{=2 uq() ; s/ /%20/g =}' \
-#                         ::: "${_addresses[@]}" :::+ "${_addresses[@]}" | \
-#                         tee "$POW_DIR_COMMON_GLOBAL/fr/bal/{=1 uq() =}.json" |
-#                         execute_query --name LOAD_JSON --query 'COPY fr.'${bal_vars[TABLE_NAME]}'(data) FROM STDIN'
+                    parallel --joblog "$_log_db" --jobs 5 \
+                        jq --raw-output --compact-output '.' \
+                        "$POW_DIR_COMMON_GLOBAL/fr/bal/{=1 uq() =}.json" ::: "${_addresses[@]}" | "execute_query --name LOAD_JSON --query 'COPY fr.'${bal_vars[TABLE_NAME]}'(data) FROM STDIN';echo \$? >{#}.log"
                 fi
             }
         } || {
