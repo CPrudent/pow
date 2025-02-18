@@ -1702,13 +1702,12 @@ import_file() {
         } &&
         {
             # fixed name log would be overwriten when session of multiple files, need to be saved
-            rm --force $POW_DIR_ARCHIVE/LOAD_JSON.log
-            jq --raw-output --compact-output '.' < "$file_path" | execute_query \
+            jq --raw-output --compact-output '.' < "$file_path" | (execute_query \
                 --name LOAD_JSON \
                 --query "COPY $schema_name.$table_name (${_column_name}) FROM STDIN" || {
-                [ ! -e "$POW_DIR_ARCHIVE/LOAD_JSON.log" ] && \
                     backup_file_as_uniq --path "$POW_DIR_ARCHIVE/LOAD_JSON.log"
-                }
+                    false
+                })
         }
         ;;
     *)

@@ -1014,6 +1014,10 @@ backup_file_as_uniq() {
 
     local _suffix=1
 
+    [ ! -f "${get_arg_path}" ] && {
+        log_info 'Sauvegarde unique demandée pour fichier '"${get_arg_path}"' inexistant!'
+        return $SUCCESS_CODE
+    }
     while [ -f "${get_arg_path}.backup.${_suffix}" ]; do
         ((_suffix++))
     done
