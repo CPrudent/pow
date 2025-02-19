@@ -1599,7 +1599,7 @@ bash_args \
         fix:Corriger une erreur;
         levels:Ensemble des niveaux Adresse à traiter;
         dry_run:Simuler le traitement;
-        progress:Afficher une jauge de progression;
+        progress:Afficher le ratio de progression;
         parallel:Obtenir les addresses en parallèle;
         clean:Effectuer la purge des fichiers temporaires;
         verbose:Ajouter des détails sur les traitements
@@ -1631,7 +1631,7 @@ bash_args \
         limit:3;
         stop_time:0;
         progress:no;
-        parallel:no;
+        parallel:yes;
         clean:yes;
         verbose:no
     ' \
