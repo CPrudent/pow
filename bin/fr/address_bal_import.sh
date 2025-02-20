@@ -15,25 +15,6 @@
     # a trick is to use different name (_globals_ref)
     # but limited to low imbrication, so finally use global variable !
 
-    # NOTE
-    # w/ parallel
-    # need to update array to avoid code w/ space! as "code1 code2" (tr to code1%20code2)
-
-    # all INSEE, ::25 by subset of 25, ...
-    # parallel --tag --line-buffer wget --limit-rate=100k \
-    #  --output-document=$POW_DIR_COMMON_GLOBAL/fr/bal/{}.json \
-    #  https://plateforme.adresse.data.gouv.fr/lookup/{} \
-    #  ::: "${bal_codes[@]::25}"
-
-    # bal_load_addresses
-    # parallel wget --quiet --limit-rate=100k \
-    #  --output-document=$POW_DIR_COMMON_GLOBAL/fr/bal/{}.json \
-    #  https://plateforme.adresse.data.gouv.fr/lookup/{} \
-    #  ::: "${_addresses[@]}"
-    #
-    # deal w/ quote and space
-    # parallel echo '{= uq() ; s/ /%20/g =}' ::: 12345_abcd '"12345_abcd_wq"' aa bb "aa bb xx"
-
     # HELP
     # https://stackoverflow.com/questions/16908084/bash-script-to-calculate-time-elapsed
     # https://stackoverflow.com/questions/3953645/ternary-operator-in-bash
@@ -139,106 +120,163 @@ bal_set_rows() {
     return $SUCCESS_CODE
 }
 
-# prepare municipality
-bal_set_municipality() {
-    bash_args \
-        --args_p '
+# prepare aggregate
+bal_set_agg() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            list:Ensemble des communes à traiter
+        ' \
+        --args_m '
+            list
+        ' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
+
+    local -n _list_ref=${_opts[LIST]}
+    local _list=$(IFS=, ; echo "${_list_ref[*]}")
+    local _nrows _elapsed
+
+    (! is_yes --var bal_vars[PROGRESS]) || {
+        bal_vars[PROGRESS_START]=$(date '+%s') &&
+        bal_print_progress \
+            BEGIN \
+            "INSEE AGG" \
+            ${bal_vars[PROGRESS_SIZE]} \
+            ${bal_vars[PROGRESS_CURRENT]} \
+            1 \
+            '\r'
+    }
+    execute_query \
+        --name BAL_AGGREGATE \
+        --query "
+            SELECT nrows FROM fr.bal_set_agg(list => '{${_list}}')
+        " \
+        --psql_arguments 'tuples-only:pset=format=unaligned' \
+        --return _nrows &&
+    {
+        [[ ${#_list_ref[@]} -eq $_nrows ]] || {
+            log_error "préparation agrégat: $_nrows (${#_list_ref[@]} attendu!)"
+            false
+        }
+    } || return $ERROR_CODE
+
+    (! is_yes --var bal_vars[PROGRESS]) || {
+        get_elapsed_time --start ${bal_vars[PROGRESS_START]} --result _elapsed &&
+        bal_print_progress END "${_elapsed}"
+    }
+
+    return $SUCCESS_CODE
+}
+
+# check municipality
+bal_check_municipality() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             code:Code Commune
         ' \
-        --args_o '
+        --args_m '
             code
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local _valid _error _io _tmp
-    local -a _last_io
-    local -a _counters
+    local _valid _error
 
-    {
-        # reset
-        bal_vars[STREETS]=-1
-        bal_vars[HOUSENUMBERS]=-1
-        bal_vars[IO_LAST_ID]=
-        bal_vars[IO_LAST_BEGIN]=
-        bal_vars[IO_LAST_END]=
-        bal_vars[IO_LAST_ATTRIBUTES]=
-    } &&
     execute_query \
-        --name "BAL_MUNICIPALITY_${get_arg_code}" \
+        --name "BAL_MUNICIPALITY_${_opts[CODE]}" \
         --query "
             SELECT EXISTS(
                 SELECT 1 FROM fr.bal_municipality
-                WHERE code = '${get_arg_code}'
+                WHERE code = '${_opts[CODE]}'
             )" \
         --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _valid &&
     {
         [ "$_valid" = t ] || {
             execute_query \
-                --name "LAPOSTE_MUNICIPALITY_${get_arg_code}" \
+                --name "LAPOSTE_MUNICIPALITY_${_opts[CODE]}" \
                 --query "
                     SELECT EXISTS(
                         SELECT 1 FROM fr.laposte_address_area
-                        WHERE co_insee_commune = '${get_arg_code}' AND fl_active
+                        WHERE co_insee_commune = '${_opts[CODE]}' AND fl_active
                     )" \
                 --psql_arguments 'tuples-only:pset=format=unaligned' \
                 --return _valid &&
             {
                 case "$_valid" in
-                f)  _error="code Commune '${get_arg_code}' non valide!"                         ;;
+                f)  _error="code Commune '${_opts[CODE]}' non valide!"                          ;;
                 t)  _error="Import préalable de l'ensemble des Communes (--municipality ALL)"   ;;
                 esac
                 log_error "$_error"
                 false
             }
         }
-    } &&
-    # count areas (w/ old municipality owning at least one address)
-    execute_query \
-        --name "LAPOSTE_MUNICIPALITY_${get_arg_code}_AREAS" \
-        --query "
-            SELECT
-                COUNT(1)
-            FROM
-                fr.laposte_address_area a
-            WHERE
-                fl_active
-                AND
-                co_insee_commune = '${get_arg_code}'
-                AND
-                lb_l5_nn IS NOT NULL
-                AND
-                EXISTS(
-                    SELECT 1
-                    FROM
-                        fr.laposte_address r
-                    WHERE
-                        r.co_cea_za = a.co_cea
-                        AND
-                        r.fl_active
-                        AND
-                        r.co_cea_voie IS NOT NULL
-                )
-        " \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
-        --return bal_vars[AREAS_OLD_MUNICIPALITY] &&
+    } || return $ERROR_CODE
+
+    return $SUCCESS_CODE
+}
+
+# prepare municipality
+bal_set_municipality() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            code:Code Commune
+        ' \
+        --args_m '
+            code
+        ' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
+
+    local _tmp
+    local -a _array
+
     {
+        # reset
+        bal_vars[STREETS]=-1
+        bal_vars[HOUSENUMBERS]=-1
+        bal_vars[IO_LAST_ID]=
+        bal_vars[IO_LAST_END]=
+        bal_vars[IO_LAST_ATTRIBUTES]=
+    } &&
+    {
+        # count addresses
         execute_query \
-            --name "BAL_MUNICIPALITY_${get_arg_code}_LAST_IO" \
+            --name "LAPOSTE_MUNICIPALITY_${_opts[CODE]}_ADDRS" \
             --query "
-                SELECT id, date_data_begin, date_data_end, attributes
-                FROM get_last_io('BAL_${get_arg_code}')
+                SELECT
+                    a.areas,
+                    a.streets,
+                    a.housenumbers,
+                    a.last_io,
+                    io.date_data_end,
+                    io.attributes
+                FROM
+                    fr.bal_agg a
+                        LEFT OUTER JOIN io_history io ON io.id = a.last_io
+                WHERE
+                    a.code = '${_opts[CODE]}'
             " \
             --psql_arguments 'tuples-only:pset=format=unaligned' \
             --return _tmp &&
         {
-            [ -z "$_tmp" ] || {
-                IFS='|' read -a _last_io <<< "$_tmp"
+            [ -n "$_tmp" ] && {
+                IFS='|' read -a _array <<< "$_tmp"
 
-                bal_vars[IO_LAST_ID]=${_last_io[0]}
-                bal_vars[IO_LAST_BEGIN]=${_last_io[1]}
-                bal_vars[IO_LAST_END]=${_last_io[2]}
-                bal_vars[IO_LAST_ATTRIBUTES]=${_last_io[3]}
+                bal_vars[AREAS_OLD_MUNICIPALITY]=${_array[0]}
+                bal_vars[STREETS]=${_array[1]}
+                bal_vars[HOUSENUMBERS]=${_array[2]}
+                bal_vars[IO_LAST_ID]=${_array[3]}
+                bal_vars[IO_LAST_END]=${_array[4]}
+                bal_vars[IO_LAST_ATTRIBUTES]=${_array[5]}
+
+                bal_set_rows \
+                    --streets ${_array[1]} \
+                    --housenumbers ${_array[2]} \
+                    --total bal_vars[IO_ROWS]
+            } || {
+                log_error 'Commune '${_opts[CODE]}' sans agrégat!'
+                false
             }
         }
     } &&
@@ -251,27 +289,6 @@ bal_set_municipality() {
                 log_error "étape Commune $get_arg_code (--levels MSN|MS) est nécessaire!"
                 false
             }
-        }
-    } &&
-    {
-        execute_query \
-            --name "BAL_MUNICIPALITY_${get_arg_code}_ROWS" \
-            --query "
-                SELECT
-                    (areas + streets) streets,
-                    housenumbers_auth
-                FROM fr.bal_municipality
-                WHERE code = '${get_arg_code}'
-        " \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
-        --return _tmp &&
-        {
-            IFS='|' read -a _counters <<< "$_tmp"
-
-            bal_set_rows \
-                --streets ${_counters[0]} \
-                --housenumbers ${_counters[1]} \
-                --total bal_vars[IO_ROWS]
         }
     } || return $ERROR_CODE
 
@@ -1647,7 +1664,6 @@ declare -A bal_vars=(
     [IO_END_EPOCH]=
     [IO_ROWS]=0
     [IO_LAST_ID]=
-    [IO_LAST_BEGIN]=
     [IO_LAST_END]=
     [IO_LAST_ATTRIBUTES]=
     [FILE_NAME]=
@@ -1705,10 +1721,12 @@ set_env --schema_name fr &&
         }
         ;;
     *)
+        bal_check_municipality --code ${bal_vars[MUNICIPALITY_CODE]} &&
         bal_codes[0]=${bal_vars[MUNICIPALITY_CODE]}
         ;;
     esac
-} || on_import_error
+} &&
+bal_set_agg --list bal_codes || on_import_error
 
 bal_error=0
 bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
