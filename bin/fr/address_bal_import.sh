@@ -1285,11 +1285,13 @@ bal_load() {
         ' \
         "$@" || return $ERROR_CODE
 
-    local _level=${get_arg_level} _elapsed _info _file _rc _option
+    local _level=${get_arg_level} _elapsed _info _file _rc _option _force="${bal_vars[FORCE_LOAD]}"
     local -A _context
 
     case "$_level" in
     SUMMARY)
+        # don't need to load again
+        _force=no
         bal_vars[IO_NAME]=BAL_SUMMARY
         ;;
     MUNICIPALITY)
@@ -1379,7 +1381,7 @@ bal_load() {
                     _rc=$?
                     [[ $_rc -lt $POW_DOWNLOAD_ERROR ]] && {
                         # same data has to be loaded again ?
-                        ([ "${bal_vars[FORCE_LOAD]}" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
+                        ([ "$_force" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
                             [ -n "${_context[IMPORT_OPTIONS]}" ] && _option="--option ${_context[IMPORT_OPTIONS]}"
                             bal_import_file \
                                 --mode OVERWRITE_DATA \
