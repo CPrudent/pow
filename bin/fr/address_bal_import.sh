@@ -1137,7 +1137,9 @@ bal_integration() {
                     housenumbers_auth = EXCLUDED.housenumbers_auth,
                     last_update = EXCLUDED.last_update
             " &&
-        bal_deal_obsolescence --level STREET &&
+        {
+            [ -z "${bal_vars[IO_LAST_ID]}" ] || bal_deal_obsolescence --level STREET
+        } &&
         {
             (! is_yes --var bal_vars[PROGRESS]) || {
                 get_elapsed_time --start ${bal_vars[PROGRESS_START]} --result _elapsed &&
@@ -1221,7 +1223,9 @@ bal_integration() {
                         s.id = g.id
                 ;
             " &&
-        bal_deal_obsolescence --level HOUSENUMBER &&
+        {
+            [ -z "${bal_vars[IO_LAST_ID]}" ] || bal_deal_obsolescence --level HOUSENUMBER
+        } &&
         {
             (! is_yes --var bal_vars[PROGRESS]) || {
                 get_elapsed_time --start ${bal_vars[PROGRESS_START]} --result _elapsed &&
