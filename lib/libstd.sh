@@ -34,7 +34,16 @@ log() {
     local _state=$3
     local _command="$(realpath $0)"
     local _log_entry="$(date --utc +%FT%TZ)|$1|$$|${USER}|$_command|$_message"
-    ([ "$POW_LOG_ECHO" = yes ] || [ "$_severity" = error ]) && echo $_log_entry
+    ([ "$POW_LOG_ECHO" = yes ] || [ "$_severity" = error ]) && {
+        case "$_severity" in
+        error)
+            >&2 echo $_log_entry
+            ;;
+        *)
+            echo $_log_entry
+            ;;
+        esac
+    }
     [ "$POW_LOG_ACTIVE" = yes ] && echo $_log_entry >> $POW_DIR_LOG/$POW_LOG_FILE
 
     return $SUCCESS_CODE
@@ -522,7 +531,7 @@ pow_argv() {
 
         # end ERROR
         99)
-            >&2 echo "$_error"
+            log_error "$_error"
             return $ERROR_CODE
             ;;
         esac
@@ -563,7 +572,7 @@ pow_argv() {
             }
         done
         [ $_valid -eq 1 ] || {
-            >&2 echo "La condition d'argument obligatoire ${_args_m_list[$_i]} n'est pas remplie${_trick}"
+            log_error "La condition d'argument obligatoire ${_args_m_list[$_i]} n'est pas remplie${_trick}"
             return $ERROR_CODE
         }
     done
@@ -572,7 +581,7 @@ pow_argv() {
     for _key in ${!_args_v_kv[@]}; do
         IFS='|' read -ra _args_items <<< "${_args_v_kv[$_key]}"
         in_array --array _args_items --item ${_argv[$_key]} || {
-            >&2 echo "La valeur de $_key (${_argv[$_key]}) ne fait pas partie des valeurs possibles (${_args_v_kv[$_key]})${_trick}"
+            log_error "La valeur de $_key (${_argv[$_key]}) ne fait pas partie des valeurs possibles (${_args_v_kv[$_key]})${_trick}"
             return $ERROR_CODE
         }
     done
@@ -677,7 +686,7 @@ bash_args() {
         if [ -z "$tmp_arg_value" ]; then
             # le retour des paramètres dans un tableau nécessite le nom de ce tableau
             if [ "$tmp_arg_name" = bash_args_argv ]; then
-                >&2 echo "L'argument $tmp_arg_name nécessite une valeur! : --$tmp_arg_name <argv>"
+                log_error "L'argument $tmp_arg_name nécessite une valeur! : --$tmp_arg_name <argv>"
                 return 1
             fi
             # sans valeur, l'argument est considéré comme booléen (Y/N)
@@ -719,7 +728,7 @@ bash_args() {
                 fi
             done
             if [ "$tmp_arg_p_ok" = 'N' ]; then
-                >&2 echo "L'argument $tmp_arg_name ne fait pas partie des arguments possibles"
+                log_error "L'argument $tmp_arg_name ne fait pas partie des arguments possibles"
                 return 1
             fi
         fi
@@ -818,7 +827,7 @@ bash_args() {
             fi
         done
         if [ "$tmp_arg_o_ok" != 'O' ]; then
-            >&2 echo "La condition d'argument obligatoire $tmp_arg_o n'est pas remplie, astuce : utilisez l'option --help pour l'aide ou --interactif pour une utilisation interactive"
+            log_error "La condition d'argument obligatoire $tmp_arg_o n'est pas remplie, astuce : utilisez l'option --help pour l'aide ou --interactif pour une utilisation interactive"
             return 1
         fi
     done
@@ -841,7 +850,7 @@ bash_args() {
                 fi
             done
             if [ "$tmp_arg_v_ok" = 'N' ]; then
-                >&2 echo "La valeur de $tmp_arg_v_name ($tmp_arg_value) ne fait pas partie des valeurs possibles ($tmp_arg_v_values), astuce : utilisez l'option --help pour l'aide ou --interactif pour une utilisation interactive"
+                log_error "La valeur de $tmp_arg_v_name ($tmp_arg_value) ne fait pas partie des valeurs possibles ($tmp_arg_v_values), astuce : utilisez l'option --help pour l'aide ou --interactif pour une utilisation interactive"
                 return 1
             fi
         fi
