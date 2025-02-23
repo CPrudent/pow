@@ -783,7 +783,10 @@ BEGIN
             TRUE
         );
         RETURN;
-    ELSIF code IN ('75056', '13055', '69123') THEN
+    --ELSIF code IN ('75056', '13055', '69123') THEN
+    ELSIF code ~ '^(' ||
+        (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'MUNICIPALITY_DISTRICT')
+        || ')$' THEN
         RAISE NOTICE 'Erreur : la commune % est une commune globale composée d''arrondissements', code;
         IF with_deleted THEN
             is_new := TRUE;

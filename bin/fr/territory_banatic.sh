@@ -112,10 +112,16 @@ execute_query \
             ON fr.gouv_epci(siren_epci);
         CREATE UNIQUE INDEX iux_gouv_epci_municipality_insee
             ON fr.gouv_epci_municipality(insee)
-            WHERE nature_juridique IN ('MET69','CC','CA','METRO','CU');
+            WHERE nature_juridique ~
+                '^(' ||
+                (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'EPCI_KIND')
+                || ')$';
         CREATE UNIQUE INDEX iux_gouv_epci_municipality_siren
             ON fr.gouv_epci_municipality(siren_membre)
-            WHERE nature_juridique IN ('MET69','CC','CA','METRO','CU');
+            WHERE nature_juridique ~
+                '^(' ||
+                (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'EPCI_KIND')
+                || ')$';
         " &&
 execute_query \
     --name RENAME_COLUMNS \

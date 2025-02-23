@@ -285,7 +285,11 @@ BEGIN
                 FROM
                     fr.ign_municipality
                 WHERE
-                    insee_com NOT IN ('75056', '13055', '69123')
+                    --insee_com NOT IN ('75056', '13055', '69123')
+                    insee_com !~
+                        '^(' ||
+                        (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'MUNICIPALITY_DISTRICT')
+                        || ')$'
                 UNION
                 SELECT
                     arm.insee_arm,
@@ -308,7 +312,11 @@ BEGIN
                 les arrondissements municipaux ne sont pas présents, il faut chercher l'EPCI de la commune globale de l'arrondissement municipal
                 */
             ON epci.insee = COALESCE(commune_insee.com, commune_insee.codgeo)
-            AND epci.nature_juridique IN ('MET69', 'CC', 'CA', 'METRO', 'CU')
+            --AND epci.nature_juridique IN ('MET69', 'CC', 'CA', 'METRO', 'CU')
+            AND epci.nature_juridique ~
+                    '^(' ||
+                    (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'EPCI_KIND')
+                    || ')$'
             -- DEPARTMENT
             LEFT OUTER JOIN LATERAL (
                 SELECT
@@ -483,7 +491,12 @@ BEGIN
                 fr.gouv_epci_municipality em
                     JOIN fr.insee_municipality m ON em.insee = COALESCE(m.com, m.codgeo)
             WHERE
-                em.nature_juridique IN ('MET69', 'CC', 'CA', 'METRO', 'CU')
+                --em.nature_juridique IN ('MET69', 'CC', 'CA', 'METRO', 'CU')
+                epci.nature_juridique ~
+                    '^(' ||
+                    (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'EPCI_KIND')
+                    || ')$'
+
         ) e
         WHERE
             (
@@ -725,6 +738,11 @@ SELECT drop_all_functions_if_exists('fr', 'update_territory');
 CREATE OR REPLACE FUNCTION fr.update_territory()
 RETURNS BOOLEAN
 AS $$
+DECLARE
+    _re_municipality_w_district VARCHAR :=
+        '^(' ||
+        (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'MUNICIPALITY_DISTRICT')
+        || ')$';
 BEGIN
     -- set population (COM level)
     IF column_exists('public', 'territoire_has_insee_histo', 'pmun') THEN
@@ -750,7 +768,8 @@ BEGIN
                 FROM
                     fr.ign_municipality
                 WHERE
-                    insee_com NOT IN ('75056', '13055', '69123')
+                    --insee_com NOT IN ('75056', '13055', '69123')
+                    insee_com !~ _re_municipality_w_district
                 UNION
                 SELECT
                     insee_arm,
@@ -810,7 +829,8 @@ BEGIN
             FROM
                 fr.ign_municipality
             WHERE
-                insee_com NOT IN ('75056', '13055', '69123')
+                --insee_com NOT IN ('75056', '13055', '69123')
+                insee_com !~ _re_municipality_w_district
             UNION
             SELECT
                 'COM' AS nivgeo,
@@ -826,7 +846,8 @@ BEGIN
             FROM
                 fr.ign_municipality
             WHERE
-                insee_com IN ('75056', '13055', '69123')
+                --insee_com IN ('75056', '13055', '69123')
+                insee_com ~ _re_municipality_w_district
     ) AS commune_ign
     WHERE territory.nivgeo IN ('COM', 'COM_GLOBALE_ARM')
     AND commune_ign.nivgeo = territory.nivgeo

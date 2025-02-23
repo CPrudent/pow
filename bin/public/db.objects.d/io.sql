@@ -137,6 +137,14 @@ $func$
 DECLARE
     _query TEXT;
     _last_io TIMESTAMP;
+    _re_municipality_w_district VARCHAR :=
+        '^(' ||
+        (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'MUNICIPALITY_DISTRICT')
+        || ')$';
+    _re_epci_kind VARCHAR :=
+        '^(' ||
+        (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'EPCI_KIND')
+        || ')$';
 BEGIN
     IF name = 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT-GEOMETRY' THEN
         _last_io := (public.get_last_io(name => 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT')).date_data_end;
@@ -150,6 +158,7 @@ BEGIN
 
     _query := CASE name
         WHEN 'FR-TERRITORY-IGN-MUNICIPALITY' THEN
+            CONCAT(
             '
                 (
                     SELECT
@@ -158,7 +167,7 @@ BEGIN
                     FROM
                         fr.ign_municipality
                     WHERE
-                        insee_com NOT IN (''75056'', ''13055'', ''69123'')
+                        insee_com !~ ''', _re_municipality_w_district, '''
                     UNION
                     SELECT
                         insee_arm,
@@ -191,7 +200,9 @@ BEGIN
                     x.libgeo IS DISTINCT FROM t.libgeo
                 )
             '
+            )
         WHEN 'FR-TERRITORY-IGN-MUNICIPALITY-POPULATION' THEN
+            CONCAT(
             '
                 (
                     SELECT
@@ -200,7 +211,7 @@ BEGIN
                     FROM
                         fr.ign_municipality
                     WHERE
-                        insee_com NOT IN (''75056'', ''13055'', ''69123'')
+                        insee_com !~ ''', _re_municipality_w_district, '''
                     UNION
                     SELECT
                         insee_arm,
@@ -227,12 +238,14 @@ BEGIN
             WHERE
                 x.population != t.population
             '
+            )
         WHEN 'FR-TERRITORY-IGN-GEOMETRY' THEN
             /* NOTE
             equals (up to 100 m2), due to snap
             08043: IGN  4670930.49597246  POW:  4670999.204580205
             16280: IGN 21753110.937482286 POW: 21753178.733738717
              */
+            CONCAT(
             '
                 (
                     SELECT
@@ -241,7 +254,7 @@ BEGIN
                     FROM
                         fr.ign_municipality
                     WHERE
-                        insee_com NOT IN (''75056'', ''13055'', ''69123'')
+                        insee_com !~ ''', _re_municipality_w_district, '''
                     UNION
                     SELECT
                         insee_arm,
@@ -268,36 +281,37 @@ BEGIN
             WHERE
                 NOT ST_Equals_with_Threshold(x.geom, t.gm_contour_natif, threshold => 100)
             '
+            )
         WHEN 'FR-TERRITORY-IGN-EVENT' THEN
             CONCAT(
-                '
-                    (
-                        SELECT
-                            insee_com
-                        FROM
-                            fr.ign_municipality
-                        WHERE
-                            insee_com NOT IN (''75056'', ''13055'', ''69123'')
-                        UNION
-                        SELECT
-                            insee_arm
-                        FROM
-                            fr.ign_municipal_district
-                    ) ign
-                        CROSS JOIN fr.get_municipality_to_date(
-                            code => ign.insee_com,
-                            code_previous => ign.insee_com,
-                            date_geography_from => ''',
-                _last_io,
-                '''::DATE,
-                            with_deleted => TRUE,
-                            check_exists => FALSE
-                        ) to_now
-                WHERE
-                    to_now.date_geography != ''',
-                _last_io,
-                '''::DATE
-                '
+            '
+                (
+                    SELECT
+                        insee_com
+                    FROM
+                        fr.ign_municipality
+                    WHERE
+                        insee_com !~ ''', _re_municipality_w_district, '''
+                    UNION
+                    SELECT
+                        insee_arm
+                    FROM
+                        fr.ign_municipal_district
+                ) ign
+                    CROSS JOIN fr.get_municipality_to_date(
+                        code => ign.insee_com,
+                        code_previous => ign.insee_com,
+                        date_geography_from => ''',
+            _last_io,
+            '''::DATE,
+                        with_deleted => TRUE,
+                        check_exists => FALSE
+                    ) to_now
+            WHERE
+                to_now.date_geography != ''',
+            _last_io,
+            '''::DATE
+            '
             )
         WHEN 'FR-TERRITORY-INSEE-MUNICIPALITY' THEN
             '
@@ -392,6 +406,7 @@ BEGIN
                 '
             )
         WHEN 'FR-TERRITORY-BANATIC-LIST' THEN
+            CONCAT(
             '
                 (
                     SELECT
@@ -401,7 +416,7 @@ BEGIN
                     FROM
                         fr.gouv_epci
                     WHERE
-                        nature_juridique IN (''MET69'', ''CC'', ''CA'', ''METRO'', ''CU'')
+                        nature_juridique ~ ''', _re_epci_kind, '''
                 ) x
 
                 FULL OUTER JOIN
@@ -427,8 +442,10 @@ BEGIN
                     x.libgeo IS DISTINCT FROM t.libgeo
                 )
             '
+            )
         WHEN 'FR-TERRITORY-BANATIC-SET' THEN
             -- w/ district and w/o global municipality
+            CONCAT(
             '
                 (
                     SELECT
@@ -438,7 +455,7 @@ BEGIN
                         fr.gouv_epci_municipality em
                             JOIN fr.insee_municipality m ON em.insee = COALESCE(m.com, m.codgeo)
                     WHERE
-                        em.nature_juridique IN (''MET69'', ''CC'', ''CA'', ''METRO'', ''CU'')
+                        em.nature_juridique ~ ''', _re_epci_kind, '''
                 ) x
 
                 FULL OUTER JOIN
@@ -465,6 +482,7 @@ BEGIN
                     (t.code_epci IS NULL OR t.code_com IS NULL)
                 )
             '
+            )
         WHEN 'FR-TERRITORY-LAPOSTE-AREA-ADD-OR-DEL' THEN
             '
                 (

@@ -176,7 +176,11 @@ BEGIN
             FROM
                 fr.ign_municipality
             WHERE
-                insee_com NOT IN ('75056', '13055', '69123')
+                --insee_com NOT IN ('75056', '13055', '69123')
+                insee_com !~
+                    '^(' ||
+                    (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'MUNICIPALITY_DISTRICT')
+                    || ')$'
             UNION
             SELECT
                 insee_arm,
@@ -250,7 +254,11 @@ BEGIN
                 FROM
                     fr.ign_municipality
                 WHERE
-                    insee_com NOT IN ('75056', '13055', '69123')
+                    --insee_com NOT IN ('75056', '13055', '69123')
+                    insee_com !~
+                        '^(' ||
+                        (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'MUNICIPALITY_DISTRICT')
+                        || ')$'
                 UNION
                 SELECT
                     insee_arm,
