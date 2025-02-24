@@ -1059,8 +1059,8 @@ get_tmp_file() {
     local _suffix _tmp_pow
     local -n _tmp_ref=${_opts[TMPFILE]}
 
-    _suffix="--suffix ${_opts[SUFFIX]}"
-    _suffix+=.${_opts[TMPEXT]}
+    # suffix concat given one (if any) w/ extension
+    _suffix="--suffix ${_opts[SUFFIX]}.${_opts[TMPEXT]}"
     _tmp_pow=$(mktemp --tmpdir="${_opts[TMPDIR]}" $_suffix pow_XXXXX)
     [ "${_opts[CREATE]}" = no ] && rm --force "$_tmp_pow" || chmod ${_opts[CHMOD]} "$_tmp_pow"
     _tmp_ref="$_tmp_pow"

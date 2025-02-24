@@ -14,16 +14,19 @@ execute_query() {
             output:fichier résultat;
             return:résultat de la commande SELECT;
             psql_arguments:paramètres supplémentaires, sous la forme (arg1,arg2,...,argn);
+            temporary:gestion du fichier temporaire;
             with_log:avec log
         ' \
         --args_m '
             name;query
         ' \
         --args_v '
-            with_log:no|yes
+            with_log:no|yes;
+            temporary:USER|UNIQ
         ' \
         --args_d '
-            with_log:yes
+            with_log:yes;
+            temporary:USER
         ' \
         --pow_argv _opts "$@" || return $ERROR_CODE
 
@@ -42,11 +45,23 @@ execute_query() {
         }
     } &&
     {
-        # temporary, accepting concurrent mode (parallelism)
-        get_tmp_file --tmpfile _log_tmp_path --tmpext $_log_tmp_ext --create &&
-        _log_tmp_dir=${_log_tmp_path%/*} &&
-        _log_tmp_file=${_log_tmp_path##*/} &&
-        _log_tmp_wo_ext=${_log_tmp_file%.*}
+        # temporary
+        case "${_opts[TEMPORARY]}" in
+        UNIQ)
+            # accepting concurrent mode (parallelism)
+            get_tmp_file --tmpfile _log_tmp_path --tmpext $_log_tmp_ext --create --suffix "-${_opts[NAME]}" &&
+            _log_tmp_dir="${_log_tmp_path%/*}" &&
+            _log_tmp_file="${_log_tmp_path##*/}" &&
+            _log_tmp_wo_ext="${_log_tmp_file%.*}"
+            ;;
+        USER)
+            # user defined
+            _log_tmp_dir="${POW_DIR_TMP}" &&
+            _log_tmp_file="${_opts[NAME]}.${_log_tmp_ext}" &&
+            _log_tmp_wo_ext="${_opts[NAME]}" &&
+            _log_tmp_path="${_log_tmp_dir}/${_log_tmp_file}"
+            ;;
+        esac
     } &&
     {
         # extra arguments
@@ -80,7 +95,7 @@ execute_query() {
             _psql_level=ERROR
             _quiet=--quiet
 
-            # set needing arguments to return result
+            # set needing arguments to return result (if not defined)
             [ -n "${_opts[PSQL_ARGUMENTS]}" ] || {
                 _opts[PSQL_ARGUMENTS]='--tuples-only --pset=format=unaligned'
             }
@@ -88,7 +103,7 @@ execute_query() {
     } &&
     {
         # with log: start message
-        (! is_yes --var _opts[WITH_LOG]) || log_info "Lancement de l'exécution de ${_opts[NAME]} ($_info)"
+        [ "${_opts[WITH_LOG]}" = no ] || log_info "Lancement de l'exécution de ${_opts[NAME]} ($_info)"
     } &&
     {
         # debug
@@ -143,13 +158,13 @@ execute_query() {
         # error
         [ $_rc -eq 0 ] || {
             _error="Erreur lors de l'exécution de ${_opts[NAME]}"
-            is_yes --var _opts[WITH_LOG] && _error+=", veuillez consulter ${POW_DIR_ARCHIVE}/${_log_tmp_wo_ext}-notice.${_log_tmp_ext}"
+            [ "${_opts[WITH_LOG]}" = yes ] && _error+=", veuillez consulter ${POW_DIR_ARCHIVE}/${_log_tmp_wo_ext}-notice.${_log_tmp_ext}"
             false
         }
     } &&
     {
         # with log: end message (w/ last)
-        (! is_yes --var _opts[WITH_LOG]) || {
+        [ "${_opts[WITH_LOG]}" = no ] || {
             get_elapsed_time --start $_start --result _last
             log_info "Exécution avec succès de ${_opts[NAME]} en $_last"
         }

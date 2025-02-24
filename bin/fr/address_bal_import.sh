@@ -1647,7 +1647,7 @@ declare -A bal_vars=(
     [HOUSENUMBERS]=-1
     [FORCE]=$get_arg_force
         # same data (POW_DOWNLOAD_ALREADY_AVAILABLE)
-        # nothing todo (already downloaded and so imported) ? but problem (if not) !
+        # nothing todo (already downloaded and so imported) ? but problem !
         #  obsolescence (diff between level-table and json-table) can wrongly delete elements
         #  if there are not loaded
     [FORCE_LOAD]=$get_arg_force_load
@@ -1699,7 +1699,7 @@ set_env --schema_name fr &&
 
 bal_error=0
 bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
-[[ ${bal_vars[PROGRESS_TOTAL]} > 0 ]] &&
+[[ ${bal_vars[PROGRESS_TOTAL]} -gt 0 ]] &&
 is_yes --var bal_vars[DRY_RUN] && {
     bal_average_time --avg bal_average &&
     bal_print_progress BEGIN Communes 0 0 1 '\r' &&
@@ -1787,6 +1787,9 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
     # purge ?
     # case insensitive! (Corse 2A|2B) but codes are (2a|2b)*
     is_yes --var bal_vars[CLEAN] && find $POW_DIR_IMPORT -iname "${bal_vars[MUNICIPALITY_CODE]}*.json" -exec rm {} \;
+    # delete 0-sz
+    find $POW_DIR_ARCHIVE -size 0 -exec rm {} \;
+
     [ "${bal_vars[STOP_TIME]}" != 0 ] && {
         # stop loop if allowed time is expired
         [[ "$(date +'%m-%d-%T')" > "${bal_vars[STOP_TIME]}" ]] && break
@@ -1805,6 +1808,14 @@ done
             --table_name 'bal_street,bal_housenumber' \
             --mode ANALYZE
     }
+}
+
+[ "${bal_vars[PROGRESS_CURRENT]}" -gt 100 ] && {
+    set_env --schema_name public &&
+    vacuum \
+        --schema_name public \
+        --table_name io_history \
+        --mode ANALYZE || bal_error=1
 }
 
 (! is_yes --var bal_vars[PROGRESS]) || {
