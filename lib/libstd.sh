@@ -1036,14 +1036,16 @@ backup_file_as_uniq() {
 
 # get temporary file (w/ uniq name)
 get_tmp_file() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             tmpfile:Nom de la variable dans laquelles est retourné le chemin du fichier temporaire demandé;
-            tmpdir:Dossier temporaire dans lequel le fichier temporaire est demandé;
+            tmpdir:Dossier du fichier temporaire;
             tmpext:Extension du fichier temporaire;
+            suffix:Suffixe du fichier temporaire;
             chmod:Permissions (rwx) à donner à ce fichier;
             create:Créer le fichier temporaire' \
-        --args_o '
+        --args_m '
             tmpfile' \
         --args_v '
             create:no|yes' \
@@ -1052,12 +1054,17 @@ get_tmp_file() {
             tmpext:tmp;
             chmod:666;
             create:no' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local _tmp_pow=$(mktemp --tmpdir="$get_arg_tmpdir" pow_XXXXX.$get_arg_tmpext)
-    local -n _tmp_ref=$get_arg_tmpfile
-    [ "$get_arg_create" = no ] && rm --force "$_tmp_pow" || chmod $get_arg_chmod "$_tmp_pow"
+    local _suffix _tmp_pow
+    local -n _tmp_ref=${_opts[TMPFILE]}
+
+    _suffix="--suffix ${_opts[SUFFIX]}"
+    _suffix+=.${_opts[TMPEXT]}
+    _tmp_pow=$(mktemp --tmpdir="${_opts[TMPDIR]}" $_suffix pow_XXXXX)
+    [ "${_opts[CREATE]}" = no ] && rm --force "$_tmp_pow" || chmod ${_opts[CHMOD]} "$_tmp_pow"
     _tmp_ref="$_tmp_pow"
+
     return $SUCCESS_CODE
 }
 

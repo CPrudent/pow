@@ -4,21 +4,20 @@
     # define PG
 
 # execute query (from file or command line)
-# sample:
 # execute_query --name GET_VERSION --query 'select version()' --psql_arguments 'tuples-only:pset=format=unaligned' --return _pg_version
 execute_query() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             name:nommage de la commande;
             query:code SQL à exécuter (fichier ou ligne de commande);
             output:fichier résultat;
-            psql_arguments:paramètres supplémentaires, sous la forme (arg1:arg2:...:argn);
             return:résultat de la commande SELECT;
+            psql_arguments:paramètres supplémentaires, sous la forme (arg1,arg2,...,argn);
             with_log:avec log
         ' \
-        --args_o '
-            name;
-            query
+        --args_m '
+            name;query
         ' \
         --args_v '
             with_log:no|yes
@@ -26,109 +25,144 @@ execute_query() {
         --args_d '
             with_log:yes
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local _start=$(date +%s) _log _opt _info _rc _last _psql_output
-    local _quiet _psql_level=NOTICE
-    local _log_tmp_path _log_notice_tmp_path _log_error_tmp_path _log_error_archive_path
-    _log="$get_arg_name"
-    [ -f "$get_arg_query" ] && {
-        _opt='--file'
-        _info='fichier'
-        if [ -z "$_log" ]; then
-            _log=$(basename -- "$get_arg_query")
-        fi
-    } || {
-        _opt='--command'
-        _info='requête'
-    }
-    _log_tmp_path="$POW_DIR_TMP/$_log.log"
-    _log_notice_tmp_path="$POW_DIR_TMP/$_log.notice.log"
-    _log_error_tmp_path="$POW_DIR_TMP/$_log.error.log"
-    _log_error_archive_path="$POW_DIR_ARCHIVE/$_log.error.log"
-    [ -n "$get_arg_psql_arguments" ] && {
-        local _ifs=$IFS _args _i
-        # convert colon-separated (:) as list of option(s) of psql w/ -- prefix for each
-        IFS=: ; _args=($get_arg_psql_arguments) ; IFS=$_ifs
-        get_arg_psql_arguments=
-        for ((_i=0; _i<${#_args[@]}; _i++)); do
-            get_arg_psql_arguments+="--${_args[$_i]} "
-        done
-    }
-    [ -z "$get_arg_output" ] && {
-        _psql_output="$_log_tmp_path"
-    } || {
-        [ -n "$get_arg_return" ] && {
-            log_error "Les options --output et --select sont exclusives"
-            return $ERROR_CODE
+    local _start=$(date +%s) _info _rc _last _i _error
+    local _opt _quiet _psql_level=NOTICE _psql_output
+    local _log_tmp_ext=log _log_tmp_path _log_tmp_dir _log_tmp_file _log_tmp_wo_ext
+
+    {
+        # query option
+        [ -f "${_opts[QUERY]}" ] && {
+            _opt=--file
+            _info=fichier
         } || {
-            _psql_output="$get_arg_output"
-            touch "$_log_tmp_path"
+            _opt=--command
+            _info=requête
         }
-    }
-    # quiet: https://stackoverflow.com/questions/21777564/postgresql-is-there-a-way-to-disable-the-display-of-insert-statements-when-rea
-    [ -n "$get_arg_return" ] && {
-        _psql_level=ERROR
-        _quiet=--quiet
-    }
+    } &&
+    {
+        # temporary, accepting concurrent mode (parallelism)
+        get_tmp_file --tmpfile _log_tmp_path --tmpext $_log_tmp_ext --create &&
+        _log_tmp_dir=${_log_tmp_path%/*} &&
+        _log_tmp_file=${_log_tmp_path##*/} &&
+        _log_tmp_wo_ext=${_log_tmp_file%.*}
+    } &&
+    {
+        # extra arguments
+        [ -z "${_opts[PSQL_ARGUMENTS]}" ] || {
+            local _ifs=$IFS _i
+            local -a _args
+            # convert colon-separated (:) as list of option(s) of psql w/ -- prefix for each
+            IFS=: ; _args=(${_opts[PSQL_ARGUMENTS]}) ; IFS=$_ifs
+            _opts[PSQL_ARGUMENTS]=
+            for ((_i=0; _i<${#_args[@]}; _i++)); do
+                _opts[PSQL_ARGUMENTS]+="--${_args[$_i]} "
+            done
+        }
+    } &&
+    {
+        # output
+        [ -z "${_opts[OUTPUT]}" ] && {
+            _psql_output="$_log_tmp_path"
+        } || {
+            [ -n "${_opts[RETURN]}" ] && {
+                _error='Les options --output et --select sont exclusives'
+                false
+            } || {
+                _psql_output="${_opts[OUTPUT]}"
+            }
+        }
+    } &&
+    {
+        # quiet: https://stackoverflow.com/questions/21777564/postgresql-is-there-a-way-to-disable-the-display-of-insert-statements-when-rea
+        [ -z "${_opts[RETURN]}" ] || {
+            _psql_level=ERROR
+            _quiet=--quiet
 
-    # with log: start message
-    is_yes --var get_arg_with_log && log_info "Lancement de l'exécution de $_log ($_info)"
+            # set needing arguments to return result
+            [ -n "${_opts[PSQL_ARGUMENTS]}" ] || {
+                _opts[PSQL_ARGUMENTS]='--tuples-only --pset=format=unaligned'
+            }
+        }
+    } &&
+    {
+        # with log: start message
+        (! is_yes --var _opts[WITH_LOG]) || log_info "Lancement de l'exécution de ${_opts[NAME]} ($_info)"
+    } &&
+    {
+        # debug
+        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
+            echo "PGOPTIONS=-c client_min_messages=$_psql_level"
+            echo "psql_arguments=${_opts[PSQL_ARGUMENTS]}"
+            echo "input=$_opt ${_opts[QUERY]}"
+            echo "output=$_psql_output"
+        }
+    } &&
+    {
+        # call psql
+        env PGOPTIONS="-c client_min_messages=$_psql_level" $POW_DIR_PG_BIN/psql \
+            --host $POW_PG_HOST \
+            --port $POW_PG_PORT \
+            --username $POW_PG_USERNAME \
+            --dbname $POW_PG_DBNAME \
+            --variable ON_ERROR_STOP=1 \
+            --no-password \
+            $_quiet \
+            ${_opts[PSQL_ARGUMENTS]} \
+            $_opt "${_opts[QUERY]}" \
+            --output "$_psql_output" 2> "${_log_tmp_dir}/${_log_tmp_wo_ext}-notice.${_log_tmp_ext}"
+        _rc=$?
+    } &&
+    {
+        # debug
+        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
+            echo "output:"
+            cat $_psql_output
+        }
+    } &&
+    {
+        # purge & archive log
+        grep \
+            --extended-regexp \
+            --invert-match \
+            'ATTENTION:|NOTICE:|DÉTAIL : |DROP cascade sur ' \
+            "${_log_tmp_dir}/${_log_tmp_wo_ext}-notice.${_log_tmp_ext}" \
+            >> "${_log_tmp_dir}/${_log_tmp_wo_ext}-error.${_log_tmp_ext}"
+        sed \
+            --in-place \
+            --expression \
+            '/^NOTICE:  la relation « [^ ]* » existe déjà/d' \
+            "${_log_tmp_dir}/${_log_tmp_wo_ext}-notice.${_log_tmp_ext}"
 
-    [ "$POW_DEBUG" = yes ] && {
-        echo "PGOPTIONS=-c client_min_messages=$_psql_level"
-        echo "psql_arguments=$get_arg_psql_arguments"
-        echo "input=$_opt $get_arg_query"
-        echo "output=$_psql_output"
-    }
-
-    # call psql
-    env PGOPTIONS="-c client_min_messages=$_psql_level" $POW_DIR_PG_BIN/psql \
-        --host $POW_PG_HOST \
-        --port $POW_PG_PORT \
-        --username $POW_PG_USERNAME \
-        --dbname $POW_PG_DBNAME \
-        --variable ON_ERROR_STOP=1 \
-        --no-password \
-        $_quiet \
-        $get_arg_psql_arguments \
-        $_opt "$get_arg_query" \
-        --output "$_psql_output" 2> "$_log_notice_tmp_path"
-    _rc=$?
-
-    [ "$POW_DEBUG" = yes ] && {
-        echo "output:"
-        cat $_psql_output
-    }
-
-    # purge & archive log
-    grep \
-        --extended-regexp \
-        --invert-match \
-        'ATTENTION:|NOTICE:|DÉTAIL : |DROP cascade sur ' "$_log_notice_tmp_path" >> "$_log_error_tmp_path"
-    sed \
-        --in-place \
-        --expression \
-        '/^NOTICE:  la relation « [^ ]* » existe déjà/d' "$_log_notice_tmp_path"
-    archive_file "$_log_tmp_path"
-    archive_file "$_log_notice_tmp_path"
-    archive_file "$_log_error_tmp_path"
-
-    [ $_rc -ne 0 ] && {
-        local _msg="Erreur lors de l'exécution de $_log"
-        is_yes --var get_arg_with_log && _msg+=", veuillez consulter $_log_error_archive_path"
-        log_error "$_msg"
+        archive_file "$_log_tmp_path" &&
+        archive_file "${_log_tmp_dir}/${_log_tmp_wo_ext}-notice.${_log_tmp_ext}" &&
+        archive_file "${_log_tmp_dir}/${_log_tmp_wo_ext}-error.${_log_tmp_ext}"
+    } &&
+    {
+        # error
+        [ $_rc -eq 0 ] || {
+            _error="Erreur lors de l'exécution de ${_opts[NAME]}"
+            is_yes --var _opts[WITH_LOG] && _error+=", veuillez consulter ${POW_DIR_ARCHIVE}/${_log_tmp_wo_ext}-notice.${_log_tmp_ext}"
+            false
+        }
+    } &&
+    {
+        # with log: end message (w/ last)
+        (! is_yes --var _opts[WITH_LOG]) || {
+            get_elapsed_time --start $_start --result _last
+            log_info "Exécution avec succès de ${_opts[NAME]} en $_last"
+        }
+    } &&
+    {
+        # requested result of SELECT
+        [ -z "${_opts[RETURN]}" ] || {
+            local -n _select_ref=${_opts[RETURN]}
+            _select_ref=$(< "${POW_DIR_ARCHIVE}/${_log_tmp_file}")
+        }
+    } || {
+        [ -n "$_error" ] && log_error "$_error"
         return $ERROR_CODE
-    }
-    # with log: end message (w/ last)
-    is_yes --var get_arg_with_log && {
-        get_elapsed_time --start $_start --result _last
-        log_info "Exécution avec succès de $_log en $_last"
-    }
-    # requested result of SELECT
-    [ -n "$get_arg_return" ] && {
-        local -n _select_ref=$get_arg_return
-        _select_ref=$(< "$POW_DIR_ARCHIVE/$_log.log")
     }
 
     return $SUCCESS_CODE

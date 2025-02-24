@@ -95,7 +95,6 @@ bal_check_municipality() {
                 SELECT 1 FROM fr.bal_municipality
                 WHERE code = '${_opts[CODE]}'
             )" \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _valid &&
     {
         [ "$_valid" = t ] || {
@@ -106,7 +105,6 @@ bal_check_municipality() {
                         SELECT 1 FROM fr.laposte_address_area
                         WHERE co_insee_commune = '${_opts[CODE]}' AND fl_active
                     )" \
-                --psql_arguments 'tuples-only:pset=format=unaligned' \
                 --return _valid &&
             {
                 case "$_valid" in
@@ -217,7 +215,6 @@ bal_set_municipality() {
                         r.co_cea_voie IS NOT NULL
                 )
         " \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return bal_vars[AREAS_OLD_MUNICIPALITY] &&
     {
         execute_query \
@@ -226,7 +223,6 @@ bal_set_municipality() {
                 SELECT id, date_data_end, attributes
                 FROM get_last_io('BAL_${_opts[CODE]}')
             " \
-            --psql_arguments 'tuples-only:pset=format=unaligned' \
             --return _tmp &&
         {
             [ -z "$_tmp" ] || {
@@ -259,7 +255,6 @@ bal_set_municipality() {
                 FROM fr.bal_municipality
                 WHERE code = '${_opts[CODE]}'
         " \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _tmp &&
         {
             IFS='|' read -a _array <<< "$_tmp"
@@ -325,7 +320,6 @@ bal_last_update_municipality() {
             FROM fr.bal_municipality
             WHERE code = '${bal_vars[MUNICIPALITY_CODE]}'
         " \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return bal_vars[IO_END] &&
     bal_vars[IO_END_EPOCH]=$(date '+%s' --date "${bal_vars[IO_END]}") || return $ERROR_CODE
 
@@ -360,7 +354,6 @@ bal_average_time() {
                     h2.nb_rows_processed > 0
             )
         " \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _avg_ref || return $ERROR_CODE
 
     return $SUCCESS_CODE
@@ -428,7 +421,6 @@ bal_get_list() {
     execute_query \
         --name "$get_arg_name" \
         --query "$get_arg_query" \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _result &&
     {
         IFS='|' read -ra _results <<< "$_result"
@@ -484,7 +476,6 @@ bal_count_addresses() {
                         AND
                         m.code = '${bal_vars[MUNICIPALITY_CODE]}'
                 " \
-                --psql_arguments 'tuples-only:pset=format=unaligned' \
                 --return bal_vars[STREETS]
         }
     } &&
@@ -504,7 +495,6 @@ bal_count_addresses() {
                         AND
                         m.code = '${bal_vars[MUNICIPALITY_CODE]}'
                 " \
-                --psql_arguments 'tuples-only:pset=format=unaligned' \
                 --return bal_vars[HOUSENUMBERS]
         }
     } || return $ERROR_CODE
@@ -812,7 +802,6 @@ bal_deal_obsolescence() {
                         list => '$_obsolete'
                     )
                 " \
-                --psql_arguments 'tuples-only:pset=format=unaligned' \
                 --return _counters &&
             log_info "comptage: ${_counters}"
         }
@@ -981,7 +970,6 @@ bal_list_municipalities() {
     execute_query \
         --name BAL_MUNICIPALITIES \
         --query "$_query" \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _list &&
     array_sql_to_bash --array_sql "$_list" --array_bash _list_ref || return $ERROR_CODE
 
@@ -1361,7 +1349,6 @@ bal_load() {
                         FROM fr.laposte_address_area
                         WHERE fl_active
                     " \
-                    --psql_arguments 'tuples-only:pset=format=unaligned' \
                     --return bal_vars[IO_ROWS]
             }
         } &&
@@ -1480,7 +1467,6 @@ bal_fix_exists() {
     execute_query \
         --name BAL_IO_ID \
         --query "SELECT (get_last_io('$_io')).id" \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return bal_vars[IO_ID] &&
     # use a file as argument (because of inside *)
     # CONVERT_ATTRIBUTES will be always false, but selection of municipalities too !
@@ -1499,7 +1485,6 @@ EOC
     execute_query \
         --name BAL_FIX_EXISTS \
         --query "$_tmpfile" \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _fix &&
     {
         _state_ref=$( [ -n "$_fix" ] && echo 'yes' || echo 'no' )
@@ -1767,7 +1752,6 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
                         execute_query \
                             --name BAL_${bal_vars[MUNICIPALITY_CODE]}_ROWS \
                             --query "$bal_query" \
-                            --psql_arguments 'tuples-only:pset=format=unaligned' \
                             --return bal_rows
                     }
                 } &&
