@@ -1042,28 +1042,99 @@ get_tmp_file() {
             tmpfile:Nom de la variable dans laquelles est retourné le chemin du fichier temporaire demandé;
             tmpdir:Dossier du fichier temporaire;
             tmpext:Extension du fichier temporaire;
+            tool:Méthode à utiliser;
             suffix:Suffixe du fichier temporaire;
             chmod:Permissions (rwx) à donner à ce fichier;
             create:Créer le fichier temporaire' \
         --args_m '
             tmpfile' \
         --args_v '
+            tool:MKTEMP|DATE|BASH|UUID|HEXDUMP|OPENSSL;
             create:no|yes' \
         --args_d '
             tmpdir:'$POW_DIR_TMP';
             tmpext:tmp;
+            tool:MKTEMP;
             chmod:666;
             create:no' \
         --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local _suffix _tmp_pow
+    local _suffix _tmp_file _tmp_create=0
     local -n _tmp_ref=${_opts[TMPFILE]}
 
-    # suffix concat given one (if any) w/ extension
-    _suffix="--suffix ${_opts[SUFFIX]}.${_opts[TMPEXT]}"
-    _tmp_pow=$(mktemp --tmpdir="${_opts[TMPDIR]}" $_suffix pow_XXXXX)
-    [ "${_opts[CREATE]}" = no ] && rm --force "$_tmp_pow" || chmod ${_opts[CHMOD]} "$_tmp_pow"
-    _tmp_ref="$_tmp_pow"
+    # time get_tmp_file --tmpfile _tmp
+    # real    0m0,431s
+    # user    0m0,125s
+    # sys     0m0,143s
+
+    # time get_tmp_file --tmpfile _tmp --tool DATE
+    # real    0m0,263s
+    # user    0m0,173s
+    # sys     0m0,176s
+
+    # time get_tmp_file --tmpfile _tmp --tool BASH
+    # real    0m1,103s
+    # user    0m0,303s
+    # sys     0m1,166s
+
+    # time get_tmp_file --tmpfile _tmp --tool UUID
+    # real    0m0,814s
+    # user    0m0,257s
+    # sys     0m0,824s
+
+    # time get_tmp_file --tmpfile _tmp --tool HEXDUMP
+    # real    0m1,072s
+    # user    0m0,338s
+    # sys     0m1,092s
+
+    # time get_tmp_file --tmpfile _tmp --tool OPENSSL
+    # real    0m0,786s
+    # user    0m0,254s
+    # sys     0m0,782s
+
+    # time get_tmp_file --tmpfile _tmp --tool MKTEMP
+    # real    0m0,785s
+    # user    0m0,240s
+    # sys     0m0,797s
+
+    case "${_opts[TOOL]}" in
+    MKTEMP)
+        _tmp_create=1
+        # suffix concat given one (if any) w/ extension
+        _suffix="--suffix ${_opts[SUFFIX]}.${_opts[TMPEXT]}"
+        _tmp_file=$(mktemp --tmpdir="${_opts[TMPDIR]}" $_suffix pow_XXXXX)
+        ;;
+    *)
+        # https://stackoverflow.com/questions/2793812/generate-a-random-filename-in-unix-shell
+        case "${_opts[TOOL]}" in
+        DATE)
+            _tmp_file=$(date '+%M%S%N')
+            ;;
+        BASH)
+            printf -v _tmp_file '%X' $(printf '%.2s ' $((RANDOM%16))' '{00..31})
+            ;;
+        UUID)
+            _tmp_file=$(uuidgen)
+            ;;
+        HEXDUMP)
+            _tmp_file=$(hexdump -n 16 -v -e '/1 "%02X"' /dev/urandom)
+            ;;
+        OPENSSL)
+            _tmp_file=$(openssl rand -hex 16)
+            ;;
+        esac
+        _tmp_file=${_opts[TMPDIR]}/${_tmp_file}${_opts[SUFFIX]}.${_opts[TMPEXT]}
+
+        [ "${_opts[CREATE]}" = yes ] && {
+            touch $_tmp_file
+            _tmp_create=1
+        }
+    esac
+    [[ $_tmp_create -eq 1 ]] && {
+        [ "${_opts[CREATE]}" = no ] && rm --force "$_tmp_file" || chmod ${_opts[CHMOD]}
+        "$_tmp_file"
+    }
+    _tmp_ref="$_tmp_file"
 
     return $SUCCESS_CODE
 }
