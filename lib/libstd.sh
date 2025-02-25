@@ -1059,7 +1059,7 @@ get_tmp_file() {
             create:no' \
         --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local _suffix _tmp_file _tmp_create=0
+    local _tmp_file _tmp_create=0
     local -n _tmp_ref=${_opts[TMPFILE]}
 
     # time get_tmp_file --tmpfile _tmp
@@ -1101,8 +1101,7 @@ get_tmp_file() {
     MKTEMP)
         _tmp_create=1
         # suffix concat given one (if any) w/ extension
-        _suffix="--suffix ${_opts[SUFFIX]}.${_opts[TMPEXT]}"
-        _tmp_file=$(mktemp --tmpdir="${_opts[TMPDIR]}" $_suffix pow_XXXXX)
+        _tmp_file=$(mktemp --tmpdir="${_opts[TMPDIR]}" --suffix "${_opts[SUFFIX]}.${_opts[TMPEXT]}" pow_XXXXX)
         ;;
     *)
         # https://stackoverflow.com/questions/2793812/generate-a-random-filename-in-unix-shell
@@ -1123,7 +1122,7 @@ get_tmp_file() {
             _tmp_file=$(openssl rand -hex 16)
             ;;
         esac
-        _tmp_file=${_opts[TMPDIR]}/${_tmp_file}${_opts[SUFFIX]}.${_opts[TMPEXT]}
+        _tmp_file="${_opts[TMPDIR]}/${_tmp_file}${_opts[SUFFIX]}.${_opts[TMPEXT]}"
 
         [ "${_opts[CREATE]}" = yes ] && {
             touch $_tmp_file
@@ -1131,8 +1130,7 @@ get_tmp_file() {
         }
     esac
     [[ $_tmp_create -eq 1 ]] && {
-        [ "${_opts[CREATE]}" = no ] && rm --force "$_tmp_file" || chmod ${_opts[CHMOD]}
-        "$_tmp_file"
+        [ "${_opts[CREATE]}" = no ] && rm --force "$_tmp_file" || chmod ${_opts[CHMOD]} "$_tmp_file"
     }
     _tmp_ref="$_tmp_file"
 
