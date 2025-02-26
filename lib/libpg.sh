@@ -158,7 +158,7 @@ execute_query() {
         # error
         [ $_rc -eq 0 ] || {
             _error="Erreur lors de l'exécution de ${_opts[NAME]}"
-            [ "${_opts[WITH_LOG]}" = yes ] && _error+=", veuillez consulter ${POW_DIR_ARCHIVE}/${_log_tmp_wo_ext}-notice.${_log_tmp_ext}"
+            [ "${_opts[WITH_LOG]}" = yes ] && _error+=", veuillez consulter ${POW_DIR_ARCHIVE}/${_log_tmp_wo_ext}-error.${_log_tmp_ext}"
             false
         }
     } &&

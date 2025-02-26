@@ -1705,7 +1705,7 @@ import_file() {
             jq --raw-output --compact-output '.' < "$file_path" | (execute_query \
                 --name LOAD_JSON \
                 --query "COPY $schema_name.$table_name (${_column_name}) FROM STDIN" || {
-                    backup_file_as_uniq --path "$POW_DIR_ARCHIVE/LOAD_JSON.error.log"
+                    backup_file_as_uniq --path "$POW_DIR_ARCHIVE/LOAD_JSON-error.log"
                     false
                 })
         }
