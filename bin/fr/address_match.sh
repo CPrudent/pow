@@ -7,47 +7,47 @@
 
 # log info about matching step
 match_info() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             steps_info:Table des libellés des étapes;
             step:Entrée dans cette table
         ' \
-        --args_o '
-            steps_info;
-            step
+        --args_m '
+            steps_info;step
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local -n _steps_ref=$get_arg_steps_info
+    local -n _steps_ref=${_opts[STEPS_INFO]}
 
-    log_info "demande de Rapprochement (étape '${_steps_ref[$get_arg_step]}')"
+    log_info "demande de Rapprochement (étape '${_steps_ref[${_opts[STEP]}]}')"
     return $SUCCESS_CODE
 }
 
 # get defintion of property (format or parameters) w/ OS file
 get_definition() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             property:Propriété à définir;
             vars:Entité des variables globales
         ' \
-        --args_o '
-            property;
-            vars
+        --args_m '
+            property;vars
         ' \
         --args_v '
             property:format|parameters
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local -n _vars_ref=$get_arg_vars
-    local _property=${get_arg_property^^}
+    local -n _vars_ref=${_opts[VARS]}
+    local _property=${_opts[PROPERTY]^^}
     local _path=${_property}_PATH _sql=${_property}_SQL
 
     # defined property ?
     [ -n "${_vars_ref[${_property}]}" ] && {
         # default path
-        _vars_ref[$_path]="${POW_DIR_BIN}/${_vars_ref[${_property}]}_${get_arg_property}.sql"
+        _vars_ref[$_path]="${POW_DIR_BIN}/${_vars_ref[${_property}]}_${_opts[PROPERTY]}.sql"
         [ -f "${_vars_ref[$_path]}" ] &&
         _vars_ref[$_sql]=$(cat "${_vars_ref[_path]}") || {
             # specific path
@@ -64,30 +64,28 @@ get_definition() {
 
 # eval requested columns (by set: IN|MORE)
 export_get_columns() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             columns_set:Ensemble des colonnes;
             columns_user:Liste des colonnes mentionnées;
             columns_default:Ensemble des colonnes disponibles;
             columns_todo:Résultat
         ' \
-        --args_o '
-            columns_set;
-            columns_user;
-            columns_default;
-            columns_todo
+        --args_m '
+            columns_set;columns_user;columns_default;columns_todo
         ' \
         --args_v '
             columns_set:IN|MORE
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local -n _user_ref=$get_arg_columns_user
-    local -n _todo_ref=$get_arg_columns_todo
+    local -n _user_ref=${_opts[COLUMNS_USER]}
+    local -n _todo_ref=${_opts[COLUMNS_TODO]}
     local _item _1st _tmp _pos _i
 
     # clone default list
-    _tmp=$(declare -p ${get_arg_columns_default}) &&
+    _tmp=$(declare -p ${_opts[COLUMNS_DEFAULT]}) &&
     #echo "$_tmp" &&
     eval "${_tmp/${get_arg_columns_default}=/_array_clone=}" &&
     #declare -p _array_clone
@@ -105,7 +103,7 @@ export_get_columns() {
         }
 
         # adding new column if NOT exists (only for IN set)
-        ([ "$get_arg_columns_set" = IN ] && [[ $_pos -eq -1 ]]) &&
+        ([ "${_opts[COLUMNS_SET]}" = IN ] && [[ $_pos -eq -1 ]]) &&
         # SQL as syntax : item matchs the name of column (w/ alias as uppercase)
         _todo_ref+=( "i.${_item,,} AS "'"'"${_item,,}"'"'"" )
     done
@@ -123,22 +121,21 @@ export_get_columns() {
 
 # eval entry (table name)
 export_get_entry() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             request:Entité de la demande;
             vars:Entité des variables globales;
             entry:Entité des données entrantes
         ' \
-        --args_o '
-            request;
-            vars;
-            entry
+        --args_m '
+            request;vars;entry
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local -n _request_ref=$get_arg_request
-    local -n _vars_ref=$get_arg_vars
-    local -n _entry_ref=$get_arg_entry
+    local -n _request_ref=${_opts[REQUEST]}
+    local -n _vars_ref=${_opts[VARS]}
+    local -n _entry_ref=${_opts[ENTRY]}
 
     case ${_vars_ref[SOURCE_KIND]} in
     FILE)       _entry_ref=fr.${_request_ref[MATCH_REQUEST_IMPORT]}        ;;
@@ -151,33 +148,30 @@ export_get_entry() {
 
 # output matched addresses
 export_build() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             columns_in:Ensemble des colonnes entrantes (Ensemble noté IN);
             columns_more:Ensemble des colonnes supplémentaires (Ensemble noté MORE);
             table_name:Table des données entrantes;
             request:Entité de la demande;
             vars:Entité des variables globales
         ' \
-        --args_o '
-            columns_in;
-            columns_more;
-            table_name;
-            request;
-            vars
+        --args_m '
+            columns_in;columns_more;table_name;request;vars
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local -n _in_ref=$get_arg_columns_in
-    local -n _more_ref=$get_arg_columns_more
-    local -n _request_ref=$get_arg_request
-    local -n _vars_ref=$get_arg_vars
+    local -n _in_ref=${_opts[COLUMNS_IN]}
+    local -n _more_ref=${_opts[COLUMNS_MORE]}
+    local -n _request_ref=${_opts[REQUEST]}
+    local -n _vars_ref=${_opts[VARS]}
     local _sql_file
 
     get_tmp_file --tmpext sql --tmpfile _sql_file --create yes &&
     log_info "SQL export: $_sql_file" &&
     {
-        [ "${_vars_ref[SOURCE_KIND]}" = QUERY ] && {
+        [ "${_vars_ref[SOURCE_KIND]}" != QUERY ] || {
             [ -z "${_vars_ref[SOURCE_QUERY]}" ] && {
                 execute_query \
                     --name SOURCE_QUERY \
@@ -186,22 +180,21 @@ export_build() {
                         FROM fr.address_match_request
                         WHERE id_request = ${_request_ref[MATCH_REQUEST_ID]}
                     " \
-                    --psql_arguments 'tuples-only:pset=format=unaligned' \
                     --return _vars_ref[SOURCE_QUERY]
             }
             echo "WITH ${_vars_ref[SOURCE_NAME]} AS (${_vars_ref[SOURCE_QUERY]})" >> $_sql_file
-        } || true
+        }
     } &&
     echo 'SELECT' >> $_sql_file &&
     {
-        [[ ${#_in_ref[@]} -gt 0 ]] && {
+        [[ ${#_in_ref[@]} -eq 0 ]] || {
             printf '%s,\n' "${_in_ref[@]}" >> $_sql_file
-        } || true
+        }
     } &&
     {
-        [[ ${#_more_ref[@]} -gt 0 ]] && {
+        [[ ${#_more_ref[@]} -eq 0 ]] || {
             printf '%s,\n' "${_more_ref[@]}" | sed --expression '$s/,$//' >> $_sql_file
-        } || true
+        }
     } &&
     execute_query \
         --name MATCH_EXPORT \
@@ -228,7 +221,7 @@ export_build() {
                         JOIN fr.territory t
                         ON (t.nivgeo, t.codgeo) = ('ZA', a.co_adr_za)
 
-                        JOIN $get_arg_table_name i
+                        JOIN ${_opts[TABLE_NAME]} i
                         ON mr.id_address = i.rowid
                 WHERE
                     mr.id_request = ${_request_ref[MATCH_REQUEST_ID]}
@@ -244,22 +237,21 @@ export_build() {
 
 # get counters
 report_get_result() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             request:Entité de la demande;
             vars:Entité des variables globales;
             result:Entité du résultat
         ' \
-        --args_o '
-            request;
-            vars;
-            result
+        --args_m '
+            request;vars;result
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local -n _request_ref=$get_arg_request
-    local -n _vars_ref=$get_arg_vars
-    local -n _result_ref=$get_arg_result
+    local -n _request_ref=${_opts[REQUEST]}
+    local -n _vars_ref=${_opts[VARS]}
+    local -n _result_ref=${_opts[result]}
     local _counters _len _tmp
 
     # get counters as {#,#, ...,#} array format
@@ -268,7 +260,6 @@ report_get_result() {
         --query "
             SELECT counters FROM fr.set_match_result(id => ${_request_ref[MATCH_REQUEST_ID]})
             " \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _counters &&
     array_sql_to_bash --array_sql "$_counters" --array_bash _result_ref || return $ERROR_CODE
 
@@ -277,22 +268,21 @@ report_get_result() {
 
 # build report, printing result counters
 report_build() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             request:Entité de la demande;
             vars:Entité des variables globales;
             result:Entité du résultat
         ' \
-        --args_o '
-            request;
-            vars;
-            result
+        --args_m '
+            request;vars;result
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local -n _request_ref=$get_arg_request
-    local -n _vars_ref=$get_arg_vars
-    local -n _result_ref=$get_arg_result
+    local -n _request_ref=${_opts[REQUEST]}
+    local -n _vars_ref=${_opts[VARS]}
+    local -n _result_ref=${_opts[result]}
     local _source
 
     printf '\n%s\n' "Demande Rapprochement (ID): ${_request_ref[MATCH_REQUEST_ID]}"
@@ -326,8 +316,17 @@ report_build() {
     return $SUCCESS_CODE
 }
 
-bash_args \
-    --args_p '
+declare -A match_vars=(
+    [SOURCE_KIND]=
+    [FORMAT_PATH]=''
+    [FORMAT_SQL]=''
+    [PARAMETERS_PATH]=''
+    [PARAMETERS_SQL]=''
+    [COLUMNS_IN]=
+    [COLUMNS_MORE]=
+) &&
+pow_argv \
+    --args_n '
         source_name:Source des Adresses à rapprocher;
         source_filter:Filtre à appliquer sur les données entrantes;
         source_query:Requête à appliquer pour obtenir les données entrantes;
@@ -344,7 +343,7 @@ bash_args \
         only_info:Afficher les informations de la demande;
         verbose:Ajouter des détails sur les traitements
     ' \
-    --args_o '
+    --args_m '
         source_name
     ' \
     --args_v '
@@ -359,28 +358,10 @@ bash_args \
         export_srid:4326;
         verbose:no
     ' \
-    "$@" || exit $ERROR_CODE
-
-declare -A match_vars=(
-    [SOURCE_NAME]="$get_arg_source_name"
-    [SOURCE_KIND]=
-    [SOURCE_FILTER]="$get_arg_source_filter"
-    [SOURCE_QUERY]="$get_arg_source_query"
-    [FORCE]=$get_arg_force
-    [FORMAT]="$get_arg_format"
-    [PARAMETERS]="$get_arg_parameters"
-    [IMPORT_OPTIONS]="$get_arg_import_options"
-    [IMPORT_LIMIT]=$get_arg_import_limit
-    [FORMAT_PATH]=''
-    [FORMAT_SQL]=''
-    [PARAMETERS_PATH]=''
-    [PARAMETERS_SQL]=''
-    [STEPS]=${get_arg_steps// /}
-    [VERBOSE]=$get_arg_verbose
-    [COLUMNS_IN]="${get_arg_export_in_columns^^}"
-    [COLUMNS_MORE]="${get_arg_export_more_columns^^}"
-    [EXPORT_PATH]="$get_arg_export_path"
-)
+    --args_p '
+        RESET:no
+    ' \
+    --pow_argv match_vars "$@" || exit $ERROR_CODE
 
 _k=0
 MATCH_REQUEST_ID=$((_k++))                  # ID de la demande
@@ -388,10 +369,14 @@ MATCH_REQUEST_IMPORT=$((_k++))              # table d'import des données
 MATCH_REQUEST_ITEMS=$_k
 declare -a match_request
 
+match_vars[STEPS]=${match_vars[STEPS]// /}
+match_vars[COLUMNS_IN]=${match_vars[EXPORT_IN_COLUMNS]^^}
+match_vars[COLUMNS_MORE]=${match_vars[EXPORT_MORE_COLUMNS]^^}
 MATCH_STEPS=IMPORT,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT,EXPORT,REPORT
 declare -a match_steps
 [ "${match_vars[STEPS]}" = ALL ] && match_vars[STEPS]=$MATCH_STEPS
 match_steps=( ${match_vars[STEPS]//,/ } )
+
 declare -A match_steps_info=(
     [IMPORT]=Chargement
     [STANDARDIZE]=Standardisation
@@ -422,8 +407,8 @@ declare -A match_more_columns=(
     [REGATE]=a.rao_co_regate
     # XY
     [LOCALISATION]=a.no_type_localisation_coord
-    [GEOMETRY_X]='ST_X(ST_Transform(a.gm_coord, '$get_arg_export_srid'))'
-    [GEOMETRY_Y]='ST_Y(ST_Transform(a.gm_coord, '$get_arg_export_srid'))'
+    [GEOMETRY_X]='ST_X(ST_Transform(a.gm_coord, '${match_vars[EXPORT_SRID]}'))'
+    [GEOMETRY_Y]='ST_Y(ST_Transform(a.gm_coord, '${match_vars[EXPORT_SRID]}'))'
     # HIERARCHY
     [COM]=t.codgeo_com_parent
     [CV]=t.codgeo_cv_parent
@@ -521,10 +506,10 @@ match_request=($_request) &&
 {
     [ -z "${match_vars[EXPORT_PATH]}" ] && match_vars[EXPORT_PATH]="$POW_DIR_ARCHIVE/export_${match_request[MATCH_REQUEST_ID]}.csv"
 
-    [ "${match_vars[VERBOSE]}" = yes ] && {
+    [ "${match_vars[VERBOSE]}" = no ] || {
         log_info "$(declare -p match_request)"
         log_info "$(declare -p match_vars)"
-    } || true
+    }
 } &&
 
 # ERROR if TABLE|QUERY as 2nd result (import_name) is null, and so array has only 1 element!
@@ -536,8 +521,8 @@ match_request=($_request) &&
 
 # only info
 {
-    [ "$get_arg_only_info" != NO ] && {
-        case "$get_arg_only_info" in
+    [ "${match_vars[ONLY_INFO]}" = NO ] || {
+        case "${match_vars[ONLY_INFO]}" in
         ID)
             echo ${match_request[MATCH_REQUEST_ID]}
             ;;
@@ -546,12 +531,13 @@ match_request=($_request) &&
             ;;
         esac
         exit $SUCCESS_CODE
-    } || true
+    }
 } &&
 
 # import todo? only for FILE input
 {
-    ([ "${match_vars[SOURCE_KIND]}" = FILE ] && in_array --array match_steps --item IMPORT) && {
+    ([ "${match_vars[SOURCE_KIND]}" != FILE ] || \
+    (! in_array --array match_steps --item IMPORT)) || {
         ([ ${match_vars[FORCE]} = no ] && table_exists --schema_name fr --table_name ${match_request[MATCH_REQUEST_IMPORT]}) || {
             match_info --steps_info match_steps_info --step IMPORT &&
             import_file \
@@ -562,11 +548,11 @@ match_request=($_request) &&
                 --limit "${match_vars[IMPORT_LIMIT]}" \
                 --import_options "${match_vars[IMPORT_OPTIONS]}"
         }
-    } || true
+    }
 } &&
 
 {
-    in_array --array match_steps --item STANDARDIZE && {
+    (! in_array --array match_steps --item STANDARDIZE) || {
         get_definition --property format --vars match_vars && {
             [ -n "${match_vars[FORMAT_SQL]}" ] && true || {
                 log_error "manque définition du format (option --format)"
@@ -582,11 +568,11 @@ match_request=($_request) &&
                 force => ('${match_vars[FORCE]}' = 'yes'),
                 raise_notice => ('${match_vars[VERBOSE]}' = 'yes')
             )"
-    } || true
+    }
 } &&
 
 {
-    in_array --array match_steps --item MATCH_CODE && {
+    (! in_array --array match_steps --item MATCH_CODE) || {
         match_info --steps_info match_steps_info --step MATCH_CODE &&
         execute_query \
             --name MATCH_CODE_REQUEST \
@@ -594,11 +580,11 @@ match_request=($_request) &&
                 id => ${match_request[$MATCH_REQUEST_ID]},
                 force => ('${match_vars[FORCE]}' = 'yes')
             )"
-    } || true
+    }
 } &&
 
 {
-    in_array --array match_steps --item MATCH_ELEMENT && {
+    (! in_array --array match_steps --item MATCH_ELEMENT) || {
         match_info --steps_info match_steps_info --step MATCH_ELEMENT &&
         execute_query \
             --name MATCH_ELEMENT_REQUEST \
@@ -607,23 +593,22 @@ match_request=($_request) &&
                 force => ('${match_vars[FORCE]}' = 'yes'),
                 raise_notice => ('${match_vars[VERBOSE]}' = 'yes')
             )"
-    } || true
+    }
 } &&
 
 {
-    # FIX-ME: bash_args don't accept argument beginning w/ a dash (-) !
-    in_array --array match_steps --item EXPORT && {
+    (! in_array --array match_steps --item EXPORT) || {
         match_info --steps_info match_steps_info --step EXPORT &&
         declare -a _list_in _list_more &&
         declare -a match_columns_in=( ${match_vars[COLUMNS_IN]//,/ } ) &&
-        #echo "IN: (${get_arg_export_in_columns}) $(declare -p match_columns_in)" &&
+        #echo "IN: (${match_vars[EXPORT_IN_COLUMNS]}) $(declare -p match_columns_in)" &&
         export_get_columns \
             --columns_set IN \
             --columns_user match_columns_in \
             --columns_default match_in_columns \
             --columns_todo _list_in &&
         declare -a match_columns_more=( ${match_vars[COLUMNS_MORE]//,/ } ) &&
-        #echo "MORE: (${get_arg_export_more_columns}) $(declare -p match_columns_more)" &&
+        #echo "MORE: (${match_vars[EXPORT_MORE_COLUMNS]}) $(declare -p match_columns_more)" &&
         export_get_columns \
             --columns_set MORE \
             --columns_user match_columns_more \
@@ -642,11 +627,11 @@ match_request=($_request) &&
             log_error 'export Rapprochement en erreur!'
             false
         }
-    } || true
+    }
 } &&
 
 {
-    in_array --array match_steps --item REPORT && {
+    (! in_array --array match_steps --item REPORT) || {
         match_info --steps_info match_steps_info --step REPORT &&
         report_get_result \
             --request match_request \
@@ -659,11 +644,11 @@ match_request=($_request) &&
             log_error 'rapport Rapprochement en erreur!'
             false
         }
-    } || true
+    }
 } &&
 
 {
-    [ "${match_vars[VERBOSE]}" = yes ] && log_info "archive: ${POW_DIR_ARCHIVE}" || true
+    [ "${match_vars[VERBOSE]}" = no ] || log_info "archive: ${POW_DIR_ARCHIVE}"
 } || exit $ERROR_CODE
 
 exit $SUCCESS_CODE
