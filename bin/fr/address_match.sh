@@ -83,11 +83,12 @@ export_get_columns() {
     local -n _user_ref=${_opts[COLUMNS_USER]}
     local -n _todo_ref=${_opts[COLUMNS_TODO]}
     local _item _1st _tmp _pos _i
+    local -a _array_clone
 
     # clone default list
     _tmp=$(declare -p ${_opts[COLUMNS_DEFAULT]}) &&
     #echo "$_tmp" &&
-    eval "${_tmp/${get_arg_columns_default}=/_array_clone=}" &&
+    eval "${_tmp/${_opts[COLUMNS_DEFAULT]}=/_array_clone=}" &&
     #declare -p _array_clone
 
     for _item in ${_user_ref[@]}; do
@@ -485,7 +486,6 @@ set_env --schema_name fr &&
 
 get_definition --property parameters --vars match_vars &&
 
-# ERROR if query has * (following select) which is replaced by bash_args as files!
 execute_query \
     --name MATCH_REQUEST \
     --query "
@@ -498,7 +498,6 @@ execute_query \
             $([ -n "${match_vars[PARAMETERS_SQL]}" ] && echo ", parameters => '${match_vars[PARAMETERS_SQL]}'::HSTORE")
         )
     " \
-    --psql_arguments 'tuples-only:pset=format=unaligned' \
     --return _request &&
 
 match_request=($_request) &&
@@ -553,10 +552,11 @@ match_request=($_request) &&
 
 {
     (! in_array --array match_steps --item STANDARDIZE) || {
-        get_definition --property format --vars match_vars && {
-            [ -n "${match_vars[FORMAT_SQL]}" ] && true || {
-                log_error "manque définition du format (option --format)"
-                exit $ERROR_CODE
+        get_definition --property format --vars match_vars &&
+        {
+            [ -n "${match_vars[FORMAT_SQL]}" ] || {
+                log_error 'manque définition du format (option --format)'
+                false
             }
         } &&
         match_info --steps_info match_steps_info --step STANDARDIZE &&
