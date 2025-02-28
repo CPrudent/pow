@@ -392,7 +392,7 @@ pow_argv() {
         [ $_with_kv -eq 1 ] && {
             for _tmp in "${_list_ref[@]}"; do
                 #echo "$_tmp"
-                _kv_ref+=([${_tmp%:*}]=${_tmp#*:})
+                _kv_ref+=([${_tmp%%:*}]=${_tmp#*:})
             done
             #declare -p _kv_ref ; read
         }

@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS fr.address_match_request (
     is_match_code BOOLEAN DEFAULT FALSE,
     is_match_element BOOLEAN DEFAULT FALSE,
     is_match_address BOOLEAN DEFAULT FALSE,
-    parameters HSTORE NULL
+    parameters HSTORE NULL,
+    import_name VARCHAR NULL
 );
 
 DO $$

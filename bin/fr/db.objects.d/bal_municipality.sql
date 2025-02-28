@@ -156,6 +156,77 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+-- get query to select addresses of a municipality (option to limit for street only w/ certified housenumbers)
+SELECT public.drop_all_functions_if_exists('fr', 'bal_municipality_addresses');
+CREATE OR REPLACE FUNCTION fr.bal_municipality_addresses(
+    code IN VARCHAR,
+    only_certified_housenumbers IN BOOLEAN DEFAULT TRUE,
+    q OUT TEXT
+)
+AS
+$func$
+DECLARE
+    _query_hn TEXT;
+BEGIN
+    IF only_certified_housenumbers THEN
+        _query_hn := '
+            AND
+            s.housenumbers_auth > 0
+        ';
+    END IF;
+
+    q := CONCAT(
+        '
+        SELECT
+            ROW_NUMBER() OVER () rowid,
+            t.*
+        FROM (
+            SELECT
+                n.code,
+                n.number,
+                n.extension,
+                s.name street,
+                n.area,
+                n.postcode,
+                m.name municipality,
+                m.code insee,
+                n.location,
+                CASE WHEN n.geom IS NOT NULL THEN
+                    ST_SetSRID(ST_MakePoint(n.geom[1], n.geom[2]), 3857)
+                END geom
+            FROM
+                fr.bal_housenumber n
+                    JOIN fr.bal_street s ON s.id = n.id_street
+                    JOIN fr.bal_municipality m ON m.id = s.id_municipality
+            WHERE
+                m.code = ''', bal_municipality_addresses.code, '''
+            UNION
+            SELECT
+                s.code,
+                NULL,
+                NULL,
+                s.name street,
+                NULL,
+                NULL,
+                m.name municipality,
+                m.code insee,
+                NULL,
+                CASE WHEN s.geom IS NOT NULL THEN
+                    ST_SetSRID(ST_MakePoint(s.geom[1], s.geom[2]), 3857)
+                END geom
+            FROM
+                fr.bal_street s
+                    JOIN fr.bal_municipality m ON m.id = s.id_municipality
+            WHERE
+                m.code = ''', bal_municipality_addresses.code, '''
+            ', _query_hn,
+            '
+        ) t
+        '
+    );
+END
+$func$ LANGUAGE plpgsql;
+
 DO $$
 BEGIN
     -- manage indexes

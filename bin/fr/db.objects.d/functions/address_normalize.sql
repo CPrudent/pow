@@ -1343,6 +1343,8 @@ BEGIN
                                 _standardized_address.housenumber,
                                 _standardized_address.extension
                             ;
+                        ELSE
+                            _standardized_address.housenumber := _housenumber;
                         END IF;
                     END IF;
                 WHEN 'extension' THEN
@@ -1379,23 +1381,27 @@ BEGIN
                     END IF;
                 WHEN 'municipality_code' THEN
                     _standardized_address.municipality_code := NULLIF(TRIM(address->>_mapping[2]), '');
-                    IF NOT EXISTS(
-                        SELECT 1 FROM fr.laposte_address_area
-                        WHERE co_insee_commune = COALESCE(_standardized_address.municipality_code, '99999')
-                        AND fl_active
-                    ) THEN
-                        CALL public.log_info(FORMAT('Code INSEE (commune) ignoré car invalide : (%s)', _standardized_address.municipality_code));
-                        _standardized_address.municipality_code := NULL;
+                    IF _standardized_address.municipality_code IS NOT NULL THEN
+                        IF NOT EXISTS(
+                            SELECT 1 FROM fr.laposte_address_area
+                            WHERE co_insee_commune = COALESCE(_standardized_address.municipality_code, '99999')
+                            AND fl_active
+                        ) THEN
+                            CALL public.log_info(FORMAT('Code INSEE (commune) ignoré car invalide : (%s)', _standardized_address.municipality_code));
+                            _standardized_address.municipality_code := NULL;
+                        END IF;
                     END IF;
                 WHEN 'postcode' THEN
                     _standardized_address.postcode := NULLIF(TRIM(address->>_mapping[2]), '');
-                    IF NOT EXISTS(
-                        SELECT 1 FROM fr.laposte_address_area
-                        WHERE co_postal = COALESCE(_standardized_address.postcode, '99999')
-                        AND fl_active
-                    ) THEN
-                        CALL public.log_info(FORMAT('Code postal ignoré car invalide : (%s)', _standardized_address.postcode));
-                        _standardized_address.postcode := NULL;
+                    IF _standardized_address.postcode IS NOT NULL THEN
+                        IF NOT EXISTS(
+                            SELECT 1 FROM fr.laposte_address_area
+                            WHERE co_postal = COALESCE(_standardized_address.postcode, '99999')
+                            AND fl_active
+                        ) THEN
+                            CALL public.log_info(FORMAT('Code postal ignoré car invalide : (%s)', _standardized_address.postcode));
+                            _standardized_address.postcode := NULL;
+                        END IF;
                     END IF;
                 WHEN 'municipality_name' THEN
                     _standardized_address.municipality_name := NULLIF(TRIM(address->>_mapping[2]), '');
