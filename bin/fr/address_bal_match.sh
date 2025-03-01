@@ -5,6 +5,45 @@
     #--
     # match BAL addresses w/ LAPOSTE ones
 
+# print progress as (ratio, percent)
+# $1= begin
+    # $2= label
+    # $3= size of (number of digits)
+    # $4= subscript
+    # $5= total
+    # $6= end of line
+# $1= end
+    # $2= elapsed time
+    # $3= more information
+bal_print_progress() {
+    case "${1^^}" in
+    BEGIN)
+        #expect argc bal_print_progress $# 6 || return $ERROR_CODE
+        # if main display (municipality level) and only one then reduce informations
+        ([[ "${2:0:5}" =~ INSEE|Commu|Temps ]] && [[ $5 -eq 1 ]]) && {
+            printf '%-15s%b' "$2" $6
+        } || {
+            printf '%-15s\t%*d/%*d (%3d%%)%b' "$2" $3 $4 $3 $5 $((($4*100)/$5)) $6
+        }
+        ;;
+    END)
+        printf "\t\t\t\t\t%s\t\t%s\n" "$2" "$3"
+        ;;
+    esac
+
+    return $SUCCESS_CODE
+}
+
+bal_set_progress() {
+    local _elapsed
+
+    get_elapsed_time --start ${bal_vars[PROGRESS_START]} --result _elapsed &&
+    bal_print_progress END "${_elapsed}" &&
+    bal_vars[PROGRESS_START]=$(date '+%s')
+
+    return $SUCCESS_CODE
+}
+
 bal_check_municipality() {
     local -A _opts &&
     pow_argv \
@@ -46,6 +85,148 @@ bal_check_municipality() {
             }
         }
     } || return $ERROR_CODE
+
+    return $SUCCESS_CODE
+}
+
+# prepare municipality
+bal_set_municipality() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            code:Code Commune
+        ' \
+        --args_m '
+            code
+        ' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
+
+    local _tmp _info
+    local -a _array
+
+    {
+        case "${bal_vars[USECASE]}" in
+        IMPORT)
+            _info=Import
+            ;;
+        MATCH)
+            _info=Rapprochement
+            # reset
+            bal_vars[STREETS]=-1
+            bal_vars[HOUSENUMBERS]=-1
+            bal_vars[IO_LAST_ID]=
+            bal_vars[IO_LAST_END]=
+            bal_vars[IO_LAST_ATTRIBUTES]=
+            ;;
+        esac
+        log_info "$_info BAL (${_opts[CODE]})" &&
+        {
+            [ "${bal_vars[PROGRESS]}" = no ] || {
+                bal_vars[PROGRESS_START]=$(date '+%s') &&
+                bal_print_progress \
+                    BEGIN \
+                    "INSEE ${_opts[CODE]}" \
+                    ${bal_vars[PROGRESS_SIZE]} \
+                    ${bal_vars[PROGRESS_CURRENT]} \
+                    ${bal_vars[PROGRESS_TOTAL]} \
+                    '\r'
+            }
+        }
+    } &&
+    {
+        [ "${bal_vars[USECASE]}" = MATCH ] || {
+            # count areas (w/ old municipality owning at least one address)
+            execute_query \
+                --name "LAPOSTE_MUNICIPALITY_${_opts[CODE]}_AREAS" \
+                --query "
+                    SELECT
+                        COUNT(1)
+                    FROM
+                        fr.laposte_address_area a
+                    WHERE
+                        fl_active
+                        AND
+                        co_insee_commune = '${_opts[CODE]}'
+                        AND
+                        lb_l5_nn IS NOT NULL
+                        AND
+                        EXISTS(
+                            SELECT 1
+                            FROM
+                                fr.laposte_address r
+                            WHERE
+                                r.co_cea_za = a.co_cea
+                                AND
+                                r.fl_active
+                                AND
+                                r.co_cea_voie IS NOT NULL
+                        )
+                " \
+                --return bal_vars[AREAS_OLD_MUNICIPALITY]
+        }
+    } &&
+    {
+        execute_query \
+            --name "BAL_MUNICIPALITY_${_opts[CODE]}_LAST_IO" \
+            --query "
+                SELECT id, date_data_end, attributes
+                FROM get_last_io('BAL_${_opts[CODE]}')
+            " \
+            --return _tmp &&
+        {
+            [ -z "$_tmp" ] || {
+                IFS='|' read -a _array <<< "$_tmp"
+
+                bal_vars[IO_LAST_ID]=${_array[0]}
+                bal_vars[IO_LAST_END]=${_array[1]}
+                bal_vars[IO_LAST_ATTRIBUTES]=${_array[2]}
+            }
+        }
+    } &&
+    {
+        [ "${bal_vars[USECASE]}" = MATCH ] || {
+            # check levels
+            (is_yes --var bal_vars[LEVEL_MUNICIPALITY]) || {
+                # last IO w/ municipality level ?
+                _tmp=$(jq --raw-output '.integration.levels // empty' <<< "${bal_vars[IO_LAST_ATTRIBUTES]}")
+                [[ "$(expr index "${_tmp}" M)" -gt 0 ]] || {
+                    log_error "étape Commune ${_opts[CODE]} (--levels MSN|MS) est nécessaire!"
+                    false
+                }
+            }
+        }
+    } &&
+    {
+        [ "${bal_vars[USECASE]}" = MATCH ] || {
+            execute_query \
+                --name "BAL_MUNICIPALITY_${_opts[CODE]}_ROWS" \
+                --query "
+                    SELECT
+                        (areas + streets) streets,
+                        housenumbers_auth
+                    FROM fr.bal_municipality
+                    WHERE code = '${_opts[CODE]}'
+            " \
+            --return _tmp &&
+            {
+                IFS='|' read -a _array <<< "$_tmp"
+
+                bal_set_rows \
+                    --streets ${_array[0]} \
+                    --housenumbers ${_array[1]} \
+                    --total bal_vars[IO_ROWS]
+            }
+        }
+    }
+    {
+        [ "${bal_vars[PROGRESS]}" = no ] || bal_set_progress
+    } || return $ERROR_CODE
+
+#     [ "${bal_vars[VERBOSE]}" = yes ] && {
+#         echo '###Contexte'
+#         declare -p bal_vars
+#         echo
+#     }
 
     return $SUCCESS_CODE
 }
@@ -197,10 +378,18 @@ bal_list_municipalities() {
                     m.last_update > h.date_data_end
             "
             ;;
-        # only already downloaded
+        # only already downloaded, but not matched yet (w/ at least 1 street)
         MATCH)
             _query+="
                     h.date_data_end IS NOT NULL
+                    AND
+                    h.attributes IS JSON OBJECT
+                    AND
+                    'match' NOT IN (
+                        SELECT JSON_ARRAY_ELEMENTS_TEXT((h.attributes::JSON)->'usecases'->'name')
+                    )
+                    AND
+                    ((h.attributes::JSON)->'integration'->>'streets')::INT > 0
             "
             ;;
         esac
@@ -223,6 +412,32 @@ bal_list_municipalities() {
         --query "$_query" \
         --return _list &&
     array_sql_to_bash --array_sql "$_list" --array_bash _list_ref || return $ERROR_CODE
+
+    return $SUCCESS_CODE
+}
+
+bal_match_municipality() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            code:Code Commune;
+            request_id:ID requête Rapprochement;
+            io_id:ID dernier historique
+        ' \
+        --args_m '
+            code;request_id;io_id
+        ' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
+
+    $POW_DIR_BATCH/address_match.sh \
+        --source_name BAL_${_opts[CODE]} \
+        --source_query "${bal_vars[QUERY_ADDRESSES]/XXXXX/${_opts[CODE]}}" \
+        --steps STANDARDIZE,MATCH_CODE,MATCH_ELEMENT \
+        --format $POW_DIR_BATCH/bal/format.sql \
+        --force ${bal_vars[FORCE]} &&
+    io_history_update \
+        --infos '{"usecases":[{"name":"match", "id"='${_opts[REQUEST_ID]}'}]}' \
+        --id ${_opts[IO_ID]} || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -295,8 +510,10 @@ pow_argv \
     ' \
     --pow_argv bal_vars "$@" || exit $ERROR_CODE
 
+export -f bal_match_municipality
 bal_vars[MUNICIPALITY_CODE]=${bal_vars[MUNICIPALITY]^^}
 declare -a bal_codes=()
+declare -A bal_ids=()
 bal_start=$(date '+%s')
 # reset LIMIT if STOP_TIME
 [ "${bal_vars[STOP_TIME]}" != 0 ] && [ ${bal_vars[LIMIT]} -gt 0 ] && bal_vars[LIMIT]=0
@@ -331,22 +548,37 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
     }
 
     bal_vars[PROGRESS_CURRENT]=$((bal_i +1))
-    bal_vars[MUNICIPALITY_CODE]=${bal_codes[$bal_i]}
+    bal_set_municipality --code "${bal_codes[$bal_i]}" || {
+        bal_error=1
+        continue
+    }
 
-    echo ${bal_vars[MUNICIPALITY_CODE]} &&
-#     echo $bal_query &&
-#     read &&
-    $POW_DIR_BATCH/address_match.sh \
-        --source_name BAL_${bal_vars[MUNICIPALITY_CODE]} \
-        --source_query "${bal_vars[QUERY_ADDRESSES]/XXXXX/${bal_vars[MUNICIPALITY_CODE]}}" \
-        --steps REPORT \
-        --format $POW_DIR_BATCH/bal/format.sql \
-        --force ${bal_vars[FORCE]} \
-    || ((bal_error++))
+    bal_vars[MUNICIPALITY_CODE]=${bal_codes[$bal_i]}
+    [ "${bal_vars[DRY_RUN]}" = yes ] || {
+        # get request-ID
+        set_log_echo no &&
+        bal_ids[${bal_vars[MUNICIPALITY_CODE]}]=$($POW_DIR_BATCH/address_match.sh \
+            --source_name BAL_${bal_vars[MUNICIPALITY_CODE]} \
+            --source_query "${bal_vars[QUERY_ADDRESSES]/XXXXX/${bal_vars[MUNICIPALITY_CODE]}}" \
+            --only_info ID)
+        _rc=$?
+        set_log_echo yes
+        [[ $_rc -ne 0 ]] && {
+            ((bal_error++))
+            continue
+        }
+
+        # match BAL by block of 3 municipalities
+        sem --jobs 3 --id bal_match bal_match_municipality \
+            --code ${bal_vars[MUNICIPALITY_CODE]} \
+            --request_id ${bal_ids[${bal_vars[MUNICIPALITY_CODE]}]} \
+            --io_id ${bal_vars[IO_LAST_ID]} || ((bal_error++))
+    }
 done
+[ "${bal_vars[DRY_RUN]}" = yes ] || sem --wait
 
 [ "${bal_vars[DRY_RUN]}" = no ] &&
-[ "${bal_vars[PROGRESS_CURRENT]}" -gt 10 ] && {
+[ "${bal_vars[PROGRESS_CURRENT]}" -gt 3 ] && {
     vacuum \
         --schema_name fr \
         --table_name address_match_request,address_match_code,address_match_element,address_match_result \

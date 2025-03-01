@@ -553,6 +553,7 @@ match_request=($_request) &&
 {
     (! in_array --array match_steps --item STANDARDIZE) || {
         get_definition --property format --vars match_vars &&
+        declare -p match_vars &&
         {
             [ -n "${match_vars[FORMAT_SQL]}" ] || {
                 log_error 'manque définition du format (option --format)'
