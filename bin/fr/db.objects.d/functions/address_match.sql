@@ -1178,7 +1178,9 @@ BEGIN
             );
         END IF;
         IF _match_parameters.abbreviated_extension IS NULL THEN
-            _searchs := ARRAY_REMOVE(_searchs, 'NEAR');
+            -- FIXME constant 'NEAR' causes an error!
+            -- ERROR:  tableau littéral mal formé : « NEAR »
+            _searchs := ARRAY_REMOVE(_searchs, _searchs[2]);
         END IF;
     END IF;
 

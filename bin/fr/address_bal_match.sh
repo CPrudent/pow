@@ -249,6 +249,7 @@ declare -A bal_vars=(
     [PROGRESS_CURRENT]=1
     [PROGRESS_TOTAL]=1
     [PROGRESS_SIZE]=5
+    [QUERY_ADDRESSES]=
 ) &&
 pow_argv \
     --args_n '
@@ -304,6 +305,12 @@ set_env --schema_name fr &&
     [ "${bal_vars[PROGRESS]}" = no ] || set_log_echo no
 } &&
 {
+    execute_query \
+        --name BAL_ADDRESSES \
+        --query "
+            SELECT q FROM fr.bal_municipality_addresses(code => 'XXXXX')
+        " \
+        --return bal_vars[QUERY_ADDRESSES] &&
     case "${bal_vars[MUNICIPALITY_CODE]}" in
     ALL)
         bal_list_municipalities --list bal_codes
@@ -327,20 +334,15 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
     bal_vars[MUNICIPALITY_CODE]=${bal_codes[$bal_i]}
 
     echo ${bal_vars[MUNICIPALITY_CODE]} &&
-    execute_query \
-        --name BAL_ADDRESSES_${bal_vars[MUNICIPALITY_CODE]} \
-        --query "
-            SELECT q FROM fr.bal_municipality_addresses(code => '${bal_vars[MUNICIPALITY_CODE]}')
-        " \
-        --return bal_query &&
 #     echo $bal_query &&
 #     read &&
     $POW_DIR_BATCH/address_match.sh \
         --source_name BAL_${bal_vars[MUNICIPALITY_CODE]} \
-        --source_query "${bal_query}" \
-        --steps STANDARDIZE \
+        --source_query "${bal_vars[QUERY_ADDRESSES]/XXXXX/${bal_vars[MUNICIPALITY_CODE]}}" \
+        --steps REPORT \
         --format $POW_DIR_BATCH/bal/format.sql \
-        --force ${bal_vars[FORCE]} || ((bal_error++))
+        --force ${bal_vars[FORCE]} \
+    || ((bal_error++))
 done
 
 [ "${bal_vars[DRY_RUN]}" = no ] &&

@@ -13,7 +13,7 @@ execute_query() {
             query:code SQL à exécuter (fichier ou ligne de commande);
             output:fichier résultat;
             return:résultat de la commande SELECT;
-            psql_arguments:paramètres supplémentaires, sous la forme (arg1,arg2,...,argn);
+            psql_arguments:paramètres supplémentaires, sous la forme (arg1:arg2:...:argn);
             temporary:gestion du fichier temporaire;
             with_log:avec log
         ' \

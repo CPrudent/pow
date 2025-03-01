@@ -552,7 +552,7 @@ pow_argv() {
             echo $_info
         done
 
-        return $SUCCESS_CODE
+        return $WARNING_CODE
     }
 
     # default values

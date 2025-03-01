@@ -252,7 +252,7 @@ report_get_result() {
 
     local -n _request_ref=${_opts[REQUEST]}
     local -n _vars_ref=${_opts[VARS]}
-    local -n _result_ref=${_opts[result]}
+    local -n _result_ref=${_opts[RESULT]}
     local _counters _len _tmp
 
     # get counters as {#,#, ...,#} array format
@@ -283,7 +283,7 @@ report_build() {
 
     local -n _request_ref=${_opts[REQUEST]}
     local -n _vars_ref=${_opts[VARS]}
-    local -n _result_ref=${_opts[result]}
+    local -n _result_ref=${_opts[RESULT]}
     local _source
 
     printf '\n%s\n' "Demande Rapprochement (ID): ${_request_ref[MATCH_REQUEST_ID]}"
@@ -305,7 +305,7 @@ report_build() {
         '%' \
         'KO' \
         '%'
-    printf '%-10d  %15d  %2.1f  %15d  %2.1f  %15d  %2.1f\n\n' \
+    printf '%-10d  %15d  %4s  %15d  %4s  %15d  %4s\n\n' \
         ${_result_ref[MATCH_RESULT_TOTAL]} \
         ${_result_ref[MATCH_RESULT_OK_STRICT]/./,} \
         ${_result_ref[MATCH_RESULT_PERCENT_STRICT]/./,} \
