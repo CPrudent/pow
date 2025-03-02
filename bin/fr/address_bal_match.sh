@@ -21,25 +21,22 @@ bal_match_municipality() {
 
     local _query=${bal_vars[QUERY_ADDRESSES]//XXXXX/${_opts[CODE]}} _request_id
 
-    #echo "INSEE ${_opts[CODE]}" &&
-    # get request-ID
-    set_log_echo no &&
-    _request_id=$($POW_DIR_BATCH/address_match.sh \
-        --source_name BAL_${_opts[CODE]} \
-        --source_query "$_query" \
-        --only_info ID) &&
-    set_log_echo yes &&
     # match addresses
     $POW_DIR_BATCH/address_match.sh \
         --source_name BAL_${_opts[CODE]} \
         --source_query "$_query" \
-        --steps STANDARDIZE,MATCH_CODE,MATCH_ELEMENT \
+        --request_path $POW_DIR_TMP/BAL_${_opts[CODE]}.dat \
+        --steps REQUEST,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT \
         --format "$POW_DIR_BATCH/bal/format.sql" \
         --force ${bal_vars[FORCE]} &&
+    _request_id=$(sed --silent --expression '1p' < $POW_DIR_TMP/BAL_${_opts[CODE]}.dat) &&
     # update history
     io_history_update \
         --infos '{"usecases":[{"name":"match","id":'${_request_id}'}]}' \
-        --id ${_opts[IO_ID]} || return $ERROR_CODE
+        --id ${_opts[IO_ID]} &&
+    {
+        [ "${bal_vars[CLEAN]}" = no ] || rm $POW_DIR_TMP/BAL_${_opts[CODE]}.dat
+    } || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }

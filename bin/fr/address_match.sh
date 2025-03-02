@@ -332,6 +332,10 @@ pow_argv \
         source_filter:Filtre à appliquer sur les données entrantes;
         source_query:Requête à appliquer pour obtenir les données entrantes;
         steps:Ensemble des étapes à réaliser (séparées par une virgule, si plusieurs);
+        request_id:Passer ID du Rapprochement;
+        request_import:Passer nom de la table du Rapprochement;
+        request_kind:Passer type du Rapprochement;
+        request_path:Exporter ID et nom de la table du Rapprochement;
         format:Définition du Format des Adresses (ou fichier du Format);
         parameters:Définition des Paramètres du Rapprochement (ou fichier des Paramètres);
         import_options:Options import (du fichier) spécifiques à son type;
@@ -341,21 +345,20 @@ pow_argv \
         export_path:Fichier de sortie;
         export_srid:code SRID des géométries dans la sortie;
         force:Forcer le traitement même si celui-ci a déjà été fait;
-        only_info:Afficher les informations de la demande;
         verbose:Ajouter des détails sur les traitements
     ' \
     --args_m '
-        source_name
+        source_name | request_id
     ' \
     --args_v '
         force:yes|no;
-        only_info:NO|ID|ALL;
         verbose:yes|no
     ' \
     --args_d '
         steps:ALL;
         force:no;
-        only_info:NO;
+        request_import:NOT_DEFINED;
+        request_kind:NOT_DEFINED;
         export_srid:4326;
         verbose:no
     ' \
@@ -373,12 +376,13 @@ declare -a match_request
 match_vars[STEPS]=${match_vars[STEPS]// /}
 match_vars[COLUMNS_IN]=${match_vars[EXPORT_IN_COLUMNS]^^}
 match_vars[COLUMNS_MORE]=${match_vars[EXPORT_MORE_COLUMNS]^^}
-MATCH_STEPS=IMPORT,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT,EXPORT,REPORT
+MATCH_STEPS=REQUEST,IMPORT,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT,EXPORT,REPORT
 declare -a match_steps
 [ "${match_vars[STEPS]}" = ALL ] && match_vars[STEPS]=$MATCH_STEPS
 match_steps=( ${match_vars[STEPS]//,/ } )
 
 declare -A match_steps_info=(
+    [REQUEST]=Création
     [IMPORT]=Chargement
     [STANDARDIZE]=Standardisation
     [MATCH_CODE]='Calcul MATCH CODE'
@@ -466,70 +470,70 @@ MATCH_RESULT_PERCENT_KO=$((_k++))
 declare -a match_result
 
 set_env --schema_name fr &&
-# determine kind of source
+
 {
-    [ -f "${match_vars[SOURCE_NAME]}" ] && {
-        match_vars[SOURCE_KIND]=FILE
-    } || {
-        table_exists --schema_name fr --table_name "${match_vars[SOURCE_NAME]}" && match_vars[SOURCE_KIND]=TABLE || {
-            [ -n "${match_vars[SOURCE_QUERY]}" ] && match_vars[SOURCE_KIND]=QUERY || {
-                log_error 'type source non déterminé!'
-                false
+    if in_array --array match_steps --item REQUEST; then
+        {
+            # determine kind of source
+            [ -f "${match_vars[SOURCE_NAME]}" ] && {
+                match_vars[SOURCE_KIND]=FILE
+            } || {
+                table_exists --schema_name fr --table_name "${match_vars[SOURCE_NAME]}" && match_vars[SOURCE_KIND]=TABLE || {
+                    [ -n "${match_vars[SOURCE_QUERY]}" ] && match_vars[SOURCE_KIND]=QUERY || {
+                        log_error 'type source non déterminé!'
+                        false
+                    }
+                }
+            }
+        } &&
+
+        {
+            [ "${match_vars[VERBOSE]}" = no ] || log_info "type source: ${match_vars[SOURCE_KIND]}"
+        } &&
+
+        get_definition --property parameters --vars match_vars &&
+
+        # create or get request informations (ID, import_name)
+        execute_query \
+            --name MATCH_REQUEST \
+            --query "
+                SELECT CONCAT_WS(' ', id, import_name)
+                FROM fr.set_match_request(
+                    source_name => '${match_vars[SOURCE_NAME]}',
+                    source_kind => '${match_vars[SOURCE_KIND]}'
+                    $([ -n "${match_vars[SOURCE_FILTER]}" ] && echo ", source_filter => '${match_vars[SOURCE_FILTER]//\'/\'\'}'")
+                    $([ -n "${match_vars[SOURCE_QUERY]}" ] && echo ", source_query => '${match_vars[SOURCE_QUERY]//\'/\'\'}'")
+                    $([ -n "${match_vars[PARAMETERS_SQL]}" ] && echo ", parameters => '${match_vars[PARAMETERS_SQL]}'::HSTORE")
+                )
+            " \
+            --return _request &&
+        match_request=($_request) &&
+        {
+            # output request informations
+            [ -z "${match_vars[REQUEST_PATH]}" ] || {
+                echo -e "${match_request[MATCH_REQUEST_ID]}\n${match_request[MATCH_REQUEST_IMPORT]}\n${match_vars[SOURCE_KIND]}" > "${match_vars[REQUEST_PATH]}"
             }
         }
-    }
+    else
+        [ -n "${match_vars[REQUEST_ID]}" ] &&
+        [ "${match_vars[REQUEST_IMPORT]}" != NOT_DEFINED ] &&
+        [ "${match_vars[REQUEST_KIND]}" != NOT_DEFINED ] && {
+            match_request[MATCH_REQUEST_ID]=${match_vars[REQUEST_ID]}
+            match_request[MATCH_REQUEST_IMPORT]=${match_vars[REQUEST_IMPORT]}
+            match_vars[SOURCE_KIND]=${match_vars[REQUEST_KIND]}
+        } || {
+            log_error 'manque informations Rapprochement (options --request*)'
+            false
+        }
+    fi
 } &&
 
 {
-    [ "${match_vars[VERBOSE]}" = no ] || log_info "type source: ${match_vars[SOURCE_KIND]}"
-} &&
-
-get_definition --property parameters --vars match_vars &&
-
-execute_query \
-    --name MATCH_REQUEST \
-    --query "
-        SELECT CONCAT_WS(' ', id, import_name)
-        FROM fr.set_match_request(
-            source_name => '${match_vars[SOURCE_NAME]}',
-            source_kind => '${match_vars[SOURCE_KIND]}'
-            $([ -n "${match_vars[SOURCE_FILTER]}" ] && echo ", source_filter => '${match_vars[SOURCE_FILTER]//\'/\'\'}'")
-            $([ -n "${match_vars[SOURCE_QUERY]}" ] && echo ", source_query => '${match_vars[SOURCE_QUERY]//\'/\'\'}'")
-            $([ -n "${match_vars[PARAMETERS_SQL]}" ] && echo ", parameters => '${match_vars[PARAMETERS_SQL]}'::HSTORE")
-        )
-    " \
-    --return _request &&
-
-match_request=($_request) &&
-
-{
-    [ -z "${match_vars[EXPORT_PATH]}" ] && match_vars[EXPORT_PATH]="$POW_DIR_ARCHIVE/export_${match_request[MATCH_REQUEST_ID]}.csv"
+    [ -n "${match_vars[EXPORT_PATH]}" ] || match_vars[EXPORT_PATH]="$POW_DIR_ARCHIVE/export_${match_request[MATCH_REQUEST_ID]}.csv"
 
     [ "${match_vars[VERBOSE]}" = no ] || {
         log_info "$(declare -p match_request)"
         log_info "$(declare -p match_vars)"
-    }
-} &&
-
-# ERROR if TABLE|QUERY as 2nd result (import_name) is null, and so array has only 1 element!
-# declare -p match_request &&
-# [ ${#match_request[*]} -eq $MATCH_REQUEST_ITEMS ] || {
-#     log_error "demande Rapprochement données '${match_vars[SOURCE_NAME]}' en erreur"
-#     exit $ERROR_CODE
-# } &&
-
-# only info
-{
-    [ "${match_vars[ONLY_INFO]}" = NO ] || {
-        case "${match_vars[ONLY_INFO]}" in
-        ID)
-            echo ${match_request[MATCH_REQUEST_ID]}
-            ;;
-        ALL)
-            declare -p match_request match_vars
-            ;;
-        esac
-        exit $SUCCESS_CODE
     }
 } &&
 
