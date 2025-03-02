@@ -386,7 +386,7 @@ bal_list_municipalities() {
                     h.attributes IS JSON OBJECT
                     AND
                     'match' NOT IN (
-                        SELECT JSON_ARRAY_ELEMENTS_TEXT((h.attributes::JSON)->'usecases'->'name')
+                        SELECT (JSON_ARRAY_ELEMENTS((h.attributes::JSON)->'usecases'))->>'name'
                     )
                     AND
                     ((h.attributes::JSON)->'integration'->>'streets')::INT > 0
@@ -421,22 +421,33 @@ bal_match_municipality() {
     pow_argv \
         --args_n '
             code:Code Commune;
-            request_id:ID requête Rapprochement;
             io_id:ID dernier historique
         ' \
         --args_m '
-            code;request_id;io_id
+            code;io_id
         ' \
         --pow_argv _opts "$@" || return $ERROR_CODE
 
+    local _query=${bal_vars[QUERY_ADDRESSES]/XXXXX/${_opts[CODE]}} _request_id
+
+    echo "INSEE ${_opts[CODE]}" &&
+    # get request-ID
+    set_log_echo no &&
+    _request_id=$($POW_DIR_BATCH/address_match.sh \
+        --source_name BAL_${_opts[CODE]} \
+        --source_query "$_query" \
+        --only_info ID) &&
+    set_log_echo yes &&
+    # match addresses
     $POW_DIR_BATCH/address_match.sh \
         --source_name BAL_${_opts[CODE]} \
-        --source_query "${bal_vars[QUERY_ADDRESSES]/XXXXX/${_opts[CODE]}}" \
+        --source_query "$_query" \
         --steps STANDARDIZE,MATCH_CODE,MATCH_ELEMENT \
-        --format $POW_DIR_BATCH/bal/format.sql \
+        --format "$POW_DIR_BATCH/bal/format.sql" \
         --force ${bal_vars[FORCE]} &&
+    # update history
     io_history_update \
-        --infos '{"usecases":[{"name":"match", "id"='${_opts[REQUEST_ID]}'}]}' \
+        --infos '{"usecases":[{"name":"match","id":'${_request_id}'}]}' \
         --id ${_opts[IO_ID]} || return $ERROR_CODE
 
     return $SUCCESS_CODE
@@ -555,27 +566,27 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
 
     bal_vars[MUNICIPALITY_CODE]=${bal_codes[$bal_i]}
     [ "${bal_vars[DRY_RUN]}" = yes ] || {
-        # get request-ID
-        set_log_echo no &&
-        bal_ids[${bal_vars[MUNICIPALITY_CODE]}]=$($POW_DIR_BATCH/address_match.sh \
-            --source_name BAL_${bal_vars[MUNICIPALITY_CODE]} \
-            --source_query "${bal_vars[QUERY_ADDRESSES]/XXXXX/${bal_vars[MUNICIPALITY_CODE]}}" \
-            --only_info ID)
-        _rc=$?
-        set_log_echo yes
-        [[ $_rc -ne 0 ]] && {
-            ((bal_error++))
-            continue
-        }
+#         # get request-ID
+#         set_log_echo no &&
+#         bal_ids[${bal_vars[MUNICIPALITY_CODE]}]=$($POW_DIR_BATCH/address_match.sh \
+#             --source_name BAL_${bal_vars[MUNICIPALITY_CODE]} \
+#             --source_query "${bal_vars[QUERY_ADDRESSES]/XXXXX/${bal_vars[MUNICIPALITY_CODE]}}" \
+#             --only_info ID)
+#         _rc=$?
+#         set_log_echo yes
+#         [[ $_rc -ne 0 ]] && {
+#             ((bal_error++))
+#             continue
+#         }
 
         # match BAL by block of 3 municipalities
-        sem --jobs 3 --id bal_match bal_match_municipality \
+        #sem --jobs 1 --id bal_match
+        bal_match_municipality \
             --code ${bal_vars[MUNICIPALITY_CODE]} \
-            --request_id ${bal_ids[${bal_vars[MUNICIPALITY_CODE]}]} \
             --io_id ${bal_vars[IO_LAST_ID]} || ((bal_error++))
     }
 done
-[ "${bal_vars[DRY_RUN]}" = yes ] || sem --wait
+#[ "${bal_vars[DRY_RUN]}" = yes ] || sem --wait
 
 [ "${bal_vars[DRY_RUN]}" = no ] &&
 [ "${bal_vars[PROGRESS_CURRENT]}" -gt 3 ] && {
