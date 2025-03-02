@@ -481,7 +481,7 @@ set_env --schema_name fr &&
 } &&
 
 {
-    [ "${match_vars[VERBOSE]}" = yes ] && log_info "type source: ${match_vars[SOURCE_KIND]}" || true
+    [ "${match_vars[VERBOSE]}" = no ] || log_info "type source: ${match_vars[SOURCE_KIND]}"
 } &&
 
 get_definition --property parameters --vars match_vars &&

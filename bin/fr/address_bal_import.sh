@@ -24,6 +24,8 @@
     # TODO
     # assign PROGRESS_SIZE w/ max (municipalities, streets, housenumbers) of selection
 
+source $POW_DIR_ROOT/lib/libbal.sh || exit $ERROR_CODE
+
 on_break() {
     log_error 'arrêt utilisateur' &&
     on_import_error
@@ -45,90 +47,6 @@ on_import_error() {
 
 # deal w/ interrupt signal (CTRL-C, kill)
 trap on_break SIGINT
-
-# print progress as (ratio, percent)
-# $1= begin
-    # $2= label
-    # $3= size of (number of digits)
-    # $4= subscript
-    # $5= total
-    # $6= end of line
-# $1= end
-    # $2= elapsed time
-    # $3= more information
-bal_print_progress() {
-    case "${1^^}" in
-    BEGIN)
-        #expect argc bal_print_progress $# 6 || return $ERROR_CODE
-        # if main display (municipality level) and only one then reduce informations
-        ([[ "${2:0:5}" =~ INSEE|Commu|Temps ]] && [[ $5 -eq 1 ]]) && {
-            printf '%-15s%b' "$2" $6
-        } || {
-            printf '%-15s\t%*d/%*d (%3d%%)%b' "$2" $3 $4 $3 $5 $((($4*100)/$5)) $6
-        }
-        ;;
-    END)
-        printf "\t\t\t\t\t%s\t\t%s\n" "$2" "$3"
-        ;;
-    esac
-
-    return $SUCCESS_CODE
-}
-
-bal_set_progress() {
-    local _elapsed
-
-    get_elapsed_time --start ${bal_vars[PROGRESS_START]} --result _elapsed &&
-    bal_print_progress END "${_elapsed}" &&
-    bal_vars[PROGRESS_START]=$(date '+%s')
-
-    return $SUCCESS_CODE
-}
-
-bal_check_municipality() {
-    local -A _opts &&
-    pow_argv \
-        --args_n '
-            code:Code Commune
-        ' \
-        --args_m '
-            code
-        ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
-
-    local _valid _error
-
-    execute_query \
-        --name "BAL_MUNICIPALITY_${_opts[CODE]}" \
-        --query "
-            SELECT EXISTS(
-                SELECT 1 FROM fr.bal_municipality
-                WHERE code = '${_opts[CODE]}'
-            )" \
-        --return _valid &&
-    {
-        [ "$_valid" = t ] || {
-            execute_query \
-                --name "LAPOSTE_MUNICIPALITY_${_opts[CODE]}" \
-                --query "
-                    SELECT EXISTS(
-                        SELECT 1 FROM fr.laposte_address_area
-                        WHERE co_insee_commune = '${_opts[CODE]}' AND fl_active
-                    )" \
-                --return _valid &&
-            {
-                case "$_valid" in
-                f)  _error="code Commune '${_opts[CODE]}' non valide!"                          ;;
-                t)  _error="Import préalable de l'ensemble des Communes (--municipality ALL)"   ;;
-                esac
-                log_error "$_error"
-                false
-            }
-        }
-    } || return $ERROR_CODE
-
-    return $SUCCESS_CODE
-}
 
 # prepare levels
 bal_set_levels() {
@@ -171,134 +89,6 @@ bal_set_rows() {
     [[ ${bal_vars[AREAS_OLD_MUNICIPALITY]} -gt 0 ]] && {
         _total_ref=$((_total_ref + _opts[HOUSENUMBERS]))
     }
-
-    return $SUCCESS_CODE
-}
-
-# prepare municipality
-bal_set_municipality() {
-    local -A _opts &&
-    pow_argv \
-        --args_n '
-            code:Code Commune
-        ' \
-        --args_m '
-            code
-        ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
-
-    local _tmp
-    local -a _array
-
-    {
-        log_info "Import BAL (${_opts[CODE]})" &&
-        {
-            [ "${bal_vars[PROGRESS]}" = no ] || {
-                bal_vars[PROGRESS_START]=$(date '+%s') &&
-                bal_print_progress \
-                    BEGIN \
-                    "INSEE ${_opts[CODE]}" \
-                    ${bal_vars[PROGRESS_SIZE]} \
-                    ${bal_vars[PROGRESS_CURRENT]} \
-                    ${bal_vars[PROGRESS_TOTAL]} \
-                    '\r'
-            }
-        }
-    } &&
-    {
-        # reset
-        bal_vars[STREETS]=-1
-        bal_vars[HOUSENUMBERS]=-1
-        bal_vars[IO_LAST_ID]=
-        bal_vars[IO_LAST_END]=
-        bal_vars[IO_LAST_ATTRIBUTES]=
-    } &&
-    # count areas (w/ old municipality owning at least one address)
-    execute_query \
-        --name "LAPOSTE_MUNICIPALITY_${_opts[CODE]}_AREAS" \
-        --query "
-            SELECT
-                COUNT(1)
-            FROM
-                fr.laposte_address_area a
-            WHERE
-                fl_active
-                AND
-                co_insee_commune = '${_opts[CODE]}'
-                AND
-                lb_l5_nn IS NOT NULL
-                AND
-                EXISTS(
-                    SELECT 1
-                    FROM
-                        fr.laposte_address r
-                    WHERE
-                        r.co_cea_za = a.co_cea
-                        AND
-                        r.fl_active
-                        AND
-                        r.co_cea_voie IS NOT NULL
-                )
-        " \
-        --return bal_vars[AREAS_OLD_MUNICIPALITY] &&
-    {
-        execute_query \
-            --name "BAL_MUNICIPALITY_${_opts[CODE]}_LAST_IO" \
-            --query "
-                SELECT id, date_data_end, attributes
-                FROM get_last_io('BAL_${_opts[CODE]}')
-            " \
-            --return _tmp &&
-        {
-            [ -z "$_tmp" ] || {
-                IFS='|' read -a _array <<< "$_tmp"
-
-                bal_vars[IO_LAST_ID]=${_array[0]}
-                bal_vars[IO_LAST_END]=${_array[1]}
-                bal_vars[IO_LAST_ATTRIBUTES]=${_array[2]}
-            }
-        }
-    } &&
-    {
-        # check levels
-        (is_yes --var bal_vars[LEVEL_MUNICIPALITY]) || {
-            # last IO w/ municipality level ?
-            _tmp=$(jq --raw-output '.integration.levels // empty' <<< "${bal_vars[IO_LAST_ATTRIBUTES]}")
-            [[ "$(expr index "${_tmp}" M)" -gt 0 ]] || {
-                log_error "étape Commune ${_opts[CODE]} (--levels MSN|MS) est nécessaire!"
-                false
-            }
-        }
-    } &&
-    {
-        execute_query \
-            --name "BAL_MUNICIPALITY_${_opts[CODE]}_ROWS" \
-            --query "
-                SELECT
-                    (areas + streets) streets,
-                    housenumbers_auth
-                FROM fr.bal_municipality
-                WHERE code = '${_opts[CODE]}'
-        " \
-        --return _tmp &&
-        {
-            IFS='|' read -a _array <<< "$_tmp"
-
-            bal_set_rows \
-                --streets ${_array[0]} \
-                --housenumbers ${_array[1]} \
-                --total bal_vars[IO_ROWS]
-        }
-    }
-    {
-        [ "${bal_vars[PROGRESS]}" = no ] || bal_set_progress
-    } || return $ERROR_CODE
-
-#     [ "${bal_vars[VERBOSE]}" = yes ] && {
-#         echo '###Contexte'
-#         declare -p bal_vars
-#         echo
-#     }
 
     return $SUCCESS_CODE
 }
@@ -1633,6 +1423,7 @@ bash_args \
     "$@" || exit $ERROR_CODE
 
 declare -A bal_vars=(
+    [USECASE]=IMPORT
     [MUNICIPALITY_CODE]="${get_arg_municipality^^}"
     [URL]='https://plateforme.adresse.data.gouv.fr'
     [IO_NAME]=
