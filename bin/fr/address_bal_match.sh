@@ -19,7 +19,7 @@ bal_match_municipality() {
         ' \
         --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local _query=${bal_vars[QUERY_ADDRESSES]/XXXXX/${_opts[CODE]}} _request_id
+    local _query=${bal_vars[QUERY_ADDRESSES]//XXXXX/${_opts[CODE]}} _request_id
 
     #echo "INSEE ${_opts[CODE]}" &&
     # get request-ID

@@ -151,10 +151,12 @@ BEGIN
 
     _info := CONCAT('standardisation demande Rapprochement (', id, ')');
     IF force OR NOT _is_normalized THEN
-        DELETE FROM fr.address_match_result WHERE id_request = set_match_standardize.id;
-        GET DIAGNOSTICS _nrows = ROW_COUNT;
-        IF _nrows > 0 THEN
-            CALL public.log_info(CONCAT(_info, ' - PURGE : #', _nrows));
+        IF NOT simulation THEN
+            DELETE FROM fr.address_match_result WHERE id_request = set_match_standardize.id;
+            GET DIAGNOSTICS _nrows = ROW_COUNT;
+            IF _nrows > 0 THEN
+                CALL public.log_info(CONCAT(_info, ' - PURGE : #', _nrows));
+            END IF;
         END IF;
 
         _table := CASE _source_kind
