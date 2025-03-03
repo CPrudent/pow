@@ -109,9 +109,6 @@ pow_argv \
     ' \
     --pow_argv bal_vars "$@" || exit $ERROR_CODE
 
-# parallelism needing
-export -f bal_match_municipality
-
 bal_vars[MUNICIPALITY_CODE]=${bal_vars[MUNICIPALITY]^^}
 declare -a bal_codes=()
 bal_start=$(date '+%s')
@@ -120,6 +117,11 @@ bal_start=$(date '+%s')
 set_env --schema_name fr &&
 {
     [ "${bal_vars[PROGRESS]}" = no ] || set_log_echo no
+} &&
+{
+    [ "${bal_vars[STOP_TIME]}" = 0 ] || {
+        log_info "Durée de traitement allouée jusqu'à ${bal_vars[STOP_TIME]}"
+    }
 } &&
 {
     execute_query \
@@ -155,20 +157,13 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
 
     bal_vars[MUNICIPALITY_CODE]=${bal_codes[$bal_i]}
     [ "${bal_vars[DRY_RUN]}" = yes ] || {
+        bal_match_municipality \
+            --code ${bal_vars[MUNICIPALITY_CODE]} \
+            --io_id ${bal_vars[IO_LAST_ID]} || ((bal_error++))
 
-        if [ "${bal_vars[PARALLEL]}" = no ]; then
-            bal_match_municipality \
-                --code ${bal_vars[MUNICIPALITY_CODE]} \
-                --io_id ${bal_vars[IO_LAST_ID]} || ((bal_error++))
-        else
-            # parallelism mode: match BAL by block of 3 municipalities
-            sem --jobs 1 --id bal_match bal_match_municipality \
-                --code ${bal_vars[MUNICIPALITY_CODE]} \
-                --io_id ${bal_vars[IO_LAST_ID]} || ((bal_error++))
-        fi
-    }
+        [ "${bal_vars[PROGRESS]}" = no ] || bal_set_progress
+}
 done
-#[ "${bal_vars[DRY_RUN]}" = yes ] || sem --wait
 
 [ "${bal_vars[DRY_RUN]}" = no ] &&
 [ "${bal_vars[PROGRESS_CURRENT]}" -gt 3 ] && {
