@@ -75,7 +75,7 @@ pow_argv \
         force:Forcer le traitement même si celui-ci a déjà été fait;
         dry_run:Simuler le traitement;
         progress:Afficher le ratio de progression;
-        parallel:Obtenir les addresses en parallèle;
+        parallel:Effectuer les traitements en parallèle;
         clean:Effectuer la purge des fichiers temporaires;
         verbose:Ajouter des détails sur les traitements
     ' \
@@ -100,7 +100,7 @@ pow_argv \
         limit:3;
         stop_time:0;
         progress:no;
-        parallel:yes;
+        parallel:no;
         clean:yes;
         verbose:no
     ' \
@@ -155,11 +155,17 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
 
     bal_vars[MUNICIPALITY_CODE]=${bal_codes[$bal_i]}
     [ "${bal_vars[DRY_RUN]}" = yes ] || {
-        # parallelism mode: match BAL by block of 3 municipalities
-        #sem --jobs 1 --id bal_match
-        bal_match_municipality \
-            --code ${bal_vars[MUNICIPALITY_CODE]} \
-            --io_id ${bal_vars[IO_LAST_ID]} || ((bal_error++))
+
+        if [ "${bal_vars[PARALLEL]}" = no ]; then
+            bal_match_municipality \
+                --code ${bal_vars[MUNICIPALITY_CODE]} \
+                --io_id ${bal_vars[IO_LAST_ID]} || ((bal_error++))
+        else
+            # parallelism mode: match BAL by block of 3 municipalities
+            sem --jobs 1 --id bal_match bal_match_municipality \
+                --code ${bal_vars[MUNICIPALITY_CODE]} \
+                --io_id ${bal_vars[IO_LAST_ID]} || ((bal_error++))
+        fi
     }
 done
 #[ "${bal_vars[DRY_RUN]}" = yes ] || sem --wait
