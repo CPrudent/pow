@@ -164,20 +164,22 @@ bal_set_municipality() {
         }
     } &&
     {
-        execute_query \
-            --name "BAL_MUNICIPALITY_${_opts[CODE]}_LAST_IO" \
-            --query "
-                SELECT id, date_data_end, attributes
-                FROM get_last_io('BAL_${_opts[CODE]}')
-            " \
-            --return _tmp &&
-        {
-            [ -z "$_tmp" ] || {
-                IFS='|' read -a _array <<< "$_tmp"
+        ([ "${bal_vars[USECASE]}" = MATCH ] && [ "${bal_vars[PARALLEL]}" = yes ]) || {
+            execute_query \
+                --name "BAL_MUNICIPALITY_${_opts[CODE]}_LAST_IO" \
+                --query "
+                    SELECT id, date_data_end, attributes
+                    FROM get_last_io('BAL_${_opts[CODE]}')
+                " \
+                --return _tmp &&
+            {
+                [ -z "$_tmp" ] || {
+                    IFS='|' read -a _array <<< "$_tmp"
 
-                bal_vars[IO_LAST_ID]=${_array[0]}
-                bal_vars[IO_LAST_END]=${_array[1]}
-                bal_vars[IO_LAST_ATTRIBUTES]=${_array[2]}
+                    bal_vars[IO_LAST_ID]=${_array[0]}
+                    bal_vars[IO_LAST_END]=${_array[1]}
+                    bal_vars[IO_LAST_ATTRIBUTES]=${_array[2]}
+                }
             }
         }
     } &&
@@ -241,8 +243,13 @@ bal_list_municipalities() {
         "$@" || return $ERROR_CODE
 
     local -n _list_ref=$get_arg_list
-    local _query _list _date_before_fix
+    local _query _list _date_before_fix _column
 
+    if ([ "${bal_vars[USECASE]}" = MATCH ] && [ "${bal_vars[PARALLEL]}" = yes ]); then
+        _column="CONCAT_WS(':', c.municipality, h.id)"
+    else
+        _column=c.municipality
+    fi
     case "${bal_vars[FIX]:-${bal_vars[SELECT_CRITERIA]}}" in
     POPULATION)
         _query="
@@ -339,7 +346,8 @@ bal_list_municipalities() {
             SELECT
                 SUBSTR(l.name, 5) municipality,
                 l.date_data_end,
-                l.attributes
+                l.attributes,
+                l.id
             FROM
                 io_history io
                     JOIN get_last_io(io.name) l ON io.id = l.id
@@ -351,7 +359,7 @@ bal_list_municipalities() {
         )
         SELECT ARRAY(
             SELECT
-                c.municipality
+                $_column
             FROM
                 criteria c
                     JOIN fr.bal_municipality m ON c.municipality = m.code

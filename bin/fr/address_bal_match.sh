@@ -76,6 +76,7 @@ pow_argv \
         dry_run:Simuler le traitement;
         progress:Afficher le ratio de progression;
         parallel:Effectuer les traitements en parallèle;
+        parallel_chunk:Quantité de partage des données à traiter;
         clean:Effectuer la purge des fichiers temporaires;
         verbose:Ajouter des détails sur les traitements
     ' \
@@ -101,6 +102,7 @@ pow_argv \
         stop_time:0;
         progress:no;
         parallel:no;
+        parallel_chunk:5;
         clean:yes;
         verbose:no
     ' \
@@ -111,6 +113,7 @@ pow_argv \
 
 bal_vars[MUNICIPALITY_CODE]=${bal_vars[MUNICIPALITY]^^}
 declare -a bal_codes=()
+declare -a bal_codes2=()
 bal_start=$(date '+%s')
 # reset LIMIT if STOP_TIME
 [ "${bal_vars[STOP_TIME]}" != 0 ] && [ ${bal_vars[LIMIT]} -gt 0 ] && bal_vars[LIMIT]=0
@@ -143,27 +146,75 @@ set_env --schema_name fr &&
 
 bal_error=0
 bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
-for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
-    [ "${bal_vars[STOP_TIME]}" != 0 ] && {
-        # stop loop if allowed time is expired
-        [[ "$(date +'%m-%d-%T')" > "${bal_vars[STOP_TIME]}" ]] && break
-    }
 
-    bal_vars[PROGRESS_CURRENT]=$((bal_i +1))
-    bal_set_municipality --code "${bal_codes[$bal_i]}" || {
-        bal_error=1
-        continue
-    }
+if [ "${bal_vars[PARALLEL]}" = no ]; then
+    for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
+        [ "${bal_vars[STOP_TIME]}" != 0 ] && {
+            # stop loop if allowed time is expired
+            [[ "$(date +'%m-%d-%T')" > "${bal_vars[STOP_TIME]}" ]] && break
+        }
 
-    bal_vars[MUNICIPALITY_CODE]=${bal_codes[$bal_i]}
-    [ "${bal_vars[DRY_RUN]}" = yes ] || {
-        bal_match_municipality \
-            --code ${bal_vars[MUNICIPALITY_CODE]} \
-            --io_id ${bal_vars[IO_LAST_ID]} || ((bal_error++))
+        bal_vars[PROGRESS_CURRENT]=$((bal_i +1))
+        bal_set_municipality --code "${bal_codes[$bal_i]}" || {
+            bal_error=1
+            continue
+        }
+        bal_vars[MUNICIPALITY_CODE]=${bal_codes[$bal_i]}
 
+        [ "${bal_vars[DRY_RUN]}" = yes ] || {
+            bal_match_municipality \
+                --code ${bal_vars[MUNICIPALITY_CODE]} \
+                --io_id ${bal_vars[IO_LAST_ID]} || ((bal_error++))
+
+            [ "${bal_vars[PROGRESS]}" = no ] || bal_set_progress
+        }
+    done
+else
+    bal_tmpdir="$POW_DIR_TMP/$$"
+    [ ! -d "$bal_tmpdir" ] && mkdir "$bal_tmpdir"
+    bal_limit=$(( ${#bal_codes[@]} / bal_vars[PARALLEL_CHUNK] ))
+    [[ $(( ${#bal_codes[@]} % bal_vars[PARALLEL_CHUNK] )) -eq 0 ]] || ((bal_limit++))
+    for ((bal_j=0; bal_j<$bal_limit; bal_j++)); do
+        [ "${bal_vars[STOP_TIME]}" != 0 ] && {
+            # stop loop if allowed time is expired
+            [[ "$(date +'%m-%d-%T')" > "${bal_vars[STOP_TIME]}" ]] && break
+        }
+
+        bal_codes2=( $(printf '%s ' ${bal_codes[@]:((bal_j*bal_vars[PARALLEL_CHUNK])):${bal_vars[PARALLEL_CHUNK]}}) )
+        [ "${bal_vars[PROGRESS]}" = no ] || {
+            bal_vars[PROGRESS_START]=$(date '+%s') &&
+            echo "INSEE ${bal_codes2[@]}"
+        }
+
+        [ "${bal_vars[DRY_RUN]}" = yes ] || {
+            parallel --jobs 3 --rpl '{..} s/:[^:]*$//;' \
+                $POW_DIR_BATCH/address_match.sh \
+                    --source_name "BAL_{..}" \
+                    --source_query "${bal_vars[QUERY_ADDRESSES]//XXXXX/{..}}" \
+                    --request_path "$bal_tmpdir/BAL_{..}.dat" \
+                    --steps REQUEST,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT \
+                    --format "$POW_DIR_BATCH/bal/format.sql" \
+                    --force ${bal_vars[FORCE]} \
+                ::: "${bal_codes2[@]}"
+        }
         [ "${bal_vars[PROGRESS]}" = no ] || bal_set_progress
-}
-done
+    done
+    [ "${bal_vars[DRY_RUN]}" = yes ] || {
+        for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
+            bal_insee=${bal_codes[$bal_i]%%:*}
+            bal_io_id=${bal_codes[$bal_i]#*:}
+            bal_file="$bal_tmpdir/BAL_${bal_insee}.dat"
+
+            [ -f "$bal_file" ] && {
+                bal_req_id=$(sed --silent --expression '1p' < "$bal_file") &&
+                io_history_update \
+                    --infos '{"usecases":[{"name":"match","id":'${bal_req_id}'}]}' \
+                    --id ${bal_io_id}
+            }
+        done
+        [ "${bal_vars[CLEAN]}" = no ] || rm -rf "$bal_tmpdir"
+    }
+fi
 
 [ "${bal_vars[DRY_RUN]}" = no ] &&
 [ "${bal_vars[PROGRESS_CURRENT]}" -gt 3 ] && {
