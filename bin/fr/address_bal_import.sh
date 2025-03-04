@@ -501,12 +501,15 @@ bal_load_addresses() {
                     done
                 else
                     # download
+                    #+ need to (1) eventually unquote code, and (2) replace space by %20
+                    #+ so 2 linked inputs
                     parallel --jobs 5 \
                         wget --quiet --limit-rate=100k \
                         --output-document="$POW_DIR_COMMON_GLOBAL/fr/bal/{=1 uq() =}.json" \
                         https://plateforme.adresse.data.gouv.fr/lookup/'{=2 uq() ; s/ /%20/g =}' \
                         ::: "${_addresses[@]}" :::+ "${_addresses[@]}" &&
                     # load into db
+                    #+ here unquote code only is needed
                     parallel --jobs 5 \
                         jq --raw-output --compact-output '.' \
                         "$POW_DIR_COMMON_GLOBAL/fr/bal/{=1 uq() =}.json" ::: "${_addresses[@]}" |

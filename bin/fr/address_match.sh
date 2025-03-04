@@ -47,11 +47,12 @@ get_definition() {
     # defined property ?
     [ -n "${_vars_ref[${_property}]}" ] && {
         # default path
-        _vars_ref[$_path]="${POW_DIR_BIN}/${_vars_ref[${_property}]}_${_opts[PROPERTY]}.sql"
+        _vars_ref[$_path]="${POW_DIR_BATCH}/${_opts[PROPERTY]}.sql"
         [ -f "${_vars_ref[$_path]}" ] &&
         _vars_ref[$_sql]=$(cat "${_vars_ref[_path]}") || {
             # specific path
             [ -f "${_vars_ref[${_property}]}" ] &&
+            _vars_ref[$_path]="${_vars_ref[${_property}]}" &&
             _vars_ref[$_sql]=$(cat "${_vars_ref[${_property}]}") || {
                 log_error "Le fichier ${_property} ${_vars_ref[${_property}]} n'existe pas"
                 return $ERROR_CODE
@@ -349,6 +350,7 @@ pow_argv \
         export_path:Fichier de sortie;
         export_srid:code SRID des géométries dans la sortie;
         parallel:Effectuer les traitements en parallèle;
+        argv_exit:Afficher les arguments et Quitter;
         force:Forcer le traitement même si celui-ci a déjà été fait;
         verbose:Ajouter des détails sur les traitements
     ' \
@@ -358,6 +360,7 @@ pow_argv \
     --args_v '
         force:yes|no;
         parallel:yes|no;
+        argv_exit:yes|no;
         verbose:yes|no
     ' \
     --args_d '
@@ -367,6 +370,7 @@ pow_argv \
         request_kind:NOT_DEFINED;
         export_srid:4326;
         parallel:no;
+        argv_exit:no;
         verbose:no
     ' \
     --args_p '
@@ -478,6 +482,16 @@ MATCH_RESULT_PERCENT_KO=$((_k++))
 declare -a match_result
 
 set_env --schema_name fr &&
+
+{
+    [ "${match_vars[ARGV_EXIT]}" = no ] || {
+        get_definition --property parameters --vars match_vars &&
+        get_definition --property format --vars match_vars &&
+        declare -p match_vars | tr -s ' ' '\n' | tail -n +3
+
+        exit $SUCCESS_CODE
+    }
+} &&
 
 {
     if in_array --array match_steps --item REQUEST; then

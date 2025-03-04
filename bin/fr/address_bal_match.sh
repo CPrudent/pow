@@ -187,6 +187,7 @@ else
         }
 
         [ "${bal_vars[DRY_RUN]}" = yes ] || {
+            # item composed as INSEE:IO_ID (INSEE only wanted here)
             parallel --jobs 3 --rpl '{..} s/:[^:]*$//;' \
                 $POW_DIR_BATCH/address_match.sh \
                     --source_name "BAL_{..}" \
