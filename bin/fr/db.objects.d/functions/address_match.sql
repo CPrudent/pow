@@ -486,9 +486,13 @@ BEGIN
                             ', CASE _level_up
                             WHEN 'STREET' THEN ' JOIN fr.laposte_address_street a ON a.co_cea = d.co_adr'
                             END,
-                        ' WHERE
-                        ', _where_parent
-
+                        '
+                        WHERE
+                        ', _where_parent,
+                        '
+                        ORDER BY
+                            e.similarity DESC
+                        '
                 /*
                         '
                         WITH
@@ -1101,16 +1105,11 @@ BEGIN
                 );
                 matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.too_similar'));
             ELSE
-                CALL fr.notice_match(
-                    level => level,
-                    search => search,
-                    standardized_address => standardized_address,
-                    usecase => '2ND_OK',
-                    current => current,
-                    ratio => _ratio
-                );
-                matched_element.codes_address := current.co_adr;
-                matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.near'));
+                -- previous match ok
+                IF matched_element.codes_address IS NOT NULL THEN
+                    --matched_element.codes_address := current.co_adr;
+                    matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.near'));
+                END IF;
             END IF;
         END IF;
     END IF;
