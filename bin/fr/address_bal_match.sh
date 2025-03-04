@@ -194,6 +194,7 @@ else
                     --request_path "$bal_tmpdir/BAL_{..}.dat" \
                     --steps REQUEST,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT \
                     --format "$POW_DIR_BATCH/bal/format.sql" \
+                    --parallel \
                     --force ${bal_vars[FORCE]} \
                 ::: "${bal_codes2[@]}"
         }

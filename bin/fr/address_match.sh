@@ -181,6 +181,7 @@ export_build() {
                         FROM fr.address_match_request
                         WHERE id_request = ${_request_ref[MATCH_REQUEST_ID]}
                     " \
+                    --temporary ${_vars_ref[TEMPORARY]} \
                     --return _vars_ref[SOURCE_QUERY]
             }
             echo "WITH ${_vars_ref[SOURCE_NAME]} AS (${_vars_ref[SOURCE_QUERY]})" >> $_sql_file
@@ -230,6 +231,7 @@ export_build() {
                     fr.is_match_element_ok(me.matched_element)
             ) TO STDOUT WITH (DELIMITER E',', FORMAT CSV, HEADER TRUE, ENCODING UTF8)
         " \
+        --temporary ${_vars_ref[TEMPORARY]} \
         --output ${_vars_ref[EXPORT_PATH]} &&
     mv $_sql_file $POW_DIR_ARCHIVE/export_${_request_ref[MATCH_REQUEST_ID]}.sql || return $ERROR_CODE
 
@@ -261,6 +263,7 @@ report_get_result() {
         --query "
             SELECT counters FROM fr.set_match_result(id => ${_request_ref[MATCH_REQUEST_ID]})
             " \
+        --temporary ${_vars_ref[TEMPORARY]} \
         --return _counters &&
     array_sql_to_bash --array_sql "$_counters" --array_bash _result_ref || return $ERROR_CODE
 
@@ -325,6 +328,7 @@ declare -A match_vars=(
     [PARAMETERS_SQL]=''
     [COLUMNS_IN]=
     [COLUMNS_MORE]=
+    [TEMPORARY]=USER
 ) &&
 pow_argv \
     --args_n '
@@ -344,6 +348,7 @@ pow_argv \
         export_more_columns:Liste des données supplémentaires à inclure dans la sortie;
         export_path:Fichier de sortie;
         export_srid:code SRID des géométries dans la sortie;
+        parallel:Effectuer les traitements en parallèle;
         force:Forcer le traitement même si celui-ci a déjà été fait;
         verbose:Ajouter des détails sur les traitements
     ' \
@@ -352,6 +357,7 @@ pow_argv \
     ' \
     --args_v '
         force:yes|no;
+        parallel:yes|no;
         verbose:yes|no
     ' \
     --args_d '
@@ -360,6 +366,7 @@ pow_argv \
         request_import:NOT_DEFINED;
         request_kind:NOT_DEFINED;
         export_srid:4326;
+        parallel:no;
         verbose:no
     ' \
     --args_p '
@@ -373,6 +380,7 @@ MATCH_REQUEST_IMPORT=$((_k++))              # table d'import des données
 MATCH_REQUEST_ITEMS=$_k
 declare -a match_request
 
+[ "${match_vars[PARALLEL]}" = yes ] && match_vars[TEMPORARY]=UNIQ
 match_vars[STEPS]=${match_vars[STEPS]// /}
 match_vars[COLUMNS_IN]=${match_vars[EXPORT_IN_COLUMNS]^^}
 match_vars[COLUMNS_MORE]=${match_vars[EXPORT_MORE_COLUMNS]^^}
@@ -506,6 +514,7 @@ set_env --schema_name fr &&
                     $([ -n "${match_vars[PARAMETERS_SQL]}" ] && echo ", parameters => '${match_vars[PARAMETERS_SQL]}'::HSTORE")
                 )
             " \
+            --temporary ${match_vars[TEMPORARY]} \
             --return _request &&
         match_request=($_request) &&
         {
@@ -571,7 +580,8 @@ set_env --schema_name fr &&
                 mapping => '${match_vars[FORMAT_SQL]}'::HSTORE,
                 force => ('${match_vars[FORCE]}' = 'yes'),
                 raise_notice => ('${match_vars[VERBOSE]}' = 'yes')
-            )"
+            )" \
+            --temporary ${match_vars[TEMPORARY]}
     }
 } &&
 
@@ -583,7 +593,8 @@ set_env --schema_name fr &&
             --query "CALL fr.set_match_code(
                 id => ${match_request[$MATCH_REQUEST_ID]},
                 force => ('${match_vars[FORCE]}' = 'yes')
-            )"
+            )" \
+            --temporary ${match_vars[TEMPORARY]}
     }
 } &&
 
@@ -596,7 +607,8 @@ set_env --schema_name fr &&
                 id => ${match_request[$MATCH_REQUEST_ID]},
                 force => ('${match_vars[FORCE]}' = 'yes'),
                 raise_notice => ('${match_vars[VERBOSE]}' = 'yes')
-            )"
+            )" \
+            --temporary ${match_vars[TEMPORARY]}
     }
 } &&
 
