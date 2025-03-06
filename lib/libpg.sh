@@ -82,7 +82,7 @@ execute_query() {
             _psql_output="$_log_tmp_path"
         } || {
             [ -n "${_opts[RETURN]}" ] && {
-                _error='Les options --output et --select sont exclusives'
+                _error='Les options --output et --return sont exclusives'
                 false
             } || {
                 _psql_output="${_opts[OUTPUT]}"

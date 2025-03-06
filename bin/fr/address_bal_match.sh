@@ -129,9 +129,7 @@ set_env --schema_name fr &&
 {
     execute_query \
         --name BAL_ADDRESSES \
-        --query "
-            SELECT q FROM fr.bal_municipality_addresses(code => 'XXXXX')
-        " \
+        --query "SELECT q FROM fr.bal_municipality_addresses(code => 'XXXXX')" \
         --return bal_vars[QUERY_ADDRESSES] &&
     case "${bal_vars[MUNICIPALITY_CODE]}" in
     ALL)
@@ -186,12 +184,21 @@ else
             echo "INSEE ${bal_codes2[@]}"
         }
 
+        set -o noglob
+        for bal_item in ${bal_codes2[@]}; do
+            bal_insee=${bal_item%%:*}
+            echo "${bal_vars[QUERY_ADDRESSES]//XXXXX/${bal_insee}}" > "$bal_tmpdir/BAL_${bal_insee}.sql"
+        done
+        set +o noglob
+        #echo $bal_tmpdir ; read
+
         [ "${bal_vars[DRY_RUN]}" = yes ] || {
             # item composed as INSEE:IO_ID (INSEE only wanted here)
+            #+ can use --tag to print each item
             parallel --jobs 3 --rpl '{..} s/:[^:]*$//;' \
                 $POW_DIR_BATCH/address_match.sh \
                     --source_name "BAL_{..}" \
-                    --source_query "${bal_vars[QUERY_ADDRESSES]//XXXXX/{..}}" \
+                    --source_query "$bal_tmpdir/BAL_{..}.sql" \
                     --request_path "$bal_tmpdir/BAL_{..}.dat" \
                     --steps REQUEST,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT \
                     --format "$POW_DIR_BATCH/bal/format.sql" \

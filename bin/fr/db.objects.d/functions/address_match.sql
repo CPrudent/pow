@@ -1125,6 +1125,18 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+SELECT drop_all_functions_if_exists('fr', 'match_version');
+CREATE OR REPLACE FUNCTION fr.match_version(
+    version OUT VARCHAR
+)
+AS
+$func$
+BEGIN
+    -- major as YYYY-MM, minor as sequence
+    version := '2025-01.1';
+END
+$func$ LANGUAGE plpgsql;
+
 -- match element (of address) w/ referential
 /* NOTE
 HSTORE parameters to custom properties, as:

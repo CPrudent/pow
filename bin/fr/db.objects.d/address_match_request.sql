@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS fr.address_match_request (
     is_match_element BOOLEAN DEFAULT FALSE,
     is_match_address BOOLEAN DEFAULT FALSE,
     parameters HSTORE NULL,
-    import_name VARCHAR NULL
+    import_name VARCHAR NULL,
+    match_version VARCHAR NULL
 );
 
 DO $$
@@ -56,6 +57,9 @@ BEGIN
     END IF;
     IF NOT column_exists('fr', 'address_match_request', 'import_name') THEN
         ALTER TABLE fr.address_match_request ADD COLUMN import_name VARCHAR;
+    END IF;
+    IF NOT column_exists('fr', 'address_match_request', 'match_version') THEN
+        ALTER TABLE fr.address_match_request ADD COLUMN match_version VARCHAR;
     END IF;
 END $$;
 
@@ -109,7 +113,8 @@ BEGIN
             source_query,
             parameters,
             date_create,
-            import_name
+            import_name,
+            match_version
         )
         VALUES(
             set_match_request.source_name,
@@ -124,7 +129,8 @@ BEGIN
                         'address_match_',
                         MD5(set_match_request.source_name)
                     )
-            END
+            END,
+            fr.match_version()
         )
         RETURNING
             address_match_request.id,

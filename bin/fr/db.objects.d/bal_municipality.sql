@@ -176,8 +176,7 @@ BEGIN
     END IF;
 
     q := CONCAT(
-        '
-        SELECT
+        'SELECT
             ROW_NUMBER() OVER () rowid,
             t.*
         FROM (
@@ -221,8 +220,7 @@ BEGIN
                 m.code = ''', bal_municipality_addresses.code, '''
             ', _query_hn,
             '
-        ) t
-        '
+        ) t'
     );
 END
 $func$ LANGUAGE plpgsql;

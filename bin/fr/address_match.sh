@@ -385,6 +385,7 @@ MATCH_REQUEST_ITEMS=$_k
 declare -a match_request
 
 [ "${match_vars[PARALLEL]}" = yes ] && match_vars[TEMPORARY]=UNIQ
+[ -f "${match_vars[SOURCE_QUERY]}" ] && match_vars[SOURCE_QUERY]=$(< "${match_vars[SOURCE_QUERY]}")
 match_vars[STEPS]=${match_vars[STEPS]// /}
 match_vars[COLUMNS_IN]=${match_vars[EXPORT_IN_COLUMNS]^^}
 match_vars[COLUMNS_MORE]=${match_vars[EXPORT_MORE_COLUMNS]^^}
