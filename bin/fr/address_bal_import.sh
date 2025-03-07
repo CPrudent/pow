@@ -1252,41 +1252,39 @@ bal_load() {
 }
 
 # fix already exists (not todo)
-bal_fix_exists() {
-    bash_args \
-        --args_p '
+bal_fix_done() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             state:Correctif réalisé (o|n)
         ' \
-        --args_o '
+        --args_m '
             state
         ' \
         "$@" || return $ERROR_CODE
 
-    local _io=BAL_${bal_vars[MUNICIPALITY_CODE]} _fix _tmpfile
-    local -n _state_ref=$get_arg_state
+    local _io=BAL_${bal_vars[MUNICIPALITY_CODE]} _fix
+    local -n _state_ref=${_opts[STATE]}
 
-    execute_query \
-        --name BAL_IO_ID \
-        --query "SELECT (get_last_io('$_io')).id" \
-        --return bal_vars[IO_ID] &&
-    # use a file as argument (because of inside *)
-    # CONVERT_ATTRIBUTES will be always false, but selection of municipalities too !
-    get_tmp_file --tmpfile _tmpfile &&
-    cat <<EOC > $_tmpfile &&
-    SELECT
-        (JSONB_PATH_QUERY(
-            io.attributes::JSONB,
-            '$ ? (@.integration.fixes[*].name == "${bal_vars[FIX]}")'
-        ))->'integration'->'fixes' ->> 0
-    FROM
-        get_last_io('$_io') io
-    WHERE
-        io.attributes IS JSON OBJECT
-EOC
+    # NOTE
+    #+ CONVERT_ATTRIBUTES will be always false, but selection of municipalities too !
+
+    set -o noglob &&
     execute_query \
         --name BAL_FIX_EXISTS \
-        --query "$_tmpfile" \
+        --query "
+            SELECT
+                (JSONB_PATH_QUERY(
+                    io.attributes::JSONB,
+                    '$ ? (@.integration.fixes[*].name == "${bal_vars[FIX]}")'
+                ))->'integration'->'fixes' ->> 0
+            FROM
+                get_last_io('$_io') io
+            WHERE
+                io.attributes IS JSON OBJECT
+        " \
         --return _fix &&
+    set +o noglob &&
     {
         _state_ref=$( [ -n "$_fix" ] && echo 'yes' || echo 'no' )
     } || return $ERROR_CODE
@@ -1295,17 +1293,16 @@ EOC
     [ "${bal_vars[FORCE]}" = no ] &&
     log_info "Le correctif ${bal_vars[FIX]} a déjà été appliqué avec succès"
 
-    rm $_tmpfile
     return $SUCCESS_CODE
 }
 
 # fix problems
 bal_fix_apply() {
-    local _exists
+    local _done
 
-    bal_fix_exists --state _exists &&
+    bal_fix_done --state _done &&
     {
-        ([ "${bal_vars[FORCE]}" = no ] && is_yes --var _exists) || {
+        ([ "${bal_vars[FORCE]}" = no ] && is_yes --var _done) || {
             {
                 [ "${bal_vars[PROGRESS]}" = no ] || {
                     bal_vars[PROGRESS_START]=$(date '+%s') &&
