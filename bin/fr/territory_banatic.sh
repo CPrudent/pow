@@ -33,9 +33,6 @@ io_get_list_online_available \
     --dates_list years || exit $ERROR_CODE
 [ "$POW_DEBUG" = yes ] && { declare -p years years_list_path; }
 
-# not useful here
-rm "$years_list_path"
-
 # get year (w/ format YYYY)
 if [ -z "$get_arg_year" ]; then
     # get more recent
@@ -46,12 +43,14 @@ else
         on_import_error
     }
 fi
-year=$(date -d ${years[$year_id]} +%Y)
+year=$(date -d "${years[$year_id]}" '+%Y')
 [ -z "$year" ] && {
-    log_error "Impossible de trouver le millésime de $io_name"
+    log_error "Impossible de trouver le millésime de $io_name (${years[@]})"
     exit $ERROR_CODE
 }
 [ "$POW_DEBUG" = yes ] && { echo "year=$year (${years[$year_id]})"; }
+# not useful here
+rm "$years_list_path"
 
 set_env --schema_name fr &&
 io_todo_import \
@@ -85,14 +84,24 @@ io_history_begin \
     --date_end "${years[$year_id]}" \
     --nrows_todo 1250 \
     --id year_history_id &&
-io_download_file \
-    --url "${url_list}" \
-    --output_directory "$POW_DIR_IMPORT" \
-    --output_file gouv_epci_${year}.xlsx &&
-io_download_file \
-    --url "${url_compose}" \
-    --output_directory "$POW_DIR_IMPORT" \
-    --output_file gouv_epci_municipality_${year}.xlsx &&
+{
+    io_download_file \
+        --url "${url_list}" \
+        --overwrite_mode no \
+        --output_directory "$POW_DIR_IMPORT" \
+        --output_file gouv_epci_${year}.xlsx
+    _rc=$?
+    [ $_rc -lt $POW_DOWNLOAD_ERROR ] || false
+} &&
+{
+    io_download_file \
+        --url "${url_compose}" \
+        --overwrite_mode no \
+        --output_directory "$POW_DIR_IMPORT" \
+        --output_file gouv_epci_municipality_${year}.xlsx
+    _rc=$?
+    [ $_rc -lt $POW_DOWNLOAD_ERROR ] || false
+} &&
 import_file \
     --file_path "$POW_DIR_IMPORT/gouv_epci_${year}.xlsx" \
     --import_options 'table_columns:HEADER_TO_LOWER_CODE' \
@@ -106,22 +115,22 @@ import_file \
     --table_name gouv_epci_municipality \
     --load_mode OVERWRITE_TABLE &&
 execute_query \
+    --name EPCI_KIND \
+    --query "
+        SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'EPCI_KIND'
+    " \
+    --return _epci_kind &&
+execute_query \
     --name CREATE_INDEX \
     --query "
         CREATE UNIQUE INDEX iux_gouv_epci_siren
             ON fr.gouv_epci(siren_epci);
         CREATE UNIQUE INDEX iux_gouv_epci_municipality_insee
             ON fr.gouv_epci_municipality(insee)
-            WHERE nature_juridique ~
-                '^(' ||
-                (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'EPCI_KIND')
-                || ')$';
+            WHERE nature_juridique ~ '^($_epci_kind)$';
         CREATE UNIQUE INDEX iux_gouv_epci_municipality_siren
             ON fr.gouv_epci_municipality(siren_membre)
-            WHERE nature_juridique ~
-                '^(' ||
-                (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'EPCI_KIND')
-                || ')$';
+            WHERE nature_juridique ~ '^($_epci_kind)$';
         " &&
 execute_query \
     --name RENAME_COLUMNS \
