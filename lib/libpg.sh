@@ -150,7 +150,10 @@ execute_query() {
             '/^NOTICE:  la relation « [^ ]* » existe déjà/d' \
             "${_log_tmp_dir}/${_log_tmp_wo_ext}-notice.${_log_tmp_ext}"
 
-        archive_file "$_log_tmp_path" &&
+        {
+            # requested output, or default can be archived
+            [ -n "${_opts[OUTPUT]}" ] || archive_file "$_log_tmp_path"
+        } &&
         archive_file "${_log_tmp_dir}/${_log_tmp_wo_ext}-notice.${_log_tmp_ext}" &&
         archive_file "${_log_tmp_dir}/${_log_tmp_wo_ext}-error.${_log_tmp_ext}"
     } &&

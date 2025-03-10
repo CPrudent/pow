@@ -35,7 +35,7 @@ bash_args \
     "$@" || exit $ERROR_CODE
 
 io_name=FR-TERRITORY-LAPOSTE
-io_date=$(date +%F)
+io_date=$(date '+%F')
 io_force=$get_arg_force
 
 # to declare on command line before calling function (else array)

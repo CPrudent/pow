@@ -286,10 +286,9 @@ BEGIN
                     fr.ign_municipality
                 WHERE
                     --insee_com NOT IN ('75056', '13055', '69123')
-                    insee_com !~
-                        '^(' ||
-                        (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'MUNICIPALITY_DISTRICT')
-                        || ')$'
+                    '^(' ||
+                    (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'MUNICIPALITY_DISTRICT')
+                    || ')$' !~ insee_com
                 UNION
                 SELECT
                     arm.insee_arm,
@@ -313,10 +312,10 @@ BEGIN
                 */
             ON epci.insee = COALESCE(commune_insee.com, commune_insee.codgeo)
             --AND epci.nature_juridique IN ('MET69', 'CC', 'CA', 'METRO', 'CU')
-            AND epci.nature_juridique ~
-                    '^(' ||
-                    (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'EPCI_KIND')
-                    || ')$'
+            AND
+                '^(' ||
+                (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'EPCI_KIND')
+                || ')$' ~ epci.nature_juridique
             -- DEPARTMENT
             LEFT OUTER JOIN LATERAL (
                 SELECT
@@ -492,11 +491,9 @@ BEGIN
                     JOIN fr.insee_municipality m ON em.insee = COALESCE(m.com, m.codgeo)
             WHERE
                 --em.nature_juridique IN ('MET69', 'CC', 'CA', 'METRO', 'CU')
-                epci.nature_juridique ~
-                    '^(' ||
-                    (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'EPCI_KIND')
-                    || ')$'
-
+                '^(' ||
+                (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'EPCI_KIND')
+                || ')$' ~ epci.nature_juridique
         ) e
         WHERE
             (
