@@ -264,7 +264,7 @@ io_history_begin \
                         set +o noglob
                     fi
                 } && {
-                    if [ "$io_clean" = yes ]; then
+                    if ([ "$io_clean" = yes ] && [ -n "$_query_drop" ]); then
                         execute_query \
                             --name "DROP_TMP_${_table_name}" \
                             --query "$_query_drop"

@@ -617,6 +617,7 @@ io_get_list_online_available() {
     # download available dates
     io_download_file \
         --url "$_url" \
+        --common no \
         --output_directory "$POW_DIR_TMP" \
         --output_file "$(basename $_details_file_ref)" &&
     # array of available dates (desc), transforming / to -
@@ -670,6 +671,7 @@ io_download_file() {
             user:compte HTTP;
             password:mot de passe HTTP;
             common_subdir:copie dans un sous-dossier du dépôt;
+            common:Copier sur le dépôt;
             verbose:Ajouter des détails sur les traitements
         ' \
         --args_o '
@@ -679,11 +681,13 @@ io_download_file() {
         --args_v '
             overwrite_mode:no|yes|NEWER;
             overwrite_key:DATE|TIME;
+            common:yes|no;
             verbose:yes|no
         ' \
         --args_d '
             overwrite_mode:yes;
             overwrite_key:DATE;
+            common:yes;
             verbose:no
         ' \
         "$@" || return $ERROR_CODE
@@ -694,6 +698,7 @@ io_download_file() {
         [DIR]="$get_arg_output_directory"
         [FILE]="$get_arg_output_file"
         [COMMON_SUBDIR]="$get_arg_common_subdir"
+        [COMMON]=$get_arg_common
         [OVERWRITE_MODE]=$get_arg_overwrite_mode
         [OVERWRITE_KEY]=$get_arg_overwrite_key
         [OVERWRITE_VALUE]=$get_arg_overwrite_value
@@ -835,8 +840,12 @@ io_download_file() {
     }
 
     # result
-    log_info "Copie de ${_download[FILE]} sur le Dépôt" &&
-    cp "$_tmp_path" "${_files[1]}" &&
+    {
+        [ "${_download[COMMON]}" = no ] || {
+            log_info "Copie de ${_download[FILE]} sur le Dépôt" &&
+            cp "$_tmp_path" "${_files[1]}"
+        }
+    } &&
     mv "$_tmp_path" "${_files[0]}" &&
     archive_file "$_log_tmp_path" &&
     log_info "Téléchargement avec succès de ${_download[FILE]}" || return $POW_DOWNLOAD_ERROR_PROVISION

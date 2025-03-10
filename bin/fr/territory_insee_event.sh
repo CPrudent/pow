@@ -63,7 +63,8 @@ year_id=0
 # NOTE change 2024
 # href="fr/information/7766585/v_mvt_commune_2024.csv"
 
-# NOTE change 2025
+# NOTE change 2025 (archive)
+# search for: Code officiel géographique au 1er janvier 2025
 # href="fr/information/8377162/cog_ensemble_2025_csv.zip"
 #+ v_arrondissement_2025.csv
 #+ v_canton_2025.csv
@@ -144,7 +145,8 @@ vacuum \
     --schema_name fr \
     --table_name insee_municipality_event \
     --mode ANALYZE &&
-rm --force "$year_ressource" || on_import_error
+rm --force "$POW_DIR_IMPORT/$year_data" &&
+rm --force --recursive "$POW_DIR_TMP/$year_data" || on_import_error
 
 log_info "Import du millésime $year de $io_name avec succès"
 exit $SUCCESS_CODE
