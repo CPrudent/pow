@@ -59,9 +59,11 @@ year_id=0
 # example: https://www.insee.fr/fr/statistiques/fichier/6051727/mvtcommune_2022.csv
 # NOTE change 2023 (v_)mvtcommune_2023.csv
 # NOTE change 2024
-# href="/fr/statistiques/fichier/7766585/v_mvt_commune_2024.csv"
+# href="fr/information/7766585/v_mvt_commune_2024.csv"
+# NOTE change 2025
+# href="fr/information/8377162/cog_ensemble_2025_csv.zip"
 
-url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/7766585/v_mvt_commune_${year}.csv" "$years_list_path")
+url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/8377162/cog_ensemble_${year}_csv.zip" "$years_list_path")
 [ "$POW_DEBUG" = yes ] && { echo "url=$url_data"; }
 [ -z "$url_data" ] && {
     log_error "Impossible de trouver URL de $io_name"
@@ -98,11 +100,17 @@ io_history_begin \
     --date_end "${years[$year_id]}" \
     --nrows_todo 35000 \
     --id year_history_id &&
-io_download_file --url "$url_data" --output_directory "$POW_DIR_IMPORT" &&
-year_ressource="$POW_DIR_IMPORT/$year_data" &&
+io_download_file \
+    --url "$url_data" \
+    --overwrite_mode no \
+    --output_directory "$POW_DIR_IMPORT" &&
+year_ressource="$POW_DIR_TMP/$year_data/v_mvt_commune_${year}.csv" &&
 {
     [ "$POW_DEBUG" = yes ] && { echo "year_ressource=$year_ressource"; } || true
 } &&
+extract_archive \
+    --archive_path "$POW_DIR_IMPORT/$year_data" \
+    --extract_path "$POW_DIR_TMP/$year_data" &&
 import_file \
     --file_path "$year_ressource" \
     --table_name insee_municipality_event_tmp \

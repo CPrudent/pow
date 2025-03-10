@@ -28,10 +28,7 @@ INSERT INTO fr.insee_municipality
     -- "global" municipalities (w/ districts) are thought as supra-territory
     WHERE
         --"CODGEO" NOT IN ('75056', '13055', '69123')
-        "CODGEO" !~
-            '^(' ||
-            (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'MUNICIPALITY_DISTRICT')
-            || ')$'
+        '^(' || (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'MUNICIPALITY_DISTRICT') || ')$' !~ "CODGEO"
 );
 
 -- districts for Paris/Lyon/Marseille
@@ -89,8 +86,5 @@ INSERT INTO fr.insee_supra
     FROM fr.tmp_insee_municipality
     WHERE
         --"CODGEO" IN ('75056', '13055', '69123')
-        "CODGEO" ~
-            '^(' ||
-            (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'MUNICIPALITY_DISTRICT')
-            || ')$'
+        '^(' || (SELECT value FROM fr.constant WHERE usecase = 'FR_ADDRESS' AND key = 'MUNICIPALITY_DISTRICT') || ')$' ~ "CODGEO"
 );

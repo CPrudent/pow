@@ -99,7 +99,7 @@ url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/7671844/
 
 url_data="${url_base}/${url_data}"
 year_data=$(basename "$url_data")
-rm --force "$years_list_path"
+rm --force "$years_list_path" $POW_DIR_COMMON_GLOBAL/fr/$(basename "$years_list_path")
 # fix current year w/ century!
 [ ${#year} -eq 2 ] && year="$(date +%C)$year"
 
@@ -251,7 +251,7 @@ execute_query \
     --name TRUNCATE_DATA \
     --query '
         TRUNCATE TABLE fr.insee_municipality;
-        TRUNCATE TABLE fr.insee_supra;"
+        TRUNCATE TABLE fr.insee_supra;
         ' &&
 execute_query \
     --name ADMINISTRATIVE_CUTTING \
