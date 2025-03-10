@@ -57,11 +57,29 @@ year_id=0
 # example: https://www.insee.fr/fr/statistiques/fichier/3720946/mvtcommune-01012019-csv.zip
 # example: https://www.insee.fr/fr/statistiques/fichier/4316069/mvtcommune2020-csv.zip
 # example: https://www.insee.fr/fr/statistiques/fichier/6051727/mvtcommune_2022.csv
+
 # NOTE change 2023 (v_)mvtcommune_2023.csv
+
 # NOTE change 2024
 # href="fr/information/7766585/v_mvt_commune_2024.csv"
+
 # NOTE change 2025
 # href="fr/information/8377162/cog_ensemble_2025_csv.zip"
+#+ v_arrondissement_2025.csv
+#+ v_canton_2025.csv
+#+ v_codes_extension_2025.csv
+#+ v_comer_2025.csv
+#+ v_commune_2025.csv
+#+ v_commune_comer_2025.csv
+#+ v_commune_depuis_1943.csv
+#+ v_commune_outremer_depuis_1943.csv
+#+ v_ctcd_2025.csv
+#+ v_departement_2025.csv
+#+ v_mvt_commune_2025.csv
+#+ v_pays_et_territoire_depuis_1943.csv
+#+ v_pays_territoire_2025.csv
+#+ v_region_2025.csv
+#+ v_tom_depuis_1943.csv
 
 url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/8377162/cog_ensemble_${year}_csv.zip" "$years_list_path")
 [ "$POW_DEBUG" = yes ] && { echo "url=$url_data"; }
