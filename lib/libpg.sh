@@ -90,11 +90,15 @@ execute_query() {
         }
     } &&
     {
+        # return
         # quiet: https://stackoverflow.com/questions/21777564/postgresql-is-there-a-way-to-disable-the-display-of-insert-statements-when-rea
         [ -z "${_opts[RETURN]}" ] || {
             _psql_level=ERROR
             _quiet=--quiet
-
+        }
+    } &&
+    {
+        ([ -z "${_opts[OUTPUT]}" ] && [ -z "${_opts[RETURN]}" ]) || {
             # set needing arguments to return result (if not defined)
             [ -n "${_opts[PSQL_ARGUMENTS]}" ] || {
                 _opts[PSQL_ARGUMENTS]='--tuples-only --pset=format=unaligned'

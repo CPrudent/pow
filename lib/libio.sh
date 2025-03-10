@@ -286,7 +286,6 @@ io_get_info_integration() {
     execute_query \
         --name IO_IS_TODO \
         --query "SELECT io_is_todo('$get_arg_io')" \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
         --output $_tmpfile || return $ERROR_CODE
     [ "$POW_DEBUG" = yes ] && cat $_tmpfile
     # each row contains: key=>value
