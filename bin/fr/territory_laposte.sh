@@ -103,7 +103,7 @@ io_history_begin \
                         " &&
                     execute_query \
                         --name FR_TERRITORY_LAPOSTE_AREA \
-                        --query "SELECT fr.set_address_area_to_now()"
+                        --query "SELECT fr.set_laposte_area_to_now()"
                     ;;
                 FR-TERRITORY-LAPOSTE-SUPRA)
                     io_count="

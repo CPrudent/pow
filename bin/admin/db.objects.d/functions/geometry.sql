@@ -990,6 +990,10 @@ DECLARE
     _area1 NUMERIC;
     _area2 NUMERIC;
 BEGIN
+    IF geom1 IS NULL OR geom2 IS NULL THEN
+        RETURN FALSE;
+    END IF;
+
     IF _dim1 != _dim2 THEN
         RETURN FALSE;
     END IF;
