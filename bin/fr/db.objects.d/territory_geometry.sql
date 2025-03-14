@@ -802,7 +802,7 @@ BEGIN
         -- gt 1 km2, why ?
         IF _holes.area > 1000000 THEN
             CALL public.log_info(FORMAT(
-                'Trou d une surface anormale grande (%), voisin de %, ignoré',
+                'Trou d une surface anormale grande (%s), voisin de %s, ignoré',
                 _holes.area,
                 _holes.codgeos_voisin
             ));
@@ -811,7 +811,7 @@ BEGIN
         END IF;
 
         CALL public.log_info(FORMAT(
-            'Trou d une surface de %, voisin de %, unification avec le premier voisin',
+            'Trou d une surface de %s, voisin de %s, unification avec le premier voisin',
             _holes.area,
             _holes.codgeos_voisin[1]
         ));
@@ -838,7 +838,7 @@ BEGIN
 
             IF ST_GeometryType(_new_geom) != 'ST_MultiPolygon' THEN
                 CALL public.log_info(FORMAT(
-                    'ERREUR géométrie non Multi % : %',
+                    'ERREUR géométrie non Multi %s : %s',
                     municipality_subsection,
                     _holes.codgeos_voisin[1]
                 ));

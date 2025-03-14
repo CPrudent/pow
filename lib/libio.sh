@@ -282,9 +282,10 @@ io_get_info_integration() {
     local -n _hash_ref=$get_arg_to_hash
     [ -n "$get_arg_to_string" ] && local -n _str_ref=$get_arg_to_string
     local _tmpfile
+
     get_tmp_file --tmpfile _tmpfile &&
     execute_query \
-        --name IO_IS_TODO \
+        --name "TODO-$get_arg_io" \
         --query "SELECT io_is_todo('$get_arg_io')" \
         --output $_tmpfile || return $ERROR_CODE
     [ "$POW_DEBUG" = yes ] && cat $_tmpfile
@@ -295,6 +296,7 @@ io_get_info_integration() {
     done < <(sed --expression 's/"//g' --expression 's/,/\n/g' < $_tmpfile | sed --expression 's/^[ ]*//')
     [ -n "$get_arg_to_string" ] && _str_ref=$(< $_tmpfile)
     rm $_tmpfile
+
     return $SUCCESS_CODE
 }
 

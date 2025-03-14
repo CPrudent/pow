@@ -600,9 +600,6 @@ BEGIN
             usecase => 'RELATION',
             municipality_subsection => municipality_subsection
         );
-
-        CALL public.log_info('Restauration Données (altitude)');
-        CALL fr.set_territory_altitude(usecase => 'RESTORE');
     ELSE
         CALL public.log_info('Mise à jour Données');
         CALL fr.set_territory_update(
@@ -619,6 +616,12 @@ BEGIN
         schema_name => 'fr',
         base_level => municipality_subsection
     );
+
+    -- restore altitude once 'COM' level known
+    IF NOT _update THEN
+        CALL public.log_info('Restauration Données (altitude)');
+        CALL fr.set_territory_altitude(usecase => 'RESTORE');
+    END IF;
 
     -- update name, population, ...
     PERFORM fr.update_territory();
@@ -687,7 +690,7 @@ BEGIN
     IF usecase = 'BACKUP' THEN
         DROP TABLE IF EXISTS fr.municipality_altitude_backup;
         CREATE TABLE fr.municipality_altitude_backup AS
-            SELECT codgeo, z_min, z_max
+            SELECT codgeo code, z_min, z_max
             FROM fr.territory
             WHERE
                 nivgeo = 'COM'
@@ -702,13 +705,12 @@ BEGIN
             z_max = ma.z_max
         FROM fr.municipality_altitude_backup ma
         WHERE
-            t.nivgeo = 'COM'
-            AND
-            t.codgeo = ma.code
+            t.nivgeo = 'COM' AND t.codgeo = ma.code
         ;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
         CALL public.log_info('Altitude : #' || _nrows || '  (RESTORE)');
     ELSIF usecase = 'UPDATE' THEN
+        -- once municipality events done! (w/ territory_altitude.sh)
         UPDATE fr.territory t SET
             z_min = ma.z_min,
             z_max = ma.z_max
