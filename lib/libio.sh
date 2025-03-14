@@ -618,7 +618,8 @@ io_get_list_online_available() {
     # download available dates
     io_download_file \
         --url "$_url" \
-        --common no \
+        --output_name $get_arg_name \
+        --common_save no \
         --output_directory "$POW_DIR_TMP" \
         --output_file "$(basename $_details_file_ref)" &&
     # array of available dates (desc), transforming / to -
@@ -661,9 +662,11 @@ POW_DOWNLOAD_ERROR=3                    # error (download)
 POW_DOWNLOAD_ERROR_CONDITION=4          # error (missing condition)
 POW_DOWNLOAD_ERROR_PROVISION=5          # error (provision)
 io_download_file() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             url:URL à télécharger;
+            output_name:nom du téléchargement;
             output_directory:dossier de destination;
             output_file:fichier de destination;
             overwrite_mode:avec/sans téléchargement, si fichier déjà présent;
@@ -671,62 +674,50 @@ io_download_file() {
             overwrite_value:valeur test de la condition (au delà téléchargement forcé);
             user:compte HTTP;
             password:mot de passe HTTP;
+            common_save:Copier sur le dépôt;
             common_subdir:copie dans un sous-dossier du dépôt;
-            common:Copier sur le dépôt;
             verbose:Ajouter des détails sur les traitements
         ' \
-        --args_o '
-            url;
-            output_directory
+        --args_m '
+            url;output_directory
         ' \
         --args_v '
             overwrite_mode:no|yes|NEWER;
             overwrite_key:DATE|TIME;
-            common:yes|no;
+            common_save:yes|no;
             verbose:yes|no
         ' \
         --args_d '
             overwrite_mode:yes;
             overwrite_key:DATE;
-            common:yes;
+            common_save:yes;
             verbose:no
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local -A _download=(
-        # deal space in URL, https://stackoverflow.com/questions/497908/is-a-url-allowed-to-contain-a-space
-        [URL]=${get_arg_url// /%20}
-        [DIR]="$get_arg_output_directory"
-        [FILE]="$get_arg_output_file"
-        [COMMON_SUBDIR]="$get_arg_common_subdir"
-        [COMMON]=$get_arg_common
-        [OVERWRITE_MODE]=$get_arg_overwrite_mode
-        [OVERWRITE_KEY]=$get_arg_overwrite_key
-        [OVERWRITE_VALUE]=$get_arg_overwrite_value
-        [USER]="$get_arg_user"
-        [PASSWORD]="$get_arg_password"
-        [VERBOSE]=$get_arg_verbose
-        [ID]=-1                             # found file ID (not necessary newer!)
-        [FOUND]=0                           # (0) no, (1) output_directory, (2) common
-    )
+    _opts[ID]=-1                             # found file ID (not necessary newer!)
+    _opts[FOUND]=0                           # (0) no, (1) output_directory, (2) common
+    # deal space in URL, https://stackoverflow.com/questions/497908/is-a-url-allowed-to-contain-a-space
+    _opts[URL]=${_opts[URL]// /%20}
 
-    [ -z "${_download[FILE]}" ] && _download[FILE]=$(basename "${get_arg_url}")
+    [ -z "${_opts[OUTPUT_FILE]}" ] && _opts[OUTPUT_FILE]=$(basename "${_opts[URL]}")
+    [ -z "${_opts[OUTPUT_NAME]}" ] && _opts[OUTPUT_NAME]=${_opts[OUTPUT_FILE]}
 
     local -a _files=(
-        [0]="${_download[DIR]}/${_download[FILE]}"
+        [0]="${_opts[OUTPUT_DIRECTORY]}/${_opts[OUTPUT_FILE]}"
         [1]="$POW_DIR_COMMON_GLOBAL_SCHEMA"
     )
-    [ -n "${_download[COMMON_SUBDIR]}" ] && {
-        mkdir -p "${_files[1]}/${_download[COMMON_SUBDIR]}"
-        _files[1]+="/${_download[COMMON_SUBDIR]}"
+    [ -n "${_opts[COMMON_SUBDIR]}" ] && {
+        mkdir -p "${_files[1]}/${_opts[COMMON_SUBDIR]}"
+        _files[1]+="/${_opts[COMMON_SUBDIR]}"
     }
-    _files[1]+="/${_download[FILE]}"
-    [ "${_download[VERBOSE]}" = yes ] && declare -p _download _files
+    _files[1]+="/${_opts[OUTPUT_FILE]}"
+    [ "${_opts[VERBOSE]}" = yes ] && declare -p _opts _files
 
     # yes mode, nothing to test!
-    [ "${_download[OVERWRITE_MODE]}" = yes ] || {
-        [ "${_download[OVERWRITE_MODE]}" = NEWER ] &&
-        [ -z "${_download[OVERWRITE_VALUE]}" ] && {
+    [ "${_opts[OVERWRITE_MODE]}" = yes ] || {
+        [ "${_opts[OVERWRITE_MODE]}" = NEWER ] &&
+        [ -z "${_opts[OVERWRITE_VALUE]}" ] && {
             log_error 'valeur test de la condition non renseignée (option --overwrite_value)'
             return $POW_DOWNLOAD_ERROR_CONDITION
         }
@@ -737,11 +728,11 @@ io_download_file() {
             [ -f "${_files[$_i]}" ] || continue
 
             # file found
-            _download[ID]=$_i
+            _opts[ID]=$_i
 
             # no mode, break (already found)
-            [ "${_download[OVERWRITE_MODE]}" = no ] && {
-                _download[FOUND]=$((_i +1))
+            [ "${_opts[OVERWRITE_MODE]}" = no ] && {
+                _opts[FOUND]=$((_i +1))
                 break
             }
 
@@ -749,60 +740,60 @@ io_download_file() {
             # last modification (of available data)
             local _epoch1=$(stat --format '%Y' "${_files[$_i]}")
             local _epoch2
-            case ${_download[OVERWRITE_KEY]} in
+            case ${_opts[OVERWRITE_KEY]} in
             DATE)
                 # given date
-                _epoch2=${_download[OVERWRITE_VALUE]}
+                _epoch2=${_opts[OVERWRITE_VALUE]}
                 ;;
             TIME)
                 # now - given time
-                _epoch2=$(($(date '+%s') - ${_download[OVERWRITE_VALUE]}))
+                _epoch2=$(($(date '+%s') - ${_opts[OVERWRITE_VALUE]}))
                 ;;
             esac
-            [ "${_download[VERBOSE]}" = yes ] && {
+            [ "${_opts[VERBOSE]}" = yes ] && {
                 log_info "epoch(${_files[$_i]})=$_epoch1"
                 log_info "epoch(OVERWRITE_VALUE)=$_epoch2"
             }
             #declare -p _i _epoch1 _epoch2
             [[ $_epoch1 -ge $_epoch2 ]] && {
                 # available data is enough (not need to download again)
-                _download[FOUND]=$((_i +1))
+                _opts[FOUND]=$((_i +1))
                 break
             }
         done
 
         # found localy (1), common (2)
         local _info
-        case ${_download[FOUND]} in
+        case ${_opts[FOUND]} in
         1)
-            _info="Téléchargement de ${_download[FILE]} inutile, car déjà présent"
+            _info="Téléchargement de ${_opts[OUTPUT_NAME]} inutile, car déjà présent"
             ;;
         2)
-            cp "${_files[1]}" "${_download[DIR]}"
-            _info="Téléchargement de ${_download[FILE]} inutile, car déjà présent dans le dépôt, copié dans ${_download[DIR]}"
+            cp "${_files[1]}" "${_opts[OUTPUT_DIRECTORY]}"
+            _info="Téléchargement de ${_opts[OUTPUT_NAME]} inutile, car déjà présent dans le dépôt, copié dans ${_opts[OUTPUT_DIRECTORY]}"
             ;;
         esac
 
-        [[ ${_download[FOUND]} -gt 0 ]] && {
+        [[ ${_opts[FOUND]} -gt 0 ]] && {
             log_info "$_info"
             return $POW_DOWNLOAD_ALREADY_AVAILABLE
         }
     }
 
-    log_info "Téléchargement de ${_download[FILE]}"
-    local _log_tmp_path="$POW_DIR_TMP/${_download[FILE]}.log"
-    local _log_archive_path="$POW_DIR_ARCHIVE/${_download[FILE]}.log"
+    log_info "Téléchargement de ${_opts[OUTPUT_NAME]}"
+    local _log_tmp_path="$POW_DIR_TMP/${_opts[OUTPUT_FILE]}.log"
+    local _log_archive_path="$POW_DIR_ARCHIVE/${_opts[OUTPUT_FILE]}.log"
     # user/password
     local _user _password
-    [ -n "${_download[USER]}" ] && _user="--user ${_download[USER]}"
-    [ -n "${_download[PASSWORD]}" ] && _password="--password ${_download[PASSWORD]}"
+    [ -n "${_opts[USER]}" ] && _user="--user ${_opts[USER]}"
+    [ -n "${_opts[PASSWORD]}" ] && _password="--password ${_opts[PASSWORD]}"
     # temporary downloaded file
     local _tmp_path
     get_tmp_file --tmpfile _tmp_path
-    [ "${_download[VERBOSE]}" = yes ] && declare -p _log_tmp_path _log_archive_path _tmp_path
+    [ "${_opts[VERBOSE]}" = yes ] && declare -p _log_tmp_path _log_archive_path _tmp_path
 
     wget \
-        ${_download[URL]} \
+        ${_opts[URL]} \
         --output-document "$_tmp_path" \
         --no-check-certificate \
         --progress=dot:mega \
@@ -813,7 +804,7 @@ io_download_file() {
         $_password \
         > "$_log_tmp_path" 2>&1 || {
             archive_file "$_log_tmp_path" &&
-            log_error "Erreur lors du téléchargement de ${_download[FILE]}, veuillez consulter $_log_archive_path"
+            log_error "Erreur lors du téléchargement de ${_opts[OUTPUT_NAME]}, veuillez consulter $_log_archive_path"
             [ -f "$_tmp_path" ] && rm --force "$_tmp_path"
             # use of previous file if present
             [ -f "${_files[0]}" ] && {
@@ -824,17 +815,17 @@ io_download_file() {
             return $POW_DOWNLOAD_ERROR
         }
 
-    [[ ${_download[ID]} -gt -1 ]] && {
+    [[ ${_opts[ID]} -gt -1 ]] && {
         # different from available version ?
-        diff --brief "$_tmp_path" "${_files[${_download[ID]}]}" > /dev/null
+        diff --brief "$_tmp_path" "${_files[${_opts[ID]}]}" > /dev/null
         [ $? -eq 0 ] && {
-            log_info "Téléchargement de ${_download[FILE]} inutile, car sans changement"
+            log_info "Téléchargement de ${_opts[OUTPUT_NAME]} inutile, car sans changement"
             # update common
             [ -f "${_files[1]}" ] && {
                 touch -m -r "$_tmp_path" "${_files[1]}" && rm "$_tmp_path"
             } || mv "$_tmp_path" "${_files[1]}"
             # copy on target (if not exists)
-            [ ! -f "${_files[0]}" ] && cp "${_files[1]}" "${_download[DIR]}"
+            [ ! -f "${_files[0]}" ] && cp "${_files[1]}" "${_opts[OUTPUT_DIRECTORY]}"
             archive_file "$_log_tmp_path"
             return $POW_DOWNLOAD_ALREADY_AVAILABLE
         }
@@ -842,14 +833,14 @@ io_download_file() {
 
     # result
     {
-        [ "${_download[COMMON]}" = no ] || {
-            log_info "Copie de ${_download[FILE]} sur le Dépôt" &&
+        [ "${_opts[COMMON_SAVE]}" = no ] || {
+            log_info "Copie de ${_opts[OUTPUT_FILE]} sur le Dépôt" &&
             cp "$_tmp_path" "${_files[1]}"
         }
     } &&
     mv "$_tmp_path" "${_files[0]}" &&
     archive_file "$_log_tmp_path" &&
-    log_info "Téléchargement avec succès de ${_download[FILE]}" || return $POW_DOWNLOAD_ERROR_PROVISION
+    log_info "Téléchargement avec succès de ${_opts[OUTPUT_NAME]}" || return $POW_DOWNLOAD_ERROR_PROVISION
 
     return $POW_DOWNLOAD_OK
 }
