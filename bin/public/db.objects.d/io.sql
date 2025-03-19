@@ -405,7 +405,7 @@ BEGIN
                 '''::DATE
                 '
             )
-        WHEN 'FR-TERRITORY-BANATIC-LIST' THEN
+        WHEN 'FR-TERRITORY-GOUV-EPCI-LIST' THEN
             CONCAT(
             '
                 (
@@ -443,7 +443,7 @@ BEGIN
                 )
             '
             )
-        WHEN 'FR-TERRITORY-BANATIC-SET' THEN
+        WHEN 'FR-TERRITORY-GOUV-EPCI-SET' THEN
             -- w/ district and w/o global municipality
             CONCAT(
             '
@@ -577,7 +577,7 @@ BEGIN
                     x.libgeo_l5 IS DISTINCT FROM t.libgeo_l5
                 )
             '
-        WHEN 'FR-TERRITORY-LAPOSTE-AREA-EVENT' THEN
+        WHEN 'FR-TERRITORY-LAPOSTE-EVENT' THEN
             CONCAT(
                 '
                     fr.laposte_address_area area

@@ -2,7 +2,23 @@
  * FR-TERRITORY postal definition
  */
 
-CREATE TABLE IF NOT EXISTS fr.territory_laposte (
+DO $$
+BEGIN
+    IF table_exists('fr', 'territory_laposte') THEN
+        ALTER TABLE fr.territory_laposte RENAME TO territory_laposte_supra;
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS fr.territory_laposte_area (
+    code_address VARCHAR NOT NULL,
+    dt_reference DATE NOT NULL,
+    co_postal CHAR(5) NOT NULL,
+    co_insee_commune CHAR(5) NOT NULL,
+    lb_l5_nn VARCHAR NULL,
+    lb_l6_nn VARCHAR NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS fr.territory_laposte_supra (
     nivgeo VARCHAR,
     codgeo VARCHAR,
     libgeo VARCHAR,
@@ -11,14 +27,117 @@ CREATE TABLE IF NOT EXISTS fr.territory_laposte (
     codgeo_dex_parent CHARACTER(6)
 );
 
-SELECT drop_all_functions_if_exists('fr', 'set_territory_laposte');
-CREATE OR REPLACE FUNCTION fr.set_territory_laposte()
-RETURNS BOOLEAN AS $$
+SELECT drop_all_functions_if_exists('fr', 'set_territory_laposte_area');
+CREATE OR REPLACE PROCEDURE fr.set_territory_laposte_area(
+    municipality_subsection VARCHAR DEFAULT 'ZA'
+)
+AS
+$proc$
+DECLARE
+    _nrows INTEGER;
 BEGIN
-    TRUNCATE TABLE fr.territory_laposte;
-    PERFORM public.drop_table_indexes('fr', 'territory_laposte');
+    TRUNCATE TABLE fr.territory_laposte_area;
+    PERFORM public.drop_table_indexes('fr', 'territory_laposte_area');
 
-    INSERT INTO fr.territory_laposte (
+    INSERT INTO fr.territory_laposte_area (
+        code_address,
+        dt_reference,
+        co_postal,
+        co_insee_commune,
+        lb_l5_nn,
+        lb_l6_nn
+    )
+    (
+        WITH
+        set_of_subsection AS (
+            SELECT
+                CONCAT_WS('-',
+                    co_insee_commune,
+                    co_postal
+                ) AS codgeo,
+                MAX(dt_reference) AS dt_reference,
+                co_postal,
+                co_insee_commune,
+                NULL l5,
+                CONCAT_WS(' ',
+                    co_postal,
+                    /* NOTE
+                    L5/L6 are inverted for Polynésie & Nouvelle Calédonie (98)
+                    */
+                    STRING_AGG(
+                        DISTINCT CASE WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN lb_l5_nn ELSE lb_ach_nn END,
+                        ', '
+                        ORDER BY CASE WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN lb_l5_nn ELSE lb_ach_nn END
+                    )
+                ) AS l6
+            FROM
+                fr.laposte_address_area
+            WHERE
+                municipality_subsection = 'COM_CP'
+            GROUP BY
+                co_postal, co_insee_commune
+
+            UNION
+
+            SELECT
+                co_cea,
+                dt_reference,
+                co_postal,
+                co_insee_commune,
+                CASE
+                WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN
+                    lb_ach_nn
+                ELSE
+                    lb_l5_nn
+                END,
+                CASE
+                WHEN co_insee_commune ~ '^98[78]' THEN
+                    COALESCE(lb_l5_nn, lb_ach_nn)
+                ELSE
+                    lb_ach_nn
+                END
+            FROM
+                fr.laposte_address_area
+            WHERE
+                municipality_subsection = 'ZA'
+                AND
+                fl_active
+                -- exclude MONACO
+                AND
+                co_insee_commune !~ '^99'
+        )
+    SELECT
+        codgeo,
+        dt_reference,
+        co_postal,
+        co_insee_commune,
+        l5,
+        l6
+    FROM
+        set_of_subsection
+    ;
+
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(FORMAT('LAPOSTE/AREA: insertion #%s %s',
+        _nrows,
+        municipality_subsection
+    ));
+
+    CREATE UNIQUE INDEX iux_territory_laposte_area ON fr.territory_laposte_area (code_address);
+END
+$proc$ LANGUAGE plpgsql;
+
+SELECT drop_all_functions_if_exists('fr', 'set_territory_laposte');
+SELECT drop_all_functions_if_exists('fr', 'set_territory_laposte_supra');
+CREATE OR REPLACE FUNCTION fr.set_territory_laposte_supra()
+RETURNS BOOLEAN AS $$
+DECLARE
+    _nrows INTEGER;
+BEGIN
+    TRUNCATE TABLE fr.territory_laposte_supra;
+    PERFORM public.drop_table_indexes('fr', 'territory_laposte_supra');
+
+    INSERT INTO fr.territory_laposte_supra (
         nivgeo,
         codgeo,
         codgeo_pdc_ppdc_parent,
@@ -31,74 +150,79 @@ BEGIN
                 ran.co_postal AS codgeo_postal,
                 rao.co_roc_site AS codgeo_pdc_ppdc,
                 COUNT(*) AS nb_adr_rao
-            FROM fr.address_view AS ran
-            INNER JOIN fr.laposte_delivery_address rao on rao.co_adr = ran.co_adr
-            GROUP BY ran.co_postal, rao.co_roc_site
+            FROM
+                fr.address_view AS ran
+                    INNER JOIN fr.laposte_delivery_address rao on rao.co_adr = ran.co_adr
+            GROUP BY
+                ran.co_postal, rao.co_roc_site
         ),
         cp_has_best_site AS (
             SELECT
                 codgeo_postal,
                 FIRST(codgeo_pdc_ppdc ORDER BY nb_adr_rao DESC) AS codgeo_pdc_ppdc_parent
-            FROM cp_has_site
-            GROUP BY codgeo_postal
+            FROM
+                cp_has_site
+            GROUP BY
+                codgeo_postal
         ),
         cp AS (
             SELECT
                 cp_has_best_site.codgeo_postal,
                 cp_has_best_site.codgeo_pdc_ppdc_parent,
-                site_source_orga.code_regate AS codgeo_regate_pdc_ppdc_parent,
-                site_source_orga.code_rattachement_ppdc_pdc AS codgeo_ppdc_pdc_parent,
-                site_source_orga.code_rattachement_dexc AS codgeo_dex_parent
+                lo.code_regate AS codgeo_regate_pdc_ppdc_parent,
+                lo.code_rattachement_ppdc_pdc AS codgeo_ppdc_pdc_parent,
+                lo.code_rattachement_dexc AS codgeo_dex_parent
             FROM cp_has_best_site
-            LEFT OUTER JOIN fr.laposte_organization AS site_source_orga
-                ON site_source_orga.code = cp_has_best_site.codgeo_pdc_ppdc_parent
+                LEFT OUTER JOIN fr.laposte_organization AS lo
+                    ON lo.code = cp_has_best_site.codgeo_pdc_ppdc_parent
         )
         SELECT
             'CP' AS nivgeo,
-            cp.codgeo_postal AS codgeo,
-            cp.codgeo_pdc_ppdc_parent,
-            cp.codgeo_ppdc_pdc_parent,
-            cp.codgeo_dex_parent
-        FROM cp
+            codgeo_postal AS codgeo,
+            codgeo_pdc_ppdc_parent,
+            codgeo_ppdc_pdc_parent,
+            codgeo_dex_parent
+        FROM
+            cp
     );
 
-    CREATE UNIQUE INDEX iux_territory_laposte_nivgeo_codgeo ON fr.territory_laposte (nivgeo, codgeo);
+    GET DIAGNOSTICS _nrows = ROW_COUNT;
+    CALL public.log_info(FORMAT('LAPOSTE/SUPRA: insertion #%s',
+        _nrows
+    ));
 
-    PERFORM fr.set_territory_laposte_to_now();
+    CREATE UNIQUE INDEX iux_territory_laposte_supra_nivgeo_codgeo ON fr.territory_laposte_supra (nivgeo, codgeo);
+
     IF fr.set_territory_supra(
-        table_name => 'territory_laposte',
+        table_name => 'territory_laposte_supra',
         schema_name => 'fr',
         base_level => 'CP'
     )
     THEN
         --Codes Postaux : libellé = code
-        UPDATE fr.territory_laposte
+        UPDATE fr.territory_laposte_supra
         SET libgeo = codgeo
         WHERE nivgeo = 'CP'
         ;
 
         --Zones Postales : libellés SOURCE-ORGA (avec métiers COURRIER, ELP) sinon sites manquants du RLP (réseau, enseigne)
-        UPDATE fr.territory_laposte
+        UPDATE fr.territory_laposte_supra tls
         SET libgeo =
             --On retire le mot "PARIS" qui est en préfixe du libellé de chaque DEX, sauf pour celle qui vraiment de Paris
             -- de même avec le mot "GENTILLY" en préfixe de la DEX OM (du métier ELP)
             CASE
-                WHEN territory_laposte.nivgeo = 'DEX' AND source_orga.libelle LIKE 'PARIS DEX%'
-                    THEN source_orga.libelle
+                WHEN tls.nivgeo = 'DEX' AND lo.libelle LIKE 'PARIS DEX%'
+                    THEN lo.libelle
                 ELSE
-                    REGEXP_REPLACE(source_orga.libelle, '^(PARIS|GENTILLY) ', '')
+                    REGEXP_REPLACE(lo.libelle, '^(PARIS|GENTILLY) ', '')
             END
-        FROM fr.laposte_organization source_orga WHERE source_orga.code = territory_laposte.codgeo
-        AND territory_laposte.nivgeo IN ('PDC_PPDC', 'PPDC_PDC', 'DEX')
+        FROM fr.laposte_organization lo WHERE lo.code = tls.codgeo
+        AND tls.nivgeo IN ('PDC_PPDC', 'PPDC_PDC', 'DEX')
         ;
     END IF;
 
     RETURN TRUE;
 END $$ LANGUAGE plpgsql;
-
--- oldies
-SELECT drop_all_functions_if_exists('fr', 'set_territory_laposte_to_now');
-SELECT drop_all_functions_if_exists('fr', 'update_territory_laposte_supra');
 
 -- not used
 SELECT public.drop_all_functions_if_exists('fr', 'get_municipality_to_date_from_laposte');
