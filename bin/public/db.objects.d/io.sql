@@ -60,7 +60,6 @@ BEGIN
 END
 $proc$ LANGUAGE plpgsql;
 
-SELECT public.drop_all_functions_if_exists('public', 'io_get_subscript_from_array_by_name');
 SELECT public.drop_all_functions_if_exists('public', 'io_get_id_from_array_by_name');
 CREATE OR REPLACE FUNCTION public.io_get_id_from_array_by_name(
     from_array public.io_list[],
@@ -152,7 +151,7 @@ BEGIN
         _last_io := (public.get_last_io(name => 'FR-TERRITORY-IGN')).date_data_end;
     ELSIF name = 'FR-TERRITORY-INSEE-EVENT' THEN
         _last_io := (public.get_last_io(name => 'FR-TERRITORY-INSEE')).date_data_end;
-    ELSIF name = 'FR-TERRITORY-LAPOSTE-AREA-EVENT' THEN
+    ELSIF name = 'FR-TERRITORY-LAPOSTE-EVENT' THEN
         _last_io := (public.get_last_io(name => 'FR-TERRITORY-LAPOSTE-AREA')).date_data_end;
     END IF;
 
