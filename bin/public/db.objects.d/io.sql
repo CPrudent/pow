@@ -34,7 +34,8 @@ $proc$ LANGUAGE plpgsql;
 
 CREATE TABLE IF NOT EXISTS public.io_relation (
     id INT NOT NULL,
-    id_child INT NULL
+    id_child INT NULL,
+    relation VARCHAR DEFAULT 'D'            -- D: depend, R: ressource
 );
 
 SELECT drop_all_functions_if_exists('public', 'set_io_relation_index');
@@ -49,13 +50,14 @@ $proc$ LANGUAGE plpgsql;
 SELECT public.drop_all_functions_if_exists('public', 'io_add_relation_if_not_exists');
 CREATE OR REPLACE PROCEDURE public.io_add_relation_if_not_exists(
     id1 INT,
-    id2 INT
+    id2 INT,
+    type VARCHAR DEFAULT 'D'
 )
 AS
 $proc$
 BEGIN
     IF NOT EXISTS(SELECT 1 FROM public.io_relation WHERE id = id1 AND id_child = id2 LIMIT 1) THEN
-        INSERT INTO public.io_relation(id, id_child) VALUES (id1, id2);
+        INSERT INTO public.io_relation(id, id_child, relation) VALUES (id1, id2, type);
     END IF;
 END
 $proc$ LANGUAGE plpgsql;
@@ -152,7 +154,7 @@ BEGIN
     ELSIF name = 'FR-TERRITORY-INSEE-EVENT' THEN
         _last_io := (public.get_last_io(name => 'FR-TERRITORY-INSEE')).date_data_end;
     ELSIF name = 'FR-TERRITORY-LAPOSTE-EVENT' THEN
-        _last_io := (public.get_last_io(name => 'FR-TERRITORY-LAPOSTE-AREA')).date_data_end;
+        _last_io := (public.get_last_io(name => 'FR-TERRITORY-LAPOSTE-EVENT')).date_data_end;
     END IF;
 
     _query := CASE name
@@ -684,22 +686,129 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+SELECT public.drop_all_functions_if_exists('public', 'io_evaluate');
+CREATE OR REPLACE FUNCTION public.io_evaluate(
+    ios IN VARCHAR[],
+    lasts IN public.io_history[],
+    currents IN public.io_history[],
+    raise_notice IN BOOLEAN DEFAULT FALSE,
+    todo OUT BOOLEAN,
+    result OUT VARCHAR
+)
+AS
+$func$
+DECLARE
+    _io_more_recents BOOLEAN[];
+    _io_with_differences BOOLEAN[];
+    _i INT;
+    _j INT;
+    _k INT;
+    _has_relation BOOLEAN;
+    _more_recent BOOLEAN;
+    _with_difference BOOLEAN;
+    _relation HSTORE;
+BEGIN
+    todo := FALSE;
+    _io_more_recents := ARRAY[]::BOOLEAN[];
+    _io_with_differences := ARRAY[]::BOOLEAN[];
+    FOR _i IN 1 .. ARRAY_UPPER(ios, 1) LOOP
+        _j := public.io_get_subscript_from_array_by_name(lasts, ios[_i]);
+        _k := public.io_get_subscript_from_array_by_name(currents, ios[_i]);
+        _has_relation := public.io_has_relation(name => ios[_i]);
+        IF raise_notice THEN
+            RAISE NOTICE 'IO=% HR=% TODO=%', ios[_i], _has_relation, todo;
+        END IF;
+        IF NOT _has_relation THEN
+            _with_difference := FALSE;
+            -- no history (1st time, IO condition) ?
+            IF _k = 0 THEN
+                -- eval difference to known if todo
+                _more_recent := TRUE;
+            ELSE
+                _more_recent := (lasts[_j].date_data_end > currents[_k].date_data_end);
+            END IF;
+        ELSE
+            _relation := public.io_is_todo(name => ios[_i]);
+            IF raise_notice THEN
+                RAISE NOTICE ' RELATION=% ', _relation;
+            END IF;
+            _more_recent := _relation->'TODO';
+            _with_difference := _more_recent;
+        END IF;
+        _io_more_recents := ARRAY_APPEND(_io_more_recents, _more_recent);
+        IF raise_notice THEN
+            RAISE NOTICE ' RECENT=% DIFF=%', _more_recent, _with_difference;
+            IF _k > 0 THEN
+                RAISE NOTICE ' LAST=% CURRENT=%', lasts[_j].date_data_end, currents[_k].date_data_end;
+            END IF;
+        END IF;
+
+        IF _io_more_recents[_i] AND NOT _has_relation AND NOT _with_difference THEN
+            _with_difference := public.io_with_difference_exists(name => ios[_i]);
+            IF raise_notice THEN
+                RAISE NOTICE ' DIFF=%', _with_difference;
+            END IF;
+        END IF;
+        _io_with_differences := ARRAY_APPEND(_io_with_differences, _with_difference);
+
+        IF NOT todo AND _io_more_recents[_i] AND _io_with_differences[_i] THEN
+            todo := TRUE;
+        END IF;
+
+        IF NOT _has_relation THEN
+            result := CONCAT_WS(',',
+                result,
+                FORMAT('"%s"=>%s',
+                    CONCAT(ios[_i], '_t'),
+                    _io_more_recents[_i] AND _io_with_differences[_i]
+                )/*,
+                FORMAT('"%s"=>%s',
+                    CONCAT(ios[_i], '_i'),
+                    COALESCE(lasts[_j].id, 0)
+                )*/
+            );
+        ELSE
+            result := CONCAT_WS(',',
+                result,
+                ((_relation - ARRAY['TODO', 'DEPENDS', 'RESSOURCES']) || HSTORE(CONCAT(ios[_i], '_t'), _relation->'TODO') || HSTORE(CONCAT(ios[_i], '_d'), _relation->'DEPENDS'))::TEXT
+            );
+        END IF;
+
+        -- last history, if defined (IO condition not exists in history, so id=0)
+        result := CONCAT_WS(',',
+            result,
+            FORMAT('"%s"=>%s',
+                CONCAT(ios[_i], '_i'),
+                CASE WHEN (_j > 0) THEN lasts[_j].id ELSE 0 END
+            )
+        );
+
+        IF raise_notice THEN
+            RAISE NOTICE ' RESULT=%', result;
+        END IF;
+    END LOOP;
+END
+$func$ LANGUAGE plpgsql;
+
 -- is IO to do ?
 SELECT public.drop_all_functions_if_exists('public', 'io_is_todo');
 CREATE OR REPLACE FUNCTION public.io_is_todo(
-    name VARCHAR
+    name VARCHAR,
+    raise_notice BOOLEAN DEFAULT FALSE
 )
 RETURNS HSTORE AS
 $func$
 DECLARE
-    _todo BOOLEAN;
+    _todo BOOLEAN := FALSE;
     _result VARCHAR;
+    _result2 VARCHAR;
     _error_message VARCHAR := CONCAT('IO ', io_is_todo.name, ' non valide');
-    _io_history public.io_history;
+    --_io_history public.io_history;
     _io_currents public.io_history[];
     _io_lasts public.io_history[];
     _io_depends VARCHAR[];
-    _io_missing VARCHAR[];
+    _io_ressources VARCHAR[];
+
     _io_more_recents BOOLEAN[];
     _io_with_differences BOOLEAN[];
     _i INT;
@@ -721,10 +830,10 @@ BEGIN
         IO condition allows comparison (not depended IO to process)
      */
     _result := NULL;
-    _io_history := (SELECT get_last_io(io_is_todo.name));
-    _todo := (_io_history IS NULL);
+    --_io_history := (SELECT get_last_io(io_is_todo.name));
+    --_todo := (_io_history IS NULL);
 
-    -- depended IO
+    -- depends (todo)
     _io_depends := ARRAY(
         SELECT
             (SELECT l.name FROM public.io_list l WHERE l.id = r.id_child) name
@@ -732,12 +841,26 @@ BEGIN
             public.io_relation r
         WHERE
             id = (SELECT id FROM public.io_list l WHERE l.name = io_is_todo.name)
+            AND
+            r.relation = 'D'
     );
 
-    IF _io_depends IS NULL THEN
+    -- ressources (list of complements)
+    _io_ressources := ARRAY(
+        SELECT
+            (SELECT l.name FROM public.io_list l WHERE l.id = r.id_child) name
+        FROM
+            public.io_relation r
+        WHERE
+            id = (SELECT id FROM public.io_list l WHERE l.name = io_is_todo.name)
+            AND
+            r.relation = 'R'
+    );
+
+    IF ARRAY_LENGTH(_io_depends, 1) = 0 THEN
         RAISE '% (pas de dépendance)', _error_message;
     ELSE
-        -- last history of depended IO
+        -- last history of IOs
         _io_lasts := ARRAY(
             SELECT
                 io_history
@@ -747,7 +870,10 @@ BEGIN
                 id = ANY(
                     SELECT h.id
                     FROM
-                        (SELECT UNNEST(_io_depends) name) l
+                        (   SELECT UNNEST(_io_depends) name
+                            UNION
+                            SELECT UNNEST(_io_ressources)
+                        ) l
                             JOIN get_last_io(l.name) h ON h.name = l.name
                 )
         );
@@ -773,13 +899,26 @@ BEGIN
         _result,
         FORMAT('"%s"=>"%s"', 'DEPENDS', ARRAY_TO_STRING(_io_depends, ':'))
     );
+    _result := CONCAT_WS(',',
+        _result,
+        FORMAT('"%s"=>"%s"', 'RESSOURCES', ARRAY_TO_STRING(_io_ressources, ':'))
+    );
 
+    IF raise_notice THEN
+        RAISE NOTICE 'D=(%)', ARRAY_TO_STRING(_io_depends, ':');
+        RAISE NOTICE 'R=(%)', ARRAY_TO_STRING(_io_ressources, ':');
+    END IF;
+
+    /*
     _io_more_recents := ARRAY[]::BOOLEAN[];
     _io_with_differences := ARRAY[]::BOOLEAN[];
     FOR _i IN 1 .. ARRAY_UPPER(_io_depends, 1) LOOP
         _j := public.io_get_subscript_from_array_by_name(_io_lasts, _io_depends[_i]);
         _k := public.io_get_subscript_from_array_by_name(_io_currents, _io_depends[_i]);
         _has_relation := public.io_has_relation(name => _io_depends[_i]);
+        IF raise_notice THEN
+            RAISE NOTICE 'IO=% HR=% TODO=%', _io_depends[_i], _has_relation, _todo;
+        END IF;
         IF NOT _has_relation THEN
             _with_difference := FALSE;
             -- no history (1st time, IO condition) ?
@@ -791,13 +930,25 @@ BEGIN
             END IF;
         ELSE
             _relation := public.io_is_todo(name => _io_depends[_i]);
+            IF raise_notice THEN
+                RAISE NOTICE ' RELATION=% ', _relation;
+            END IF;
             _more_recent := _relation->'TODO';
             _with_difference := _more_recent;
         END IF;
         _io_more_recents := ARRAY_APPEND(_io_more_recents, _more_recent);
+        IF raise_notice THEN
+            RAISE NOTICE ' RECENT=% DIFF=%', _more_recent, _with_difference;
+            IF _k > 0 THEN
+                RAISE NOTICE ' LAST=% CURRENT=%', _io_lasts[_j].date_data_end, _io_currents[_k].date_data_end;
+            END IF;
+        END IF;
 
         IF _io_more_recents[_i] AND NOT _has_relation AND NOT _with_difference THEN
             _with_difference := public.io_with_difference_exists(name => _io_depends[_i]);
+            IF raise_notice THEN
+                RAISE NOTICE ' DIFF=%', _with_difference;
+            END IF;
         END IF;
         _io_with_differences := ARRAY_APPEND(_io_with_differences, _with_difference);
 
@@ -820,7 +971,7 @@ BEGIN
         ELSE
             _result := CONCAT_WS(',',
                 _result,
-                ((_relation - ARRAY['TODO', 'DEPENDS']) || HSTORE(CONCAT(_io_depends[_i], '_t'), _relation->'TODO') || HSTORE(CONCAT(_io_depends[_i], '_d'), _relation->'DEPENDS'))::TEXT
+                ((_relation - ARRAY['TODO', 'DEPENDS', 'RESSOURCES']) || HSTORE(CONCAT(_io_depends[_i], '_t'), _relation->'TODO') || HSTORE(CONCAT(_io_depends[_i], '_d'), _relation->'DEPENDS'))::TEXT
             );
         END IF;
 
@@ -832,12 +983,56 @@ BEGIN
                 CASE WHEN (_j > 0) THEN _io_lasts[_j].id ELSE 0 END
             )
         );
-    END LOOP;
 
+        IF raise_notice THEN
+            RAISE NOTICE ' RESULT=%', _result;
+        END IF;
+    END LOOP;
+     */
+
+    SELECT
+        *
+    INTO
+        _todo,
+        _result2
+    FROM
+        io_evaluate(
+            ios => _io_depends,
+            lasts => _io_lasts,
+            currents => _io_currents,
+            raise_notice => raise_notice
+        )
+        ;
+    _result := CONCAT_WS(',',
+        _result,
+        _result2
+    );
+
+    -- todo w/ only depends
     _result := CONCAT_WS(',',
         _result,
         FORMAT('"TODO"=>%s', _todo)
     );
+
+    IF ARRAY_LENGTH(_io_ressources, 1) > 0 THEN
+        SELECT
+            *
+        INTO
+            _todo,
+            _result2
+        FROM
+            io_evaluate(
+                ios => _io_ressources,
+                lasts => _io_lasts,
+                currents => _io_currents,
+                raise_notice => raise_notice
+            )
+            ;
+        _result := CONCAT_WS(',',
+            _result,
+            _result2
+        );
+    END IF;
 
     RETURN _result::HSTORE;
 END

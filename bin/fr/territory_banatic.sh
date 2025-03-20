@@ -15,7 +15,7 @@ bash_args \
         force:no' \
     "$@" || exit $ERROR_CODE
 
-io_name=FR-TERRITORY-BANATIC
+io_name=FR-TERRITORY-GOUV-EPCI
 io_force="$get_arg_force"
 
 on_import_error() {

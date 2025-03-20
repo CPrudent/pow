@@ -9,15 +9,6 @@ BEGIN
     END IF;
 END $$;
 
-CREATE TABLE IF NOT EXISTS fr.territory_laposte_area (
-    code_address VARCHAR NOT NULL,
-    dt_reference DATE NOT NULL,
-    co_postal CHAR(5) NOT NULL,
-    co_insee_commune CHAR(5) NOT NULL,
-    lb_l5_nn VARCHAR NULL,
-    lb_l6_nn VARCHAR NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS fr.territory_laposte_supra (
     nivgeo VARCHAR,
     codgeo VARCHAR,
@@ -26,106 +17,6 @@ CREATE TABLE IF NOT EXISTS fr.territory_laposte_supra (
     codgeo_ppdc_pdc_parent CHARACTER(6),
     codgeo_dex_parent CHARACTER(6)
 );
-
-SELECT drop_all_functions_if_exists('fr', 'set_territory_laposte_area');
-CREATE OR REPLACE PROCEDURE fr.set_territory_laposte_area(
-    municipality_subsection VARCHAR DEFAULT 'ZA'
-)
-AS
-$proc$
-DECLARE
-    _nrows INTEGER;
-BEGIN
-    TRUNCATE TABLE fr.territory_laposte_area;
-    PERFORM public.drop_table_indexes('fr', 'territory_laposte_area');
-
-    INSERT INTO fr.territory_laposte_area (
-        code_address,
-        dt_reference,
-        co_postal,
-        co_insee_commune,
-        lb_l5_nn,
-        lb_l6_nn
-    )
-    (
-        WITH
-        set_of_subsection AS (
-            SELECT
-                CONCAT_WS('-',
-                    co_insee_commune,
-                    co_postal
-                ) AS codgeo,
-                MAX(dt_reference) AS dt_reference,
-                co_postal,
-                co_insee_commune,
-                NULL l5,
-                CONCAT_WS(' ',
-                    co_postal,
-                    /* NOTE
-                    L5/L6 are inverted for Polynésie & Nouvelle Calédonie (98)
-                    */
-                    STRING_AGG(
-                        DISTINCT CASE WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN lb_l5_nn ELSE lb_ach_nn END,
-                        ', '
-                        ORDER BY CASE WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN lb_l5_nn ELSE lb_ach_nn END
-                    )
-                ) AS l6
-            FROM
-                fr.laposte_address_area
-            WHERE
-                municipality_subsection = 'COM_CP'
-            GROUP BY
-                co_postal, co_insee_commune
-
-            UNION
-
-            SELECT
-                co_cea,
-                dt_reference,
-                co_postal,
-                co_insee_commune,
-                CASE
-                WHEN co_insee_commune ~ '^98[78]' AND lb_l5_nn IS NOT NULL THEN
-                    lb_ach_nn
-                ELSE
-                    lb_l5_nn
-                END,
-                CASE
-                WHEN co_insee_commune ~ '^98[78]' THEN
-                    COALESCE(lb_l5_nn, lb_ach_nn)
-                ELSE
-                    lb_ach_nn
-                END
-            FROM
-                fr.laposte_address_area
-            WHERE
-                municipality_subsection = 'ZA'
-                AND
-                fl_active
-                -- exclude MONACO
-                AND
-                co_insee_commune !~ '^99'
-        )
-    SELECT
-        codgeo,
-        dt_reference,
-        co_postal,
-        co_insee_commune,
-        l5,
-        l6
-    FROM
-        set_of_subsection
-    ;
-
-    GET DIAGNOSTICS _nrows = ROW_COUNT;
-    CALL public.log_info(FORMAT('LAPOSTE/AREA: insertion #%s %s',
-        _nrows,
-        municipality_subsection
-    ));
-
-    CREATE UNIQUE INDEX iux_territory_laposte_area ON fr.territory_laposte_area (code_address);
-END
-$proc$ LANGUAGE plpgsql;
 
 SELECT drop_all_functions_if_exists('fr', 'set_territory_laposte');
 SELECT drop_all_functions_if_exists('fr', 'set_territory_laposte_supra');

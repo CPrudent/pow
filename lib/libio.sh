@@ -536,7 +536,7 @@ io_get_property_online_available() {
         _re1='href="(http|ftp)[^" ]+CONTOURS-IRIS[^" ]*(FXX|FRA)[^" ]*\.7z[^" ]*"'
         _re2='[0-9]{4}-01-01'
         ;;
-    FR-TERRITORY-BANATIC)
+    FR-TERRITORY-GOUV-EPCI)
         _url_base='https://www.collectivites-locales.gouv.fr'
         _url_data=${_url_base}'/institutions/liste-et-composition-des-epci-fiscalite-propre'
         _re1='^[ ]+[0-9]{4}[ ]*'

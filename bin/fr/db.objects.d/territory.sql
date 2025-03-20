@@ -478,7 +478,7 @@ BEGIN
     END IF;
 
     -- BANATIC : SUPRA
-    IF (io_infos -> 'FR-TERRITORY-BANATIC-SET_t')::BOOLEAN THEN
+    IF (io_infos -> 'FR-TERRITORY-GOUV-EPCI-SET_t')::BOOLEAN THEN
         UPDATE fr.territory t SET
             dt_reference_geo = TIMEOFDAY()::DATE,
             codgeo_epci_parent = e.codgeo_epci

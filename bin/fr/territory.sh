@@ -78,7 +78,7 @@ io_get_info_integration --io $io_name --to_hash io_hash --to_string io_str || ex
 [ "$POW_DEBUG" = yes ] && { echo $io_str | tr ',' '\n'; }
 _not_ok=''
 # check up-to-date dependences (w/ municipality events)
-for _io in INSEE IGN LAPOSTE-AREA; do
+for _io in INSEE IGN LAPOSTE; do
     [ -n "$_not_ok" ] && _not_ok+=", "
     is_yes --var io_hash[FR-TERRITORY-${_io}-EVENT_t] && _not_ok+=$_io
 done
