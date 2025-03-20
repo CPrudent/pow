@@ -97,7 +97,7 @@ DECLARE
     _id INT := 0;
     _i INT;
 BEGIN
-    IF ARRAY_UPPER(from_array, 1) IS NULL THEN RETURN 0; END IF;
+    IF ARRAY_LENGTH(from_array, 1) = 0 THEN RETURN 0; END IF;
 
     FOR _i IN 1 .. ARRAY_UPPER(from_array, 1) LOOP
         IF from_array[_i].name = name THEN
@@ -751,6 +751,10 @@ BEGIN
         END IF;
         _io_with_differences := ARRAY_APPEND(_io_with_differences, _with_difference);
 
+        /* NOTE
+        an IO w/o depend and w/o entry in io_with_difference_exists() would be always TRUE
+        as example: FR-ADDRESS-LAPOSTE
+         */
         IF NOT todo AND _io_more_recents[_i] AND _io_with_differences[_i] THEN
             todo := TRUE;
         END IF;
@@ -761,11 +765,7 @@ BEGIN
                 FORMAT('"%s"=>%s',
                     CONCAT(ios[_i], '_t'),
                     _io_more_recents[_i] AND _io_with_differences[_i]
-                )/*,
-                FORMAT('"%s"=>%s',
-                    CONCAT(ios[_i], '_i'),
-                    COALESCE(lasts[_j].id, 0)
-                )*/
+                )
             );
         ELSE
             result := CONCAT_WS(',',
@@ -809,6 +809,7 @@ DECLARE
     _io_depends VARCHAR[];
     _io_ressources VARCHAR[];
 
+    /*
     _io_more_recents BOOLEAN[];
     _io_with_differences BOOLEAN[];
     _i INT;
@@ -818,6 +819,7 @@ DECLARE
     _more_recent BOOLEAN;
     _with_difference BOOLEAN;
     _relation HSTORE;
+     */
 BEGIN
     IF NOT EXISTS(SELECT 1 FROM public.io_list l WHERE l.name = io_is_todo.name) THEN
         RAISE '% (pas défini)', _error_message;
@@ -857,7 +859,7 @@ BEGIN
             r.relation = 'R'
     );
 
-    IF ARRAY_LENGTH(_io_depends, 1) = 0 THEN
+    IF CARDINALITY(_io_depends) = 0 THEN
         RAISE '% (pas de dépendance)', _error_message;
     ELSE
         -- last history of IOs
@@ -879,21 +881,30 @@ BEGIN
         );
     END IF;
 
-    -- current history of depended IO
-    _io_currents := ARRAY(
-        SELECT
-            io_history
-        FROM
-            public.io_history
-        WHERE
-            id = ANY(
-                SELECT io.id::TEXT::INT id
-                FROM (
-                    SELECT value id
-                    FROM JSON_EACH((SELECT (get_last_io(io_is_todo.name)).attributes::JSON))
-                ) io
-            )
-    );
+    /* NOTE
+    need to protect reading attributes, not always list of depends
+    as example: FR-ADDRESS-LAPOSTE
+     */
+    BEGIN
+        -- current history of depended IO
+        _io_currents := ARRAY(
+            SELECT
+                io_history
+            FROM
+                public.io_history
+            WHERE
+                id = ANY(
+                    SELECT io.id::TEXT::INT id
+                    FROM (
+                        SELECT value id
+                        FROM JSON_EACH((SELECT (get_last_io(io_is_todo.name)).attributes::JSON))
+                    ) io
+                )
+        );
+    EXCEPTION
+        WHEN OTHERS THEN
+            _io_currents := '{}'::io_history[];
+    END;
 
     _result := CONCAT_WS(',',
         _result,
@@ -1014,7 +1025,7 @@ BEGIN
         FORMAT('"TODO"=>%s', _todo)
     );
 
-    IF ARRAY_LENGTH(_io_ressources, 1) > 0 THEN
+    IF CARDINALITY(_io_ressources) > 0 THEN
         SELECT
             *
         INTO
