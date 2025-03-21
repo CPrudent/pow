@@ -3,21 +3,22 @@
     #--------------------------------------------------------------------------
     # synopsis
     #--
-    # build FR territories (LAPOSTE)
+    # build FR postal territories (LAPOSTE)
 
 on_integration_error() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             id:ID historique en cours
         ' \
         --args_o '
             id
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
     # history created?
-    [ "$POW_DEBUG" = yes ] && { echo "id=$get_arg_id"; }
-    [ -n "$get_arg_id" ] && io_history_end_ko --id $get_arg_id
+    [ "$POW_DEBUG" = yes ] && { echo "id=${_opts[ID]}"; }
+    [ -n "${_opts[ID]}" ] && io_history_end_ko --id ${_opts[ID]}
 
     return $ERROR_CODE
 }
