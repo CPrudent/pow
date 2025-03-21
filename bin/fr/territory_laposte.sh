@@ -39,7 +39,10 @@ pow_argv \
     --args_d '
         force:no
     ' \
-    "$@" || exit $ERROR_CODE
+    --args_p '
+        reset:no
+    ' \
+    --pow_argv io_vars "$@" || exit $ERROR_CODE
 
 # to declare on command line before calling function (else array)
 declare -A io_hash &&
