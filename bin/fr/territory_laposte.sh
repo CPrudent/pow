@@ -22,8 +22,15 @@ on_integration_error() {
     return $ERROR_CODE
 }
 
-bash_args \
-    --args_p '
+declare -A io_vars=(
+    [NAME]=FR-TERRITORY-LAPOSTE
+    [DATE]=$(date '+%F')
+    [TODO]=no
+    [ID_IO_MAIN]=
+    [ID_IO_STEP]=
+) &&
+pow_argv \
+    --args_n '
         force:Forcer le traitement même si celui-ci a déjà été fait
     ' \
     --args_v '
@@ -34,111 +41,116 @@ bash_args \
     ' \
     "$@" || exit $ERROR_CODE
 
-io_name=FR-TERRITORY-LAPOSTE
-io_date=$(date '+%F')
-io_force=$get_arg_force
-
 # to declare on command line before calling function (else array)
 declare -A io_hash &&
 set_env --schema_name fr &&
-io_get_info_integration --io $io_name --to_hash io_hash || exit $ERROR_CODE
+log_info 'Calcul des territoires postaux français' &&
+io_get_info_integration --io ${io_vars[NAME]} --to_hash io_hash || {
+    log_error "IO '${io_vars[NAME]}' en erreur!"
+    exit $ERROR_CODE
+}
 
-([ "$io_force" = no ] && (! is_yes --var io_hash[TODO])) && {
-    log_info "IO '$io_name' déjà à jour!"
-    exit $SUCCESS_CODE
+([ "${io_vars[FORCE]}" = no ] && (! is_yes --var io_hash[TODO])) && {
+    log_info "IO '${io_vars[NAME]}' déjà à jour!"
 } || {
     # already done or in progress ?
     io_todo_import \
-        --force $io_force \
-        --io $io_name \
-        --date_end "$io_date"
+        --force ${io_vars[FORCE]} \
+        --io ${io_vars[NAME]} \
+        --date_end "${io_vars[DATE]}"
     case $? in
+    $POW_IO_TODO)
+        io_vars[TODO]=yes
+        ;;
     $POW_IO_SUCCESSFUL)
-        exit $SUCCESS_CODE
+        log_info "IO '${io_vars[NAME]}' déjà à jour!"
         ;;
     $POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
+        log_error "IO '${io_vars[NAME]}' en erreur!"
         exit $ERROR_CODE
         ;;
     esac
 }
 
-log_info "Calcul des territoires postaux français" &&
-io_history_begin \
-    --io $io_name \
-    --date_begin "$io_date" \
-    --date_end "$io_date" \
-    --id io_main_id &&
-{
-    io_steps=(${io_hash[DEPENDS]//:/ })
-    io_ids=()
-    # default counts
-    declare -A io_counts=(
-        [FR-TERRITORY-LAPOSTE-EVENT]=39192      # infra (ZA or COM_CP)
-        [FR-TERRITORY-LAPOSTE-SUPRA]=8671       # supra
-    )
-    io_error=0
+[ "${io_vars[TODO]}" = yes ] && {
+    log_info "IO '${io_vars[NAME]}' mise à jour (dépendances)"
+    io_history_begin \
+        --io ${io_vars[NAME]} \
+        --date_begin "${io_vars[DATE]}" \
+        --date_end "${io_vars[DATE]}" \
+        --id io_vars[ID_IO_MAIN] &&
+    {
+        declare -a io_steps=(${io_hash[DEPENDS]//:/ })
+        declare -a io_ids=()
+        # default counts
+        declare -A io_counts=(
+            [FR-TERRITORY-LAPOSTE-EVENT]=39192      # infra (ZA or COM_CP)
+            [FR-TERRITORY-LAPOSTE-SUPRA]=8671       # supra
+        )
+        io_error=0
 
-    for (( io_step=0; io_step<${#io_steps[@]}; io_step++ )); do
-        # last id
-        io_ids[$io_step]=${io_hash[${io_steps[$io_step]}_i]}
-        # step todo or force it ?
-        ([ "$io_force" = no ] && (! is_yes --var io_hash[${io_steps[$io_step]}_t])) || {
-            io_history_begin \
-                --io ${io_steps[$io_step]} \
-                --date_begin "$io_date" \
-                --date_end "$io_date" \
-                --nrows_todo ${io_counts[${io_steps[$io_step]}]:-1} \
-                --id io_step_id && {
-                case ${io_steps[$io_step]} in
-                FR-TERRITORY-LAPOSTE-EVENT)
-                    io_count="
-                        SELECT COUNT(1) FROM fr.laposte_address_history
-                        WHERE change = 'MUNICIPALITY_EVENT' AND date_change = NOW()::DATE
-                        " &&
-                    execute_query \
-                        --name FR_TERRITORY_LAPOSTE_EVENT \
-                        --query "SELECT fr.set_laposte_area_to_now()"
-                    ;;
-                FR-TERRITORY-LAPOSTE-SUPRA)
-                    io_count="
-                        SELECT COUNT(1) FROM fr.territory_laposte
-                        " &&
-                    execute_query \
-                        --name FR_TERRITORY_LAPOSTE_SUPRA \
-                        --query "SELECT fr.set_territory_laposte()"
-                    ;;
-                esac
-            } &&
-            io_get_ids_integration \
-                --from HASH \
-                --name ${io_steps[$io_step]} \
-                --hash io_hash \
-                --ids _ids &&
-            io_history_end_ok \
-                --nrows_processed "($io_count)" \
-                --infos "$_ids" \
-                --id $io_step_id &&
-            io_ids[$io_step]=$io_step_id || {
-                on_integration_error --id $io_step_id
-                io_error=1
-                break
+        for (( io_step=0; io_step<${#io_steps[@]}; io_step++ )); do
+            # last id
+            io_ids[$io_step]=${io_hash[${io_steps[$io_step]}_i]}
+            # step todo or force it ?
+            ([ "${io_vars[FORCE]}" = no ] && (! is_yes --var io_hash[${io_steps[$io_step]}_t])) || {
+                io_history_begin \
+                    --io ${io_steps[$io_step]} \
+                    --date_begin "${io_vars[DATE]}" \
+                    --date_end "${io_vars[DATE]}" \
+                    --nrows_todo ${io_counts[${io_steps[$io_step]}]:-1} \
+                    --id io_vars[ID_IO_STEP] && {
+                    case ${io_steps[$io_step]} in
+                    FR-TERRITORY-LAPOSTE-EVENT)
+                        io_count="
+                            SELECT COUNT(1) FROM fr.laposte_address_history
+                            WHERE change = 'MUNICIPALITY_EVENT' AND date_change = NOW()::DATE
+                            " &&
+                        execute_query \
+                            --name FR_TERRITORY_LAPOSTE_EVENT \
+                            --query "SELECT fr.set_laposte_area_to_now()"
+                        ;;
+                    FR-TERRITORY-LAPOSTE-SUPRA)
+                        io_count="
+                            SELECT COUNT(1) FROM fr.territory_laposte_supra
+                            " &&
+                        execute_query \
+                            --name FR_TERRITORY_LAPOSTE_SUPRA \
+                            --query "SELECT fr.set_territory_laposte_supra()"
+                        ;;
+                    esac
+                } &&
+                io_get_ids_integration \
+                    --from HASH \
+                    --name ${io_steps[$io_step]} \
+                    --hash io_hash \
+                    --ids _ids &&
+                io_history_end_ok \
+                    --nrows_processed "($io_count)" \
+                    --infos "$_ids" \
+                    --id ${io_vars[ID_IO_STEP]} &&
+                io_ids[$io_step]=${io_vars[ID_IO_STEP]} || {
+                    on_integration_error --id ${io_vars[ID_IO_STEP]}
+                    io_error=1
+                    break
+                }
             }
-        }
-    done
-} &&
-[ $io_error -eq 0 ] && {
-    io_get_ids_integration \
-        --from ARRAY \
-        --hash io_hash \
-        --array io_ids \
-        --ids _ids &&
-    io_history_end_ok \
-        --nrows_processed 1 \
-        --infos "$_ids" \
-        --id $io_main_id
-} || {
-    on_integration_error --id $io_main_id
-    exit $ERROR_CODE
+        done
+    } &&
+    [ $io_error -eq 0 ] && {
+        io_get_ids_integration \
+            --from ARRAY \
+            --hash io_hash \
+            --array io_ids \
+            --ids _ids &&
+        io_history_end_ok \
+            --nrows_processed 1 \
+            --infos "$_ids" \
+            --id ${io_vars[ID_IO_MAIN]}
+    } || {
+        on_integration_error --id ${io_vars[ID_IO_MAIN]}
+        exit $ERROR_CODE
+    }
 }
 
 exit $SUCCESS_CODE

@@ -97,7 +97,7 @@ DECLARE
     _id INT := 0;
     _i INT;
 BEGIN
-    IF ARRAY_LENGTH(from_array, 1) = 0 THEN RETURN 0; END IF;
+    IF CARDINALITY(from_array) = 0 THEN RETURN 0; END IF;
 
     FOR _i IN 1 .. ARRAY_UPPER(from_array, 1) LOOP
         IF from_array[_i].name = name THEN
@@ -808,18 +808,6 @@ DECLARE
     _io_lasts public.io_history[];
     _io_depends VARCHAR[];
     _io_ressources VARCHAR[];
-
-    /*
-    _io_more_recents BOOLEAN[];
-    _io_with_differences BOOLEAN[];
-    _i INT;
-    _j INT;
-    _k INT;
-    _has_relation BOOLEAN;
-    _more_recent BOOLEAN;
-    _with_difference BOOLEAN;
-    _relation HSTORE;
-     */
 BEGIN
     IF NOT EXISTS(SELECT 1 FROM public.io_list l WHERE l.name = io_is_todo.name) THEN
         RAISE '% (pas défini)', _error_message;
@@ -831,9 +819,6 @@ BEGIN
      IO_WITH_DIFFERENCE: with difference compared with previous result
         IO condition allows comparison (not depended IO to process)
      */
-    _result := NULL;
-    --_io_history := (SELECT get_last_io(io_is_todo.name));
-    --_todo := (_io_history IS NULL);
 
     -- depends (todo)
     _io_depends := ARRAY(
@@ -860,33 +845,34 @@ BEGIN
     );
 
     IF CARDINALITY(_io_depends) = 0 THEN
-        RAISE '% (pas de dépendance)', _error_message;
-    ELSE
-        -- last history of IOs
-        _io_lasts := ARRAY(
-            SELECT
-                io_history
-            FROM
-                public.io_history
-            WHERE
-                id = ANY(
-                    SELECT h.id
-                    FROM
-                        (   SELECT UNNEST(_io_depends) name
-                            UNION
-                            SELECT UNNEST(_io_ressources)
-                        ) l
-                            JOIN get_last_io(l.name) h ON h.name = l.name
-                )
-        );
+        -- itself if no depends
+        _io_depends := ARRAY_APPEND(_io_depends, name);
     END IF;
+
+    -- last history of IOs
+    _io_lasts := ARRAY(
+        SELECT
+            io_history
+        FROM
+            public.io_history
+        WHERE
+            id = ANY(
+                SELECT h.id
+                FROM
+                    (   SELECT UNNEST(_io_depends) name
+                        UNION
+                        SELECT UNNEST(_io_ressources)
+                    ) l
+                        JOIN get_last_io(l.name) h ON h.name = l.name
+            )
+    );
 
     /* NOTE
     need to protect reading attributes, not always list of depends
     as example: FR-ADDRESS-LAPOSTE
      */
     BEGIN
-        -- current history of depended IO
+        -- current history of IOs
         _io_currents := ARRAY(
             SELECT
                 io_history
@@ -919,87 +905,6 @@ BEGIN
         RAISE NOTICE 'D=(%)', ARRAY_TO_STRING(_io_depends, ':');
         RAISE NOTICE 'R=(%)', ARRAY_TO_STRING(_io_ressources, ':');
     END IF;
-
-    /*
-    _io_more_recents := ARRAY[]::BOOLEAN[];
-    _io_with_differences := ARRAY[]::BOOLEAN[];
-    FOR _i IN 1 .. ARRAY_UPPER(_io_depends, 1) LOOP
-        _j := public.io_get_subscript_from_array_by_name(_io_lasts, _io_depends[_i]);
-        _k := public.io_get_subscript_from_array_by_name(_io_currents, _io_depends[_i]);
-        _has_relation := public.io_has_relation(name => _io_depends[_i]);
-        IF raise_notice THEN
-            RAISE NOTICE 'IO=% HR=% TODO=%', _io_depends[_i], _has_relation, _todo;
-        END IF;
-        IF NOT _has_relation THEN
-            _with_difference := FALSE;
-            -- no history (1st time, IO condition) ?
-            IF _k = 0 THEN
-                -- eval difference to known if todo
-                _more_recent := TRUE;
-            ELSE
-                _more_recent := (_io_lasts[_j].date_data_end > _io_currents[_k].date_data_end);
-            END IF;
-        ELSE
-            _relation := public.io_is_todo(name => _io_depends[_i]);
-            IF raise_notice THEN
-                RAISE NOTICE ' RELATION=% ', _relation;
-            END IF;
-            _more_recent := _relation->'TODO';
-            _with_difference := _more_recent;
-        END IF;
-        _io_more_recents := ARRAY_APPEND(_io_more_recents, _more_recent);
-        IF raise_notice THEN
-            RAISE NOTICE ' RECENT=% DIFF=%', _more_recent, _with_difference;
-            IF _k > 0 THEN
-                RAISE NOTICE ' LAST=% CURRENT=%', _io_lasts[_j].date_data_end, _io_currents[_k].date_data_end;
-            END IF;
-        END IF;
-
-        IF _io_more_recents[_i] AND NOT _has_relation AND NOT _with_difference THEN
-            _with_difference := public.io_with_difference_exists(name => _io_depends[_i]);
-            IF raise_notice THEN
-                RAISE NOTICE ' DIFF=%', _with_difference;
-            END IF;
-        END IF;
-        _io_with_differences := ARRAY_APPEND(_io_with_differences, _with_difference);
-
-        IF NOT _todo AND _io_more_recents[_i] AND _io_with_differences[_i] THEN
-            _todo := TRUE;
-        END IF;
-
-        IF NOT _has_relation THEN
-            _result := CONCAT_WS(',',
-                _result,
-                FORMAT('"%s"=>%s',
-                    CONCAT(_io_depends[_i], '_t'),
-                    _io_more_recents[_i] AND _io_with_differences[_i]
-                )/*,
-                FORMAT('"%s"=>%s',
-                    CONCAT(_io_depends[_i], '_i'),
-                    COALESCE(_io_lasts[_j].id, 0)
-                )*/
-            );
-        ELSE
-            _result := CONCAT_WS(',',
-                _result,
-                ((_relation - ARRAY['TODO', 'DEPENDS', 'RESSOURCES']) || HSTORE(CONCAT(_io_depends[_i], '_t'), _relation->'TODO') || HSTORE(CONCAT(_io_depends[_i], '_d'), _relation->'DEPENDS'))::TEXT
-            );
-        END IF;
-
-        -- last history, if defined (IO condition not exists in history, so id=0)
-        _result := CONCAT_WS(',',
-            _result,
-            FORMAT('"%s"=>%s',
-                CONCAT(_io_depends[_i], '_i'),
-                CASE WHEN (_j > 0) THEN _io_lasts[_j].id ELSE 0 END
-            )
-        );
-
-        IF raise_notice THEN
-            RAISE NOTICE ' RESULT=%', _result;
-        END IF;
-    END LOOP;
-     */
 
     SELECT
         *
