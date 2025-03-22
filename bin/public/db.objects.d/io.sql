@@ -242,9 +242,25 @@ BEGIN
             )
         WHEN 'FR-TERRITORY-IGN-GEOMETRY' THEN
             /* NOTE
+            2024
             equals (up to 100 m2), due to snap
             08043: IGN  4670930.49597246  POW:  4670999.204580205
             16280: IGN 21753110.937482286 POW: 21753178.733738717
+
+            2025
+            equals (up to 1.13 km2) MAX difference between areas
+                13096: DIFF=1.130   IGN=369.947   POW=371.077    Saintes-Maries-de-la-Mer
+                33333: DIFF=0.805   IGN=148.988   POW=149.793
+                48027: DIFF=0.674   IGN=167.183   POW=166.509
+                97311: DIFF=0.668   IGN=4292.274  POW=4291.606
+                83069: DIFF=0.652   IGN=133.567   POW=134.219
+
+            equals (up to 0.134%) percent MAX of difference between areas (IGN as reference)
+                85134: DIFF=0.134   IGN=0.209   POW=0.181
+                80651: DIFF=0.120   IGN=1.429   POW=1.600
+                10147: DIFF=0.104   IGN=0.598   POW=0.536
+                95633: DIFF=0.103   IGN=0.097   POW=0.107
+                76131: DIFF=0.099   IGN=1.248   POW=1.372
              */
             CONCAT(
             '
@@ -269,7 +285,7 @@ BEGIN
                 (
                     SELECT
                         codgeo,
-                        gm_contour_natif
+                        gm_contour
                     FROM
                         fr.territory
                     WHERE
@@ -280,7 +296,12 @@ BEGIN
 
                 ON x.codgeo = t.codgeo
             WHERE
-                NOT ST_Equals_with_Threshold(x.geom, t.gm_contour_natif, threshold => 100)
+                NOT ST_Equals_with_Threshold(
+                    geom1 => ST_Transform(x.geom, 4326),
+                    geom2 => t.gm_contour,
+                    threshold => 0.15,
+                    threshold_as => ''PERCENT''
+                )
             '
             )
         WHEN 'FR-TERRITORY-IGN-EVENT' THEN

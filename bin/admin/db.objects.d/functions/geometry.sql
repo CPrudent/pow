@@ -968,17 +968,19 @@ END
 $func$ LANGUAGE plpgsql;
 
 /*
- * seuil de 1 millième d'unité (du SRID donné des géométries à comparer) par défaut
- * si 3857, en mètre
- * si 4326, en degré
- * ...
+ * géométrie à 1 dimension (point)
+ *  par défaut, seuil de 1 millième d'unité (du SRID donné des géométries à comparer)
+ *   si 3857, en mètre, soit 1 mm d'écart accepté
+ *   si 4326, en degré
+ *   ...
  */
 SELECT public.drop_all_functions_if_exists('public', 'ST_Equals_with_Threshold');
 CREATE OR REPLACE FUNCTION public.ST_Equals_with_Threshold(
     geom1 GEOMETRY,
     geom2 GEOMETRY,
     threshold NUMERIC DEFAULT 0.001,
-    reference VARCHAR DEFAULT 'ONE'           -- 'TWO' if second
+    threshold_as VARCHAR DEFAULT 'VALUE',     -- VALUE | PERCENT
+    reference VARCHAR DEFAULT 'ONE'           -- ONE | TWO (if second)
 )
 RETURNS BOOLEAN AS
 $func$
@@ -1011,12 +1013,35 @@ BEGIN
                     (ST_Distance(ST_Transform(geom1, _srid2), geom2) <= threshold)
                 END
             END;
+    -- https://gis.stackexchange.com/questions/169422/how-does-st-area-in-postgis-work
     ELSIF _dim1 = 2 THEN
-        _area1 := ST_Area(ST_Transform(geom1, 4326)::GEOGRAPHY);
-        _area2 := ST_Area(ST_Transform(geom2, 4326)::GEOGRAPHY);
+        _area1 := ROUND(ST_Area(
+            (CASE
+            WHEN _srid1 = 4326 THEN geom1
+            ELSE ST_Transform(geom1, 4326)
+            END)::GEOGRAPHY)::NUMERIC / 1000000, 3)
+            ;
+        _area2 := ROUND(ST_Area(
+            (CASE
+            WHEN _srid2 = 4326 THEN geom2
+            ELSE ST_Transform(geom2, 4326)
+            END)::GEOGRAPHY)::NUMERIC / 1000000, 3)
+            ;
 
         RETURN
-            (ABS(_area1 - _area2) <= threshold);
+            CASE
+            WHEN threshold_as = 'VALUE' THEN
+                (ABS(_area1 - _area2) <= threshold)
+            WHEN threshold_as = 'PERCENT' THEN
+                CASE
+                WHEN reference = 'ONE' THEN
+                    ((ABS(_area1 - _area2)::NUMERIC / _area1) <= threshold)
+                WHEN reference = 'TWO' THEN
+                    ((ABS(_area1 - _area2)::NUMERIC / _area2) <= threshold)
+                END
+            END
+            ;
+
     ELSE
         RETURN FALSE;
     END IF;

@@ -668,8 +668,12 @@ BEGIN
     --
     IF part_todo & 8 = 8 THEN
         -- unit= m2, divide by 1O**(3*2) to obtain km2
-        -- see: https://gis.stackexchange.com/questions/169422/how-does-st-area-in-postgis-work
+        -- https://gis.stackexchange.com/questions/169422/how-does-st-area-in-postgis-work
 
+        /* NOTE
+        due to SNAP approximation, better choice would be IGN municipality
+        but only enable for administrative hierarchy (not postal one)!
+         */
         CALL public.log_info('Calcul superficie');
         UPDATE fr.territory
         SET superficie = ROUND(ST_Area(ST_Transform(gm_contour_natif, 4326)::GEOGRAPHY)::NUMERIC / 1000000, 2)
@@ -688,7 +692,7 @@ BEGIN
             schema_name => 'fr',
             table_name => 'territory',
             base_level => municipality_subsection,
-            columns_agg => ARRAY['gm_contour', 'superficie'],
+            columns_agg => ARRAY['superficie', 'gm_contour'],
             update_mode => TRUE
         );
 
