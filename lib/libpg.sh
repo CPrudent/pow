@@ -651,9 +651,9 @@ restore_table() {
                         #	execute_sql_command "DROP_SEQUENCE_${restore_table_sequence}.${restore_libelle}" "DROP SEQUENCE ${restore_schema_name}.${restore_table_sequence};COMMIT;" || { restore_table_reset; return $ERROR_CODE; }
                         #done
 
-                        drop_cascade=$(grep 'NOTICE: \+DROP cascade' "${POW_DIR_ARCHIVE}/DROP_TABLE_${restore_libelle}.notice.log") &&
+                        drop_cascade=$(grep 'NOTICE: \+DROP cascade' "${POW_DIR_ARCHIVE}/DROP_TABLE_${restore_libelle}-notice.log") &&
                         [ -n "$drop_cascade" ] &&
-                        log_info "${drop_cascade}, cf ${POW_DIR_ARCHIVE}/DROP_TABLE_${restore_libelle}.notice.log"
+                        log_info "${drop_cascade}, cf ${POW_DIR_ARCHIVE}/DROP_TABLE_${restore_libelle}-notice.log"
                     fi
                 elif [ "$_restore_section" = data ]; then
                     if [ "$restore_mode" = TRUNCATE ]; then

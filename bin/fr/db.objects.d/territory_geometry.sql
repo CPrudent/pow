@@ -633,7 +633,7 @@ BEGIN
         CALL fr.drop_territory_index(drop_case => 'ONLY_GEOM_WORLD');
 
         CALL public.log_info(
-            message => 'shell: watch -d -c "cat $POW_DIR_TMP/FR_TERRITORY_GEOMETRY.notice.log | grep -o -P ''[0-9]+ traité'' | grep -o -P ''[0-9]+'' | awk ''{ SUM += \$1 } END { print SUM }''"',
+            message => 'shell: watch -d -c "cat $POW_DIR_TMP/FR_TERRITORY_GEOMETRY-notice.log | grep -o -P ''[0-9]+ traité'' | grep -o -P ''[0-9]+'' | awk ''{ SUM += \$1 } END { print SUM }''"',
             stamped => FALSE
         );
 

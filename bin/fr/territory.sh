@@ -73,7 +73,7 @@ io_get_info_integration \
 }
 
 ([ "${io_vars[FORCE]}" = no ] && (! is_yes --var io_hash[TODO])) && {
-    log_info "IO '${io_vars[NAME]}' déjà à jour!"
+    log_info "IO '${io_vars[NAME]}' déjà à jour (dépendances)"
 } || {
     # already done or in progress ?
     io_todo_import \
@@ -167,9 +167,7 @@ io_steps=(${io_hash[RESSOURCES]//:/ })
                 --return io_vars[ID_IO_MAIN]
         }
     } &&
-    io_ids=() &&
     for (( io_step=0; io_step<${#io_steps[@]}; io_step++ )); do
-        io_ids[$io_step]=${io_hash[${io_steps[$io_step]}_i]}
         if ([ "${io_vars[FORCE]}" = yes ] || (is_yes --var io_hash[${io_steps[$io_step]}_t])); then
             io_history_begin \
                 --io ${io_steps[$io_step]} \
@@ -186,7 +184,7 @@ io_steps=(${io_hash[RESSOURCES]//:/ })
                     execute_query \
                         --name FR_TERRITORY_GEOMETRY \
                         --query "CALL fr.set_territory_geometry()" && {
-                            _error=$(grep '^ERREUR' $POW_DIR_ARCHIVE/FR_TERRITORY_GEOMETRY.notice.log)
+                            _error=$(grep '^ERREUR' $POW_DIR_ARCHIVE/FR_TERRITORY_GEOMETRY-notice.log)
                             [ -z "$_error" ] || {
                                 log_error "calcul des géométries : $_error"
                                 false
@@ -220,23 +218,16 @@ io_steps=(${io_hash[RESSOURCES]//:/ })
                 --nrows_processed "($io_count)" \
                 --infos "$_ids" \
                 --id ${io_vars[ID_IO_STEP]} &&
-            io_ids[$io_step]=${io_vars[ID_IO_STEP]} || {
+            # update main attributes w/ this ressource
+            _attr='"'${io_steps[$io_step]}'":'${io_vars[ID_IO_STEP]}
+            io_history_update \
+                --infos "$_attr" \
+                --id ${io_vars[ID_IO_MAIN]} || {
                 on_integration_error --id ${io_vars[ID_IO_STEP]}
-                io_error=1
-                break
+                exit $ERROR_CODE
             }
         fi
-    done &&
-    [ $io_error -eq 0 ] && {
-        io_get_ids_integration \
-            --from ARRAY \
-            --hash io_hash \
-            --array io_ids \
-            --ids _ids
-    } &&
-    io_history_update \
-        --infos "$_ids" \
-        --id ${io_vars[ID_IO_MAIN]}
+    done
 }
 
 exit $SUCCESS_CODE

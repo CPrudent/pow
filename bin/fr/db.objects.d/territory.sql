@@ -937,10 +937,9 @@ END $$ LANGUAGE plpgsql;
 
 -- eval next territories
 SELECT drop_all_functions_if_exists('fr', 'set_territory_next');
-CREATE OR REPLACE FUNCTION fr.set_territory_next(
+CREATE OR REPLACE PROCEDURE fr.set_territory_next(
     null_only BOOLEAN DEFAULT FALSE
 )
-RETURNS BOOLEAN
 AS $$
 DECLARE
     _nrows INTEGER;
@@ -1011,8 +1010,6 @@ BEGIN
     END IF;
     GET DIAGNOSTICS _nrows = ROW_COUNT;
     CALL public.log_info('Mise à jour Territoires : #' || _nrows || ' Voisinage (source POW)');
-
-    RETURN _nrows > 0;
 END $$ LANGUAGE plpgsql;
 
 /*
