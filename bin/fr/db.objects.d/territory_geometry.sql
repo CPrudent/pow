@@ -97,7 +97,7 @@ BEGIN
         municipality_with_one_subsection AS (
             SELECT
                 a.co_insee_commune,
-                a.co_cea
+                a.co_cea subsection
             FROM
                 fr.laposte_municipality_infra mi
                     JOIN fr.laposte_address_area a ON mi.co_insee_commune = a.co_insee_commune

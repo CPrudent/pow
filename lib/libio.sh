@@ -308,7 +308,8 @@ io_get_ids_integration() {
             hash:tableau associatif de description de cette intégration;
             array:tableau des IDs de cette intégration;
             ids:variable pour récupérer les IDs;
-            name:nom de la dépendance à traiter
+            group:groupe de la dépendance à traiter;
+            item:élément de la dépendance à traiter (tous si élément non renseigné)
         ' \
         --args_o '
             from;
@@ -328,18 +329,19 @@ io_get_ids_integration() {
 
     local -n _hash_ref=$get_arg_hash
     local -n _ids_ref=$get_arg_ids
-    local _depends _steps _step _array_ptr _i _key _value
+    local _group _steps _step _array_ptr _i _key _value
 
-    [ -n "${get_arg_name}" ] && _depends=${get_arg_name}_d || _depends=DEPENDS
+    [ -n "${get_arg_group}" ] && _group=${get_arg_group} || _group=DEPENDS
+    [[ $_group =~ DEPENDS|RESSOURCES ]] || _group+=_d
 
     case "$get_arg_from" in
     HASH)
-        [[ -v "_hash_ref[$_depends]" ]] || {
-            log_error "manque dépendances IO=($get_arg_name)"
+        [[ -v "_hash_ref[$_group]" ]] || {
+            log_error "manque dépendances IO=($_group)"
             return $ERROR_CODE
         }
 
-        _steps=(${_hash_ref[$_depends]//:/ })
+        _steps=(${_hash_ref[$_group]//:/ })
         _array_ptr="_steps[@]"
         ;;
     ARRAY)
@@ -348,7 +350,7 @@ io_get_ids_integration() {
             return $ERROR_CODE
         }
         local -n _array_ref=$get_arg_array
-        _steps=(${_hash_ref[$_depends]//:/ })
+        _steps=(${_hash_ref[$_group]//:/ })
         _array_ptr="_array_ref[@]"
         ;;
     esac
@@ -374,6 +376,7 @@ io_get_ids_integration() {
         _i=$((_i +1))
         # IO condition ?
         [ $_value -eq 0 ] && continue
+        [ -n "${get_arg_item}" ] && [ "${get_arg_item}" != "$_key" ] && continue
         [ -n "$_ids_ref" ] && _ids_ref+=,
         _ids_ref+=$(printf '"%s":%d' $_key $_value)
     done

@@ -255,12 +255,9 @@ BEGIN
                 97311: DIFF=0.668   IGN=4292.274  POW=4291.606
                 83069: DIFF=0.652   IGN=133.567   POW=134.219
 
-            equals (up to 0.134%) percent MAX of difference between areas (IGN as reference)
-                85134: DIFF=0.134   IGN=0.209   POW=0.181
-                80651: DIFF=0.120   IGN=1.429   POW=1.600
-                10147: DIFF=0.104   IGN=0.598   POW=0.536
-                95633: DIFF=0.103   IGN=0.097   POW=0.107
-                76131: DIFF=0.099   IGN=1.248   POW=1.372
+            equals (up to 0.357%) percent MAX of difference between areas (IGN as reference)
+                33103: DIFF=0.357   IGN=0.028   POW=0.018
+                29083: DIFF=0.258   IGN=0.554   POW=0.697
              */
             CONCAT(
             '
@@ -299,7 +296,7 @@ BEGIN
                 NOT ST_Equals_with_Threshold(
                     geom1 => ST_Transform(x.geom, 4326),
                     geom2 => t.gm_contour,
-                    threshold => 0.15,
+                    threshold => 0.5,
                     threshold_as => ''PERCENT''
                 )
             '

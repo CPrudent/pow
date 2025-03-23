@@ -114,7 +114,7 @@ io_history_begin \
             #breakpoint "${io_steps[$io_step]}: ids" &&
             io_get_ids_integration \
                 --from HASH \
-                --name ${io_steps[$io_step]} \
+                --group ${io_steps[$io_step]} \
                 --hash io_hash \
                 --ids _ids &&
             #breakpoint "${io_steps[$io_step]}: io end" &&

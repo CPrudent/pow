@@ -211,7 +211,8 @@ io_steps=(${io_hash[RESSOURCES]//:/ })
             } &&
             io_get_ids_integration \
                 --from HASH \
-                --name ${io_steps[$io_step]} \
+                --group RESSOURCES \
+                --item ${io_steps[$io_step]} \
                 --hash io_hash \
                 --ids _ids &&
             io_history_end_ok \
@@ -219,9 +220,8 @@ io_steps=(${io_hash[RESSOURCES]//:/ })
                 --infos "$_ids" \
                 --id ${io_vars[ID_IO_STEP]} &&
             # update main attributes w/ this ressource
-            _attr='"'${io_steps[$io_step]}'":'${io_vars[ID_IO_STEP]}
             io_history_update \
-                --infos "$_attr" \
+                --infos '{"'${io_steps[$io_step]}'":'${io_vars[ID_IO_STEP]}'}' \
                 --id ${io_vars[ID_IO_MAIN]} || {
                 on_integration_error --id ${io_vars[ID_IO_STEP]}
                 exit $ERROR_CODE

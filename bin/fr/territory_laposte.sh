@@ -112,7 +112,10 @@ io_get_info_integration --io ${io_vars[NAME]} --to_hash io_hash || {
                             " &&
                         execute_query \
                             --name FR_TERRITORY_LAPOSTE_EVENT \
-                            --query "SELECT fr.set_laposte_area_to_now()"
+                            --query "
+                                SELECT fr.set_laposte_area_to_now();
+                                CALL fr.set_laposte_municipality_infra();
+                            "
                         ;;
                     FR-TERRITORY-LAPOSTE-SUPRA)
                         io_count="
@@ -126,7 +129,7 @@ io_get_info_integration --io ${io_vars[NAME]} --to_hash io_hash || {
                 } &&
                 io_get_ids_integration \
                     --from HASH \
-                    --name ${io_steps[$io_step]} \
+                    --group ${io_steps[$io_step]} \
                     --hash io_hash \
                     --ids _ids &&
                 io_history_end_ok \
