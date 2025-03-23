@@ -29,6 +29,103 @@ BEGIN
 END
 $proc$ LANGUAGE plpgsql;
 
+-- build LAPOSTE municipality : nof infra (area)
+SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_street_type');
+CREATE OR REPLACE PROCEDURE fr.set_laposte_municipality_infra(
+    municipality_subsection VARCHAR DEFAULT 'ZA',
+    location_min INT DEFAULT 4
+)
+AS
+$proc$
+DECLARE
+    _nrows INT[];
+    _n1 INT;
+    _n2 INT;
+BEGIN
+    DROP TABLE IF EXISTS fr.laposte_municipality_infra;
+    CREATE TABLE fr.laposte_municipality_infra AS (
+        SELECT
+            co_insee_commune,
+            COUNT(*) n_infra
+        FROM
+            fr.laposte_address_area
+        WHERE
+            fl_active
+        GROUP BY
+            co_insee_commune
+    )
+    ;
+    _nrows[1] := COUNT(*) FROM fr.laposte_municipality_infra WHERE n_infra = 1;
+    _nrows[2] := COUNT(*) FROM fr.laposte_municipality_infra WHERE n_infra > 1;
+
+    DROP TABLE fr.laposte_municipality_infra_with_delivery;
+    CREATE TABLE IF NOT EXISTS fr.laposte_municipality_infra_with_delivery AS (
+        WITH
+        municipality_subsection AS (
+            SELECT DISTINCT
+                a.co_insee_commune,
+                a.co_cea subsection
+            FROM
+                fr.laposte_municipality_infra mi
+                    JOIN fr.laposte_address_area a ON mi.co_insee_commune = a.co_insee_commune
+            WHERE
+                a.fl_active
+                AND
+                mi.n_infra > 1
+        )
+        SELECT *
+        FROM municipality_subsection ms
+        WHERE
+            EXISTS(
+                SELECT 1
+                FROM
+                    fr.delivery_point_view dp
+                WHERE
+                    -- exception: all PDI w/ fl_active FALSE !
+                    (
+                        (ms.co_insee_commune != '24364' AND fl_active)
+                        OR
+                        (ms.co_insee_commune = '24364')
+                    )
+                    AND fl_diffusable
+                    AND pdi_etat = 1
+                    AND pdi_visible
+                    -- at least street-center (=4)
+                    AND pdi_no_type_localisation_coord >= location_min
+                    AND pdi_coord_native IS NOT NULL
+                    AND dp.co_insee_commune = ms.co_insee_commune
+                    AND ms.subsection = dp.co_adr_za
+            )
+    )
+    ;
+
+    WITH
+    subsection AS (
+        SELECT
+            co_insee_commune,
+            COUNT(*) n_infra
+        FROM
+            fr.laposte_municipality_infra_with_delivery
+        GROUP BY
+            co_insee_commune
+    )
+    SELECT
+        SUM(CASE WHEN n_infra = 1 THEN 1 ELSE 0 END),
+        SUM(CASE WHEN n_infra > 1 THEN 1 ELSE 0 END)
+    INTO
+        _n1,
+        _n2
+    FROM
+        subsection
+    ;
+
+    CALL public.log_info(CONCAT('Communes (1-INFRA): ', _nrows[1]));
+    CALL public.log_info(CONCAT('Communes (n-INFRA): ', _nrows[2]));
+    CALL public.log_info(CONCAT('Communes (n-INFRA  mono-distribuées) : ', _n1));
+    CALL public.log_info(CONCAT('Communes (n-INFRA multi-distribuées) : ', _n2));
+END;
+$proc$ LANGUAGE plpgsql;
+
 -- build LAPOSTE street : list of types
 SELECT public.drop_all_functions_if_exists('fr', 'set_laposte_address_street_type');
 CREATE OR REPLACE PROCEDURE fr.set_laposte_address_street_type()
@@ -1204,6 +1301,11 @@ BEGIN
     SELECT public.drop_table_indexes('fr', 'constant');
     CALL fr.set_laposte_address_fault_list();
     CALL fr.set_laposte_address_fault_exception();
+
+    -- MUNICIPALITY/AREA ------------------------------------------------------
+
+    -- evaluate infra by municipality
+    CALL fr.set_laposte_municipality_infra();
 
     -- STREET -----------------------------------------------------------------
 

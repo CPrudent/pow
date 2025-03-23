@@ -65,9 +65,7 @@ SELECT drop_all_functions_if_exists('fr', 'set_municipality_subsection_geometry'
 CREATE OR REPLACE PROCEDURE fr.set_municipality_subsection_geometry(
     part_todo INT DEFAULT 1 | 2 | 4 | 8,
     municipality_subsection VARCHAR DEFAULT 'ZA',
-    location_min INT DEFAULT 4,
-    department_test VARCHAR DEFAULT NULL,
-    fix BOOLEAN DEFAULT FALSE
+    location_min INT DEFAULT 4
 )
 AS
 $proc$
@@ -89,83 +87,45 @@ BEGIN
         UPDATE fr.territory
         SET gm_contour_natif = NULL
         WHERE nivgeo = municipality_subsection
-        -- TEST only evaluated for the department (others being reseted)
-        AND (department_test IS NULL OR territory.codgeo_dep_parent = department_test);
-    END IF;
-
-    -- trick to work w/ already created table
-    IF NOT fix THEN
-        CALL public.log_info('Création INSEE, infra (avec PDI)');
-        DROP TABLE IF EXISTS tmp_municipality_subsection_with_delivery;
-        CREATE TEMPORARY TABLE tmp_municipality_subsection_with_delivery AS (
-            WITH
-            municipality_subsection AS (
-                SELECT DISTINCT
-                    co_insee_commune,
-                    CASE
-                        WHEN municipality_subsection = 'ZA' THEN co_cea
-                        WHEN municipality_subsection = 'COM_CP' THEN co_postal
-                    END subsection
-                FROM
-                    fr.laposte_address_area
-                WHERE
-                    fl_active
-                    AND (
-                        department_test IS NULL
-                        OR
-                        co_insee_departement = department_test
-                    )
-            )
-            SELECT *
-            FROM
-                municipality_subsection ms
-            WHERE
-                EXISTS(
-                    SELECT 1
-                    FROM
-                        fr.delivery_point_view dp
-                    WHERE
-                        fl_active
-                        AND fl_diffusable
-                        AND pdi_etat = 1
-                        AND pdi_visible
-                        -- at least street-center (=4)
-                        AND pdi_no_type_localisation_coord >= location_min
-                        AND pdi_coord_native IS NOT NULL
-
-                        AND dp.co_insee_commune = ms.co_insee_commune
-                        AND ms.subsection = CASE
-                            WHEN municipality_subsection = 'ZA' THEN dp.co_adr_za
-                            WHEN municipality_subsection = 'COM_CP' THEN dp.co_postal
-                            END
-                )
-            );
-        GET DIAGNOSTICS _nrows = ROW_COUNT;
-        CALL public.log_info('Total #' || _nrows);
+        ;
     END IF;
 
     IF part_todo & 2 = 2 THEN
         -- only 1 subsection : same contour as municipality
-        -- w/ delivery points (well known as PDI)
         CALL public.log_info('INSEE avec 1-INFRA');
         WITH
-        municipality_only_one_subsection AS (
+        municipality_with_one_subsection AS (
             SELECT
-                co_insee_commune
+                a.co_insee_commune,
+                a.co_cea
             FROM
-                tmp_municipality_subsection_with_delivery
-            GROUP BY
-                co_insee_commune
-            HAVING
-                COUNT(*) = 1
-        ),
-        municipality_subsection_only_one AS (
-            SELECT
-                msd.co_insee_commune,
-                msd.subsection
-            FROM
-                tmp_municipality_subsection_with_delivery msd
-                    JOIN municipality_only_one_subsection m1s ON msd.co_insee_commune = m1s.co_insee_commune
+                fr.laposte_municipality_infra mi
+                    JOIN fr.laposte_address_area a ON mi.co_insee_commune = a.co_insee_commune
+            WHERE
+                a.fl_active
+                AND
+                mi.n_infra = 1
+            UNION
+            (
+                WITH
+                subsection AS (
+                    SELECT
+                        co_insee_commune,
+                        COUNT(*) n_infra
+                    FROM
+                        fr.laposte_municipality_infra_with_delivery
+                    GROUP BY
+                        co_insee_commune
+                )
+                SELECT
+                    miwd.co_insee_commune,
+                    miwd.subsection
+                FROM
+                    subsection s
+                        JOIN fr.laposte_municipality_infra_with_delivery miwd ON s.co_insee_commune = miwd.co_insee_commune
+                WHERE
+                    s.n_infra = 1
+            )
         )
         UPDATE fr.territory t
         SET gm_contour_natif = im.geom
@@ -187,7 +147,7 @@ BEGIN
             FROM
                 fr.ign_municipal_district
         ) AS im
-            JOIN municipality_subsection_only_one m1s
+            JOIN municipality_with_one_subsection m1s
             ON im.codgeo = m1s.co_insee_commune
         WHERE
             t.nivgeo = municipality_subsection
@@ -199,36 +159,28 @@ BEGIN
         CALL public.log_info('Total #' || _nrows);
     END IF;
 
-    IF part_todo & 4 = 4 THEN
-        -- execution: ~ 1'10" per municipality
-        CALL public.log_info('INSEE avec n-INFRA');
-
-        -- #1272 municipalities, so long time!
+    -- prepare for next steps
+    IF part_todo & 12 > 0 THEN
+        -- ~ #1300 municipalities, ~1h30'
         DROP TABLE IF EXISTS tmp_municipality_with_many_subsections;
         CREATE TEMPORARY TABLE tmp_municipality_with_many_subsections AS (
         WITH
-        municipality_only_one_subsection AS (
+        subsection AS (
             SELECT
-                co_insee_commune
+                co_insee_commune,
+                COUNT(*) n_infra
             FROM
-                tmp_municipality_subsection_with_delivery
+                fr.laposte_municipality_infra_with_delivery
             GROUP BY
                 co_insee_commune
-            HAVING
-                COUNT(*) = 1
         )
         SELECT DISTINCT
-            co_insee_commune
+            miwd.co_insee_commune
         FROM
-            tmp_municipality_subsection_with_delivery mns
+            subsection s
+                JOIN fr.laposte_municipality_infra_with_delivery miwd ON s.co_insee_commune = miwd.co_insee_commune
         WHERE
-            NOT EXISTS(
-                SELECT 1
-                FROM
-                    municipality_only_one_subsection m1s
-                WHERE
-                    m1s.co_insee_commune = mns.co_insee_commune
-            )
+            s.n_infra > 1
         );
 
         -- nof cases
@@ -236,6 +188,11 @@ BEGIN
         INTO _total
         FROM tmp_municipality_with_many_subsections
         ;
+    END IF;
+
+    IF part_todo & 4 = 4 THEN
+        CALL public.log_info('INSEE avec n-INFRA');
+
         _message := 'n-INFRA %s %s/%s (%s%%)';
         _current := 1;
 
@@ -300,7 +257,12 @@ BEGIN
                     FROM fr.delivery_point_view
                     WHERE
                         co_insee_commune = _municipality_with_many_subsections.co_insee_commune
-                        AND fl_active
+                        -- exception: all PDI w/ fl_active FALSE !
+                        AND (
+                            (co_insee_commune != '24364' AND fl_active)
+                            OR
+                            (co_insee_commune = '24364')
+                        )
                         AND fl_diffusable
                         AND pdi_etat = 1
                         AND pdi_visible
@@ -476,12 +438,6 @@ BEGIN
         test w/ a department can be KO for municipalities near another missing department !
          */
 
-        IF _total = 0 THEN
-            SELECT COUNT(1)
-            INTO _total
-            FROM tmp_municipality_with_many_subsections
-            ;
-        END IF;
         _message := 'ST_Snap autour %s %s/%s (%s%%) : #%s';
         _current := 1;
 
@@ -667,14 +623,13 @@ BEGIN
     -- PART/4 : eval area (municipality_subsection first), then SUPRA for (simplified geometry, area)
     --
     IF part_todo & 8 = 8 THEN
-        -- unit= m2, divide by 1O**(3*2) to obtain km2
-        -- https://gis.stackexchange.com/questions/169422/how-does-st-area-in-postgis-work
-
         /* NOTE
         due to SNAP approximation, better choice would be IGN municipality
         but only enable for administrative hierarchy (not postal one)!
          */
         CALL public.log_info('Calcul superficie');
+        -- unit= m2, divide by 1O**(3*2) to obtain km2
+        -- https://gis.stackexchange.com/questions/169422/how-does-st-area-in-postgis-work
         UPDATE fr.territory
         SET superficie = ROUND(ST_Area(ST_Transform(gm_contour_natif, 4326)::GEOGRAPHY)::NUMERIC / 1000000, 2)
         WHERE nivgeo = municipality_subsection;
