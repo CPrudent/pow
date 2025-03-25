@@ -624,7 +624,7 @@ bal_deal_obsolescence() {
                     )
                 " \
                 --return _counters &&
-            log_info "comptage: ${_counters}"
+            log_info "Obsolescence (Commune,Voie,Numéro): ${_counters}"
         }
     } || return $ERROR_CODE
 
