@@ -4,7 +4,8 @@
     # define PG
 
 # execute query (from file or command line)
-# execute_query --name GET_VERSION --query 'select version()' --psql_arguments 'tuples-only:pset=format=unaligned' --return _pg_version
+#  retrieve version of PostgreSQL:
+#  execute_query --name GET_VERSION --query 'select version()' --return _pg_version
 execute_query() {
     local -A _opts &&
     pow_argv \
@@ -192,25 +193,26 @@ execute_query() {
 
 # check if table exists
 table_exists() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             schema_name:schéma PG;
             table_name:nom de la table
         ' \
-        --args_o '
+        --args_m '
             table_name
         ' \
         --args_d '
             schema_name:public
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
     local _exists _rc=$ERROR_CODE
+
     execute_query \
-        --name "TABLE_EXISTS_${get_arg_schema_name}_${get_arg_table_name}" \
-        --query "SELECT table_exists('${get_arg_schema_name}', '${get_arg_table_name}')" \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
-        --return _exists || return $ERROR_CODE
+        --name "TABLE_EXISTS_${_opts[SCHEMA_NAME]}_${_opts[TABLE_NAME]}" \
+        --query "SELECT table_exists('${_opts[SCHEMA_NAME]}', '${_opts[TABLE_NAME]}')" \
+        --return _exists &&
     is_yes --var _exists && _rc=$SUCCESS_CODE
 
     return $_rc
@@ -218,36 +220,39 @@ table_exists() {
 
 # check if view exists
 view_exists() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             schema_name:schéma PG;
-            view:nom de la vue
+            view_name:nom de la vue
         ' \
-        --args_o '
-            view
+        --args_m '
+            view_name
         ' \
         --args_d '
             schema_name:public
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
     local _exists _rc=$ERROR_CODE
+
     execute_query \
-        --name "VIEW_EXISTS_${get_arg_schema_name}_${get_arg_table_name}" \
-        --query "SELECT view_exists('${get_arg_schema_name}', '${get_arg_table_name}')" \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
-        --return _exists || return $ERROR_CODE
+        --name "VIEW_EXISTS_${_opts[SCHEMA_NAME]}_${_opts[VIEW_NAME]}" \
+        --query "SELECT view_exists('${_opts[SCHEMA_NAME]}', '${_opts[VIEW_NAME]}')" \
+        --return _exists &&
     is_yes --var _exists && _rc=$SUCCESS_CODE
 
     return $_rc
 }
 
+# optimize table (date, index, statistics, ...)
 vacuum() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             schema_name:schéma PG;
-            table_name:nom de la table;
-            mode:Mode VACUUM à appliquer;
+            table_name:nom de la table (ou liste de noms séparés par une virgule);
+            mode:mode VACUUM à appliquer;
             dry_run:traitement sans exécution SQL
         ' \
         --args_v '
@@ -258,62 +263,57 @@ vacuum() {
             mode:ANALYZE;
             dry_run:no
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local _vacuum_schema=$get_arg_schema_name
-    local _vacuum_table=$get_arg_table_name
-    local _vacuum_mode=$get_arg_mode
-    local _dry_run=$get_arg_dry_run
-
-    if [ -z "$_vacuum_mode" ]; then
-        log_error "Veuillez préciser avec le paramètre -m le mode de VACUUM (ANALYZE, FULL). Exemple : -m ANALYZE"
+    if [ -z "${_opts[MODE]}" ]; then
+        log_error "Veuillez préciser le mode de VACUUM (ANALYZE, FULL). Exemple : --mode ANALYZE"
         return $ERROR_CODE
     fi
 
-    local _log_tmp_path=$POW_DIR_TMP/vacuum_$_vacuum_mode
-    if [ -n "$_vacuum_schema" ]; then
-        _log_tmp_path=${_log_tmp_path}_$_vacuum_schema
-    fi
-    if [ -n "$_vacuum_table" ]; then
-        _log_tmp_path=${_log_tmp_path}_$_vacuum_table
-    fi
-    _log_tmp_path=${_log_tmp_path}.log
+    local _log_tmp_path=$POW_DIR_TMP/vacuum_${_opts[MODE]}
+    [ -n "${_opts[SCHEMA_NAME]}" ] && _log_tmp_path+=_${_opts[SCHEMA_NAME]}
+    [ -n "${_opts[TABLE_NAME]}" ] && _log_tmp_path+=_${_opts[TABLE_NAME]}
+    _log_tmp_path+=.log
 
-    if [ "$_vacuum_mode" = FULL ]; then
+    local _vacuum_options
+    case "_${_opts[MODE]}" in
+    FULL)
         df -h >> $_log_tmp_path
         _vacuum_options='(FULL, ANALYZE, VERBOSE)'
-    elif [ "$_vacuum_mode" = ANALYZE ]; then
+        ;;
+    ANALYZE)
         _vacuum_options='(ANALYZE, VERBOSE)'
-    fi
+        ;;
+    esac
 
     # with table?
-    if [ -n "$_vacuum_table" ]; then
-        local _list_tables=(${_vacuum_table//,/ }) _table
+    if [ -n "${_opts[SCHEMA_TABLE]}" ]; then
+        local _list_tables=(${_opts[SCHEMA_TABLE]//,/ }) _table
         for ((_i=0; _i<${#_list_tables[*]}; _i++)); do
             _table="${_list_tables[$_i]}"
             #echo "$_table"
             [[ ! ${_table} =~ ^[^\.]*\..*$ ]] && {
                 # with schema?
-                [ -n "$_vacuum_schema" ] && _table=${_vacuum_schema}.${_table}
+                [ -n "${_opts[SCHEMA_NAME]}" ] && _table=${_opts[SCHEMA_NAME]}.${_table}
             }
 
-            log_info "VACUUM ${_vacuum_mode} sur la table ${_table}"
-            [ "$_dry_run" = no ] && {
+            log_info "VACUUM ${_opts[MODE]} sur la table ${_table}"
+            [ "${_opts[DRY_RUN]}" = no ] && {
                 execute_query \
-                    --name "VACUUM_${_vacuum_mode}_${_vacuum_table}" \
+                    --name "VACUUM_${_opts[MODE]}_${_opts[SCHEMA_TABLE]}" \
                     --query "VACUUM ${_vacuum_options} ${_table}" || {
-                    log_error "Erreur VACUUM ${_vacuum_mode} sur la table ${_table}"
+                    log_error "Erreur VACUUM ${_opts[MODE]} sur la table ${_table}"
                     return $ERROR_CODE
                 }
             }
         done
-    elif [ -n "$_vacuum_schema" ]; then
-        log_info "Début VACUUM "$_vacuum_mode" sur les tables du schéma $_vacuum_schema"
+    elif [ -n "${_opts[SCHEMA_NAME]}" ]; then
+        log_info "Début VACUUM "${_opts[MODE]}" sur les tables du schéma ${_opts[SCHEMA_NAME]}"
 
         # old method (w/ psql command \dt)
         # http://stackoverflow.com/questions/29710618/vacuum-analyze-all-tables-in-a-schema-postgres
-        # vacuum only the tables in the schema named in the variable $_vacuum_schema
-        # --query "\dt $_vacuum_schema."'*' \
+        # vacuum only the tables in the schema named in the variable ${_opts[SCHEMA_NAME]}
+        # --query "\dt ${_opts[SCHEMA_NAME]}."'*' \
         # local _tables_array=($(echo $_all | tr ' ' '\n' | cut --delimiter '|' --field 2))
 
         local _vacuum_tables _vacuum_table
@@ -322,37 +322,39 @@ vacuum() {
             --query "
                 SELECT STRING_AGG(table_name, ' ')
                 FROM information_schema.tables
-                WHERE table_schema = '$_vacuum_schema'
+                WHERE table_schema = '${_opts[SCHEMA_NAME]}'
                 AND table_type = 'BASE TABLE'
             " \
-            --psql_arguments 'tuples-only:pset=format=unaligned' \
             --return _vacuum_tables || return $ERROR_CODE
         local _tables_array=($_vacuum_tables)
         for _vacuum_table in "${_tables_array[@]}"
         do
-            execute_query \
-                --name "VACUUM_${_vacuum_mode}_${_vacuum_schema}.${_vacuum_table}" \
-                --query "VACUUM ${_vacuum_options} ${_vacuum_schema}.${_vacuum_table}" || {
-                log_error "Erreur VACUUM ${_vacuum_mode} sur la table ${_vacuum_schema}.${_vacuum_table}"
-                return $ERROR_CODE
+            log_info "VACUUM ${_opts[MODE]} sur la table ${_vacuum_table}"
+            [ "${_opts[DRY_RUN]}" = no ] && {
+                execute_query \
+                    --name "VACUUM_${_opts[MODE]}_${_opts[SCHEMA_NAME]}.${_vacuum_table}" \
+                    --query "VACUUM ${_vacuum_options} ${_opts[SCHEMA_NAME]}.${_vacuum_table}" || {
+                    log_error "Erreur VACUUM ${_opts[MODE]} sur la table ${_opts[SCHEMA_NAME]}.${_vacuum_table}"
+                    return $ERROR_CODE
+                }
             }
         done
 
-        log_info "Fin VACUUM "$_vacuum_mode" sur les tables du schéma $_vacuum_schema"
+        log_info "Fin VACUUM "${_opts[MODE]}" sur les tables du schéma ${_opts[SCHEMA_NAME]}"
     else
-        log_info "Début VACUUM "$_vacuum_mode" sur la base de données"
-        execute_query \
-            --name "VACUUM_${_vacuum_mode}_ALL" \
-            --query "VACUUM ${_vacuum_options}" || {
-            log_error "Erreur VACUUM ${_vacuum_mode} sur la base de données"
-            return $ERROR_CODE
+        log_info "Début VACUUM "${_opts[MODE]}" sur la base de données"
+        [ "${_opts[DRY_RUN]}" = no ] && {
+            execute_query \
+                --name "VACUUM_${_opts[MODE]}_ALL" \
+                --query "VACUUM ${_vacuum_options}" || {
+                log_error "Erreur VACUUM ${_opts[MODE]} sur la base de données"
+                return $ERROR_CODE
+            }
         }
-        log_info "Fin VACUUM "$_vacuum_mode" sur la base de données"
+        log_info "Fin VACUUM "${_opts[MODE]}" sur la base de données"
     fi
 
-    if [ "$_vacuum_mode" = FULL ]; then
-        df -h >> $_log_tmp_path
-    fi
+    [ "${_opts[MODE]}" = FULL ] && df -h >> $_log_tmp_path
     [ -f "$_log_tmp_path" ] && archive_file $_log_tmp_path
 
     return $SUCCESS_CODE
@@ -360,34 +362,32 @@ vacuum() {
 
 # get sequences of a table
 get_table_sequences() {
-    bash_args	\
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             schema_name:Nom du schema de la table;
             table_name:Nom de la table
         ' \
-        --args_o '
+        --args_m '
             schema_name;
             table_name
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local schema_name="$get_arg_schema_name"
-    local table_name="$get_arg_table_name"
     local _sequences
 
     # NOTE : sequence name can be prefixed by schema
     execute_query \
         --name GET_TABLE_SEQUENCES \
-        --query "
-            SELECT STRING_AGG(sequence_name, ',') AS liste_sequences_names FROM (
-                SELECT (REGEXP_MATCHES(column_default, 'nextval\(''(${schema_name}\.)?([^:]+)''::regclass\)'))[2] AS sequence_name
+        --query "SELECT STRING_AGG(sequence_name, ',')
+            FROM (
+                SELECT (REGEXP_MATCHES(column_default, 'nextval\(''(${_opts[SCHEMA_NAME]}\.)?([^:]+)''::regclass\)'))[2] AS sequence_name
                 FROM information_schema.columns
-                WHERE table_schema = '${schema_name}'
-                AND table_name = '${table_name}'
+                WHERE table_schema = '${_opts[SCHEMA_NAME]}'
+                AND table_name = '${_opts[TABLE_NAME]}'
                 AND column_default LIKE 'nextval(%'
-            ) AS t
-            " \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
+            ) t
+        " \
         --return _sequences || return $ERROR_CODE
 
     echo $_sequences
@@ -397,17 +397,18 @@ get_table_sequences() {
 
 # backup table
 backup_table() {
-    bash_args	\
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             schema_name:Nom du schéma de la table à copier;
             table_name:Nom de la table à copier;
-            output:Sortie écran ou chemin complet vers un fichier de sauvegarde;
+            output:Sortie standard ou chemin complet vers un fichier;
             format:Format de la sauvegarde;
-            sections:Liste des sections à restaurer
+            sections:Liste des sections à sauvegarder
         ' \
-        --args_o '
+        --args_m '
             schema_name;
-            table_name;
+            table_name
         ' \
         --args_v '
             format:custom|plain|directory|tar;
@@ -418,65 +419,61 @@ backup_table() {
             format:custom;
             sections:pre-data+data+post-data
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local backup_schema_name="$get_arg_schema_name"
-    local backup_table_name="$get_arg_table_name"
-    local backup_libelle="${backup_schema_name}.${backup_table_name}"
-    local backup_log=${POW_DIR_ARCHIVE}/pg_dump_${backup_libelle}.log
-    local backup_format="$get_arg_format"
-    local backup_output="$get_arg_output"
-    local backup_sections=(${get_arg_sections//+/ })
-    local pg_dump_file_arg pg_dump_section_arg pg_dump_sequence_arg backup_table_sequences backup_table_sequences_array backup_table_sequence
+    local _backup_label="${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]}"
+    local _backup_log=${POW_DIR_ARCHIVE}/pg_dump_${_backup_label}.log
+    local _backup_sections=(${_opts[SECTIONS]//+/ }) _backup_section
+    local _backup_arg_file _backup_arg_section _backup_arg_sequence
+    local _backup_table_sequences _backup_table_sequences_array _backup_table_sequence
     local _previous_log_echo=$POW_LOG_ECHO
 
     backup_table_reset() {
         set_log_echo $_previous_log_echo
     }
 
-    [ "$backup_output" = 'STDOUT' ] && set_log_echo no
+    [ "${_opts[OUTPUT]}" = STDOUT ] && set_log_echo no
+    log_info "Début de sauvegarde de ${_backup_label} dans ${_opts[OUTPUT]}, sections ${_backup_sections[*]}"
 
-    log_info "Début de sauvegarde de ${backup_libelle} dans $backup_output, sections ${backup_sections[*]}"
-
-    local backup_output_tmp="$POW_DIR_TMP/${backup_libelle}_$$.backup"
-    [ "$backup_output" != 'STDOUT' ] && pg_dump_file_arg="--file=$backup_output_tmp"
-    for _backup_section in ${backup_sections[@]}; do
-        pg_dump_section_arg+="--section $_backup_section "
+    local _backup_output_tmp="$POW_DIR_TMP/${_backup_label}_$$.backup"
+    [ "${_opts[OUTPUT]}" != STDOUT ] && _backup_arg_file="--file=$_backup_output_tmp"
+    for _backup_section in ${_backup_sections[@]}; do
+        _backup_arg_section+="--section $_backup_section "
     done
 
-    # not useful because sequences are native into backup?
-    #backup_table_sequences=$(get_table_sequences --schema_name ${backup_schema_name} --table_name ${backup_table_name})
-    backup_table_sequences_array=(${backup_table_sequences//,/ })
-    for backup_table_sequence in ${backup_table_sequences_array[@]}; do
-        pg_dump_sequence_arg+="--table $backup_table_sequence "
-    done
+    # not useful because sequences are native into pg_dump?
+    #     _backup_table_sequences=$(get_table_sequences --schema_name ${_opts[SCHEMA_NAME]} --table_name ${_opts[TABLE_NAME]})
+    #     _backup_table_sequences_array=(${_backup_table_sequences//,/ })
+    #     for _backup_table_sequence in ${_backup_table_sequences_array[@]}; do
+    #         _backup_arg_sequence+="--table $_backup_table_sequence "
+    #     done
 
     # available disk space
-    df -h $POW_DIR_DATA > $backup_log
+    df -h $POW_DIR_DATA > $_backup_log
 
     $POW_DIR_PG_BIN/pg_dump	\
         --host=$POW_PG_HOST	\
         --port=$POW_PG_PORT \
         --username=$POW_PG_USERNAME \
         --no-password \
-        --format=$backup_format \
+        --format=${_opts[FORMAT]} \
         --verbose \
-        $pg_dump_file_arg \
-        $pg_dump_section_arg \
-        $pg_dump_sequence_arg \
-        --table=${backup_schema_name}.${backup_table_name} \
+        $_backup_arg_file \
+        $_backup_arg_section \
+        $_backup_arg_sequence \
+        --table=${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]} \
         $POW_PG_DBNAME \
-        2>> $backup_log
+        2>> $_backup_log
 
     local _return_code=$?
     [ $_return_code -ne 0 ] && {
-        log_error "Erreur pg_dump($_return_code), cf $backup_log"
-        [ "$backup_output" != 'STDOUT' ] && [ -f "$backup_output_tmp" ] && rm $backup_output_tmp
+        log_error "Erreur pg_dump($_return_code), voir $_backup_log"
+        [ "${_opts[OUTPUT]}" != STDOUT ] && [ -f "$_backup_output_tmp" ] && rm $_backup_output_tmp
         backup_table_reset
         return $ERROR_CODE
     }
-    [ "$backup_output" != 'STDOUT' ] && mv $backup_output_tmp $backup_output
-    log_info "Fin de sauvegarde"
+    [ "${_opts[OUTPUT]}" != STDOUT ] && mv $_backup_output_tmp ${_opts[OUTPUT]}
+    log_info "Fin de sauvegarde de ${_backup_label}"
     backup_table_reset
 
     return $SUCCESS_CODE
@@ -484,12 +481,13 @@ backup_table() {
 
 # restore table (from backup)
 restore_table() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             schema_name:Nom du schéma de la table à restaurer;
             table_name:Nom de la table à restaurer;
-            restore_mode:Mode de restauration;
-            input:Entrée écran ou chemin complet vers un fichier de sauvegarde;
+            mode:Mode de restauration;
+            input:Entrée standard ou chemin complet vers un fichier;
             backup_before_restore:Faut-il sauvegarder la table avant la restauration ?;
             sql_to_filter:Requête SQL pour filtrer la table à recopier;
             restore_on_error:Faut-il restaurer automatiquement la table si la restauration initiale échoue ?;
@@ -498,178 +496,174 @@ restore_table() {
             wait_file_minute:combien de temps en minutes faut-il attendre que le fichier de sauvegarde soit présent ?;
             max_age_file_minute:quel age maximum en minutes doit avoir le fichier de sauvegarde ?
         ' \
-        --args_o '
+        --args_m '
             schema_name;
             table_name
         ' \
         --args_v '
-            restore_mode:TRUNCATE|DROP|APPEND;
+            mode:TRUNCATE|DROP|APPEND;
             backup_before_restore:yes|no;
             restore_on_error:yes|no;
             sections:pre-data+data+post-data|pre-data|data|post-data|data+post-data;
             subprocess:yes|no
         ' \
         --args_d '
-            restore_mode:TRUNCATE;
+            mode:TRUNCATE;
             backup_before_restore:yes;
             input:STDIN;
             restore_on_error:yes;
             sections:pre-data+data+post-data;
             subprocess:no;
-            wait_file_minute:0;max_age_file_minute:0
+            wait_file_minute:0;
+            max_age_file_minute:0
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local restore_schema_name="$get_arg_schema_name"
-    local restore_table_name="$get_arg_table_name"
     #ATTENTION : maintenir avec la variable de même nom dans la fonction copy_tables
-    local restore_libelle="${restore_schema_name}.${restore_table_name}"
-    local restore_mode="$get_arg_restore_mode"
-    local restore_input="$get_arg_input"
-    local backup_before_restore="$get_arg_backup_before_restore"
-    #ATTENTION : maintenir avec la variable de même nom dans la fonction copy_tables
-    local backup_before_restore_full_path=$POW_DIR_TMP/${restore_libelle}_$$.backup.before_restore
-    local restore_on_error="$get_arg_restore_on_error"
-    local table_to_restore_exists=no
-    local _restore_sections=(${get_arg_sections//+/ })
-    local restore_sections=()
-    local sql_to_filter="$get_arg_sql_to_filter"
-    local subprocess=$get_arg_subprocess
-    local wait_file_minute=$get_arg_wait_file_minute
-    local max_age_file_minute=$get_arg_max_age_file_minute
-    local pg_restore_file_arg pg_restore_section_arg restore_table_sequences restore_table_sequences_array restore_table_sequence
+    local _restore_label="${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]}"
+    local _backup_before_restore_path=$POW_DIR_TMP/${_restore_label}_$$.backup.before_restore
 
-    if [ "${restore_input}" != STDIN ]; then
-        wait_for_file --file_path "$restore_input" --wait_file_minute $wait_file_minute --max_age_file_minute $max_age_file_minute || {
-            log_error "${FUNCNAME[0]}: La sauvegarde $restore_input n'existe pas"
+    local _table_to_restore_exists=no
+    local _restore_sections=(${_opts[SECTIONS]//+/ })
+    local _restore_sections_todo=()
+    local _restore_arg_file _restore_arg_section
+    local _restore_table_sequences _restore_table_sequences_array _restore_table_sequence
+
+    if [ "${_opts[INPUT]}" != STDIN ]; then
+        wait_for_file \
+            --file_path "${_opts[INPUT]}" \
+            --wait_file_minute ${_opts[WAIT_FILE_MINUTE]} \
+            --max_age_file_minute ${_opts[MAX_AGE_FILE_MINUTE]} || {
+            log_error "${FUNCNAME[0]}: La sauvegarde ${_opts[INPUT]} n'existe pas"
             return $ERROR_CODE
         }
     fi
 
-    if table_exists --schema_name "${restore_schema_name}" --table_name "${restore_table_name}"; then
-        table_to_restore_exists=yes
-        restore_table_sequences=$(get_table_sequences --schema_name ${restore_schema_name} --table_name ${restore_table_name})
-        restore_table_sequences_array=(${restore_table_sequences//,/ })
-        if [ "$restore_mode" = APPEND ] && [ ${#restore_table_sequences_array[*]} -gt 0 ]; then
+    if table_exists --schema_name "${_opts[SCHEMA_NAME]}" --table_name "${_opts[TABLE_NAME]}"; then
+        _table_to_restore_exists=yes
+        _restore_table_sequences=$(get_table_sequences --schema_name ${_opts[SCHEMA_NAME]} --table_name ${_opts[TABLE_NAME]})
+        _restore_table_sequences_array=(${_restore_table_sequences//,/ })
+        if [ "${_opts[MODE]}" = APPEND ] && [ ${#_restore_table_sequences_array[*]} -gt 0 ]; then
             # risk of conflict w/ values (foreign columns)
             log_error "${FUNCNAME[0]}: Il n'est pas possible de restaurer cette table en mode APPEND car celle-ci utilise des séquences"
             return $ERROR_CODE
         fi
     else
-        backup_before_restore=no
+        _opts[BACKUP_BEFORE_RESTORE]=no
     fi
 
     for _restore_section in ${_restore_sections[@]}; do
         # not DROP: pre-data not useful
-        [ "$_restore_section" = pre-data ] && [ "$table_to_restore_exists" = yes ] && [ "$restore_mode" != DROP ] && continue
+        [ "$_restore_section" = pre-data ] && [ "$_table_to_restore_exists" = yes ] && [ "${_opts[MODE]}" != DROP ] && continue
         # idem for post-data
-        [ "$_restore_section" = 'post-data' ] && [ "$table_to_restore_exists" = yes ] && [ "$restore_mode" = APPEND ] && continue
-        restore_sections+=(${_restore_section})
+        [ "$_restore_section" = 'post-data' ] && [ "$_table_to_restore_exists" = yes ] && [ "${_opts[MODE]}" = APPEND ] && continue
+        _restore_sections_todo+=(${_restore_section})
     done
 
     local _previous_log_echo=$POW_LOG_ECHO
     restore_table_reset() {
         set_log_echo $_previous_log_echo
-        if [ "$backup_before_restore" = yes ] && [ "$restore_on_error" = yes ] && [ -f $backup_before_restore_full_path ]; then
-            log_info "Restauration de la sauvegarde avant restauration"
+        if [ "${_opts[BACKUP_BEFORE_RESTORE]}" = yes ] && [ "${_opts[RESTORE_ON_ERROR]}" = yes ] && [ -f $_backup_before_restore_path ]; then
+            log_info "Restauration de la sauvegarde de ${_restore_label}"
             restore_table \
-                -schema_name "$restore_schema_name" \
-                --table_name "$restore_table_name" \
-                --input "$backup_before_restore_full_path" \
+                -schema_name "${_opts[SCHEMA_NAME]}" \
+                --table_name "${_opts[TABLE_NAME]}" \
+                --input "$_backup_before_restore_path" \
                 --backup_before_restore no || return $ERROR_CODE
-            rm -f $backup_before_restore_full_path
+            rm -f $_backup_before_restore_path
         fi
         return $SUCCESS_CODE
     }
-    [ "$restore_input" = STDIN ] && set_log_echo no
 
+    [ "${_opts[INPUT]}" = STDIN ] && set_log_echo no
     # backup before restore?
-    if [ "$backup_before_restore" = yes ]; then
-        [ -f $backup_before_restore_full_path ] && rm $backup_before_restore_full_path
+    if [ "${_opts[BACKUP_BEFORE_RESTORE]}" = yes ]; then
+        [ -f $_backup_before_restore_path ] && rm $_backup_before_restore_path
 
         backup_table \
-            --schema_name "$restore_schema_name" \
-            --table_name "$restore_table_name" \
-            --output "$backup_before_restore_full_path" || {
-            [ -f $backup_before_restore_full_path ] && rm -f $backup_before_restore_full_path
+            --schema_name "${_opts[SCHEMA_NAME]}" \
+            --table_name "${_opts[TABLE_NAME]}" \
+            --output "$_backup_before_restore_path" || {
+            [ -f $_backup_before_restore_path ] && rm -f $_backup_before_restore_path
             restore_table_reset
             return $ERROR_CODE
         }
     fi
 
     # with filter AND full call (w/ sections, not one by one)
-    if  [ ! -z "$sql_to_filter" ] &&
-        [[ " ${restore_sections[@]} " =~ " pre-data " ]] &&
-        [[ " ${restore_sections[@]} " =~ " data " ]]; then
-        if [ "$restore_input" = STDIN ]; then
+    if  [ ! -z "${_opts[SQL_TO_FILTER]}" ] &&
+        [[ " ${_restore_sections_todo[@]} " =~ " pre-data " ]] &&
+        [[ " ${_restore_sections_todo[@]} " =~ " data " ]]; then
+        if [ "${_opts[INPUT]}" = STDIN ]; then
             log_info "Conversion de STDIN en fichier temporaire"
             cat > $POW_DIR_TMP/stdin_$$.backup || { restore_table_reset; return $ERROR_CODE; }
-            restore_input="$POW_DIR_TMP/stdin_$$.backup"
+            _opts[INPUT]="$POW_DIR_TMP/stdin_$$.backup"
         fi
         # section one by one to prepare filter between DDL and DATA, NOTE: recursive call (w/ subprocess)
-        for _restore_section in ${restore_sections[@]}; do
+        for _restore_section in ${_restore_sections_todo[@]}; do
             restore_table \
-                --schema_name $restore_schema_name \
-                --table_name $restore_table_name \
-                --restore_mode $restore_mode \
-                --input $restore_input \
+                --schema_name ${_opts[SCHEMA_NAME]} \
+                --table_name ${_opts[TABLE_NAME]} \
+                --mode ${_opts[MODE]} \
+                --input ${_opts[INPUT]} \
                 --backup_before_restore no  \
-                --sql_to_filter "$sql_to_filter" \
+                --sql_to_filter "${_opts[SQL_TO_FILTER]}" \
                 --sections $_restore_section \
                 --subprocess yes || { restore_table_reset; return $ERROR_CODE; }
         done
-        [ "$restore_input" = "$POW_DIR_TMP/stdin_$$.backup" ] && rm -f $restore_input
+        [ "${_opts[INPUT]}" = "$POW_DIR_TMP/stdin_$$.backup" ] && rm -f ${_opts[INPUT]}
     else
-        log_info "Début de restauration de ${restore_libelle} à partir de ${restore_input}, sections ${restore_sections[*]}"
-        [ "$restore_input" != STDIN ] && pg_restore_file_arg="$restore_input"
+        log_info "Début de restauration de ${_restore_label} à partir de ${_opts[INPUT]}, sections ${_restore_sections_todo[*]}"
+        [ "${_opts[INPUT]}" != STDIN ] && _restore_arg_file="${_opts[INPUT]}"
         # apply prior actions
-        for _restore_section in ${restore_sections[@]}; do
+        for _restore_section in ${_restore_sections_todo[@]}; do
             # prepare cumulative section arguments
-            pg_restore_section_arg+="--section $_restore_section "
-            if [ "$table_to_restore_exists" = yes ]; then
+            _restore_arg_section+="--section $_restore_section "
+            if [ "$_table_to_restore_exists" = yes ]; then
                 if [ "$_restore_section" = pre-data ]; then
-                    if [ "$restore_mode" = DROP ]; then
+                    if [ "${_opts[MODE]}" = DROP ]; then
                         # drop table if (exists and DROP mode), NOTE: COMMIT necessary
                         execute_query \
-                            --name "DROP_TABLE_${restore_libelle}" \
+                            --name "DROP_TABLE_${_restore_label}" \
                             --query "
                                 DO
                                 \$\$
                                 DECLARE
                                 BEGIN
-                                    IF table_exists('${restore_schema_name}', '${restore_table_name}') THEN
-                                        DROP TABLE ${restore_schema_name}.${restore_table_name} CASCADE;COMMIT;
-                                    ELSIF view_exists('${restore_schema_name}','${restore_table_name}') THEN
-                                        DROP VIEW ${restore_schema_name}.${restore_table_name} CASCADE;COMMIT;
+                                    IF table_exists('${_opts[SCHEMA_NAME]}', '${_opts[TABLE_NAME]}') THEN
+                                        DROP TABLE ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]} CASCADE;COMMIT;
+                                    ELSIF view_exists('${_opts[SCHEMA_NAME]}','${_opts[TABLE_NAME]}') THEN
+                                        DROP VIEW ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]} CASCADE;COMMIT;
                                     END IF;
                                 END
                                 \$\$ LANGUAGE plpgsql;" || { restore_table_reset; return $ERROR_CODE; }
 
                         # idem for sequences
                         # not useful
-                        #for restore_table_sequence in ${restore_table_sequences_array[@]}; do
-                        #	execute_sql_command "DROP_SEQUENCE_${restore_table_sequence}.${restore_libelle}" "DROP SEQUENCE ${restore_schema_name}.${restore_table_sequence};COMMIT;" || { restore_table_reset; return $ERROR_CODE; }
+                        #for _restore_table_sequence in ${_restore_table_sequences_array[@]}; do
+                        #	execute_sql_command "DROP_SEQUENCE_${_restore_table_sequence}.${_restore_label}" "DROP SEQUENCE ${_opts[SCHEMA_NAME]}.${_restore_table_sequence};COMMIT;" || { restore_table_reset; return $ERROR_CODE; }
                         #done
 
-                        drop_cascade=$(grep 'NOTICE: \+DROP cascade' "${POW_DIR_ARCHIVE}/DROP_TABLE_${restore_libelle}-notice.log") &&
-                        [ -n "$drop_cascade" ] &&
-                        log_info "${drop_cascade}, cf ${POW_DIR_ARCHIVE}/DROP_TABLE_${restore_libelle}-notice.log"
+                        local _drop_cascade
+                        _drop_cascade=$(grep 'NOTICE: \+DROP cascade' "${POW_DIR_ARCHIVE}/DROP_TABLE_${_restore_label}-notice.log") &&
+                        [ -n "$_drop_cascade" ] &&
+                        log_info "${_drop_cascade}, voir ${POW_DIR_ARCHIVE}/DROP_TABLE_${_restore_label}-notice.log"
                     fi
                 elif [ "$_restore_section" = data ]; then
-                    if [ "$restore_mode" = TRUNCATE ]; then
+                    if [ "${_opts[MODE]}" = TRUNCATE ]; then
                         #Suppression des données en cascade (données faisant référence à ces données par contrainte de clé étrangère), des index, triggers et contraintes
                         execute_query \
-                            --name "DROP_CONSTRAINTS_INDEX_TRIGGERS_TRUNCATE_${restore_libelle}" \
+                            --name "DROP_CONSTRAINTS_INDEX_TRIGGERS_TRUNCATE_${_restore_label}" \
                             --query "
                                 DO
                                 \$\$
                                 DECLARE
                                 BEGIN
-                                    PERFORM public.drop_table_constraints('${restore_schema_name}', '${restore_table_name}');
-                                    PERFORM public.drop_table_indexes('${restore_schema_name}', '${restore_table_name}');
-                                    PERFORM public.drop_table_triggers('${restore_schema_name}', '${restore_table_name}');
-                                    IF table_exists('${restore_schema_name}','${restore_table_name}') THEN
-                                        TRUNCATE TABLE ${restore_schema_name}.${restore_table_name} CASCADE;
+                                    PERFORM public.drop_table_constraints('${_opts[SCHEMA_NAME]}', '${_opts[TABLE_NAME]}');
+                                    PERFORM public.drop_table_indexes('${_opts[SCHEMA_NAME]}', '${_opts[TABLE_NAME]}');
+                                    PERFORM public.drop_table_triggers('${_opts[SCHEMA_NAME]}', '${_opts[TABLE_NAME]}');
+                                    IF table_exists('${_opts[SCHEMA_NAME]}','${_opts[TABLE_NAME]}') THEN
+                                        TRUNCATE TABLE ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]} CASCADE;
                                     END IF;
                                 END
                                 \$\$ LANGUAGE plpgsql;
@@ -677,19 +671,19 @@ restore_table() {
                     fi
 
                     # filter to data? not for a view
-                    if [ ! -z "$sql_to_filter" ] && ! view_exists --schema_name "${restore_schema_name}" --view_name "${restore_table_name}"; then
-                        if [ -f "$sql_to_filter" ]; then
-                            sql_to_filter=$(< "$sql_to_filter")
+                    if [ ! -z "${_opts[SQL_TO_FILTER]}" ] && ! view_exists --schema_name "${_opts[SCHEMA_NAME]}" --view_name "${_opts[TABLE_NAME]}"; then
+                        if [ -f "${_opts[SQL_TO_FILTER]}" ]; then
+                            _opts[SQL_TO_FILTER]=$(< "${_opts[SQL_TO_FILTER]}")
                         fi
                         log_info 'Préparation filtre données' &&
                         execute_query \
-                            --name "RESTORE_FILTER_TABLE_$restore_libelle" \
+                            --name "RESTORE_FILTER_TABLE_$_restore_label" \
                             --query "
-                                SELECT public.drop_all_functions_if_exists('${restore_schema_name}','${restore_table_name}_restore_filter');
-                                CREATE OR REPLACE FUNCTION ${restore_schema_name}.${restore_table_name}_restore_filter() RETURNS TRIGGER AS "'$$'"
+                                SELECT public.drop_all_functions_if_exists('${_opts[SCHEMA_NAME]}','${_opts[TABLE_NAME]}_restore_filter');
+                                CREATE OR REPLACE FUNCTION ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]}_restore_filter() RETURNS TRIGGER AS "'$$'"
                                     BEGIN
                                         IF
-                                            ${sql_to_filter}
+                                            ${_opts[SQL_TO_FILTER]}
                                         THEN
                                             RETURN NEW;
                                         ELSE
@@ -698,11 +692,11 @@ restore_table() {
                                     END;
                                 "'$$'" LANGUAGE plpgsql;
 
-                                DROP TRIGGER IF EXISTS trg_${restore_table_name}_restore_filter ON ${restore_schema_name}.${restore_table_name};
-                                CREATE TRIGGER trg_${restore_table_name}_restore_filter
-                                BEFORE INSERT ON ${restore_schema_name}.${restore_table_name}
+                                DROP TRIGGER IF EXISTS trg_${_opts[TABLE_NAME]}_restore_filter ON ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]};
+                                CREATE TRIGGER trg_${_opts[TABLE_NAME]}_restore_filter
+                                BEFORE INSERT ON ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]}
                                     FOR EACH ROW
-                                    EXECUTE PROCEDURE ${restore_schema_name}.${restore_table_name}_restore_filter();
+                                    EXECUTE PROCEDURE ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]}_restore_filter();
                             " || {
                                 restore_table_reset &&
                                 return $ERROR_CODE
@@ -721,39 +715,38 @@ restore_table() {
             --format custom \
             --verbose \
             --exit-on-error \
-            $pg_restore_section_arg \
-            $pg_restore_file_arg > $POW_DIR_ARCHIVE/pg_restore_${restore_table_name}.log 2>&1 || {
-            log_error "Erreur pg_restore, cf $POW_DIR_ARCHIVE/pg_restore_${restore_table_name}.log"
+            $_restore_arg_section \
+            $_restore_arg_file > $POW_DIR_ARCHIVE/pg_restore_${_opts[TABLE_NAME]}.log 2>&1 || {
+            log_error "Erreur pg_restore, voir $POW_DIR_ARCHIVE/pg_restore_${_opts[TABLE_NAME]}.log"
             restore_table_reset
             return $ERROR_CODE
         }
 
         # apply post actions
-        for _restore_section in ${restore_sections[@]}; do
+        for _restore_section in ${_restore_sections_todo[@]}; do
             if [ "$_restore_section" = data ]; then
                 # delete filter
-                if [ ! -z "$sql_to_filter" ]; then
+                if [ ! -z "${_opts[SQL_TO_FILTER]}" ]; then
                     execute_query \
-                        --name "DROP_RESTORE_FILTER_TABLE_${restore_libelle}" \
-                        --query "
-                            SELECT public.DROP_ALL_FUNCTIONS_IF_EXISTS('${restore_schema_name}','${restore_table_name}_restore_filter');
-                            DROP TRIGGER IF EXISTS trg_${restore_table_name}_restore_filter ON ${restore_schema_name}.${restore_table_name};
+                        --name "DROP_RESTORE_FILTER_TABLE_${_restore_label}" \
+                        --query "SELECT public.drop_all_functions_if_exists('${_opts[SCHEMA_NAME]}','${_opts[TABLE_NAME]}_restore_filter');
+                            DROP TRIGGER IF EXISTS trg_${_opts[TABLE_NAME]}_restore_filter ON ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]};
                         " || { restore_table_reset; return $ERROR_CODE; }
                 fi
             fi
         done
     fi
 
-    if [ "$subprocess" = no ]; then
-        vacuum --schema_name $restore_schema_name --table_name $restore_table_name || {
+    if [ "${_opts[SUBPROCESS]}" = no ]; then
+        vacuum --schema_name ${_opts[SCHEMA_NAME]} --table_name ${_opts[TABLE_NAME]} || {
             restore_table_reset;
             return $ERROR_CODE;
         }
 
-        [ "$backup_before_restore" = "yes" ] && [ "$restore_on_error" = "yes" ] && rm --force $backup_before_restore_full_path
+        [ "${_opts[BACKUP_BEFORE_RESTORE]}" = yes ] && [ "${_opts[RESTORE_ON_ERROR]}" = yes ] && rm --force $_backup_before_restore_path
         restore_table_reset
 
-        log_info "Fin de restauration"
+        log_info "Fin de restauration de ${_restore_label}"
     fi
 
     return $SUCCESS_CODE
@@ -761,31 +754,32 @@ restore_table() {
 
 # convert Postgresql's array to Bash's one, checking waited count
 array_sql_to_bash() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             array_sql:Tableau SQL;
             count:Taille attendue;
             array_bash:Entité du résultat
         ' \
-        --args_o '
+        --args_m '
             array_sql;
             array_bash
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local -n _array_ref=$get_arg_array_bash
+    local -n _array_ref=${_opts[ARRAY_BASH]}
     local _len _tmp
 
     # to delete braces
-    _len=$((${#get_arg_array_sql} -2)) &&
-    _tmp=${get_arg_array_sql:1:$_len} &&
+    _len=$((${#_opts[ARRAY_SQL]} -2)) &&
+    _tmp=${_opts[ARRAY_SQL]:1:$_len} &&
     {
         IFS=',' read -ra _array_ref <<< "${_tmp}"
     } &&
     {
-        [ -z "$get_arg_count" ] || {
-            [[ ${#_array_ref[@]} -eq $get_arg_count ]] || {
-                log_error "écart liste: obtenu=${#_array_ref[@]}, attendu=${get_arg_count}"
+        [ -z "${_opts[COUNT]}" ] || {
+            [[ ${#_array_ref[@]} -eq ${_opts[COUNT]} ]] || {
+                log_error "écart liste: obtenu=${#_array_ref[@]}, attendu=${_opts[COUNT]}"
                 false
             }
         }
