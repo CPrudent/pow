@@ -276,7 +276,7 @@ vacuum() {
     _log_tmp_path+=.log
 
     local _vacuum_options
-    case "_${_opts[MODE]}" in
+    case "${_opts[MODE]}" in
     FULL)
         df -h >> $_log_tmp_path
         _vacuum_options='(FULL, ANALYZE, VERBOSE)'
@@ -287,8 +287,8 @@ vacuum() {
     esac
 
     # with table?
-    if [ -n "${_opts[SCHEMA_TABLE]}" ]; then
-        local _list_tables=(${_opts[SCHEMA_TABLE]//,/ }) _table
+    if [ -n "${_opts[TABLE_NAME]}" ]; then
+        local _list_tables=(${_opts[TABLE_NAME]//,/ }) _table
         for ((_i=0; _i<${#_list_tables[*]}; _i++)); do
             _table="${_list_tables[$_i]}"
             #echo "$_table"
@@ -300,7 +300,7 @@ vacuum() {
             log_info "VACUUM ${_opts[MODE]} sur la table ${_table}"
             [ "${_opts[DRY_RUN]}" = no ] && {
                 execute_query \
-                    --name "VACUUM_${_opts[MODE]}_${_opts[SCHEMA_TABLE]}" \
+                    --name "VACUUM_${_opts[MODE]}_${_table}" \
                     --query "VACUUM ${_vacuum_options} ${_table}" || {
                     log_error "Erreur VACUUM ${_opts[MODE]} sur la table ${_table}"
                     return $ERROR_CODE
@@ -345,7 +345,7 @@ vacuum() {
         log_info "Début VACUUM "${_opts[MODE]}" sur la base de données"
         [ "${_opts[DRY_RUN]}" = no ] && {
             execute_query \
-                --name "VACUUM_${_opts[MODE]}_ALL" \
+                --name "VACUUM_${_opts[MODE]}_DB" \
                 --query "VACUUM ${_vacuum_options}" || {
                 log_error "Erreur VACUUM ${_opts[MODE]} sur la base de données"
                 return $ERROR_CODE
@@ -729,7 +729,8 @@ restore_table() {
                 if [ ! -z "${_opts[SQL_TO_FILTER]}" ]; then
                     execute_query \
                         --name "DROP_RESTORE_FILTER_TABLE_${_restore_label}" \
-                        --query "SELECT public.drop_all_functions_if_exists('${_opts[SCHEMA_NAME]}','${_opts[TABLE_NAME]}_restore_filter');
+                        --query "
+                            SELECT public.drop_all_functions_if_exists('${_opts[SCHEMA_NAME]}','${_opts[TABLE_NAME]}_restore_filter');
                             DROP TRIGGER IF EXISTS trg_${_opts[TABLE_NAME]}_restore_filter ON ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]};
                         " || { restore_table_reset; return $ERROR_CODE; }
                 fi
@@ -744,6 +745,7 @@ restore_table() {
         }
 
         [ "${_opts[BACKUP_BEFORE_RESTORE]}" = yes ] && [ "${_opts[RESTORE_ON_ERROR]}" = yes ] && rm --force $_backup_before_restore_path
+        # resume log echo
         restore_table_reset
 
         log_info "Fin de restauration de ${_restore_label}"
