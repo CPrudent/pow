@@ -155,18 +155,23 @@ for ((_test=0; _test<${#test_libpg[@]}; _test++)); do
         _rc=0
         ;;
     RESTORE_TABLE)
-        restore_table \
-            --schema_name fr \
-            --table_name test_libpg \
-            --input $POW_DIR_TMP/fr.test_libpg.backup \
-            --backup_before_restore no \
-            --sql_to_filter "NEW.name = 'TEST3'" &&
-        execute_query \
-            --name COUNT \
-            --query "SELECT COUNT(*) FROM fr.test_libpg" \
-            --return _value &&
-        [[ $_value -eq 3 ]] &&
-        _rc=0
+        [ ! -f $POW_DIR_TMP/fr.test_libpg.backup ] && {
+            log_error 'besoin de lancer le test BACKUP_TABLE auparavant!'
+            _rc=1
+        } || {
+            restore_table \
+                --schema_name fr \
+                --table_name test_libpg \
+                --input $POW_DIR_TMP/fr.test_libpg.backup \
+                --backup_before_restore no \
+                --sql_to_filter "NEW.name = 'TEST3'" &&
+            execute_query \
+                --name COUNT \
+                --query "SELECT COUNT(*) FROM fr.test_libpg" \
+                --return _value &&
+            [[ $_value -eq 3 ]] &&
+            _rc=0
+        }
         ;;
     esac
 
