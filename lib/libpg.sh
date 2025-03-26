@@ -1,11 +1,11 @@
     #--------------------------------------------------------------------------
     # synopsis
     #--
-    # define PG
+    # PG library
 
 # execute query (from file or command line)
-#  retrieve version of PostgreSQL:
-#  execute_query --name GET_VERSION --query 'select version()' --return _pg_version
+#  example: retrieve version of PostgreSQL
+#  execute_query --name GET_VERSION --query 'SELECT version()' --return _pg_version
 execute_query() {
     local -A _opts &&
     pow_argv \
@@ -286,8 +286,9 @@ vacuum() {
         ;;
     esac
 
-    # with table?
+    # table
     if [ -n "${_opts[TABLE_NAME]}" ]; then
+        # eventually list of table(s), comma-separated
         local _list_tables=(${_opts[TABLE_NAME]//,/ }) _table
         for ((_i=0; _i<${#_list_tables[*]}; _i++)); do
             _table="${_list_tables[$_i]}"
@@ -307,6 +308,7 @@ vacuum() {
                 }
             }
         done
+    # schema
     elif [ -n "${_opts[SCHEMA_NAME]}" ]; then
         log_info "Début VACUUM "${_opts[MODE]}" sur les tables du schéma ${_opts[SCHEMA_NAME]}"
 
@@ -341,6 +343,7 @@ vacuum() {
         done
 
         log_info "Fin VACUUM "${_opts[MODE]}" sur les tables du schéma ${_opts[SCHEMA_NAME]}"
+    # database
     else
         log_info "Début VACUUM "${_opts[MODE]}" sur la base de données"
         [ "${_opts[DRY_RUN]}" = no ] && {
@@ -528,6 +531,7 @@ restore_table() {
     local _restore_sections_todo=()
     local _restore_arg_file _restore_arg_section
     local _restore_table_sequences _restore_table_sequences_array _restore_table_sequence
+    local _previous_log_echo=$POW_LOG_ECHO
 
     if [ "${_opts[INPUT]}" != STDIN ]; then
         wait_for_file \
@@ -554,16 +558,23 @@ restore_table() {
 
     for _restore_section in ${_restore_sections[@]}; do
         # not DROP: pre-data not useful
-        [ "$_restore_section" = pre-data ] && [ "$_table_to_restore_exists" = yes ] && [ "${_opts[MODE]}" != DROP ] && continue
+        [ "$_restore_section" = pre-data ] &&
+        [ "$_table_to_restore_exists" = yes ] &&
+        [ "${_opts[MODE]}" != DROP ] && continue
         # idem for post-data
-        [ "$_restore_section" = 'post-data' ] && [ "$_table_to_restore_exists" = yes ] && [ "${_opts[MODE]}" = APPEND ] && continue
+        [ "$_restore_section" = 'post-data' ] &&
+        [ "$_table_to_restore_exists" = yes ] &&
+        [ "${_opts[MODE]}" = APPEND ] && continue
+
         _restore_sections_todo+=(${_restore_section})
     done
 
-    local _previous_log_echo=$POW_LOG_ECHO
     restore_table_reset() {
         set_log_echo $_previous_log_echo
-        if [ "${_opts[BACKUP_BEFORE_RESTORE]}" = yes ] && [ "${_opts[RESTORE_ON_ERROR]}" = yes ] && [ -f $_backup_before_restore_path ]; then
+
+        [ "${_opts[BACKUP_BEFORE_RESTORE]}" = yes ] &&
+        [ "${_opts[RESTORE_ON_ERROR]}" = yes ] &&
+        [ -f $_backup_before_restore_path ] && {
             log_info "Restauration de la sauvegarde de ${_restore_label}"
             restore_table \
                 -schema_name "${_opts[SCHEMA_NAME]}" \
@@ -571,13 +582,14 @@ restore_table() {
                 --input "$_backup_before_restore_path" \
                 --backup_before_restore no || return $ERROR_CODE
             rm -f $_backup_before_restore_path
-        fi
+        }
+
         return $SUCCESS_CODE
     }
 
     [ "${_opts[INPUT]}" = STDIN ] && set_log_echo no
     # backup before restore?
-    if [ "${_opts[BACKUP_BEFORE_RESTORE]}" = yes ]; then
+    [ "${_opts[BACKUP_BEFORE_RESTORE]}" = yes ] && {
         [ -f $_backup_before_restore_path ] && rm $_backup_before_restore_path
 
         backup_table \
@@ -588,7 +600,7 @@ restore_table() {
             restore_table_reset
             return $ERROR_CODE
         }
-    fi
+    }
 
     # with filter AND full call (w/ sections, not one by one)
     if  [ ! -z "${_opts[SQL_TO_FILTER]}" ] &&
@@ -738,28 +750,31 @@ restore_table() {
         done
     fi
 
-    if [ "${_opts[SUBPROCESS]}" = no ]; then
+    [ "${_opts[SUBPROCESS]}" = no ] && {
         vacuum --schema_name ${_opts[SCHEMA_NAME]} --table_name ${_opts[TABLE_NAME]} || {
             restore_table_reset;
             return $ERROR_CODE;
         }
 
-        [ "${_opts[BACKUP_BEFORE_RESTORE]}" = yes ] && [ "${_opts[RESTORE_ON_ERROR]}" = yes ] && rm --force $_backup_before_restore_path
+        [ "${_opts[BACKUP_BEFORE_RESTORE]}" = yes ] &&
+        [ "${_opts[RESTORE_ON_ERROR]}" = yes ] &&
+        rm --force $_backup_before_restore_path
         # resume log echo
         restore_table_reset
 
         log_info "Fin de restauration de ${_restore_label}"
-    fi
+    }
 
     return $SUCCESS_CODE
 }
 
 # convert Postgresql's array to Bash's one, checking waited count
+#  FIXME empty SQL array has to be set to {}, no empty string (else pow_argv's error)
 array_sql_to_bash() {
     local -A _opts &&
     pow_argv \
         --args_n '
-            array_sql:Tableau SQL;
+            array_sql:Tableau SQL ({val1,val2,...,valn});
             count:Taille attendue;
             array_bash:Entité du résultat
         ' \
@@ -770,14 +785,20 @@ array_sql_to_bash() {
         --pow_argv _opts "$@" || return $ERROR_CODE
 
     local -n _array_ref=${_opts[ARRAY_BASH]}
-    local _len _tmp
 
-    # to delete braces
-    _len=$((${#_opts[ARRAY_SQL]} -2)) &&
-    _tmp=${_opts[ARRAY_SQL]:1:$_len} &&
+    # convert into BASH array
     {
-        IFS=',' read -ra _array_ref <<< "${_tmp}"
+        [ -z "${_opts[ARRAY_SQL]}" ] || {
+            # to delete braces
+            if [[ ${_opts[ARRAY_SQL]} =~ ^\{(.*)\}$ ]]; then
+                IFS=',' read -ra _array_ref <<< "${BASH_REMATCH[1]}"
+            else
+                log_error "tableau SQL mal formé (${_opts[ARRAY_SQL]})"
+                false
+            fi
+        }
     } &&
+    # check size
     {
         [ -z "${_opts[COUNT]}" ] || {
             [[ ${#_array_ref[@]} -eq ${_opts[COUNT]} ]] || {
