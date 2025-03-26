@@ -253,15 +253,10 @@ bal_get_list() {
         [ -z "$get_arg_as_array" ] || {
             local -n _as_array_ref=$get_arg_as_array
 
-            _as_array_ref=() &&
-            {
-                [[ ${_results[1]} -eq 0 ]] || {
-                    array_sql_to_bash \
-                        --array_sql "${_results[0]}" \
-                        --count ${_results[1]} \
-                        --array_bash _as_array_ref
-                }
-            } &&
+            array_sql_to_bash \
+                --array_sql "${_results[0]:-{}}" \
+                --count ${_results[1]} \
+                --array_bash _as_array_ref &&
             _return=$((_return +1))
         }
     } &&
