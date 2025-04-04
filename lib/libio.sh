@@ -1,19 +1,16 @@
     #--------------------------------------------------------------------------
     # synopsis
     #--
-    # define IO
+    # IO library
 
     #
     # IO history
     #
 
-    # big crunch! w/ bash_args : get_arg_<var> can be modified by another call
-    # here, get_arg_name would be IO name, but also QUERY name
-    #  error on io_todo_import if exists EN_COURS status
-    #  because of get_arg_name containing IO_EXISTS_(get_arg_name)
 _io_history_manager() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             method:méthode de mise à jour;
             status:état IO;
             io:nom IO;
@@ -25,32 +22,32 @@ _io_history_manager() {
             id:identifiant IO (ou nom de la variable pour le récupérer);
             output:sortie pour export
         ' \
-        --args_o '
+        --args_m '
             method;
             status
         ' \
         --args_v '
             status:EN_COURS|SUCCES|ERREUR
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
     local _query _return _output _with_log=no
     [ "$POW_DEBUG" = yes ] && _with_log=yes
 
-    case $get_arg_method in
+    case ${_opts[METHOD]} in
     EXISTS)
-        local -n _io_id_manager=$get_arg_id
+        local -n _io_id_manager=${_opts[ID]}
         _return='--return _io_id_manager'
         _query="
             SELECT id FROM get_io(
-                name => '$get_arg_io',
-                status => '$get_arg_status',
-                date_end => '$get_arg_date_end'::TIMESTAMP
+                name => '${_opts[IO]}',
+                status => '${_opts[STATUS]}',
+                date_end => '${_opts[DATE_END]}'::TIMESTAMP
             )
         "
         ;;
     APPEND)
-        local -n _io_id_manager=$get_arg_id
+        local -n _io_id_manager=${_opts[ID]}
         _return='--return _io_id_manager'
         _query="
             INSERT INTO public.io_history(
@@ -62,14 +59,14 @@ _io_history_manager() {
                 attributes
             )
             VALUES (
-                '$get_arg_io',
-                '$get_arg_date_begin'::TIMESTAMP,
-                '$get_arg_date_end'::TIMESTAMP,
-                '${get_arg_status:-EN_COURS}',
-                ${get_arg_nrows_todo:-NULL},
+                '${_opts[IO]}',
+                '${_opts[DATE_BEGIN]}'::TIMESTAMP,
+                '${_opts[DATE_END]}'::TIMESTAMP,
+                '${_opts[STATUS]:-EN_COURS}',
+                ${_opts[NROWS_TODO]:-NULL},
                 CASE
-                WHEN LENGTH('$get_arg_infos') = 0 THEN NULL
-                ELSE '$get_arg_infos'
+                WHEN LENGTH('${_opts[INFOS]}') = 0 THEN NULL
+                ELSE '${_opts[INFOS]}'
                 END
             );
             SELECT CURRVAL('public.io_history_id_seq');
@@ -80,17 +77,17 @@ _io_history_manager() {
             UPDATE public.io_history SET
                 attributes =
                     CASE
-                    WHEN LENGTH('$get_arg_infos') = 0 THEN attributes
+                    WHEN LENGTH('${_opts[INFOS]}') = 0 THEN attributes
                     ELSE
                         CASE
                         WHEN attributes IS JSON OBJECT THEN
-                            (jsonb_merge(attributes::JSONB, '$get_arg_infos'::JSONB))::VARCHAR
-                        ELSE '$get_arg_infos'
+                            (jsonb_merge(attributes::JSONB, '${_opts[INFOS]}'::JSONB))::VARCHAR
+                        ELSE '${_opts[INFOS]}'
                         END
                     END
-                $([ -n "${get_arg_nrows_todo}" ] && echo ", nb_rows_todo = ${get_arg_nrows_todo}")
-                $([ -n "${get_arg_nrows_processed}" ] && echo ", nb_rows_processed = ${get_arg_nrows_processed}")
-            WHERE id = $get_arg_id
+                $([ -n "${_opts[NROWS_TODO]}" ] && echo ", nb_rows_todo = ${_opts[NROWS_TODO]}")
+                $([ -n "${_opts[NROWS_PROCESSED]}" ] && echo ", nb_rows_processed = ${_opts[NROWS_PROCESSED]}")
+            WHERE id = ${_opts[ID]}
         "
         ;;
     UPDATE_OK)
@@ -99,13 +96,13 @@ _io_history_manager() {
             UPDATE public.io_history SET
                 date_exec_end = NOW(),
                 status = 'SUCCES',
-                nb_rows_processed = ${get_arg_nrows_processed:-NULL},
+                nb_rows_processed = ${_opts[NROWS_PROCESSED]:-NULL},
                 attributes =
                     CASE
-                        WHEN LENGTH('$get_arg_infos') = 0 THEN attributes
-                        ELSE '$get_arg_infos'
+                        WHEN LENGTH('${_opts[INFOS]}') = 0 THEN attributes
+                        ELSE '${_opts[INFOS]}'
                     END
-            WHERE id = $get_arg_id
+            WHERE id = ${_opts[ID]}
         "
         ;;
     UPDATE_KO)
@@ -113,12 +110,12 @@ _io_history_manager() {
             UPDATE public.io_history SET
                 date_exec_end = NOW(),
                 status = 'ERREUR'
-            WHERE id = $get_arg_id
+            WHERE id = ${_opts[ID]}
         "
         ;;
     EXPORT_LAST)
         _with_log=yes
-        _output="--output $get_arg_output"
+        _output="--output ${_opts[OUTPUT]}"
         _query="
             COPY (
                 SELECT
@@ -134,7 +131,7 @@ _io_history_manager() {
                 FROM
                     public.io_history
                 WHERE
-                    name ~ '$get_arg_io'
+                    name ~ '${_opts[IO]}'
                     AND
                     status = 'SUCCES'
                 ORDER BY
@@ -145,15 +142,14 @@ _io_history_manager() {
         "
         ;;
     *)
-        log_error "Méthode '$get_arg_method' non implémentée!"
+        log_error "Méthode '${_opts[METHOD]}' non implémentée!"
         return $ERROR_CODE
         ;;
     esac
 
     execute_query \
-        --name IO_${get_arg_method}_${get_arg_name:-$get_arg_id} \
+        --name IO_${_opts[METHOD]}_${_opts[IO]:-${_opts[ID]}} \
         --query "$_query" \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
         $_return \
         $_output \
         --with_log $_with_log || return $ERROR_CODE
@@ -165,18 +161,19 @@ _io_history_manager() {
 }
 
 # IO in progress
-# io_history_exists --status EN_COURS
+#  io_history_exists --status EN_COURS
 # IO already success
-# io_history_exists --status SUCCES
+#  io_history_exists --status SUCCES
 io_history_exists() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             io:nom IO;
             date_end:date de fin des données (format connu PostgreSQL);
             status:état IO;
             id:variable pour récupérer ID de IO
         ' \
-        --args_o '
+        --args_m '
             io;
             date_end
         ' \
@@ -186,19 +183,19 @@ io_history_exists() {
         --args_d '
             status:SUCCES
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    [ -n "$get_arg_id" ] && local -n _io_id=$get_arg_id || local _io_id
+    [ -n "${_opts[ID]}" ] && local -n _io_id=${_opts[ID]} || local _io_id
 
     _io_history_manager \
         --method EXISTS \
-        --status $get_arg_status \
-        --io $get_arg_io \
-        --date_end "$get_arg_date_end" \
-        --id _io_id || return $ERROR_CODE
-
-    [ -z "$_io_id" ] && return $ERROR_CODE
-    return $SUCCESS_CODE
+        --status ${_opts[STATUS]} \
+        --io ${_opts[IO]} \
+        --date_end "${_opts[DATE_END]}" \
+        --id _io_id &&
+    [ -n "$_io_id" ] &&
+    return $SUCCESS_CODE ||
+    return $ERROR_CODE
 }
 
 POW_IO_SUCCESSFUL=10
@@ -208,15 +205,16 @@ POW_IO_ERROR=13
 
 # IO import is todo?
 io_todo_import() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             force:option de forçage du traitement;
             io:nom IO;
             date_end:date de fin des données (format connu PostgreSQL);
             purge:purge historique précédent;
             id:variable pour récupérer ID de IO
         ' \
-        --args_o '
+        --args_m '
             io;
             date_end
         ' \
@@ -228,38 +226,38 @@ io_todo_import() {
             force:no;
             purge:no
         ' \
-        "$@" || return $POW_IO_ERROR
+        --pow_argv _opts "$@" || return $POW_IO_ERROR
 
     local _rc
-    [ -n "$get_arg_id" ] && local -n _io_id_todo=$get_arg_id || local _io_id_todo
+    [ -n "${_opts[ID]}" ] && local -n _io_id_todo=${_opts[ID]} || local _io_id_todo
 
     io_history_exists \
-        --io $get_arg_io \
-        --date_end "${get_arg_date_end}" \
+        --io ${_opts[IO]} \
+        --date_end "${_opts[DATE_END]}" \
         --status SUCCES \
         --id _io_id_todo
     _rc=$?
-    [ "$get_arg_force" = no ] &&
+    [ "${_opts[FORCE]}" = no ] &&
     [ $_rc -eq 0 ] && {
-        log_info "Le traitement $get_arg_io a déjà été réalisé avec succès"
+        log_info "Le traitement ${_opts[IO]} a déjà été réalisé avec succès"
         return $POW_IO_SUCCESSFUL
     }
 
     {
         io_history_exists \
-            --io $get_arg_io \
-            --date_end "${get_arg_date_end}" \
+            --io ${_opts[IO]} \
+            --date_end "${_opts[DATE_END]}" \
             --status EN_COURS \
             --id _io_id_todo
     } && {
-        log_info "Le traitement $get_arg_io est déjà en cours"
+        log_info "Le traitement ${_opts[IO]} est déjà en cours"
         return $POW_IO_IN_PROGRESS
     }
-    [ "$get_arg_purge" = yes ] && {
+    [ "${_opts[PURGE]}" = yes ] && {
         # purge previous history
         execute_query \
-            --name "DELETE_IO_${get_arg_io}" \
-            --query "DELETE FROM io_history WHERE name = '${get_arg_io}'" || return $POW_IO_ERROR
+            --name "DELETE_IO_${_opts[IO]}" \
+            --query "DELETE FROM io_history WHERE name = '${_opts[IO]}'" || return $POW_IO_ERROR
     }
 
     return $POW_IO_TODO
@@ -267,26 +265,27 @@ io_todo_import() {
 
 # get description of IO integration (HSTORE converted to associative array)
 io_get_info_integration() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             io:nom IO;
             to_hash:variable pour récupérer la description de cette intégration;
             to_string:variable pour récupérer la description de cette intégration
         ' \
-        --args_o '
+        --args_m '
             io;
             to_hash
         ' \
-        "$@" || return $POW_IO_ERROR
+        --pow_argv _opts "$@" || return $POW_IO_ERROR
 
-    local -n _hash_ref=$get_arg_to_hash
-    [ -n "$get_arg_to_string" ] && local -n _str_ref=$get_arg_to_string
+    local -n _hash_ref=${_opts[TO_HASH]}
+    [ -n "${_opts[TO_STRING]}" ] && local -n _str_ref=${_opts[TO_STRING]}
     local _tmpfile
 
     get_tmp_file --tmpfile _tmpfile &&
     execute_query \
-        --name "TODO-$get_arg_io" \
-        --query "SELECT io_is_todo('$get_arg_io')" \
+        --name "TODO-${_opts[IO]}" \
+        --query "SELECT io_is_todo('${_opts[IO]}')" \
         --output $_tmpfile || return $ERROR_CODE
     [ "$POW_DEBUG" = yes ] && cat $_tmpfile
     # each row contains: key=>value
@@ -294,7 +293,7 @@ io_get_info_integration() {
     while read; do
         _hash_ref[${REPLY%=*}]=${REPLY#*>}
     done < <(sed --expression 's/"//g' --expression 's/,/\n/g' < $_tmpfile | sed --expression 's/^[ ]*//')
-    [ -n "$get_arg_to_string" ] && _str_ref=$(< $_tmpfile)
+    [ -n "${_opts[TO_STRING]}" ] && _str_ref=$(< $_tmpfile)
     rm $_tmpfile
 
     return $SUCCESS_CODE
@@ -302,8 +301,9 @@ io_get_info_integration() {
 
 # build list of IDs as string (coded as JSON) for IO history of IO (as DEPENDS) or given by name
 io_get_ids_integration() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             from:méthode accès aux IDs de la dépendance à traiter;
             hash:tableau associatif de description de cette intégration;
             array:tableau des IDs de cette intégration;
@@ -311,7 +311,7 @@ io_get_ids_integration() {
             group:groupe de la dépendance à traiter;
             item:élément de la dépendance à traiter (tous si élément non renseigné)
         ' \
-        --args_o '
+        --args_m '
             from;
             hash;
             ids
@@ -322,35 +322,33 @@ io_get_ids_integration() {
         --args_d '
             from:HASH
         ' \
-        "$@" || return $POW_IO_ERROR
+        --pow_argv _opts "$@" || return $POW_IO_ERROR
 
     # https://stackoverflow.com/questions/13219634/easiest-way-to-check-for-an-index-or-a-key-in-an-array
     # https://stackoverflow.com/questions/11180714/how-to-iterate-over-an-array-using-indirect-reference
 
-    local -n _hash_ref=$get_arg_hash
-    local -n _ids_ref=$get_arg_ids
+    local -n _hash_ref=${_opts[HASH]}
+    local -n _ids_ref=${_opts[IDS]}
     local _group _steps _step _array_ptr _i _key _value
 
-    [ -n "${get_arg_group}" ] && _group=${get_arg_group} || _group=DEPENDS
+    [ -n "${_opts[GROUP]}}" ] && _group=${_opts[GROUP]} || _group=DEPENDS
     [[ $_group =~ DEPENDS|RESSOURCES ]] || _group+=_d
+    _steps=(${_hash_ref[$_group]//:/ })
 
-    case "$get_arg_from" in
+    case "${_opts[FROM]}" in
     HASH)
         [[ -v "_hash_ref[$_group]" ]] || {
             log_error "manque dépendances IO=($_group)"
             return $ERROR_CODE
         }
-
-        _steps=(${_hash_ref[$_group]//:/ })
         _array_ptr="_steps[@]"
         ;;
     ARRAY)
-        [ -z "$get_arg_array" ] && {
+        [ -z "${_opts[ARRAY]}" ] && {
             log_error "manque tableau IDs (option --array)"
             return $ERROR_CODE
         }
-        local -n _array_ref=$get_arg_array
-        _steps=(${_hash_ref[$_group]//:/ })
+        local -n _array_ref=${_opts[ARRAY]}
         _array_ptr="_array_ref[@]"
         ;;
     esac
@@ -358,7 +356,7 @@ io_get_ids_integration() {
     _ids_ref=''
     _i=0
     for _step in "${!_array_ptr}"; do
-        case "$get_arg_from" in
+        case "${_opts[FROM]}" in
         HASH)
             [[ -v "_hash_ref[${_step}_i]" ]] || {
                 log_error "manque ID IO=$_step"
@@ -376,7 +374,7 @@ io_get_ids_integration() {
         _i=$((_i +1))
         # IO condition ?
         [ $_value -eq 0 ] && continue
-        [ -n "${get_arg_item}" ] && [ "${get_arg_item}" != "$_key" ] && continue
+        [ -n "${_opts[ITEM]}" ] && [ "${_opts[ITEM]}" != "$_key" ] && continue
         [ -n "$_ids_ref" ] && _ids_ref+=,
         _ids_ref+=$(printf '"%s":%d' $_key $_value)
     done
@@ -385,9 +383,11 @@ io_get_ids_integration() {
     return $SUCCESS_CODE
 }
 
+# start history of IO (returning its ID)
 io_history_begin() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             io:nom IO;
             date_begin:date de début des données (format connu PostgreSQL);
             date_end:date de fin des données (format connu PostgreSQL);
@@ -395,111 +395,119 @@ io_history_begin() {
             infos:compléments infos (souvent au format JSON);
             id:nom de la variable pour récupérer identifiant IO
         ' \
-        --args_o '
+        --args_m '
             io;
             date_begin;
             date_end;
             nrows_todo;
             id
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local -n _io_id=$get_arg_id
+    local -n _io_id=${_opts[ID]}
 
     _io_history_manager \
         --method APPEND \
-        --io $get_arg_io \
+        --io ${_opts[IO]} \
         --status EN_COURS \
-        --date_begin "$get_arg_date_begin" \
-        --date_end "$get_arg_date_end" \
-        --nrows_todo $get_arg_nrows_todo \
-        --infos "$get_arg_infos" \
+        --date_begin "${_opts[DATE_BEGIN]}" \
+        --date_end "${_opts[DATE_END]}" \
+        --nrows_todo ${_opts[NROWS_TODO]} \
+        --infos "${_opts[INFOS]}" \
         --id _io_id || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
 
+# end history of IO (w/ success)
 io_history_end_ok() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             nrows_processed:nombre de données traitées;
             infos:compléments infos (souvent au format JSON);
             id:identifiant IO
         ' \
-        --args_o '
+        --args_m '
             nrows_processed;
             id
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
     _io_history_manager \
         --method UPDATE_OK \
-        --nrows_processed "$get_arg_nrows_processed" \
-        --infos "$get_arg_infos" \
-        --id $get_arg_id || return $ERROR_CODE
+        --nrows_processed "${_opts[NROWS_PROCESSED]}" \
+        --infos "${_opts[INFOS]}" \
+        --id ${_opts[ID]} || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
 
+# end history of IO (w/ error)
 io_history_end_ko() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             id:identifiant IO
         ' \
-        --args_o '
+        --args_m '
             id
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
     _io_history_manager \
         --method UPDATE_KO \
-        --id $get_arg_id || return $ERROR_CODE
+        --id ${_opts[ID]} || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
 
+# export last history of IO
 io_history_export_last() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             io:nom IO;
             output:sortie pour export
         ' \
-        --args_o '
+        --args_m '
             io
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
     _io_history_manager \
         --method EXPORT_LAST \
-        --io $get_arg_io \
-        --output "$get_arg_output" || return $ERROR_CODE
+        --io ${_opts[IO]} \
+        --output "${_opts[OUTPUT]}" || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
 
+# update history of IO (w/ its ID)
 io_history_update() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             nrows_todo:nombre de données à traiter;
             nrows_processed:nombre de données traitées;
             infos:compléments infos (souvent au format JSON);
             id:identifiant IO
         ' \
-        --args_o '
+        --args_m '
             id
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
     local _todo _processed
-    [ -n "$get_arg_nrows_todo" ] && _todo="--nrows_todo $get_arg_nrows_todo"
-    [ -n "$get_arg_nrows_processed" ] && _processed="--nrows_processed $get_arg_nrows_processed"
+    [ -n "${_opts[NROWS_TODO]}" ] && _todo="--nrows_todo ${_opts[NROWS_TODO]}"
+    [ -n "${_opts[NROWS_PROCESSED]}" ] && _processed="--nrows_processed ${_opts[NROWS_PROCESSED]}"
 
     _io_history_manager \
         --method UPDATE \
         $_todo \
         $_processed \
-        --infos "$get_arg_infos" \
-        --id $get_arg_id || return $ERROR_CODE
+        --infos "${_opts[INFOS]}" \
+        --id ${_opts[ID]} || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -510,23 +518,24 @@ io_history_update() {
 
 # get property
 io_get_property_online_available() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             name:nom IO à rechercher (en ligne);
             key:propriété recherchée;
             value:valeur
         ' \
-        --args_o '
+        --args_m '
             name;
             key;
             value
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
     local _url_base _url_data _re1 _re2
-    local -n _value_ref=$get_arg_value
+    local -n _value_ref=${_opts[VALUE]}
 
-    case $get_arg_name in
+    case "${_opts[NAME]}" in
     FR-TERRITORY-IGN)
         _url_base='https://geoservices.ign.fr'
         _url_data=${_url_base}'/adminexpress'
@@ -558,18 +567,18 @@ io_get_property_online_available() {
         _re2='[0-9]{4}'
         ;;
     *)
-        log_error "IO $get_arg_name non pris en charge!"
+        log_error "IO ${_opts[NAME]} non pris en charge!"
         return $ERROR_CODE
         ;;
     esac
 
-    case ${get_arg_key^^} in
+    case ${_opts[KEY]^^} in
     URL_BASE)       _value_ref=$_url_base       ;;
     URL_DATA)       _value_ref=$_url_data       ;;
     REGEXP1)        _value_ref=$_re1            ;;
     REGEXP2)        _value_ref=$_re2            ;;
     *)
-        log_error "KEY $get_arg_key non pris en charge!"
+        log_error "KEY ${_opts[KEY]} non pris en charge!"
         return $ERROR_CODE
         ;;
     esac
@@ -579,40 +588,41 @@ io_get_property_online_available() {
 
 # get available dates (list, details as URL)
 io_get_list_online_available() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             name:nom IO à rechercher (en ligne);
             details_file:Détail des millésimes disponibles;
             dates_list:Dates des millésimes disponibles
         ' \
-        --args_o '
+        --args_m '
             name;
             details_file;
             dates_list
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
     # NOTE _only_matching_re1=--only-matching
     # reset it if not only matching
     # no more used (previously needed for BANATIC)
 
     local _url _regexp1 _regexp2 _i
-    local -n _details_file_ref=$get_arg_details_file
-    local -n _dates_ref=$get_arg_dates_list
+    local -n _details_file_ref=${_opts[DETAILS_FILE]}
+    local -n _dates_ref=${_opts[DATES_LIST]}
 
     io_get_property_online_available    \
-        --name $get_arg_name            \
+        --name ${_opts[NAME]}           \
         --key URL_DATA                  \
         --value _url                    &&
     io_get_property_online_available    \
-        --name $get_arg_name            \
+        --name ${_opts[NAME]}           \
         --key REGEXP1                   \
         --value _regexp1                &&
     io_get_property_online_available    \
-        --name $get_arg_name            \
+        --name ${_opts[NAME]}           \
         --key REGEXP2                   \
         --value _regexp2                || {
-        log_error "IO $get_arg_name récupération propriété!"
+        log_error "IO ${_opts[NAME]} récupération propriété!"
         return $ERROR_CODE
     }
 
@@ -621,13 +631,13 @@ io_get_list_online_available() {
     # download available dates
     io_download_file \
         --url "$_url" \
-        --output_name $get_arg_name \
+        --output_name ${_opts[NAME]} \
         --common_save no \
         --output_directory "$POW_DIR_TMP" \
         --output_file "$(basename $_details_file_ref)" &&
     # array of available dates (desc), transforming / to -
     _dates_ref=($(grep --only-matching --perl-regexp "$_regexp1" $_details_file_ref | grep --only-matching --perl-regexp "$_regexp2" | sed --expression 's@/@-@g' | uniq | sort --reverse)) || {
-        log_error "Impossible de consulter la liste des millésimes disponibles de $get_arg_name"
+        log_error "Impossible de consulter la liste des millésimes disponibles de ${_opts[NAME]}"
         return $ERROR_CODE
     }
 
@@ -855,100 +865,89 @@ io_download_file() {
 # BOM: byte-order mark
 # https://learn.microsoft.com/fr-fr/globalization/encoding/byte-order-mark
 remove_bom() {
-    bash_args \
-        --args_p 'file_path:Chemin absolu vers le fichier à traiter;' \
-        --args_o 'file_path' \
-        "$@" || return $ERROR_CODE
+    local -A _opts &&
+    pow_argv \
+        --args_n 'file_path:Chemin absolu vers le fichier à traiter;' \
+        --args_m 'file_path' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    sed --in-place --expression '1s/^\xEF\xBB\xBF//' --expression '1s/^\xFF\xFE//' $get_arg_file_path
+    sed --in-place --expression '1s/^\xEF\xBB\xBF//' --expression '1s/^\xFF\xFE//' ${_opts[FILE_PATH]}
 }
 
 # import CSV into DB
 import_csv_file() {
-    bash_args --args_p '
-        file_path:Chemin absolu vers le fichier à traiter;
-        file_with_header:Fichier avec ou sans entête;
-        schema_name:Nom du schema cible;
-        table_name:Nom de la table cible;
-        table_columns:Colonnes de la table cible;
-        table_columns_list:Liste des colonnes de la table cible;
-        load_mode:Mode de chargement des données;
-        delimiter:Séparateur de valeurs;
-        encoding:Encodage de caractères;
-        limit:Limiter à n enregistrements;
-        rowid:Générer un identifiant unique rowid;
-        from_line_number:Numéro de ligne à partir de laquelle il faut lire les fichier;
-        to_line_number:Numéro de ligne jusqu à laquelle il faut lire le fichier' \
-    --args_o 'file_path' \
-    --args_v '
-        table_columns:HEADER|HEADER_TO_LOWER_CODE|LIST;
-        load_mode:OVERWRITE_DATA|OVERWRITE_TABLE|APPEND;
-        delimiter:AUTODETECT|'${POW_DELIMITER_JOIN_PIPE}';
-        file_with_header:yes|no;
-        encoding:UTF8|UTF16|WIN1252|LATIN1;
-        rowid:yes|no' \
-    --args_d '
-        schema_name:'${POW_PG_DEFAULT_SCHEMA}';
-        table_columns:HEADER;
-        delimiter:AUTODETECT;
-        file_with_header:yes;
-        encoding:UTF8;
-        load_mode:OVERWRITE_DATA;
-        rowid:yes' \
-    "$@" || return $ERROR_CODE
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            file_path:Chemin absolu vers le fichier à traiter;
+            file_with_header:Fichier avec ou sans entête;
+            schema_name:Nom du schema cible;
+            table_name:Nom de la table cible;
+            table_columns:Colonnes de la table cible;
+            table_columns_list:Liste des colonnes de la table cible;
+            load_mode:Mode de chargement des données;
+            delimiter:Séparateur de valeurs;
+            encoding:Encodage de caractères;
+            limit:Limiter à n enregistrements;
+            rowid:Générer un identifiant unique rowid;
+            from_line_number:Numéro de ligne à partir de laquelle il faut lire les fichier;
+            to_line_number:Numéro de ligne jusqu à laquelle il faut lire le fichier' \
+        --args_m 'file_path' \
+        --args_v '
+            table_columns:HEADER|HEADER_TO_LOWER_CODE|LIST;
+            load_mode:OVERWRITE_DATA|OVERWRITE_TABLE|APPEND;
+            delimiter:AUTODETECT|'${POW_DELIMITER_JOIN_PIPE}';
+            file_with_header:yes|no;
+            encoding:UTF8|UTF16|WIN1252|LATIN1;
+            rowid:yes|no' \
+        --args_d '
+            schema_name:'${POW_PG_DEFAULT_SCHEMA}';
+            table_columns:HEADER;
+            delimiter:AUTODETECT;
+            file_with_header:yes;
+            encoding:UTF8;
+            load_mode:OVERWRITE_DATA;
+            rowid:yes' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    expect file "$get_arg_file_path" || exit $ERROR_CODE
-
-    local file_path="$get_arg_file_path"
-    local file_with_header=$get_arg_file_with_header
-    local file_name=$(get_file_name --file_path "$file_path")
-    local file_extension=$(get_file_extension --file_path "$file_path")
-    local file_to_tmp=no
-    local schema_name=$get_arg_schema_name
-    local table_name=$get_arg_table_name
-    local table_columns=$get_arg_table_columns
-    local table_columns_list="$get_arg_table_columns_list"
-    local load_mode=$get_arg_load_mode
-    local rowid=$get_arg_rowid
-    local from_line_number=$get_arg_from_line_number
-    local to_line_number=$get_arg_to_line_number
-    local encoding=$get_arg_encoding
-    local limit=$get_arg_limit
-
-    [ "$POW_DEBUG" = yes ] && {
-        echo "from_line_number=$from_line_number"
-        echo "to_line_number=$to_line_number"
-    }
+    expect file "${_opts[FILE_PATH]}" &&
+    _opts[FILE_NAME]=$(get_file_name --file_path "${_opts[FILE_PATH]}") &&
+    _opts[FILE_EXTENSION]=$(get_file_extension --file_path "${_opts[FILE_PATH]}") &&
+    _opts[FILE_TO_TMP]=no || return $ERROR_CODE
 
     # only part of data?
-    if [ -n "$from_line_number" ] || [ -n "$to_line_number" ]; then
-        file_name="${file_name}.filtered"
-        local new_file_path="$POW_DIR_TMP/$file_name.$file_extension"
-        if [ -n "$from_line_number" ] && [ -n "$to_line_number" ]; then
-            to_line_number=$(($to_line_number - $from_line_number + 1))
-            tail --lines=+$from_line_number "${file_path}" | head -$to_line_number > "$new_file_path"
-        elif [ -n "$from_line_number" ]; then
-            tail --lines=+$from_line_number "${file_path}" > "$new_file_path"
-        elif [ -n "$to_line_number" ]; then
-            head --lines $to_line_number "${file_path}" > "$new_file_path"
+    if [ -n "${_opts[FROM_LINE_NUMBER]}" ] || [ -n "${_opts[TO_LINE_NUMBER]}" ]; then
+        [ "$POW_DEBUG" = yes ] && {
+            echo "from_line_number=${_opts[FROM_LINE_NUMBER]}"
+            echo "to_line_number=${_opts[TO_LINE_NUMBER]}"
+        }
+
+        _opts[FILE_NAME]+='.filtered'
+        local _file_path="$POW_DIR_TMP/${_opts[FILE_NAME]}.${_opts[FILE_EXTENSION]}"
+        if [ -n "${_opts[FROM_LINE_NUMBER]}" ] && [ -n "${_opts[TO_LINE_NUMBER]}" ]; then
+            _opts[TO_LINE_NUMBER]=$((${_opts[TO_LINE_NUMBER]} - ${_opts[FROM_LINE_NUMBER]} + 1))
+            tail \
+                --lines=+${_opts[FROM_LINE_NUMBER]} \
+                "${_opts[FILE_PATH]}" | head -${_opts[TO_LINE_NUMBER]} > "$_file_path"
+        elif [ -n "${_opts[FROM_LINE_NUMBER]}" ]; then
+            tail --lines=+${_opts[FROM_LINE_NUMBER]} "${_opts[FILE_PATH]}" > "$_file_path"
+        elif [ -n "${_opts[TO_LINE_NUMBER]}" ]; then
+            head --lines ${_opts[TO_LINE_NUMBER]} "${_opts[FILE_PATH]}" > "$_file_path"
         fi
-        file_to_tmp=yes
-        file_path="$new_file_path"
+
+        _opts[FILE_TO_TMP]=yes
+        _opts[FILE_PATH]="$_file_path"
     fi
 
-    local delimiter_code=$get_arg_delimiter
-    local delimiter_value=
-    if [ "$delimiter_code" = AUTODETECT ]; then
-        # FIXME put first line into variable transforms TAB in SPACE
-        #local _first_line=$(head --lines 1 "$file_path")
-
+    local _delimiter_value=
+    if [ "${_opts[DELIMITER]}" = AUTODETECT ]; then
         # https://stackoverflow.com/questions/10806357/associative-arrays-are-local-by-default
         declare -A _tokens
         local _code
         for _code in ${!POW_DELIMITER[@]}; do
             # count number of tokens for each delimiter (into first line)
             # https://unix.stackexchange.com/questions/18736/how-to-count-the-number-of-a-specific-character-in-each-line
-            _tokens[$_code]=$(head --lines 1 "$file_path" \
+            _tokens[$_code]=$(head --lines 1 "${_opts[FILE_PATH]}" \
                 | tr --delete --complement "${POW_DELIMITER[$_code]}\n" \
                 | awk '{ print length }'
             )
@@ -959,80 +958,79 @@ import_csv_file() {
         for _code in ${!POW_DELIMITER[@]}; do
             [ ${_tokens[$_code]} -gt $_ntokens ] && {
                 _ntokens=${_tokens[$_code]}
-                delimiter_value=${POW_DELIMITER[$_code]}
+                _delimiter_value=${POW_DELIMITER[$_code]}
             }
         done
     else
-        set_delimiter --delimiter_code $delimiter_code --delimiter_value delimiter_value
+        set_delimiter --delimiter_code "${_opts[DELIMITER]}" --delimiter_value _delimiter_value
     fi
-    [ ${#delimiter_value} -eq 0 ] && {
+    [ ${#_delimiter_value} -eq 0 ] && {
         log_error "Non détection du séparateur CSV"
         return $ERROR_CODE
     }
-    [ "$POW_DEBUG" = yes ] && echo "delimiter_value=[$delimiter_value]"
+    [ "$POW_DEBUG" = yes ] && echo "delimiter_value=[$_delimiter_value]"
 
-    if [ -z "$table_name" ]; then
+    if [ -z "${_opts[TABLE_NAME]}" ]; then
         execute_query \
             --name LABEL_TO_CODE \
-            --query "SELECT public.label_to_code('$file_name')" \
-            --psql_arguments 'tuples-only:pset=format=unaligned' \
+            --query "SELECT public.label_to_code('${_opts[FILE_NAME]}')" \
             --with_log no \
-            --return table_name || return $ERROR_CODE
+            --return _opts[TABLE_NAME] || return $ERROR_CODE
     fi
-    [ "$POW_DEBUG" = yes ] && echo "table_name=$table_name"
+    [ "$POW_DEBUG" = yes ] && echo "table_name=${_opts[TABLE_NAME]}"
 
     # encoding
-    file --mime "$file_path" | grep --silent 'charset=iso-8859-1' && encoding=LATIN1
-    file --mime "$file_path" | grep --silent 'charset=utf-16le' && encoding=UTF16
+    file --mime "${_opts[FILE_PATH]}" | grep --silent 'charset=iso-8859-1' && _opts[ENCODING]=LATIN1
+    file --mime "${_opts[FILE_PATH]}" | grep --silent 'charset=utf-16le' && _opts[ENCODING]=UTF16
     # PostgreSQL doesn't stand up UTF16
-    if [ $encoding = UTF16 ]; then
-        file_name="$file_name.to_utf8"
-        local new_file_path="$POW_DIR_TMP/$file_name.$file_extension"
-        iconv --from-code UTF16 --to-code UTF8 "$file_path" > "$new_file_path"
-        [ "$file_to_tmp" = yes ] && rm "$file_path"
-        file_to_tmp=yes
-        file_path="$new_file_path"
-        encoding=UTF8
-    fi
+    [ "${_opts[ENCODING]}" != UTF16 ] || {
+        _opts[FILE_NAME]+='.to_utf8'
+        local _file_path="$POW_DIR_TMP/${_opts[FILE_NAME]}.${_opts[FILE_EXTENSION]}"
+        iconv --from-code UTF16 --to-code UTF8 "${_opts[FILE_PATH]}" > "$_file_path"
+        [ "${_opts[FILE_TO_TMP]}" = yes ] && rm "${_opts[FILE_PATH]}"
+        _opts[FILE_TO_TMP]=yes
+        _opts[FILE_PATH]="$_file_path"
+        _opts[ENCODING]=UTF8
+    }
 
-    local table_columns_create=
-    if [ "$file_with_header" = yes ]; then
-        if [[ $table_columns =~ HEADER|HEADER_TO_LOWER_CODE ]]; then
+    local _table_columns_create
+    if [ "${_opts[FILE_WITH_HEADER]}" = yes ]; then
+        if [[ ${_opts[TABLE_COLUMNS]} =~ HEADER|HEADER_TO_LOWER_CODE ]]; then
                 # convert to local encoding (UTF8)
                 # remove BOM
                 # remove CR (Windows)
                 # search for (into 1st line)
-                #  - [^'$delimiter_value'"]": ending by double quote, not preceding by (delimiter or ")
-                #  - '$delimiter_value'[^"'$delimiter_value']*: ending by delimiter, following all except (delimiter or ")
-                #  - '$delimiter_value'"[^"'$delimiter_value']+": ending by (delimiter and "), following all except (delimiter or ")
-            local _line_end_header=$(cat "$file_path" \
-                | iconv --from-code $encoding \
+                #  - [^'$_delimiter_value'"]": ending by double quote, not preceding by (delimiter or ")
+                #  - '$_delimiter_value'[^"'$_delimiter_value']*: ending by delimiter, following all except (delimiter or ")
+                #  - '$_delimiter_value'"[^"'$_delimiter_value']+": ending by (delimiter and "), following all except (delimiter or ")
+            local _line_end_header=$(cat "${_opts[FILE_PATH]}" \
+                | iconv --from-code ${_opts[ENCODING]} \
                 | sed --expression 's/^\xEF\xBB\xBF//' \
                 | sed --expression 's/\r//g' \
-                | grep --max-count 1 --line-number --perl-regexp '([^"'$delimiter_value']"|'$delimiter_value'[^"'$delimiter_value']*|'$delimiter_value'"[^"'$delimiter_value']+")$' \
+                | grep --max-count 1 --line-number --perl-regexp '([^"'$_delimiter_value']"|'$_delimiter_value'[^"'$_delimiter_value']*|'$_delimiter_value'"[^"'$_delimiter_value']+")$' \
                 | cut --fields 1 --delimiter : \
             )
             [ -z "$_line_end_header" ] && _line_end_header=1
 
-            table_columns_list=$(head --lines $_line_end_header "$file_path" \
-                | iconv --from-code $encoding \
+            _opts[TABLE_COLUMNS_LIST]=$(head --lines $_line_end_header "${_opts[FILE_PATH]}" \
+                | iconv --from-code ${_opts[ENCODING]} \
                 | sed --expression 's/^\xEF\xBB\xBF//' \
                 | sed --expression 's/\r//g' \
             )
 
-            if [ "$table_columns" = HEADER_TO_LOWER_CODE ]; then
+            if [ "${_opts[TABLE_COLUMNS]}" = HEADER_TO_LOWER_CODE ]; then
                     # to lower
                     # w/o accent
                     # replace no-alphanum by _ (except delimiter)
                     # replace delimiter by ,
                     # trim _ (begin or end)
-                table_columns_list=$(echo "$table_columns_list" \
+                _opts[TABLE_COLUMNS_LIST]=$(echo "${_opts[TABLE_COLUMNS_LIST]}" \
                     | tr '[:upper:]' '[:lower:]' \
                     | sed 'y/àáâãäåçêéèëìíîïìñòóôõöùúûüýÿ/aaaaaaceeeeiiiiinooooouuuuyy/' \
                     | tr 'œ' 'oe' \
                     | tr 'æ' 'ae' \
-                    | sed "s/[^a-z0-9${delimiter_value}]\+/_/g" \
-                    | sed "s/_\?${delimiter_value}_\?/,/g" \
+                    | sed "s/[^a-z0-9${_delimiter_value}]\+/_/g" \
+                    | sed "s/_\?${_delimiter_value}_\?/,/g" \
                     | sed 's/^_\?//g' \
                     | sed 's/_\?$//g' \
                 )
@@ -1040,108 +1038,115 @@ import_csv_file() {
                     # replace delimiter by "," (so surround each colmun by ")
                     # add " at begin
                     # add " at end
-                table_columns_list=$(echo "$table_columns_list" \
-                    | sed --expression "s/\"\?${delimiter_value}\"\?/\",\"/g" \
+                _opts[TABLE_COLUMNS_LIST]=$(echo "${_opts[TABLE_COLUMNS_LIST]}" \
+                    | sed --expression "s/\"\?${_delimiter_value}\"\?/\",\"/g" \
                     | sed --expression 's/^"\?/"/g' \
                     | sed --expression 's/"\?$/"/g' \
                 )
             fi
         fi
         # each column as VARCHAR type
-        table_columns_create=$(echo "$table_columns_list" \
+        _table_columns_create=$(echo "${_opts[TABLE_COLUMNS_LIST]}" \
             | sed "s/,/ VARCHAR,/g")' VARCHAR'
         # add SERIAL
-        if [ "$rowid" = yes ]; then
-            table_columns_create="rowid SERIAL,$table_columns_create"
+        if [ "${_opts[ROWID]}" = yes ]; then
+            _table_columns_create="rowid SERIAL,${_table_columns_create}"
         fi
-        [ "$POW_DEBUG" = yes ] && echo "table_columns_create=$table_columns_create"
+        [ "$POW_DEBUG" = yes ] && echo "table_columns_create=${_table_columns_create}"
     fi
 
-    local table_to_load_exists=no
-    local schema_table="${schema_name}.${table_name}"
-    local backup_post_data_full_path="$POW_DIR_TMP/${schema_table}_post-data_$$.backup"
-    table_exists --schema_name "${schema_name}" --table_name "${table_name}" && table_to_load_exists=yes
-    if [ "$table_to_load_exists" = yes ]; then
-        [ "$POW_DEBUG" = yes ] && echo "load_mode=$load_mode"
+    local _table_to_load_exists=no
+    local _schema_table="${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]}"
+    local _backup_post_data_full_path="$POW_DIR_TMP/${_schema_table}_post-data_$$.backup"
+    table_exists --schema_name "${_opts[SCHEMA_NAME]}" --table_name "${_opts[TABLE_NAME]}" && _table_to_load_exists=yes
+    if [ "$_table_to_load_exists" = yes ]; then
+        [ "$POW_DEBUG" = yes ] && echo "load_mode=${_opts[LOAD_MODE]}"
         # only in APPEND mode (backup post-data); alternative: don't remove
-        case "$load_mode" in
+        case "${_opts[LOAD_MODE]}" in
         OVERWRITE_DATA|APPEND)
-            [ "$load_mode" = APPEND ] && {
+            [ "${_opts[LOAD_MODE]}" = APPEND ] && {
                 backup_table \
-                    --schema_name "${schema_name}" \
-                    --table_name "${table_name}" \
+                    --schema_name "${_opts[SCHEMA_NAME]}" \
+                    --table_name "${_opts[TABLE_NAME]}" \
                     --sections 'post-data' \
-                    --output "$backup_post_data_full_path" || return $ERROR_CODE
+                    --output "$_backup_post_data_full_path" || return $ERROR_CODE
             }
 
             execute_query \
-                --name "DROP_CONSTRAINTS_INDEXES_TRIGGERS_${schema_table}" \
+                --name "DROP_CONSTRAINTS_INDEXES_TRIGGERS_${_schema_table}" \
                 --query "
-                    SELECT public.drop_table_constraints('${schema_name}', '${table_name}');
-                    SELECT public.drop_table_indexes('${schema_name}', '${table_name}');
-                    SELECT public.drop_table_triggers('${schema_name}', '${table_name}');
+                    SELECT public.drop_table_constraints('${_opts[SCHEMA_NAME]}', '${_opts[TABLE_NAME]}');
+                    SELECT public.drop_table_indexes('${_opts[SCHEMA_NAME]}', '${_opts[TABLE_NAME]}');
+                    SELECT public.drop_table_triggers('${_opts[SCHEMA_NAME]}', '${_opts[TABLE_NAME]}');
                     " || return $ERROR_CODE
 
-            [ "$load_mode" = OVERWRITE_DATA ] && {
+            [ "${_opts[LOAD_MODE]}" = OVERWRITE_DATA ] && {
                 execute_query \
-                    --name "TRUNCATE_${schema_table}" \
-                    --query "TRUNCATE TABLE ${schema_name}.${table_name} CASCADE" || return $ERROR_CODE
+                    --name "TRUNCATE_${_schema_table}" \
+                    --query "TRUNCATE TABLE ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]} CASCADE" || return $ERROR_CODE
             }
             ;;
         OVERWRITE_TABLE)
             execute_query \
-                --name "DROP_${schema_table}" \
-                --query "DROP TABLE ${schema_name}.${table_name} CASCADE" || return $ERROR_CODE
+                --name "DROP_${_schema_table}" \
+                --query "DROP TABLE ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]} CASCADE" || return $ERROR_CODE
             ;;
         esac
     fi
-    if [ "$table_to_load_exists" = no ] || [ "$load_mode" = OVERWRITE_TABLE ]; then
-        if [ "$file_with_header" != yes ] && [ -z "$table_columns_create" ]; then
-            log_error "Erreur lors de l'import de $file_path, vous devez préciser le nom des colonnes cible, dans l'ordre des colonnes du fichier"
+    if [ "$_table_to_load_exists" = no ] || [ "${_opts[LOAD_MODE]}" = OVERWRITE_TABLE ]; then
+        if [ "${_opts[FILE_WITH_HEADER]}" != yes ] && [ -z "$_table_columns_create" ]; then
+            log_error "Erreur lors de l'import de ${_opts[FILE_PATH]}, vous devez préciser le nom des colonnes cible, dans l'ordre des colonnes du fichier"
             return $ERROR_CODE
         fi
         execute_query \
-            --name "CREATE_${schema_table}" \
+            --name "CREATE_${_schema_table}" \
             --query "
-                CREATE TABLE IF NOT EXISTS ${schema_name}.${table_name} ($table_columns_create)
+                CREATE TABLE IF NOT EXISTS ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]} ($_table_columns_create)
                 " || return $ERROR_CODE
     fi
 
-    local file_with_header_boolean=$([ "$file_with_header" = yes ] && echo TRUE || echo FALSE)
-    local _copy_data
-    # put query into a file, due to error w/ command line (bash_args eval!)
-    get_tmp_file --tmpext sql --tmpfile _copy_data
-    cat <<-EOF > "$_copy_data"
-\\COPY ${schema_name}.${table_name} (${table_columns_list}) FROM $([ -n "$limit" ] && echo STDIN || echo "'$file_path'") WITH (DELIMITER E'$delimiter_value', FORMAT CSV, HEADER $file_with_header_boolean, QUOTE '"', ENCODING $encoding)
-EOF
+    local _file_with_header=$([ "${_opts[FILE_WITH_HEADER]}" = yes ] && echo TRUE || echo FALSE)
+    local _query="\COPY ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]} (${_opts[TABLE_COLUMNS_LIST]})
+        FROM "
+    [ -n "${_opts[LIMIT]}" ] && _query+=STDIN || _query+="'${_opts[FILE_PATH]}'"
+    _query+="
+        WITH (
+            DELIMITER E'$_delimiter_value',
+            FORMAT CSV,
+            HEADER $_file_with_header,
+            QUOTE '\"',
+            ENCODING ${_opts[ENCODING]}
+        )
+    "
+    [ "$POW_DEBUG" = yes ] && echo "query=($_query)"
 
-    if [ -n "$limit" ]; then
+    if [ -n "${_opts[LIMIT]}" ]; then
         # NOTE: ko if CR exist in values
-        limit=$([ "$file_with_header" = yes ] && echo $((limit+1)) || echo $limit)
-        head --lines $limit "$file_path" \
+        local _limit=${_opts[LIMIT]}
+        [ "${_opts[FILE_WITH_HEADER]}" = yes ] && _limit=$((_limit+1))
+        head --lines $_limit "${_opts[FILE_PATH]}" \
             | execute_query \
-                --name "COPY_${table_name}_FROM_${file_name}" \
-                --query "$_copy_data" || return $ERROR_CODE
+                --name "COPY_${_opts[TABLE_NAME]}_FROM_${_opts[FILE_NAME]}" \
+                --query "$_query" || return $ERROR_CODE
     else
         execute_query \
-            --name "COPY_${table_name}_FROM_${file_name}" \
-            --query "$_copy_data" || return $ERROR_CODE
+            --name "COPY_${_opts[TABLE_NAME]}_FROM_${_opts[FILE_NAME]}" \
+            --query "$_query" || return $ERROR_CODE
     fi
-    rm --force "$_copy_data"
 
     # only in APPEND mode (to do by caller for others, sometimes need to delete duplicates before)
-    if [ "$table_to_load_exists" = yes ] && [ "$load_mode" = APPEND ]; then
+    if [ "$_table_to_load_exists" = yes ] && [ "${_opts[LOAD_MODE]}" = APPEND ]; then
         # restore contraints/indexes/triggers after loading data
         restore_table \
-            --schema_name "${schema_name}" \
-            --table_name "${table_name}" \
+            --schema_name "${_opts[SCHEMA_NAME]}" \
+            --table_name "${_opts[TABLE_NAME]}" \
             --sections 'post-data' \
-            --input "$backup_post_data_full_path" &&
-        rm --force "$backup_post_data_full_path" || return $ERROR_CODE
+            --input "$_backup_post_data_full_path" &&
+        rm --force "$_backup_post_data_full_path" || return $ERROR_CODE
     fi
 
     # clean
-    [ "$file_to_tmp" = yes ] && rm "$file_path"
+    [ "${_opts[FILE_TO_TMP]}" = yes ] && rm "${_opts[FILE_PATH]}"
 
     return $SUCCESS_CODE
 }
@@ -1269,7 +1274,7 @@ import_excel_file() {
             schema_name:Nom du schema cible;
             table_name:Nom de la table cible;
             table_columns:Colonnes de la table cible;
-            table_columns_list:Liste des colonnes de la table cible;
+            _table_columns_list:Liste des colonnes de la table cible;
             load_mode:Mode de chargement des données;
             worksheet_name:Nom de la feuille à extraire, si non précisé ce sera la feuille active à l ouverture du fichier;
             from_line_number:Numéro de ligne à partir de laquelle il faut lire le fichier;
@@ -1299,7 +1304,7 @@ import_excel_file() {
     local schema_name=$get_arg_schema_name
     local table_name=$get_arg_table_name
     local table_columns=$get_arg_table_columns
-    local table_columns_list=$get_arg_table_columns_list
+    local _table_columns_list=$get_arg_table_columns_list
     local load_mode=$get_arg_load_mode
     local worksheet_name="$get_arg_worksheet_name"
     local from_line_number=$get_arg_from_line_number
@@ -1321,7 +1326,7 @@ import_excel_file() {
         --delimiter "$delimiter_code" \
         --load_mode "$load_mode" \
         --table_columns "$table_columns" \
-        --table_columns_list "$table_columns_list" \
+        --_table_columns_list "$_table_columns_list" \
         --limit "$limit" \
         --from_line_number "$from_line_number" \
         --to_line_number "$to_line_number" \
@@ -1459,9 +1464,9 @@ import_geo_file() {
         file_path="$mif_dir/${file_name}.shp"
     fi
 
-    if [ -n "$encoding" ]; then
+    if [ -n "${_opts[ENCODING]}" ]; then
         _PGCLIENTENCODING_SAVE=$PGCLIENTENCODING
-        export PGCLIENTENCODING=$encoding
+        export PGCLIENTENCODING=${_opts[ENCODING]}
     fi
 
     layer_creation_options='-lco FID=rowid -lco GEOMETRY_NAME=geom'
@@ -1487,7 +1492,7 @@ import_geo_file() {
     _rc=$?
 
     # restore previous encoding
-    [ -n "$encoding" ] && PGCLIENTENCODING=$_PGCLIENTENCODING_SAVE
+    [ -n "${_opts[ENCODING]}" ] && PGCLIENTENCODING=$_PGCLIENTENCODING_SAVE
 
     # returns OK even if encoding error, so search for ERROR
     if [ $_rc -ne 0 ] || [ -n "$(grep --max-count 1 ERROR $log_tmp_path)" ]; then
