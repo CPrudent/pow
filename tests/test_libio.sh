@@ -44,6 +44,8 @@ declare -a TESTS=(
     NEWER_TIME
     CSV_OVERWRITE_TABLE
     CSV_APPEND
+    XLS_CSV
+    ODS_CSV
 )
 TESTS_JOIN_PIPE=${TESTS[@]}
 TESTS_JOIN_PIPE=${TESTS_JOIN_PIPE// /|}
@@ -163,6 +165,27 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
             --query "SELECT COUNT(1) FROM fr.${env_libio[CSV_TABLE]}" \
             --return _nrows &&
         [[ $_nrows -eq $((2 * (env_libio[CSV_NROWS] -1))) ]] &&
+        _rc=0
+        ;;
+
+    XLS_CSV)
+        _xls=$POW_DIR_ROOT/tests/data/test_spreadsheet.xlsx
+        _csv=$POW_DIR_TMP/test_spreadsheet.csv
+        expect file "$_xls" &&
+        rm --force "$_csv" &&
+        excel_to_csv \
+            --from_file_path "$_xls" &&
+        expect file "$_csv" &&
+        _rc=0
+        ;;
+    ODS_CSV)
+        _ods=$POW_DIR_ROOT/tests/data/test_spreadsheet.ods
+        _csv=$POW_DIR_TMP/test_spreadsheet.csv
+        expect file "$_ods" &&
+        rm --force "$_csv" &&
+        excel_to_csv \
+            --from_file_path "$_ods" &&
+        expect file "$_csv" &&
         _rc=0
         ;;
 

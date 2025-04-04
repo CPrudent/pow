@@ -1106,6 +1106,8 @@ import_csv_file() {
     fi
 
     local _file_with_header=$([ "${_opts[FILE_WITH_HEADER]}" = yes ] && echo TRUE || echo FALSE)
+    # be careful starting SQL by \n
+    # https://stackoverflow.com/questions/29632700/postgres-copy-syntax-error-in-sql-file
     local _query="\COPY ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]} (${_opts[TABLE_COLUMNS_LIST]})
         FROM "
     [ -n "${_opts[LIMIT]}" ] && _query+=STDIN || _query+="'${_opts[FILE_PATH]}'"
@@ -1153,37 +1155,43 @@ import_csv_file() {
 
 # tr EXCEL to CSV
 excel_to_csv() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             from_file_path:Chemin absolu vers le fichier à traiter;
             to_file_path:Chemin absolu vers le fichier de sortie (ou STDOUT pour une sortie écran);
             worksheet_name:Nom de la feuille à extraire (si non précisé ce sera la feuille active à l ouverture du fichier);
             delimiter:Séparateur à utiliser pour la conversion vers CSV (ce caractère ne doit pas être utilisé dans les valeurs d entête)' \
-        --args_o 'from_file_path' \
+        --args_m 'from_file_path' \
         --args_v '
             delimiter:'${POW_DELIMITER_JOIN_PIPE} \
         --args_d '
             delimiter:COMMA;
-            to_file_path:${get_arg_from_file_path}.csv' \
-        "$@" || return $ERROR_CODE
+            to_file_path:INPUT' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    expect file "$get_arg_from_file_path" || exit $ERROR_CODE
+    local _stdout=0 _delimiter_value
 
-    local from_file_path="$get_arg_from_file_path"
-    local to_file_path="$get_arg_to_file_path"
-    [ "$to_file_path" = STDOUT ] && to_file_path=$(dirname "$get_arg_from_file_path")/STDOUT.txt
-    local from_file_name=$(get_file_name --file_path "$from_file_path")
-    local from_file_extension=$(get_file_extension --file_path "$from_file_path")
-    local to_file_name=$(get_file_name --file_path "$to_file_path")
-    local to_file_extension=$(get_file_extension --file_path "$to_file_path")
-    local worksheet_name="$get_arg_worksheet_name"
-    local delimiter_code=$get_arg_delimiter
-    local delimiter_value
-    set_delimiter --delimiter_code $delimiter_code --delimiter_value delimiter_value
+    expect file "${_opts[FROM_FILE_PATH]}" &&
+    _opts[FROM_FILE_NAME]=$(get_file_name --file_path "${_opts[FROM_FILE_PATH]}") &&
+    _opts[FROM_FILE_EXTENSION]=$(get_file_extension --file_path "${_opts[FROM_FILE_PATH]}") &&
+    case "${_opts[TO_FILE_PATH]}" in
+    STDOUT)
+        _stdout=1
+        _opts[TO_FILE_PATH]="$POW_DIR_TMP/STDOUT.$$.txt"
+        ;;
+    INPUT)
+        _opts[TO_FILE_PATH]="$POW_DIR_TMP/${_opts[FROM_FILE_NAME]}.csv"
+        ;;
+    esac &&
+    _opts[TO_FILE_NAME]=$(get_file_name --file_path "${_opts[TO_FILE_PATH]}") &&
+    _opts[TO_FILE_EXTENSION]=$(get_file_extension --file_path "${_opts[TO_FILE_PATH]}") &&
+    set_delimiter --delimiter_code "${_opts[DELIMITER]}" --delimiter_value _delimiter_value ||
+    return $ERROR_CODE
 
     # MIME type
     # https://stackoverflow.com/questions/7076042/what-mime-type-should-i-use-for-csv
-    local _mime=$(get_file_mimetype "$from_file_path") _spreadsheet
+    local _mime=$(get_file_mimetype "${_opts[FROM_FILE_PATH]}") _spreadsheet
     case "$_mime" in
     application/vnd.openxmlformats-officedocument.spreadsheetml.sheet|application/vnd.ms-excel)
         _spreadsheet='MS Excel'
@@ -1194,34 +1202,34 @@ excel_to_csv() {
     esac
     [ "$POW_DEBUG" = yes ] && echo "spreadsheet (MIME)=$_mime"
     [ -z "$_mime" ] &&
-    case "${file_extension,,}" in
+    case "${_opts[FROM_FILE_EXTENSION],,}" in
     xls|xlsx|ods)
         :
         ;;
     *)
-        log_error "Erreur excel_to_csv de $from_file_path, le fichier source ne semble pas être un classeur"
+        log_error "Erreur excel_to_csv de ${_opts[FROM_FILE_PATH]}, le fichier source ne semble pas être un classeur"
         return $ERROR_CODE
         ;;
     esac &&
-    [ "$POW_DEBUG" = yes ] && echo "spreadsheet (EXTENSION)=$file_extension"
+    [ "$POW_DEBUG" = yes ] && echo "spreadsheet (EXTENSION)=${_opts[FROM_FILE_EXTENSION]}"
 
     # prefer .txt to custom separator
     local _sheet _convert
-    [ -n "$worksheet_name" ] && _sheet="sheet=$worksheet_name"
-    log_info "conversion $_spreadsheet de $from_file_path vers ${to_file_path}"
+    [ -n "${_opts[WORKSHEET_NAME]}" ] && _sheet="sheet=${_opts[WORKSHEET_NAME]}"
+    log_info "Conversion $_spreadsheet de ${_opts[FROM_FILE_PATH]} vers ${_opts[TO_FILE_PATH]}"
     get_tmp_file --tmpext txt --tmpfile _convert
 
-    if [ -n "$worksheet_name" ]; then
-        ssconvert --export-options "sheet=$worksheet_name separator=$delimiter_value format=preserve" "$from_file_path" "${_convert}" > $POW_DIR_ARCHIVE/ssconvert.log 2> $POW_DIR_ARCHIVE/ssconvert.error.log
+    if [ -n "${_opts[WORKSHEET_NAME]}" ]; then
+        ssconvert --export-options "sheet=${_opts[WORKSHEET_NAME]} separator=$_delimiter_value format=preserve" "${_opts[FROM_FILE_PATH]}" "${_convert}" > $POW_DIR_ARCHIVE/ssconvert.log 2> $POW_DIR_ARCHIVE/ssconvert.error.log
     else
-        ssconvert --export-options "separator=$delimiter_value format=preserve" "$from_file_path" "${_convert}" > $POW_DIR_ARCHIVE/ssconvert.log 2> $POW_DIR_ARCHIVE/ssconvert.error.log
+        ssconvert --export-options "separator=$_delimiter_value format=preserve" "${_opts[FROM_FILE_PATH]}" "${_convert}" > $POW_DIR_ARCHIVE/ssconvert.log 2> $POW_DIR_ARCHIVE/ssconvert.error.log
     fi
 
-    mv "$_convert" "${to_file_path}"
-    [ "$to_file_name" = STDOUT ] &&
-    [ -f "${to_file_path}" ] && {
-        cat "$to_file_path"
-        rm "$to_file_path"
+    mv "$_convert" "${_opts[TO_FILE_PATH]}"
+    [[ $_stdout -eq 1 ]] &&
+    [ -f "${_opts[TO_FILE_PATH]}" ] && {
+        cat "${_opts[TO_FILE_PATH]}"
+        rm "${_opts[TO_FILE_PATH]}"
     }
 
     return $SUCCESS_CODE
