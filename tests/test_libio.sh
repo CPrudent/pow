@@ -22,18 +22,17 @@ test_csv() {
     local _tmpfile _csvfile="$POW_DIR_TMP/test_libio.csv"
 
     [ -f "$_csvfile" ] || {
-        get_tmp_file --tmpfile _path_ref --tmpext csv &&
-        cat <<EOF > $_path_ref || return $ERROR_CODE
+        get_tmp_file --tmpfile _tmpfile --tmpext csv &&
+        cat <<EOF > $_tmpfile &&
 str,num,date
 A,1,2025-04-01 17:00:00
 BB,2,2025-04-01 17:01:00
 CCC,3,2025-04-01 17:02:00
 EOF
-
-    mv "$_path_ref" "$_csvfile"
-    _path_ref="$_csvfile"
+        mv "$_tmpfile" "$_csvfile" || return $ERROR_CODE
     }
 
+    _path_ref="$_csvfile"
     _nrows_ref=4
 
     return $SUCCESS_CODE
@@ -91,6 +90,7 @@ declare -A result_libio
 set_log_echo no &&
 set_env --schema_name fr &&
 test_csv --path env_libio[CSV_PATH] --nrows env_libio[CSV_NROWS] &&
+declare -p env_libio &&
 for ((_test=0; _test<${#test_libio[@]}; _test++)); do
     _rc=1
 
@@ -276,7 +276,8 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
         $( [[ ${result_libio["${test_libio[$_test]}"]} -eq 0 ]] && echo OK || echo KO )
 done
 [ "${env_libio[CLEAN]}" = yes ] && {
-    rm --force "${env_libio[CSV_PATH]}"
+    #rm --force "${env_libio[CSV_PATH]}"
+    :
 }
 
 # results

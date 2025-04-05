@@ -962,14 +962,13 @@ import_csv_file() {
         for _code in ${!POW_DELIMITER[@]}; do
             [ ${_tokens[$_code]} -gt $_ntokens ] && {
                 _ntokens=${_tokens[$_code]}
-                _opts[DELIMITER]=${POW_DELIMITER[$_code]}
+                _opts[DELIMITER]=$_code
             }
         done
 
         #echo '###DELIMITER/2' ; declare -p _opts ; read
-    else
-        set_delimiter --delimiter_code "${_opts[DELIMITER]}" --delimiter_value _delimiter_value
     fi
+    set_delimiter --delimiter_code "${_opts[DELIMITER]}" --delimiter_value _delimiter_value
     [ ${#_delimiter_value} -eq 0 ] && {
         log_error "Non détection du séparateur CSV"
         return $ERROR_CODE
@@ -1118,7 +1117,8 @@ import_csv_file() {
     local _file_with_header=$([ "${_opts[FILE_WITH_HEADER]}" = yes ] && echo TRUE || echo FALSE)
     # be careful starting SQL by \n
     # https://stackoverflow.com/questions/29632700/postgres-copy-syntax-error-in-sql-file
-    local _query="\COPY ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]} (${_opts[TABLE_COLUMNS_LIST]})
+    local _query="
+        \COPY ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]} (${_opts[TABLE_COLUMNS_LIST]})
         FROM "
     [ -n "${_opts[LIMIT]}" ] && _query+=STDIN || _query+="'${_opts[FILE_PATH]}'"
     _query+="
@@ -1130,6 +1130,8 @@ import_csv_file() {
             ENCODING ${_opts[ENCODING]}
         )
     "
+    # COPY command doesn't have \n (and blanks at beginning)
+    _query=$(echo $_query | tr '\n' ' ' | sed --expression 's/^[ \t]*//')
     [ "$POW_DEBUG" = yes ] && echo "query=($_query)"
 
     #echo '###COPY' ; declare -p _opts _query ; read
@@ -1141,11 +1143,11 @@ import_csv_file() {
         head --lines $_limit "${_opts[FILE_PATH]}" \
             | execute_query \
                 --name "COPY_${_opts[TABLE_NAME]}_FROM_${_opts[FILE_NAME]}" \
-                --query "$(tr '\n' ' ' <<< $_query)" || return $ERROR_CODE
+                --query "$_query" || return $ERROR_CODE
     else
         execute_query \
             --name "COPY_${_opts[TABLE_NAME]}_FROM_${_opts[FILE_NAME]}" \
-            --query "$(tr '\n' ' ' <<< $_query)" || return $ERROR_CODE
+            --query "$_query" || return $ERROR_CODE
     fi
 
     # only in APPEND mode (to do by caller for others, sometimes need to delete duplicates before)
@@ -1183,10 +1185,30 @@ excel_to_csv() {
         --pow_argv _opts "$@" || return $ERROR_CODE
 
     local -i _step=0
-    local _stdout=0 _delimiter_value _mime _spreadsheet _sheet _convert
+    local -a _steps=(
+        "FROM_FILE_PATH existence"
+        "FROM_FILE_PATH nom"
+        "FROM_FILE_PATH extension"
+        "TO_FILE_PATH cas spéciaux"
+        "TO_FILE_PATH nom"
+        "TO_FILE_PATH extension"
+        "DELIMITER init"
+        "MIME init"
+        "MIME document"
+        "DEBUG MIME"
+        "MIME non reconnu, usage extension"
+        "DEBUG extension"
+        "WORKSHEET_NAME filtre, si renseigné"
+        "LOG_INFO"
+        "TMPFILE création"
+        "SSCONVERT"
+        "TO_FILE_PATH init"
+        "STDOUT"
+    )
+    local _stdout=0 _delimiter_value _mime _spreadsheet _options _convert
 
     #echo ${FUNCNAME[0]} && declare -p _opts &&
-    expect file "${_opts[FROM_FILE_PATH]}" &&
+    [ -f "${_opts[FROM_FILE_PATH]}" ] &&
     _step+=1 &&
     _opts[FROM_FILE_NAME]=$(get_file_name --file_path "${_opts[FROM_FILE_PATH]}") &&
     _step+=1 &&
@@ -1250,26 +1272,18 @@ excel_to_csv() {
     } &&
     _step+=1 &&
     {
-        [ -z "${_opts[WORKSHEET_NAME]}" ] || _sheet="sheet=${_opts[WORKSHEET_NAME]}"
+        _options="separator=$_delimiter_value format=preserve"
+        [ -z "${_opts[WORKSHEET_NAME]}" ] || _options="sheet=${_opts[WORKSHEET_NAME]} $_options"
     } &&
     _step+=1 &&
     log_info "Conversion $_spreadsheet de ${_opts[FROM_FILE_PATH]} vers ${_opts[TO_FILE_PATH]}" &&
     _step+=1 &&
     get_tmp_file --tmpext txt --tmpfile _convert &&
     _step+=1 &&
-    {
-        if [ -n "${_opts[WORKSHEET_NAME]}" ]; then
-            ssconvert \
-                --export-options "sheet=${_opts[WORKSHEET_NAME]} separator=$_delimiter_value format=preserve" \
-                "${_opts[FROM_FILE_PATH]}" \
-                "${_convert}" > $POW_DIR_ARCHIVE/ssconvert.log 2> $POW_DIR_ARCHIVE/ssconvert.error.log
-        else
-            ssconvert \
-                --export-options "separator=$_delimiter_value format=preserve" \
-                "${_opts[FROM_FILE_PATH]}" \
-                "${_convert}" > $POW_DIR_ARCHIVE/ssconvert.log 2> $POW_DIR_ARCHIVE/ssconvert.error.log
-        fi
-    } &&
+    ssconvert \
+        --export-options "$_options" \
+        "${_opts[FROM_FILE_PATH]}" \
+        "${_convert}" > $POW_DIR_ARCHIVE/ssconvert.log 2> $POW_DIR_ARCHIVE/ssconvert.error.log &&
     _step+=1 &&
     mv "$_convert" "${_opts[TO_FILE_PATH]}" &&
     _step+=1 &&
@@ -1280,7 +1294,7 @@ excel_to_csv() {
             rm "${_opts[TO_FILE_PATH]}"
         }
     } || {
-        log_error "${FUNCNAME[0]}: étape #$_step en erreur"
+        log_error "${FUNCNAME[0]}: étape #$_step (${_steps[$_step]}) en erreur"
         return $ERROR_CODE
     }
 
