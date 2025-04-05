@@ -910,10 +910,12 @@ import_csv_file() {
             rowid:yes' \
         --pow_argv _opts "$@" || return $ERROR_CODE
 
+    #echo ${FUNCNAME[0]} && declare -p _opts &&
     expect file "${_opts[FILE_PATH]}" &&
     _opts[FILE_NAME]=$(get_file_name --file_path "${_opts[FILE_PATH]}") &&
     _opts[FILE_EXTENSION]=$(get_file_extension --file_path "${_opts[FILE_PATH]}") &&
-    _opts[FILE_TO_TMP]=no || return $ERROR_CODE
+    _opts[FILE_TO_TMP]=no ||
+    return $ERROR_CODE
 
     # only part of data?
     if [ -n "${_opts[FROM_LINE_NUMBER]}" ] || [ -n "${_opts[TO_LINE_NUMBER]}" ]; then
@@ -939,7 +941,7 @@ import_csv_file() {
         _opts[FILE_PATH]="$_file_path"
     fi
 
-    local _delimiter_value=
+    local _delimiter_value
     if [ "${_opts[DELIMITER]}" = AUTODETECT ]; then
         # https://stackoverflow.com/questions/10806357/associative-arrays-are-local-by-default
         declare -A _tokens
@@ -951,16 +953,20 @@ import_csv_file() {
                 | tr --delete --complement "${POW_DELIMITER[$_code]}\n" \
                 | awk '{ print length }'
             )
-            [ "$POW_DEBUG" = yes ] && echo "_tokens[$_code]=${_tokens[$_code]}"
+            [ "$POW_DEBUG" = yes ] && echo "tokens[$_code]=${_tokens[$_code]}"
         done
+
+        #echo '###DELIMITER/1' ; declare -p _tokens ; read
 
         local _ntokens=0
         for _code in ${!POW_DELIMITER[@]}; do
             [ ${_tokens[$_code]} -gt $_ntokens ] && {
                 _ntokens=${_tokens[$_code]}
-                _delimiter_value=${POW_DELIMITER[$_code]}
+                _opts[DELIMITER]=${POW_DELIMITER[$_code]}
             }
         done
+
+        #echo '###DELIMITER/2' ; declare -p _opts ; read
     else
         set_delimiter --delimiter_code "${_opts[DELIMITER]}" --delimiter_value _delimiter_value
     fi
@@ -1018,13 +1024,15 @@ import_csv_file() {
                 | sed --expression 's/\r//g' \
             )
 
+            #echo '###TABLE_COLUMNS_LIST/1' ; declare -p _opts ; read
+
             if [ "${_opts[TABLE_COLUMNS]}" = HEADER_TO_LOWER_CODE ]; then
                     # to lower
                     # w/o accent
                     # replace no-alphanum by _ (except delimiter)
                     # replace delimiter by ,
                     # trim _ (begin or end)
-                _opts[TABLE_COLUMNS_LIST]=$(echo "${_opts[TABLE_COLUMNS_LIST]}" \
+                _opts[TABLE_COLUMNS_LIST]=$(echo ${_opts[TABLE_COLUMNS_LIST]} \
                     | tr '[:upper:]' '[:lower:]' \
                     | sed 'y/àáâãäåçêéèëìíîïìñòóôõöùúûüýÿ/aaaaaaceeeeiiiiinooooouuuuyy/' \
                     | tr 'œ' 'oe' \
@@ -1035,15 +1043,17 @@ import_csv_file() {
                     | sed 's/_\?$//g' \
                 )
             else
-                    # replace delimiter by "," (so surround each colmun by ")
+                    # replace delimiter by "," (so surround each column by ")
                     # add " at begin
                     # add " at end
-                _opts[TABLE_COLUMNS_LIST]=$(echo "${_opts[TABLE_COLUMNS_LIST]}" \
+                _opts[TABLE_COLUMNS_LIST]=$(echo ${_opts[TABLE_COLUMNS_LIST]} \
                     | sed --expression "s/\"\?${_delimiter_value}\"\?/\",\"/g" \
                     | sed --expression 's/^"\?/"/g' \
                     | sed --expression 's/"\?$/"/g' \
                 )
             fi
+
+            #echo '###TABLE_COLUMNS_LIST/2' ; declare -p _opts _delimiter_value ; read
         fi
         # each column as VARCHAR type
         _table_columns_create=$(echo "${_opts[TABLE_COLUMNS_LIST]}" \
@@ -1122,6 +1132,8 @@ import_csv_file() {
     "
     [ "$POW_DEBUG" = yes ] && echo "query=($_query)"
 
+    #echo '###COPY' ; declare -p _opts _query ; read
+
     if [ -n "${_opts[LIMIT]}" ]; then
         # NOTE: ko if CR exist in values
         local _limit=${_opts[LIMIT]}
@@ -1129,11 +1141,11 @@ import_csv_file() {
         head --lines $_limit "${_opts[FILE_PATH]}" \
             | execute_query \
                 --name "COPY_${_opts[TABLE_NAME]}_FROM_${_opts[FILE_NAME]}" \
-                --query "$_query" || return $ERROR_CODE
+                --query "$(tr '\n' ' ' <<< $_query)" || return $ERROR_CODE
     else
         execute_query \
             --name "COPY_${_opts[TABLE_NAME]}_FROM_${_opts[FILE_NAME]}" \
-            --query "$_query" || return $ERROR_CODE
+            --query "$(tr '\n' ' ' <<< $_query)" || return $ERROR_CODE
     fi
 
     # only in APPEND mode (to do by caller for others, sometimes need to delete duplicates before)
@@ -1170,11 +1182,16 @@ excel_to_csv() {
             to_file_path:INPUT' \
         --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local _stdout=0 _delimiter_value
+    local -i _step=0
+    local _stdout=0 _delimiter_value _mime _spreadsheet _sheet _convert
 
+    #echo ${FUNCNAME[0]} && declare -p _opts &&
     expect file "${_opts[FROM_FILE_PATH]}" &&
+    _step+=1 &&
     _opts[FROM_FILE_NAME]=$(get_file_name --file_path "${_opts[FROM_FILE_PATH]}") &&
+    _step+=1 &&
     _opts[FROM_FILE_EXTENSION]=$(get_file_extension --file_path "${_opts[FROM_FILE_PATH]}") &&
+    _step+=1 &&
     case "${_opts[TO_FILE_PATH]}" in
     STDOUT)
         _stdout=1
@@ -1184,14 +1201,17 @@ excel_to_csv() {
         _opts[TO_FILE_PATH]="$POW_DIR_TMP/${_opts[FROM_FILE_NAME]}.csv"
         ;;
     esac &&
+    _step+=1 &&
     _opts[TO_FILE_NAME]=$(get_file_name --file_path "${_opts[TO_FILE_PATH]}") &&
+    _step+=1 &&
     _opts[TO_FILE_EXTENSION]=$(get_file_extension --file_path "${_opts[TO_FILE_PATH]}") &&
-    set_delimiter --delimiter_code "${_opts[DELIMITER]}" --delimiter_value _delimiter_value ||
-    return $ERROR_CODE
-
+    _step+=1 &&
+    set_delimiter --delimiter_code "${_opts[DELIMITER]}" --delimiter_value _delimiter_value &&
+    _step+=1 &&
     # MIME type
     # https://stackoverflow.com/questions/7076042/what-mime-type-should-i-use-for-csv
-    local _mime=$(get_file_mimetype "${_opts[FROM_FILE_PATH]}") _spreadsheet
+    _mime=$(get_file_mimetype "${_opts[FROM_FILE_PATH]}") &&
+    _step+=1 &&
     case "$_mime" in
     application/vnd.openxmlformats-officedocument.spreadsheetml.sheet|application/vnd.ms-excel)
         _spreadsheet='MS Excel'
@@ -1199,37 +1219,69 @@ excel_to_csv() {
     application/vnd.oasis.opendocument.spreadsheet)
         _spreadsheet='Open Office sheet'
         ;;
-    esac
-    [ "$POW_DEBUG" = yes ] && echo "spreadsheet (MIME)=$_mime"
-    [ -z "$_mime" ] &&
-    case "${_opts[FROM_FILE_EXTENSION],,}" in
-    xls|xlsx|ods)
-        :
-        ;;
-    *)
-        log_error "Erreur excel_to_csv de ${_opts[FROM_FILE_PATH]}, le fichier source ne semble pas être un classeur"
-        return $ERROR_CODE
-        ;;
     esac &&
-    [ "$POW_DEBUG" = yes ] && echo "spreadsheet (EXTENSION)=${_opts[FROM_FILE_EXTENSION]}"
-
-    # prefer .txt to custom separator
-    local _sheet _convert
-    [ -n "${_opts[WORKSHEET_NAME]}" ] && _sheet="sheet=${_opts[WORKSHEET_NAME]}"
-    log_info "Conversion $_spreadsheet de ${_opts[FROM_FILE_PATH]} vers ${_opts[TO_FILE_PATH]}"
-    get_tmp_file --tmpext txt --tmpfile _convert
-
-    if [ -n "${_opts[WORKSHEET_NAME]}" ]; then
-        ssconvert --export-options "sheet=${_opts[WORKSHEET_NAME]} separator=$_delimiter_value format=preserve" "${_opts[FROM_FILE_PATH]}" "${_convert}" > $POW_DIR_ARCHIVE/ssconvert.log 2> $POW_DIR_ARCHIVE/ssconvert.error.log
-    else
-        ssconvert --export-options "separator=$_delimiter_value format=preserve" "${_opts[FROM_FILE_PATH]}" "${_convert}" > $POW_DIR_ARCHIVE/ssconvert.log 2> $POW_DIR_ARCHIVE/ssconvert.error.log
-    fi
-
-    mv "$_convert" "${_opts[TO_FILE_PATH]}"
-    [[ $_stdout -eq 1 ]] &&
-    [ -f "${_opts[TO_FILE_PATH]}" ] && {
-        cat "${_opts[TO_FILE_PATH]}"
-        rm "${_opts[TO_FILE_PATH]}"
+    _step+=1 &&
+    {
+        # debug
+        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
+            echo "spreadsheet (MIME)=$_mime"
+        }
+    } &&
+    _step+=1 &&
+    {
+        [ -n "$_mime" ] || {
+            case "${_opts[FROM_FILE_EXTENSION],,}" in
+            xls|xlsx|ods)
+                :
+                ;;
+            *)
+                log_error "${FUNCNAME[0]}: le fichier source ${_opts[FROM_FILE_PATH]} ne semble pas être un classeur"
+                false
+                ;;
+            esac
+        }
+    } &&
+    _step+=1 &&
+    {
+        # debug
+        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
+            echo "spreadsheet (EXTENSION)=${_opts[FROM_FILE_EXTENSION]}"
+        }
+    } &&
+    _step+=1 &&
+    {
+        [ -z "${_opts[WORKSHEET_NAME]}" ] || _sheet="sheet=${_opts[WORKSHEET_NAME]}"
+    } &&
+    _step+=1 &&
+    log_info "Conversion $_spreadsheet de ${_opts[FROM_FILE_PATH]} vers ${_opts[TO_FILE_PATH]}" &&
+    _step+=1 &&
+    get_tmp_file --tmpext txt --tmpfile _convert &&
+    _step+=1 &&
+    {
+        if [ -n "${_opts[WORKSHEET_NAME]}" ]; then
+            ssconvert \
+                --export-options "sheet=${_opts[WORKSHEET_NAME]} separator=$_delimiter_value format=preserve" \
+                "${_opts[FROM_FILE_PATH]}" \
+                "${_convert}" > $POW_DIR_ARCHIVE/ssconvert.log 2> $POW_DIR_ARCHIVE/ssconvert.error.log
+        else
+            ssconvert \
+                --export-options "separator=$_delimiter_value format=preserve" \
+                "${_opts[FROM_FILE_PATH]}" \
+                "${_convert}" > $POW_DIR_ARCHIVE/ssconvert.log 2> $POW_DIR_ARCHIVE/ssconvert.error.log
+        fi
+    } &&
+    _step+=1 &&
+    mv "$_convert" "${_opts[TO_FILE_PATH]}" &&
+    _step+=1 &&
+    {
+        [[ $_stdout -eq 0 ]] || {
+            [ -f "${_opts[TO_FILE_PATH]}" ] &&
+            cat "${_opts[TO_FILE_PATH]}" &&
+            rm "${_opts[TO_FILE_PATH]}"
+        }
+    } || {
+        log_error "${FUNCNAME[0]}: étape #$_step en erreur"
+        return $ERROR_CODE
     }
 
     return $SUCCESS_CODE
@@ -1237,26 +1289,35 @@ excel_to_csv() {
 
 # tr CSV to EXCEL
 csv_to_excel() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             from_file_path:Chemin absolu vers le fichier à traiter;
             to_file_path:Chemin absolu vers le fichier de sortie' \
-        --args_o 'from_file_path' \
-        --args_d 'to_file_path:${get_arg_from_file_path}.xls' \
-        "$@" || return $ERROR_CODE
+        --args_m 'from_file_path' \
+        --args_d 'to_file_path:INPUT' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    expect file "$get_arg_from_file_path" || exit $ERROR_CODE
+    local -i _step=0
+    local _tmpfile _mime
 
-    local from_file_path="$get_arg_from_file_path"
-    local to_file_path="$get_arg_to_file_path"
-    local from_file_name=$(get_file_name --file_path "$from_file_path")
-    local from_file_extension=$(get_file_extension --file_path "$from_file_path")
-    local to_file_name=$(get_file_name --file_path "$to_file_path")
-    local to_file_extension=$(get_file_extension --file_path "$to_file_path")
-
+    #echo ${FUNCNAME[0]} && declare -p _opts &&
+    expect file "${_opts[FROM_FILE_PATH]}" &&
+    _step+=1 &&
+    _opts[FROM_FILE_NAME]=$(get_file_name --file_path "${_opts[FROM_FILE_PATH]}") &&
+    _step+=1 &&
+    _opts[FROM_FILE_EXTENSION]=$(get_file_extension --file_path "${_opts[FROM_FILE_PATH]}") &&
+    _step+=1 &&
+    case "${_opts[TO_FILE_PATH]}" in
+    INPUT)
+        _opts[TO_FILE_PATH]="$POW_DIR_TMP/${_opts[FROM_FILE_NAME]}.xls"
+        ;;
+    esac &&
+    _step+=1 &&
     # MIME type
     # https://stackoverflow.com/questions/7076042/what-mime-type-should-i-use-for-csv
-    local _mime=$(get_file_mimetype "$from_file_path")
+    _mime=$(get_file_mimetype "${_opts[FROM_FILE_PATH]}") &&
+    _step+=1 &&
     case "$_mime" in
     text/plain|text/csv|text/x-csv)
         # NULL command
@@ -1264,33 +1325,48 @@ csv_to_excel() {
         :
         ;;
     *)
-        log_error "Erreur csv_to_excel de $from_file_path, le fichier source ne semble pas être un CSV"
+        log_error "${FUNCNAME[0]}: le fichier source ${_opts[FROM_FILE_PATH]} ne semble pas être un CSV"
+        false
+        ;;
+    esac &&
+    _step+=1 &&
+    log_info "Conversion de ${_opts[FROM_FILE_PATH]} vers ${_opts[TO_FILE_PATH]}" &&
+    _step+=1 &&
+    _tmpfile="$POW_DIR_TMP/${_opts[FROM_FILE_NAME]}.csv_to_excel.txt" &&
+    _step+=1 &&
+    # protect alnum : starting w/ 0, including E (for exposant) as formula
+    sed \
+        --expression 's/\(\("0[0-9]\+"\)\|\("[0-9]\+E[0-9]\+"\)\)/"="\0""/g' \
+        "${_opts[FROM_FILE_PATH]}" > "$_tmpfile" &&
+    _step+=1 &&
+    ssconvert "$_tmpfile" "${_opts[TO_FILE_PATH]}" > /dev/null 2>&1 &&
+    _step+=1 &&
+    rm --force "$_tmpfile" || {
+        log_error "${FUNCNAME[0]}: étape #$_step en erreur"
         return $ERROR_CODE
-    esac
+    }
 
-    log_info "conversion de $from_file_path vers ${to_file_path}"
-    # protect alnum : starting w/ 0, including E (for exposant)
-    sed -e 's/\(\("0[0-9]\+"\)\|\("[0-9]\+E[0-9]\+"\)\)/"="\0""/g' "$from_file_path" > "$POW_DIR_TMP/$from_file_name.csv_to_excel.txt"
-    ssconvert "$POW_DIR_TMP/$from_file_name.csv_to_excel.txt" "$to_file_path" > /dev/null 2>&1
+    return $SUCCESS_CODE
 }
 
 # import EXCEL in DB (before converting as CSV)
 import_excel_file() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             file_path:Chemin absolu vers le fichier à traiter;
             schema_name:Nom du schema cible;
             table_name:Nom de la table cible;
             table_columns:Colonnes de la table cible;
-            _table_columns_list:Liste des colonnes de la table cible;
+            table_columns_list:Liste des colonnes de la table cible;
             load_mode:Mode de chargement des données;
             worksheet_name:Nom de la feuille à extraire, si non précisé ce sera la feuille active à l ouverture du fichier;
             from_line_number:Numéro de ligne à partir de laquelle il faut lire le fichier;
             to_line_number:Numéro de ligne jusqu à laquelle il faut lire le fichier;
             delimiter:Séparateur à utiliser pour la conversion vers CSV, ce caractère ne doit pas être utilisé dans les valeurs d entête;
-            limit:Limiter a n enregistrements;
-            rowid:Générer un identifiant unique rowid' \
-        --args_o 'file_path' \
+            limit:Limiter à n enregistrements;
+            rowid:Générer un identifiant unique (rowid)' \
+        --args_m 'file_path' \
         --args_v '
             delimiter:'${POW_DELIMITER_JOIN_PIPE}';
             table_columns:HEADER|HEADER_TO_LOWER_CODE|LIST;
@@ -1302,46 +1378,63 @@ import_excel_file() {
             delimiter:PIPE;
             load_mode:OVERWRITE_DATA;
             rowid:yes' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    expect file "$get_arg_file_path" || exit $ERROR_CODE
+    local -i _step=0
+    local _tmpfile _sheet _list _limit _from _to
 
-    local file_path="$get_arg_file_path"
-    local file_name=$(get_file_name --file_path "$file_path")
-    local file_extension=$(get_file_extension --file_path "$file_path")
-    local schema_name=$get_arg_schema_name
-    local table_name=$get_arg_table_name
-    local table_columns=$get_arg_table_columns
-    local _table_columns_list=$get_arg_table_columns_list
-    local load_mode=$get_arg_load_mode
-    local worksheet_name="$get_arg_worksheet_name"
-    local from_line_number=$get_arg_from_line_number
-    local to_line_number=$get_arg_to_line_number
-    local delimiter=$get_arg_delimiter
-    local limit=$get_arg_limit
-    local rowid=$get_arg_rowid
-    local delimiter_code=$get_arg_delimiter
-
+    #echo ${FUNCNAME[0]} && declare -p _opts &&
+    expect file "${_opts[FILE_PATH]}" &&
+    _step+=1 &&
+    _opts[FILE_NAME]=$(get_file_name --file_path "${_opts[FILE_PATH]}") &&
+    _step+=1 &&
+    _opts[FILE_EXTENSION]=$(get_file_extension --file_path "${_opts[FILE_PATH]}") &&
+    _step+=1 &&
+    _tmpfile="$POW_DIR_TMP/${_opts[FILE_NAME]}.excel_to_csv.txt" &&
+    _step+=1 &&
+    # empty arguments
+    {
+        {
+            [ -z "${_opts[WORKSHEET_NAME]}" ] || _sheet="--worksheet_name ${_opts[WORKSHEET_NAME]}"
+        } &&
+        {
+            [ -z "${_opts[TABLE_COLUMNS_LIST]}" ] || _list="--table_columns_list ${_opts[TABLE_COLUMNS_LIST]}"
+        } &&
+        {
+            [ -z "${_opts[LIMIT]}" ] || _limit="--limit ${_opts[LIMIT]}"
+        } &&
+        {
+            [ -z "${_opts[FROM_LINE_NUMBER]}" ] || _from="--from_line_number ${_opts[FROM_LINE_NUMBER]}"
+        } &&
+        {
+            [ -z "${_opts[TO_LINE_NUMBER]}" ] || _to="--to_line_number ${_opts[TO_LINE_NUMBER]}"
+        }
+    } &&
+    _step+=1 &&
     excel_to_csv \
-        --from_file_path "$file_path" \
-        --to_file_path "$file_path.txt" \
-        --worksheet_name "$worksheet_name" \
-        --delimiter "$delimiter_code" &&
+        --from_file_path "${_opts[FILE_PATH]}" \
+        --to_file_path "$_tmpfile" \
+        --delimiter "${_opts[DELIMITER]}" \
+        "$_sheet" &&
+    _step+=1 &&
     import_csv_file \
-        --file_path "$file_path.txt" \
-        --schema_name "$schema_name" \
-        --table_name "$table_name" \
-        --delimiter "$delimiter_code" \
-        --load_mode "$load_mode" \
-        --table_columns "$table_columns" \
-        --_table_columns_list "$_table_columns_list" \
-        --limit "$limit" \
-        --from_line_number "$from_line_number" \
-        --to_line_number "$to_line_number" \
-        --rowid "$rowid" &&
-    rm "$file_path.txt" &&
-    return $SUCCESS_CODE ||
-    return $ERROR_CODE
+        --file_path "$_tmpfile" \
+        --schema_name "${_opts[SCHEMA_NAME]}" \
+        --table_name "${_opts[TABLE_NAME]}" \
+        --delimiter "${_opts[DELIMITER]}" \
+        --load_mode "${_opts[LOAD_MODE]}" \
+        --table_columns "${_opts[TABLE_COLUMNS]}" \
+        --rowid "${_opts[ROWID]}" \
+        "$_list" \
+        "$_limit" \
+        "$_from" \
+        "$_to" &&
+    _step+=1 &&
+    rm "$_tmpfile" &&
+    return $SUCCESS_CODE || {
+        log_error "${FUNCNAME[0]}: étape #$_step en erreur"
+        return $ERROR_CODE
+    }
 }
 
 # import GEO (as shapefile, ...)
@@ -1611,7 +1704,7 @@ import_file() {
         import_options_string+="${tmp_import_option_prefix}${tmp_import_option_name} ${tmp_import_option_value}"
     done
 
-    local _mime=$(get_file_mimetype "$from_file_path") _type_import _type_file
+    local _mime=$(get_file_mimetype "${_opts[FROM_FILE_PATH]}") _type_import _type_file
     case "$_mime" in
     text/plain|text/csv|text/x-csv)
         _type_import=CSV

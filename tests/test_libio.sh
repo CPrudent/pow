@@ -46,6 +46,10 @@ declare -a TESTS=(
     CSV_APPEND
     XLS_CSV
     ODS_CSV
+    CSV_XLS
+    ODS_OVERWRITE_TABLE
+    XLS_OVERWRITE_TABLE
+    XLS_OVERWRITE_TABLE_LOWER
 )
 TESTS_JOIN_PIPE=${TESTS[@]}
 TESTS_JOIN_PIPE=${TESTS_JOIN_PIPE// /|}
@@ -56,6 +60,8 @@ declare -A env_libio=(
     [CSV_TABLE]=test_libio_csv
     [CSV_PATH]=
     [CSV_NROWS]=
+    [XLS_TABLE]=test_libio_xls
+    [XLS_NROWS]=3
 ) &&
 pow_argv \
     --args_n '
@@ -174,8 +180,11 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
         expect file "$_xls" &&
         rm --force "$_csv" &&
         excel_to_csv \
-            --from_file_path "$_xls" &&
+            --from_file_path "$_xls" \
+            --delimiter PIPE &&
         expect file "$_csv" &&
+        _field=$(tail -n 1 "$_csv" | cut --delimiter '|' --field 1) &&
+        [ "$_field" = 3 ] &&
         _rc=0
         ;;
     ODS_CSV)
@@ -186,6 +195,71 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
         excel_to_csv \
             --from_file_path "$_ods" &&
         expect file "$_csv" &&
+        _field=$(tail -n 2 "$_csv" | head -n 1 | cut --delimiter ',' --field 3) &&
+        [ "$_field" = WORLD ] &&
+        _rc=0
+        ;;
+    CSV_XLS)
+        _csv=$POW_DIR_ROOT/tests/data/test_spreadsheet.csv
+        _xls=$POW_DIR_TMP/test_spreadsheet.xls
+        expect file "$_csv" &&
+        rm --force "$_xls" &&
+        csv_to_excel \
+            --from_file_path "$_csv" &&
+        expect file "$_xls" &&
+        _rc=0
+        ;;
+
+    ODS_OVERWRITE_TABLE)
+        _xls=$POW_DIR_ROOT/tests/data/test_spreadsheet-lower.ods
+        expect file "$_xls" &&
+        import_excel_file \
+            --file_path "$_xls" \
+            --table_name ${env_libio[XLS_TABLE]} \
+            --load_mode OVERWRITE_TABLE &&
+        execute_query \
+            --name "${test_libio[_test]}" \
+            --query "SELECT COUNT(1) FROM fr.${env_libio[XLS_TABLE]}" \
+            --return _nrows &&
+        [[ $_nrows -eq ${env_libio[XLS_NROWS]} ]] &&
+        _rc=0
+        ;;
+    XLS_OVERWRITE_TABLE)
+        _xls=$POW_DIR_ROOT/tests/data/test_spreadsheet.xlsx
+        expect file "$_xls" &&
+        import_excel_file \
+            --file_path "$_xls" \
+            --table_name ${env_libio[XLS_TABLE]} \
+            --load_mode OVERWRITE_TABLE &&
+        execute_query \
+            --name "${test_libio[_test]}" \
+            --query "
+                SELECT "'"'"NB_VALUE"'"'"
+                FROM fr.${env_libio[XLS_TABLE]}
+                WHERE "'"'"ID"'"'" = '2'
+            " \
+            --return _value &&
+        [[ "$_value" = "2E+04" ]] &&
+        _rc=0
+        ;;
+    # lowering column names
+    XLS_OVERWRITE_TABLE_LOWER)
+        _xls=$POW_DIR_ROOT/tests/data/test_spreadsheet.xlsx
+        expect file "$_xls" &&
+        import_excel_file \
+            --file_path "$_xls" \
+            --table_name ${env_libio[XLS_TABLE]} \
+            --table_columns HEADER_TO_LOWER_CODE \
+            --load_mode OVERWRITE_TABLE &&
+        execute_query \
+            --name "${test_libio[_test]}" \
+            --query "
+                SELECT nb_value
+                FROM fr.${env_libio[XLS_TABLE]}
+                WHERE id = '1'
+            " \
+            --return _value &&
+        [[ "$_value" = "1E+03" ]] &&
         _rc=0
         ;;
 
