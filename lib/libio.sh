@@ -1186,28 +1186,31 @@ excel_to_csv() {
 
     local -i _step=0
     local -a _steps=(
-        "FROM_FILE_PATH existence"
-        "FROM_FILE_PATH nom"
-        "FROM_FILE_PATH extension"
-        "TO_FILE_PATH cas spéciaux"
-        "TO_FILE_PATH nom"
-        "TO_FILE_PATH extension"
-        "DELIMITER init"
-        "MIME init"
-        "MIME document"
-        "DEBUG MIME"
-        "MIME non reconnu, usage extension"
-        "DEBUG extension"
-        "WORKSHEET_NAME filtre, si renseigné"
-        "LOG_INFO"
-        "TMPFILE création"
-        "SSCONVERT"
-        "TO_FILE_PATH init"
-        "STDOUT"
+        'FROM_FILE_PATH existence'
+        'FROM_FILE_PATH nom'
+        'FROM_FILE_PATH extension'
+        'TO_FILE_PATH cas spéciaux'
+        'TO_FILE_PATH nom'
+        'TO_FILE_PATH extension'
+        'DELIMITER init'
+        'MIME init'
+        'MIME document'
+        'MIME non reconnu, usage extension'
+        'WORKSHEET_NAME filtre, si renseigné'
+        LOG_INFO
+        'TMPFILE création'
+        SSCONVERT
+        'TO_FILE_PATH init'
+        STDOUT
     )
     local _stdout=0 _delimiter_value _mime _spreadsheet _options _convert
 
-    #echo ${FUNCNAME[0]} && declare -p _opts &&
+    {
+        # debug
+        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
+            echo ${FUNCNAME[0]} && declare -p _opts
+        }
+    } &&
     [ -f "${_opts[FROM_FILE_PATH]}" ] &&
     _step+=1 &&
     _opts[FROM_FILE_NAME]=$(get_file_name --file_path "${_opts[FROM_FILE_PATH]}") &&
@@ -1242,7 +1245,6 @@ excel_to_csv() {
         _spreadsheet='Open Office sheet'
         ;;
     esac &&
-    _step+=1 &&
     {
         # debug
         ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
@@ -1263,7 +1265,6 @@ excel_to_csv() {
             esac
         }
     } &&
-    _step+=1 &&
     {
         # debug
         ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
@@ -1313,10 +1314,28 @@ csv_to_excel() {
         --pow_argv _opts "$@" || return $ERROR_CODE
 
     local -i _step=0
+    local -a _steps=(
+        'FROM_FILE_PATH existence'
+        'FROM_FILE_PATH nom'
+        'FROM_FILE_PATH extension'
+        'TO_FILE_PATH cas spéciaux'
+        'MIME init'
+        'MIME filtre'
+        LOG_INFO
+        'TMPFILE init'
+        'SED protection champ numérique commençant par 0'
+        SSCONVERT
+        'TMPFILE effacement'
+    )
     local _tmpfile _mime
 
-    #echo ${FUNCNAME[0]} && declare -p _opts &&
-    expect file "${_opts[FROM_FILE_PATH]}" &&
+    {
+        # debug
+        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
+            echo ${FUNCNAME[0]} && declare -p _opts
+        }
+    } &&
+    [ -f "${_opts[FROM_FILE_PATH]}" ] &&
     _step+=1 &&
     _opts[FROM_FILE_NAME]=$(get_file_name --file_path "${_opts[FROM_FILE_PATH]}") &&
     _step+=1 &&
@@ -1356,7 +1375,7 @@ csv_to_excel() {
     ssconvert "$_tmpfile" "${_opts[TO_FILE_PATH]}" > /dev/null 2>&1 &&
     _step+=1 &&
     rm --force "$_tmpfile" || {
-        log_error "${FUNCNAME[0]}: étape #$_step en erreur"
+        log_error "${FUNCNAME[0]}: étape #$_step (${_steps[$_step]}) en erreur"
         return $ERROR_CODE
     }
 
@@ -1395,10 +1414,25 @@ import_excel_file() {
         --pow_argv _opts "$@" || return $ERROR_CODE
 
     local -i _step=0
+    local -a _steps=(
+        'FILE_PATH existence'
+        'FILE_PATH nom'
+        'FILE_PATH extension'
+        'TMPFILE init'
+        'POW_ARGV arguments vides'
+        EXCEL_TO_CSV
+        IMPORT_CSV_FILE
+        'TMPFILE effacement'
+    )
     local _tmpfile _sheet _list _limit _from _to
 
-    #echo ${FUNCNAME[0]} && declare -p _opts &&
-    expect file "${_opts[FILE_PATH]}" &&
+    {
+        # debug
+        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
+            echo ${FUNCNAME[0]} && declare -p _opts
+        }
+    } &&
+    [ -f "${_opts[FILE_PATH]}" ] &&
     _step+=1 &&
     _opts[FILE_NAME]=$(get_file_name --file_path "${_opts[FILE_PATH]}") &&
     _step+=1 &&
@@ -1444,11 +1478,12 @@ import_excel_file() {
         "$_from" \
         "$_to" &&
     _step+=1 &&
-    rm "$_tmpfile" &&
-    return $SUCCESS_CODE || {
-        log_error "${FUNCNAME[0]}: étape #$_step en erreur"
+    rm "$_tmpfile" || {
+        log_error "${FUNCNAME[0]}: étape #$_step (${_steps[$_step]}) en erreur"
         return $ERROR_CODE
     }
+
+    return $SUCCESS_CODE
 }
 
 # import GEO (as shapefile, ...)
@@ -1628,8 +1663,9 @@ import_geo_file() {
 
 # import file into DB
 import_file() {
-    bash_args \
-    --args_p '
+    local -A _opts &&
+    pow_argv \
+    --args_n '
         file_path:Chemin absolu vers le fichier à importer;
         schema_name:Nom du schema cible;
         table_name:Nom de la table cible;
@@ -1637,159 +1673,208 @@ import_file() {
         import_options:Options d import du fichier spécifiques à son format;
         limit:Limiter a n enregistrements;
         rowid:Générer un identifiant unique rowid' \
-    --args_o 'file_path' \
+    --args_m 'file_path' \
     --args_v '
         load_mode:OVERWRITE_DATA|OVERWRITE_TABLE|APPEND;
         rowid:yes|no' \
     --args_d '
-        schema_name:$POW_PG_DEFAULT_SCHEMA;
+        schema_name:'$POW_PG_DEFAULT_SCHEMA';
         load_mode:OVERWRITE_DATA;
         rowid:yes' \
-    "$@" || return $ERROR_CODE
+    --pow_argv _opts "$@" || return $ERROR_CODE
 
-    expect file "$get_arg_file_path" || exit $ERROR_CODE
+    local -i _step=0
+    local -a _steps=(
+        'FILE_PATH existence'
+        'FILE_PATH nom'
+        'FILE_PATH extension'
+        'ARCHIVE traitement'
+        'TABLE_NAME init'
+        'IMPORT_OPTIONS init'
+        'TYPE_IMPORT MIME'
+        'TYPE_IMPORT FILE_EXTENSION'
+        IMPORT_FILE
+        'ARCHIVE purge'
+    )
+    local -a _list_options=()
+    local _extract_dir _import_options _limit _type_import
 
-    local file_path="$get_arg_file_path"
-    local file_name=$(get_file_name --file_path "$file_path")
-    local file_extension=$(get_file_extension --file_path "$file_path")
-    local schema_name=$get_arg_schema_name
-    local table_name=$get_arg_table_name
-    local load_mode=$get_arg_load_mode
-    local limit=$get_arg_limit
-    local import_options="$get_arg_import_options"
-    local rowid=$get_arg_rowid
+    {
+        # debug
+        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
+            echo ${FUNCNAME[0]} && declare -p _opts
+        }
+    } &&
+    [ -f "${_opts[FILE_PATH]}" ] &&
+    _step+=1 &&
+    _opts[FILE_NAME]=$(get_file_name --file_path "${_opts[FILE_PATH]}") &&
+    _step+=1 &&
+    _opts[FILE_EXTENSION]=$(get_file_extension --file_path "${_opts[FILE_PATH]}") &&
+    _step+=1 &&
+    {
+        (! is_archive --archive_path "${_opts[FILE_PATH]}") || {
+            local _files _error=yes _msg
 
-    local file_archive_extract_dir
-    if is_archive --archive_path "$file_path"; then
-        file_archive_extract_dir="$POW_DIR_TMP/$file_name"
-        rm --recursive --force "$POW_DIR_TMP/$file_name" &&
-        mkdir "$POW_DIR_TMP/$file_name" &&
-        extract_archive \
-            --archive_path "$file_path" \
-            --extract_path "$file_archive_extract_dir" || return $ERROR_CODE
-
-        local _files=($(ls -1 "$file_archive_extract_dir"/*)) _error=yes _msg
-        case ${#_files[@]} in
-        0)
-            _msg="Auncun fichier trouvé dans l'archive $file_path, un attendu"
+            _extract_dir="$POW_DIR_TMP/${_opts[FILE_NAME]}" &&
+            rm --recursive --force "$POW_DIR_TMP/${_opts[FILE_NAME]}" &&
+            mkdir "$POW_DIR_TMP/${_opts[FILE_NAME]}" &&
+            extract_archive \
+                --archive_path "${_opts[FILE_PATH]}" \
+                --extract_path "$_extract_dir" &&
+            _files=($(ls -1 "$_extract_dir"/*)) &&
+            case ${#_files[@]} in
+            0)
+                _msg="Auncun fichier trouvé dans l'archive ${_opts[FILE_PATH]}, un attendu"
+                ;;
+            1)
+                _error=no
+                ;;
+            *)
+                _msg="Plusieurs fichiers trouvés dans l'archive ${_opts[FILE_PATH]}, un seul attendu"
+                ;;
+            esac &&
+            {
+                if [ "$_error" = yes ]; then
+                    log_error "$_msg"
+                    false
+                else
+                    _opts[FILE_PATH]=${_files[0]} &&
+                    _opts[FILE_NAME]=$(get_file_name --file_path "${_opts[FILE_PATH]}") &&
+                    _opts[FILE_EXTENSION]=$(get_file_extension --file_path "${_opts[FILE_PATH]}")
+                fi
+            }
+        }
+    } &&
+    _step+=1 &&
+    {
+        [ -n "${_opts[TABLE_NAME]}" ] || {
+            execute_query \
+                --name LABEL_TO_CODE \
+                --query "SELECT public.label_to_code('${_opts[FILE_NAME]}')" \
+                --with_log no \
+                --return table_name
+        }
+    } &&
+    {
+        # debug
+        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
+            echo "table_name=${_opts[TABLE_NAME]}"
+        }
+    } &&
+    # options
+    _step+=1 &&
+    {
+        [ -z "${_opts[IMPORT_OPTIONS]}" ] || {
+            local _option _key _value
+            local _prefix
+            IFS=';' read -ra _list_options <<< "${_opts[IMPORT_OPTIONS]}"
+            for _option in "${_list_options[@]}"; do
+                _key=$(echo $_option | grep --only-matching '^[^:]*')
+                _value=$(echo $_option | grep --only-matching '[^:]*$')
+                if [ $(expr length $_key) -eq 1 ]; then
+                    _prefix='-'
+                else
+                    _prefix='--'
+                fi
+                if [ -n "${_import_options}" ]; then
+                    _prefix=" ${_prefix}"
+                fi
+                _import_options+="${_prefix}${_key} ${_value}"
+            done
+        }
+    } &&
+    # limit
+    _step+=1 &&
+    {
+        [ -z "${_opts[LIMIT]}" ] || _limit="--limit ${_opts[LIMIT]}"
+    } &&
+    _step+=1 &&
+    {
+        local _mime=$(get_file_mimetype "${_opts[FILE_PATH]}")
+        case "$_mime" in
+        text/plain|text/csv|text/x-csv)
+            _type_import=CSV
             ;;
-        1)
-            _error=no
+        application/vnd.openxmlformats-officedocument.spreadsheetml.sheet|application/vnd.ms-excel|application/vnd.oasis.opendocument.spreadsheet)
+            _type_import=SPREADSHEET
             ;;
-        *)
-            _msg="Plusieurs fichiers trouvés dans l'archive $file_path, un seul attendu"
+        application/*dbf*|application/octet-stream)
+            local _type_file=$(file "${_opts[FILE_PATH]}" | cut --delimiter : --fields 2)
+            _type_file=${_type_file,,}
+            [[ $_type_file =~ esri[[:space:]]shapefile|dbase|json ]] && _type_import=GEO
+            ;;
+        application/*json*)
+            _type_import=JSON
             ;;
         esac
-        [ "$_error" = yes ] && {
-            log_error "$_msg"
-            return $ERROR_CODE
+    } &&
+    {
+        # debug
+        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
+            echo "type_import (MIME)=$_type_import"
         }
-        file_path=${_files[0]}
-        file_name=$(get_file_name --file_path "$file_path")
-        file_extension=$(get_file_extension --file_path "$file_path")
-    fi
-
-    if [ -z "$table_name" ]; then
-        execute_query \
-            --name LABEL_TO_CODE \
-            --query "SELECT public.label_to_code('$file_name')" \
-            --psql_arguments 'tuples-only:pset=format=unaligned' \
-            --with_log no \
-            --return table_name || return $ERROR_CODE
-    fi
-    [ "$POW_DEBUG" = yes ] && echo "table_name=$table_name"
-
-    # options
-    local tmp_liste_import_options=()
-    local tmp_import_option tmp_import_option_name tmp_import_option_value import_options_string
-    local tmp_import_option_prefix
-    IFS=';' read -ra tmp_liste_import_options <<< "${import_options}"
-    for tmp_import_option in "${tmp_liste_import_options[@]}"; do
-        tmp_import_option_name=$(echo $tmp_import_option | grep --only-matching '^[^:]*')
-        tmp_import_option_value=$(echo $tmp_import_option | grep --only-matching '[^:]*$')
-        if [ $(expr length $tmp_import_option_name) -eq 1 ]; then
-            tmp_import_option_prefix='-'
-        else
-            tmp_import_option_prefix='--'
-        fi
-        if [ -n "$import_options_string" ]; then
-            tmp_import_option_prefix=" ${tmp_import_option_prefix}"
-        fi
-        import_options_string+="${tmp_import_option_prefix}${tmp_import_option_name} ${tmp_import_option_value}"
-    done
-
-    local _mime=$(get_file_mimetype "${_opts[FROM_FILE_PATH]}") _type_import _type_file
-    case "$_mime" in
-    text/plain|text/csv|text/x-csv)
-        _type_import=CSV
-        ;;
-    application/vnd.openxmlformats-officedocument.spreadsheetml.sheet|application/vnd.ms-excel|application/vnd.oasis.opendocument.spreadsheet)
-        _type_import=SPREADSHEET
-        ;;
-    application/*dbf*|application/octet-stream)
-        _type_file=$(file "$file_path" | cut --delimiter : --fields 2)
-        _type_file=${_type_file,,}
-        [[ $_type_file =~ esri[[:space:]]shapefile|dbase|json ]] && _type_import=GEO
-        ;;
-    application/*json*)
-        _type_import=JSON
-        ;;
-    esac
-    [ "$POW_DEBUG" = yes ] && echo "_type_import (MIME)=$_type_import"
-    [ -z "$_type_import" ] &&
-    case "${file_extension,,}" in
-    txt|[cdt]sv)    _type_import=CSV            ;;
-    shp|dbf)        _type_import=GEO            ;;
-    json)           _type_import=JSON           ;;
-    xls|xlsx|ods)   _type_import=SPREADSHEET    ;;
-    esac &&
-    [ "$POW_DEBUG" = yes ] && {
-        echo "_type_import (EXTENSION)=$_type_import"
-        echo "import_options_string=$import_options_string"
-        echo "limit=$limit"
-        echo "rowid=$rowid"
-    }
-
+    } &&
+    _step+=1 &&
+    {
+        [ -n "$_type_import" ] || {
+            case "${_opts[FILE_EXTENSION]},,}" in
+            txt|[cdt]sv)    _type_import=CSV            ;;
+            shp|dbf)        _type_import=GEO            ;;
+            json)           _type_import=JSON           ;;
+            xls|xlsx|ods)   _type_import=SPREADSHEET    ;;
+            esac
+        }
+    } &&
+    {
+        # debug
+        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
+            echo "type_import (EXTENSION)=$_type_import"
+            echo "options=${_import_options}"
+            echo "limit=${_opts[LIMIT]}"
+            echo "rowid=${_opts[ROWID]}"
+        }
+    } &&
+    _step+=1 &&
     case "$_type_import" in
     CSV)
         import_csv_file \
-            --file_path "$file_path" \
-            --schema_name "$schema_name" \
-            --table_name "$table_name" \
-            --load_mode "$load_mode" \
-            --limit "$limit" \
-            --rowid "$rowid" \
-            $import_options_string
+            --file_path "${_opts[FILE_PATH]}" \
+            --schema_name "${_opts[SCHEMA_NAME]}" \
+            --table_name "${_opts[TABLE_NAME]}" \
+            --load_mode "${_opts[LOAD_MODE]}" \
+            --rowid "${_opts[ROWID]}" \
+            $_limit \
+            $_import_options
         ;;
     SPREADSHEET)
         import_excel_file \
-            --file_path "$file_path" \
-            --schema_name "$schema_name" \
-            --table_name "$table_name" \
-            --load_mode "$load_mode" \
-            --limit "$limit" \
-            --rowid "$rowid" \
-            $import_options_string
+            --file_path "${_opts[FILE_PATH]}" \
+            --schema_name "${_opts[SCHEMA_NAME]}" \
+            --table_name "${_opts[TABLE_NAME]}" \
+            --load_mode "${_opts[LOAD_MODE]}" \
+            --rowid "${_opts[ROWID]}" \
+            $_limit \
+            $_import_options
         ;;
     GEO)
         import_geo_file \
-            --file_path "$file_path" \
-            --schema_name "$schema_name" \
-            --table_name "$table_name" \
-            --load_mode "$load_mode" \
-            --limit "$limit" \
-            --rowid "$rowid" \
-            $import_options_string
+            --file_path "${_opts[FILE_PATH]}" \
+            --schema_name "${_opts[SCHEMA_NAME]}" \
+            --table_name "${_opts[TABLE_NAME]}" \
+            --load_mode "${_opts[LOAD_MODE]}" \
+            --rowid "${_opts[ROWID]}" \
+            $_limit \
+            $_import_options
         ;;
     JSON)
         local _i _column_name
         local -a _opt
         local -A _json_options
-        #declare -p tmp_liste_import_options
+        #declare -p _list_options
         {
-            [[ ${#tmp_liste_import_options[@]} -eq 0 ]] || {
-                for ((_i=0; _i<${#tmp_liste_import_options[@]}; _i++)); do
-                    IFS='=' read -ra _opt <<< ${tmp_liste_import_options[$_i]}
+            [[ ${#_list_options[@]} -eq 0 ]] || {
+                for ((_i=0; _i<${#_list_options[@]}; _i++)); do
+                    IFS='=' read -ra _opt <<< ${_list_options[$_i]}
                     _json_options[${_opt[0]}]=${_opt[1]}
                 done
                 _column_name=${_json_options[column_name]}
@@ -1803,13 +1888,14 @@ import_file() {
                 local -a _columns_array
                 execute_query \
                     --name TABLE_COLUMNS \
-                    --query "SELECT get_table_columns('$schema_name', '$table_name')" \
-                    --psql_arguments 'tuples-only:pset=format=unaligned' \
+                    --query "
+                        SELECT get_table_columns('${_opts[SCHEMA_NAME]}', '${_opts[TABLE_NAME]}')
+                    " \
                     --return _columns_str &&
                 array_sql_to_bash --array_sql "$_columns_str" --array_bash _columns_array &&
                 {
                     [[ ${#_columns_array[@]} -eq 1 ]] || {
-                        log_error "Table de chargement JSON ($schema_name.$table_name) ne doit avoir qu'une colonne de type JSON!"
+                        log_error "Table de chargement JSON (${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]}) ne doit avoir qu'une colonne de type JSON!"
                         false
                     }
                 } &&
@@ -1817,29 +1903,35 @@ import_file() {
             }
         } &&
         {
-            [ "${load_mode}" = APPEND ] || {
+            [ "${_opts[LOAD_MODE]}" = APPEND ] || {
                 execute_query \
                     --name TABLE_TRUNCATE \
-                    --query "TRUNCATE TABLE $schema_name.$table_name"
+                    --query "TRUNCATE TABLE ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]}"
             }
         } &&
         {
             # fixed name log would be overwriten when session of multiple files, need to be saved
-            jq --raw-output --compact-output '.' < "$file_path" | (execute_query \
+            jq --raw-output --compact-output '.' < "${_opts[FILE_PATH]}" | (execute_query \
                 --name LOAD_JSON \
-                --query "COPY $schema_name.$table_name (${_column_name}) FROM STDIN" || {
+                --query "COPY ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]} (${_column_name}) FROM STDIN" || {
                     backup_file_as_uniq --path "$POW_DIR_ARCHIVE/LOAD_JSON-error.log"
                     false
                 })
         }
         ;;
     *)
-        log_error "Le fichier $file_path ne peut pas être traité (extension non gérée)!"
+        log_error "Le fichier ${_opts[FILE_PATH]} ne peut pas être traité (extension non gérée)!"
         false
         ;;
-    esac || return $ERROR_CODE
-
-    [ -n "$file_archive_extract_dir" ] && rm --recursive --force "$file_archive_extract_dir"
+    esac &&
+    # purge
+    _step+=1 &&
+    {
+        [ -z "$_extract_dir" ] || rm --recursive --force "$_extract_dir"
+    } || {
+        log_error "${FUNCNAME[0]}: étape #$_step (${_steps[$_step]}) en erreur"
+        return $ERROR_CODE
+    }
 
     return $SUCCESS_CODE
 }

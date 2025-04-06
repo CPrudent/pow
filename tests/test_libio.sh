@@ -49,6 +49,7 @@ declare -a TESTS=(
     ODS_OVERWRITE_TABLE
     XLS_OVERWRITE_TABLE
     XLS_OVERWRITE_TABLE_LOWER
+    CSV_IMPORT_FILE
 )
 TESTS_JOIN_PIPE=${TESTS[@]}
 TESTS_JOIN_PIPE=${TESTS_JOIN_PIPE// /|}
@@ -90,7 +91,6 @@ declare -A result_libio
 set_log_echo no &&
 set_env --schema_name fr &&
 test_csv --path env_libio[CSV_PATH] --nrows env_libio[CSV_NROWS] &&
-declare -p env_libio &&
 for ((_test=0; _test<${#test_libio[@]}; _test++)); do
     _rc=1
 
@@ -260,6 +260,24 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
             " \
             --return _value &&
         [[ "$_value" = "1E+03" ]] &&
+        _rc=0
+        ;;
+
+    CSV_IMPORT_FILE)
+        _csv=$POW_DIR_COMMON_GLOBAL/fr/bal/communes-summary.csv
+        expect file "$_csv" &&
+        import_file \
+            --file_path "$_csv" \
+            --table_name ${env_libio[CSV_TABLE]} \
+            --load_mode OVERWRITE_TABLE &&
+        execute_query \
+            --name "${test_libio[_test]}" \
+            --query "
+                SELECT COUNT(1)
+                FROM fr.${env_libio[CSV_TABLE]}
+            " \
+            --return _nrows &&
+        [[ $_nrows -gt 30000 ]] &&
         _rc=0
         ;;
 
