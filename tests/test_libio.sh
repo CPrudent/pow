@@ -54,6 +54,7 @@ declare -a TESTS=(
     HISTORY_BEGIN
     HISTORY_END_OK
     HISTORY_END_KO
+    HISTORY_UPDATE
 )
 TESTS_JOIN_PIPE=${TESTS[@]}
 TESTS_JOIN_PIPE=${TESTS_JOIN_PIPE// /|}
@@ -368,6 +369,26 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
             " \
             --return _id &&
         [[ $_id -eq ${env_libio[IO_ID]} ]]
+        _rc=0
+        ;;
+    HISTORY_UPDATE)
+        execute_query \
+            --name "${test_libio[_test]}_ID" \
+            --query "
+                SELECT (get_last_io('${env_libio[IO_NAME]}')).id
+            " \
+            --return env_libio[IO_ID] &&
+        [ -n "${env_libio[IO_ID]}" ] &&
+        io_history_update \
+            --nrows_processed 5 \
+            --id ${env_libio[IO_ID]} &&
+        execute_query \
+            --name "${test_libio[_test]}_STATE" \
+            --query "
+                SELECT (get_last_io('${env_libio[IO_NAME]}')).nb_rows_processed
+            " \
+            --return _nrows &&
+        [[ $_nrows -eq 5 ]] &&
         _rc=0
         ;;
 

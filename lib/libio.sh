@@ -25,9 +25,6 @@ _io_history_manager() {
         --args_m '
             method
         ' \
-        --args_v '
-            status:EN_COURS|SUCCES|ERREUR
-        ' \
         --pow_argv _opts "$@" || return $ERROR_CODE
 
     local _query _return _output _with_log=no
@@ -174,6 +171,7 @@ io_history_exists() {
         ' \
         --args_m '
             io;
+            status;
             date_end
         ' \
         --args_v '
@@ -192,9 +190,143 @@ io_history_exists() {
         --io ${_opts[IO]} \
         --date_end "${_opts[DATE_END]}" \
         --id _io_id &&
-    [ -n "$_io_id" ] &&
-    return $SUCCESS_CODE ||
-    return $ERROR_CODE
+    [ -n "$_io_id" ] || return $ERROR_CODE
+
+    return $SUCCESS_CODE
+}
+
+# start history of IO (returning its ID)
+io_history_begin() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            io:nom IO;
+            date_begin:date de début des données (format connu PostgreSQL);
+            date_end:date de fin des données (format connu PostgreSQL);
+            nrows_todo:nombre de données à traiter;
+            infos:compléments infos (souvent au format JSON);
+            id:nom de la variable pour récupérer identifiant IO
+        ' \
+        --args_m '
+            io;
+            date_begin;
+            date_end;
+            nrows_todo;
+            id
+        ' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
+
+    local -n _io_id=${_opts[ID]} _infos
+
+    [ -z "${_opts[INFOS]}" ] || _infos="--infos ${_opts[INFOS]}"
+    _io_history_manager \
+        --method APPEND \
+        --io ${_opts[IO]} \
+        --status EN_COURS \
+        --date_begin "${_opts[DATE_BEGIN]}" \
+        --date_end "${_opts[DATE_END]}" \
+        --nrows_todo ${_opts[NROWS_TODO]} \
+        --id _io_id \
+        $_infos || return $ERROR_CODE
+
+    return $SUCCESS_CODE
+}
+
+# end history of IO (w/ success)
+io_history_end_ok() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            nrows_processed:nombre de données traitées;
+            infos:compléments infos (souvent au format JSON);
+            id:identifiant IO
+        ' \
+        --args_m '
+            nrows_processed;
+            id
+        ' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
+
+    local _infos
+
+    [ -z "${_opts[INFOS]}" ] || _infos="--infos ${_opts[INFOS]}"
+    _io_history_manager \
+        --method UPDATE_OK \
+        --nrows_processed "${_opts[NROWS_PROCESSED]}" \
+        --id ${_opts[ID]} \
+        $_infos || return $ERROR_CODE
+
+    return $SUCCESS_CODE
+}
+
+# end history of IO (w/ error)
+io_history_end_ko() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            id:identifiant IO
+        ' \
+        --args_m '
+            id
+        ' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
+
+    _io_history_manager \
+        --method UPDATE_KO \
+        --id ${_opts[ID]} || return $ERROR_CODE
+
+    return $SUCCESS_CODE
+}
+
+# update history of IO (w/ its ID)
+io_history_update() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            nrows_todo:nombre de données à traiter;
+            nrows_processed:nombre de données traitées;
+            infos:compléments infos (souvent au format JSON);
+            id:identifiant IO
+        ' \
+        --args_m '
+            id
+        ' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
+
+    local _todo _processed
+    [ -n "${_opts[NROWS_TODO]}" ] && _todo="--nrows_todo ${_opts[NROWS_TODO]}"
+    [ -n "${_opts[NROWS_PROCESSED]}" ] && _processed="--nrows_processed ${_opts[NROWS_PROCESSED]}"
+
+    _io_history_manager \
+        --method UPDATE \
+        $_todo \
+        $_processed \
+        --infos "${_opts[INFOS]}" \
+        --id ${_opts[ID]} || return $ERROR_CODE
+
+    return $SUCCESS_CODE
+}
+
+# export last history of IO
+io_history_export_last() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            io:nom IO;
+            output:sortie pour export
+        ' \
+        --args_m '
+            io;
+            output
+        ' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
+
+    _io_history_manager \
+        --method EXPORT_LAST \
+        --io ${_opts[IO]} \
+        --output "${_opts[OUTPUT]}" || return $ERROR_CODE
+
+    return $SUCCESS_CODE
 }
 
 POW_IO_SUCCESSFUL=10
@@ -378,142 +510,6 @@ io_get_ids_integration() {
         _ids_ref+=$(printf '"%s":%d' $_key $_value)
     done
     [ -n "$_ids_ref" ] && _ids_ref="{${_ids_ref}}"
-
-    return $SUCCESS_CODE
-}
-
-# start history of IO (returning its ID)
-io_history_begin() {
-    local -A _opts &&
-    pow_argv \
-        --args_n '
-            io:nom IO;
-            date_begin:date de début des données (format connu PostgreSQL);
-            date_end:date de fin des données (format connu PostgreSQL);
-            nrows_todo:nombre de données à traiter;
-            infos:compléments infos (souvent au format JSON);
-            id:nom de la variable pour récupérer identifiant IO
-        ' \
-        --args_m '
-            io;
-            date_begin;
-            date_end;
-            nrows_todo;
-            id
-        ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
-
-    local -n _io_id=${_opts[ID]} _infos
-
-    [ -z "${_opts[INFOS]}" ] || _infos="--infos ${_opts[INFOS]}"
-    _io_history_manager \
-        --method APPEND \
-        --io ${_opts[IO]} \
-        --status EN_COURS \
-        --date_begin "${_opts[DATE_BEGIN]}" \
-        --date_end "${_opts[DATE_END]}" \
-        --nrows_todo ${_opts[NROWS_TODO]} \
-        --id _io_id \
-        $_infos || return $ERROR_CODE
-
-    return $SUCCESS_CODE
-}
-
-# end history of IO (w/ success)
-io_history_end_ok() {
-    local -A _opts &&
-    pow_argv \
-        --args_n '
-            nrows_processed:nombre de données traitées;
-            infos:compléments infos (souvent au format JSON);
-            id:identifiant IO
-        ' \
-        --args_m '
-            nrows_processed;
-            id
-        ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
-
-    local _infos
-
-    [ -z "${_opts[INFOS]}" ] || _infos="--infos ${_opts[INFOS]}"
-    _io_history_manager \
-        --method UPDATE_OK \
-        --status SUCCES \
-        --nrows_processed "${_opts[NROWS_PROCESSED]}" \
-        --id ${_opts[ID]} \
-        $_infos || return $ERROR_CODE
-
-    return $SUCCESS_CODE
-}
-
-# end history of IO (w/ error)
-io_history_end_ko() {
-    local -A _opts &&
-    pow_argv \
-        --args_n '
-            id:identifiant IO
-        ' \
-        --args_m '
-            id
-        ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
-
-    _io_history_manager \
-        --method UPDATE_KO \
-        --status ERREUR \
-        --id ${_opts[ID]} || return $ERROR_CODE
-
-    return $SUCCESS_CODE
-}
-
-# export last history of IO
-io_history_export_last() {
-    local -A _opts &&
-    pow_argv \
-        --args_n '
-            io:nom IO;
-            output:sortie pour export
-        ' \
-        --args_m '
-            io
-        ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
-
-    _io_history_manager \
-        --method EXPORT_LAST \
-        --io ${_opts[IO]} \
-        --output "${_opts[OUTPUT]}" || return $ERROR_CODE
-
-    return $SUCCESS_CODE
-}
-
-# update history of IO (w/ its ID)
-io_history_update() {
-    local -A _opts &&
-    pow_argv \
-        --args_n '
-            nrows_todo:nombre de données à traiter;
-            nrows_processed:nombre de données traitées;
-            infos:compléments infos (souvent au format JSON);
-            id:identifiant IO
-        ' \
-        --args_m '
-            id
-        ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
-
-    local _todo _processed
-    [ -n "${_opts[NROWS_TODO]}" ] && _todo="--nrows_todo ${_opts[NROWS_TODO]}"
-    [ -n "${_opts[NROWS_PROCESSED]}" ] && _processed="--nrows_processed ${_opts[NROWS_PROCESSED]}"
-
-    _io_history_manager \
-        --method UPDATE \
-        --status SUCCES \
-        $_todo \
-        $_processed \
-        --infos "${_opts[INFOS]}" \
-        --id ${_opts[ID]} || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
