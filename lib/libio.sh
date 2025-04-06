@@ -23,8 +23,7 @@ _io_history_manager() {
             output:sortie pour export
         ' \
         --args_m '
-            method;
-            status
+            method
         ' \
         --args_v '
             status:EN_COURS|SUCCES|ERREUR
@@ -404,8 +403,9 @@ io_history_begin() {
         ' \
         --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local -n _io_id=${_opts[ID]}
+    local -n _io_id=${_opts[ID]} _infos
 
+    [ -z "${_opts[INFOS]}" ] || _infos="--infos ${_opts[INFOS]}"
     _io_history_manager \
         --method APPEND \
         --io ${_opts[IO]} \
@@ -413,8 +413,8 @@ io_history_begin() {
         --date_begin "${_opts[DATE_BEGIN]}" \
         --date_end "${_opts[DATE_END]}" \
         --nrows_todo ${_opts[NROWS_TODO]} \
-        --infos "${_opts[INFOS]}" \
-        --id _io_id || return $ERROR_CODE
+        --id _io_id \
+        $_infos || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -434,11 +434,15 @@ io_history_end_ok() {
         ' \
         --pow_argv _opts "$@" || return $ERROR_CODE
 
+    local _infos
+
+    [ -z "${_opts[INFOS]}" ] || _infos="--infos ${_opts[INFOS]}"
     _io_history_manager \
         --method UPDATE_OK \
+        --status SUCCES \
         --nrows_processed "${_opts[NROWS_PROCESSED]}" \
-        --infos "${_opts[INFOS]}" \
-        --id ${_opts[ID]} || return $ERROR_CODE
+        --id ${_opts[ID]} \
+        $_infos || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -457,6 +461,7 @@ io_history_end_ko() {
 
     _io_history_manager \
         --method UPDATE_KO \
+        --status ERREUR \
         --id ${_opts[ID]} || return $ERROR_CODE
 
     return $SUCCESS_CODE
@@ -504,6 +509,7 @@ io_history_update() {
 
     _io_history_manager \
         --method UPDATE \
+        --status SUCCES \
         $_todo \
         $_processed \
         --infos "${_opts[INFOS]}" \

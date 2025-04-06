@@ -51,6 +51,9 @@ declare -a TESTS=(
     XLS_OVERWRITE_TABLE_LOWER
     CSV_IMPORT_FILE
     JSON_IMPORT_FILE
+    HISTORY_BEGIN
+    HISTORY_END_OK
+    HISTORY_END_KO
 )
 TESTS_JOIN_PIPE=${TESTS[@]}
 TESTS_JOIN_PIPE=${TESTS_JOIN_PIPE// /|}
@@ -58,6 +61,11 @@ TESTS_JOIN_PIPE+="|ALL"
 
 declare -A env_libio=(
     [ERROR]=0
+    [IO_NAME]=TEST_LIBIO
+    [IO_ID]=
+    [IO_BEGIN]=
+    [IO_END]=$(date +%F)
+    [IO_ROWS]=10
     [CSV_TABLE]=test_libio_csv
     [CSV_PATH]=
     [CSV_NROWS]=
@@ -304,6 +312,62 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
             " \
             --return _nrows &&
         [[ $_nrows -eq 95 ]] &&
+        _rc=0
+        ;;
+
+    HISTORY_BEGIN)
+        io_history_begin \
+            --io "${env_libio[IO_NAME]}" \
+            --date_begin "${env_libio[IO_BEGIN]:-1970-01-01}" \
+            --date_end "${env_libio[IO_END]}" \
+            --nrows_todo ${env_libio[IO_ROWS]} \
+            --id env_libio[IO_ID] &&
+        execute_query \
+            --name "${test_libio[_test]}_BEGIN" \
+            --query "
+                SELECT (get_last_io('${env_libio[IO_NAME]}', 'EN_COURS')).status
+            " \
+            --return _state &&
+        [ "$_state" = EN_COURS ] &&
+        _rc=0
+        ;;
+    HISTORY_END_OK)
+        execute_query \
+            --name "${test_libio[_test]}_ID" \
+            --query "
+                SELECT (get_last_io('${env_libio[IO_NAME]}', 'EN_COURS')).id
+            " \
+            --return env_libio[IO_ID] &&
+        [ -n "${env_libio[IO_ID]}" ] &&
+        io_history_end_ok \
+            --nrows_processed ${env_libio[IO_ROWS]} \
+            --id ${env_libio[IO_ID]} &&
+        execute_query \
+            --name "${test_libio[_test]}_STATE" \
+            --query "
+                SELECT (get_last_io('${env_libio[IO_NAME]}')).status
+            " \
+            --return _state &&
+        [ "$_state" = SUCCES ] &&
+        _rc=0
+        ;;
+    HISTORY_END_KO)
+        execute_query \
+            --name "${test_libio[_test]}_ID" \
+            --query "
+                SELECT (get_last_io('${env_libio[IO_NAME]}', 'EN_COURS')).id
+            " \
+            --return env_libio[IO_ID] &&
+        [ -n "${env_libio[IO_ID]}" ] &&
+        io_history_end_ko \
+            --id ${env_libio[IO_ID]} &&
+        execute_query \
+            --name "${test_libio[_test]}_ID" \
+            --query "
+                SELECT (get_last_io('${env_libio[IO_NAME]}', 'ERREUR')).id
+            " \
+            --return _id &&
+        [[ $_id -eq ${env_libio[IO_ID]} ]]
         _rc=0
         ;;
 
