@@ -1490,8 +1490,9 @@ import_excel_file() {
 
 # import GEO (as shapefile, ...)
 import_geo_file() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             file_path:Chemin absolu vers le fichier à traiter;
             schema_name:Nom du schema cible;
             table_name:Nom de la table cible;
@@ -1502,9 +1503,9 @@ import_geo_file() {
             to_srid:Identifiant du système de reprojection des objets géographiques;
             geometry_type:Type des objets geographiques;
             spatial_index:Indique si il faut créer un index géographique;
-            limit:Limiter a n enregistrements;
+            limit:Limiter à n enregistrements;
             rowid:Générer un identifiant unique rowid' \
-        --args_o 'file_path;table_name' \
+        --args_m 'file_path;table_name' \
         --args_v '
             load_mode:OVERWRITE_DATA|OVERWRITE_TABLE|APPEND;
             encoding:UTF-8|LATIN1;
@@ -1518,9 +1519,7 @@ import_geo_file() {
             geometry_type:GEOMETRY;
             spatial_index:yes;
             rowid:yes' \
-        "$@" || return $ERROR_CODE
-
-    expect file "$get_arg_file_path" || exit $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
     # geometry_type :
     # Define the geometry type for the created layer.
@@ -1538,20 +1537,34 @@ import_geo_file() {
     # append : Append to existing layer instead of creating new
     # update : Open existing output datasource in update mode rather than trying to create a new one
 
+    local -i _step=0
+    local -a _steps=(
+        'FILE_PATH existence'
+        'FILE_PATH nom'
+        'FILE_PATH extension'
+        'TMPFILE init'
+        'POW_ARGV arguments vides'
+        EXCEL_TO_CSV
+        IMPORT_CSV_FILE
+        'TMPFILE effacement'
+    )
+    local _load_mode_ogr2ogr _tmpfile _ogr_args _layer_creation_options _rc
+
+    expect file "$get_arg_file_path" || exit $ERROR_CODE
     local file_path="$get_arg_file_path"
-    local file_name=$(get_file_name --file_path "$file_path")
-    local file_extension=$(get_file_extension --file_path "$file_path")
+    local file_name=$(get_file_name --file_path "${_opts[FILE_PATH]}")
+    local file_extension=$(get_file_extension --file_path "${_opts[FILE_PATH]}")
     local schema_name=$get_arg_schema_name
     local table_name=$get_arg_table_name
     local passwd=$get_arg_password
     local load_mode=$get_arg_load_mode
-    local load_mode_ogr2ogr
-    case "$load_mode" in
+    local _load_mode_ogr2ogr
+    case "${_opts[LOAD_MODE]}" in
     OVERWRITE_DATA|OVERWRITE_TABLE)
-        load_mode_ogr2ogr=overwrite
+        _load_mode_ogr2ogr=overwrite
         ;;
     APPEND)
-        load_mode_ogr2ogr=append
+        _load_mode_ogr2ogr=append
         ;;
     esac
     local encoding=$get_arg_encoding
@@ -1562,104 +1575,151 @@ import_geo_file() {
     local limit=$get_arg_limit
     local rowid=$get_arg_rowid
 
-    if [ -z "$table_name" ]; then
-        execute_query \
-            --name LABEL_TO_CODE \
-            --query "SELECT public.label_to_code('$file_name')" \
-            --psql_arguments 'tuples-only:pset=format=unaligned' \
-            --with_log no \
-            --return table_name || return $ERROR_CODE
-    fi
-    [ "$POW_DEBUG" = yes ] && echo "table_name=$table_name"
-
-    # FIXME: try to run each word (shp, ...) as command!
-    #[[ ! $file_extension =~ shp|mif|dbf|json ]] && {
-    echo $file_extension | grep --perl-regexp --silent 'shp|mif|dbf|json' || {
-        log_error "Le Fichier $file_path n'a pas une extension shp, mif, dbf ou json"
-        return $ERROR_CODE
-    }
-
-    local log_tmp_path
-    get_tmp_file --tmpfile log_tmp_path --create yes --tmpext log || {
-        log_error "Erreur de création du fichier temporaire de LOG"
-        return $ERROR_CODE
-    }
-
+    {
+        # debug
+        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
+            echo ${FUNCNAME[0]} && declare -p _opts
+        }
+    } &&
+    [ -f "${_opts[FILE_PATH]}" ] &&
+    _step+=1 &&
+    _opts[FILE_NAME]=$(get_file_name --file_path "${_opts[FILE_PATH]}") &&
+    _step+=1 &&
+    _opts[FILE_EXTENSION]=$(get_file_extension --file_path "${_opts[FILE_PATH]}") &&
+    _step+=1 &&
+    case "${_opts[LOAD_MODE]}" in
+    OVERWRITE_DATA|OVERWRITE_TABLE)
+        _load_mode_ogr2ogr=overwrite
+        ;;
+    APPEND)
+        _load_mode_ogr2ogr=append
+        ;;
+    esac &&
+    _step+=1 &&
+    {
+        [ -n "${_opts[TABLE_NAME]}" ] || {
+            execute_query \
+                --name LABEL_TO_CODE \
+                --query "SELECT public.label_to_code('${_opts[FILE_NAME]}')" \
+                --with_log no \
+                --return _opts[TABLE_NAME]
+        }
+    } &&
+    {
+        # debug
+        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
+            echo "table_name=${_opts[TABLE_NAME]}"
+        }
+    } &&
+    _step+=1 &&
+    {
+        # FIXME: try to run each word (shp, ...) as command!
+        #[[ ! ${_opts[FILE_EXTENSION]} =~ shp|mif|dbf|json ]] && {
+        echo ${_opts[FILE_EXTENSION]} | grep --perl-regexp --silent 'shp|mif|dbf|json' || {
+            log_error "Le Fichier ${_opts[FILE_PATH]} n'a pas une extension shp, mif, dbf ou json"
+            false
+        }
+    } &&
+    _step+=1 &&
+    get_tmp_file --tmpfile _tmpfile --create yes --tmpext log &&
     # http://www.bostongis.com/PrinterFriendly.aspx?content_name=ogr_cheatsheet
     # -t_srs srs_def : Reproject/transform to this SRS on output
     # -s_srs srs_def : Override source SRS
-    local ogr_args=''
-    [ -n "$to_srid" ] && ogr_args="$ogr_args -t_srs $to_srid"
-    [ -n "$from_srid" ] && ogr_args="$ogr_args -s_srs $from_srid"
-    [ -n "$limit" ] && ogr_args="$ogr_args -limit $limit"
+    _step+=1 &&
+    {
+        [ -z "${_opts[TO_SRID]}" ] || _ogr_args="$_ogr_args -t_srs ${_opts[TO_SRID]}"
+        [ -z "${_opts[FROM_SRID]}" ] || _ogr_args="$_ogr_args -s_srs ${_opts[FROM_SRID]}"
+        [ -z "${_opts[LIMIT]}" ] || _ogr_args="$_ogr_args -limit ${_opts[LIMIT]}"
+    }
+    _step+=1 &&
+    {
+        [ "${_opts[FILE_EXTENSION]}" != mif ] || {
+            # NOTE: remains original dbf (not one this created by ogr2ogr), so use temporary directory
+            local _mif_dir=$(dirname "${_opts[FILE_PATH]}")
+            local _mif_to_shp_dir=$_mif_dir/mif_to_shp
+            local _log_mif_to_shp="$POW_DIR_TMP/mif_to_shp_${_opts[FILE_NAME]}.log"
 
-    if [ "$file_extension" = mif ]; then
-        # NOTE: remains origin dbf (not one this created by ogr2ogr), so use temporary directory
-        local mif_dir=$(dirname "$file_path")
-        local mif_to_shp_dir=$mif_dir/mif_to_shp
-        local log_mif_to_shp="$POW_DIR_TMP/mif_to_shp_$file_name.log"
-        mkdir --parents $mif_to_shp_dir
-        ogr2ogr \
-            -f 'ESRI Shapefile' \
-            $mif_to_shp_dir \
-            $file_path > "$log_mif_to_shp" 2>&1
-        if [ $? -ne 0 ] || [ -n "$(grep --max-count 1 ERROR $log_mif_to_shp)" ]; then
-            log_error "Erreur lors de la conversion de $file_name en shapefile, voir $log_mif_to_shp"
-            return $ERROR_CODE
-        fi
+            mkdir --parents $_mif_to_shp_dir &&
+            ogr2ogr \
+                -f 'ESRI Shapefile' \
+                $_mif_to_shp_dir \
+                ${_opts[FILE_PATH]} > "$_log_mif_to_shp" 2>&1
 
-        archive_file "$log_mif_to_shp"
-        log_info "Conversion avec succès de $file_name en shapefile"
-        # NOTE: copy only new files (so origin dbf is not replaced
-        mv --no-clobber $mif_to_shp_dir/* $mif_dir/
-        rm --recursive $mif_to_shp_dir
-        file_path="$mif_dir/${file_name}.shp"
-    fi
-
-    if [ -n "${_opts[ENCODING]}" ]; then
-        _PGCLIENTENCODING_SAVE=$PGCLIENTENCODING
-        export PGCLIENTENCODING=${_opts[ENCODING]}
-    fi
-
-    layer_creation_options='-lco FID=rowid -lco GEOMETRY_NAME=geom'
-    [ "$spatial_index" = no ] && layer_creation_options+=' -lco SPATIAL_INDEX=no'
-
-    local _rc
-    [ -z "$passwd" ] && {
-        get_pg_passwd --user_name $POW_PG_USERNAME --password passwd || {
-            log_error "Erreur de récupération du mot de passe (user=$POW_PG_USERNAME)"
-            return $ERROR_CODE
+            if [ $? -eq 0 ] && [ -n "$(grep --max-count 1 ERROR $_log_mif_to_shp)" ]; then
+                log_error "Erreur lors de la conversion de ${_opts[FILE_NAME]} en shapefile, voir $_log_mif_to_shp"
+                false
+            else
+                archive_file "$_log_mif_to_shp" &&
+                log_info "Conversion avec succès de ${_opts[FILE_NAME]} en shapefile" &&
+                # NOTE: copy only new files (so origin dbf is not replaced)
+                mv --no-clobber $_mif_to_shp_dir/* $_mif_dir/ &&
+                rm --recursive $_mif_to_shp_dir &&
+                _opts[FILE_PATH]="$_mif_dir/${_opts[FILE_NAME]}.shp"
+            fi
         }
+    } &&
+    _step+=1 &&
+    {
+        [ -z "${_opts[ENCODING]}" ] || {
+            _PGCLIENTENCODING_SAVE=$PGCLIENTENCODING
+            export PGCLIENTENCODING=${_opts[ENCODING]}
+        }
+    } &&
+    _step+=1 &&
+    {
+        _layer_creation_options='-lco FID=rowid -lco GEOMETRY_NAME=geom'
+        [ "$spatial_index" = yes ] || _layer_creation_options+=' -lco SPATIAL_INDEX=no'
+    } &&
+    _step+=1 &&
+    {
+        [ -n "$passwd" ] || {
+            get_pg_passwd --user_name $POW_PG_USERNAME --password passwd || {
+                log_error "Erreur de récupération du mot de passe (user=$POW_PG_USERNAME)"
+                false
+            }
+        }
+    } &&
+    _step+=1 &&
+    {
+        ogr2ogr \
+            -f "PostgreSQL" \
+            PG:"host=$POW_PG_HOST user=$POW_PG_USERNAME dbname=$POW_PG_DBNAME password=$passwd" \
+            "${_opts[FILE_PATH]}" \
+            -$_load_mode_ogr2ogr \
+            -nln "${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]}" \
+            -nlt ${_opts[GEOMETRY_TYPE]} \
+            $_ogr_args \
+            $_layer_creation_options 2> "$_tmpfile"
+        _rc=$?
+    } &&
+    _step+=1 &&
+    # restore previous encoding
+    {
+        [ -z "${_opts[ENCODING]}" ] || PGCLIENTENCODING=$_PGCLIENTENCODING_SAVE
+    } &&
+    # returns OK even if encoding error, so search for ERROR
+    _step+=1 &&
+    {
+        ([ $_rc -eq 0 ] && [ -z "$(grep --max-count 1 ERROR $_tmpfile)" ]) || {
+            log_error "Erreur lors de l'import de ${_opts[FILE_NAME]}, voir $_tmpfile"
+            false
+        }
+    } &&
+    _step+=1 &&
+    {
+        [ "${_opts[ROWID]}" = yes ] || {
+            execute_query \
+                --name DROP_COLUMN_ROWID \
+                --query "ALTER TABLE ${_opts[TABLE_NAME]} DROP COLUMN IF EXISTS rowid"
+        }
+    } &&
+    _step+=1 &&
+    archive_file "$_tmpfile" || {
+        log_error "${FUNCNAME[0]}: étape #$_step (${_steps[$_step]}) en erreur"
+        return $ERROR_CODE
     }
 
-    ogr2ogr \
-        -f "PostgreSQL" \
-        PG:"host=$POW_PG_HOST user=$POW_PG_USERNAME dbname=$POW_PG_DBNAME password=$passwd" \
-        "$file_path" \
-        -$load_mode_ogr2ogr \
-        -nln "${schema_name}.${table_name}" \
-        -nlt $geometry_type \
-        $ogr_args \
-        $layer_creation_options 2> "$log_tmp_path"
-    _rc=$?
-
-    # restore previous encoding
-    [ -n "${_opts[ENCODING]}" ] && PGCLIENTENCODING=$_PGCLIENTENCODING_SAVE
-
-    # returns OK even if encoding error, so search for ERROR
-    if [ $_rc -ne 0 ] || [ -n "$(grep --max-count 1 ERROR $log_tmp_path)" ]; then
-        log_error "Erreur lors de l'import de $file_name, voir $log_tmp_path"
-        return $ERROR_CODE
-    fi
-
-    if [ "$rowid" = no ]; then
-        execute_query \
-            --name DROP_COLUMN_ROWID \
-            --query "ALTER TABLE $table_name DROP COLUMN IF EXISTS rowid"
-    fi
-    archive_file "$log_tmp_path"
-    log_info "Import avec succès de $file_name dans $table_name"
-
+    log_info "Import avec succès de ${_opts[FILE_NAME]} dans ${_opts[TABLE_NAME]}"
     return $SUCCESS_CODE
 }
 
@@ -1718,8 +1778,8 @@ import_file() {
             local _files _error=yes _msg
 
             _extract_dir="$POW_DIR_TMP/${_opts[FILE_NAME]}" &&
-            rm --recursive --force "$POW_DIR_TMP/${_opts[FILE_NAME]}" &&
-            mkdir "$POW_DIR_TMP/${_opts[FILE_NAME]}" &&
+            rm --recursive --force "$_extract_dir" &&
+            mkdir "$_extract_dir" &&
             extract_archive \
                 --archive_path "${_opts[FILE_PATH]}" \
                 --extract_path "$_extract_dir" &&
