@@ -50,6 +50,7 @@ declare -a TESTS=(
     XLS_OVERWRITE_TABLE
     XLS_OVERWRITE_TABLE_LOWER
     CSV_IMPORT_FILE
+    JSON_IMPORT_FILE
 )
 TESTS_JOIN_PIPE=${TESTS[@]}
 TESTS_JOIN_PIPE=${TESTS_JOIN_PIPE// /|}
@@ -62,6 +63,7 @@ declare -A env_libio=(
     [CSV_NROWS]=
     [XLS_TABLE]=test_libio_xls
     [XLS_NROWS]=3
+    [JSON_TABLE]=test_libio_json
 ) &&
 pow_argv \
     --args_n '
@@ -278,6 +280,30 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
             " \
             --return _nrows &&
         [[ $_nrows -gt 30000 ]] &&
+        _rc=0
+        ;;
+    JSON_IMPORT_FILE)
+        _json=$POW_DIR_COMMON_GLOBAL/fr/bal/17309.json
+        expect file "$_json" &&
+        execute_query \
+            --name JSON_TABLE_CREATE \
+            --query "
+                DROP TABLE IF EXISTS fr.${env_libio[JSON_TABLE]};
+                CREATE TABLE fr.${env_libio[JSON_TABLE]} (data JSON);
+            " &&
+        import_file \
+            --file_path "$_json" \
+            --table_name ${env_libio[JSON_TABLE]} \
+            --import_options column_name=data \
+            --load_mode OVERWRITE_DATA &&
+        execute_query \
+            --name "${test_libio[_test]}" \
+            --query "
+                SELECT data->>'nbVoies'
+                FROM fr.${env_libio[JSON_TABLE]}
+            " \
+            --return _nrows &&
+        [[ $_nrows -eq 95 ]] &&
         _rc=0
         ;;
 
