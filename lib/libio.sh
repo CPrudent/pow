@@ -1542,38 +1542,21 @@ import_geo_file() {
         'FILE_PATH existence'
         'FILE_PATH nom'
         'FILE_PATH extension'
-        'TMPFILE init'
-        'POW_ARGV arguments vides'
-        EXCEL_TO_CSV
-        IMPORT_CSV_FILE
-        'TMPFILE effacement'
+        'OGR2OGR mode'
+        TABLE_NAME
+        'FILE_EXTENSION filtre'
+        'TMPFILE log'
+        'OGR2OGR arguments'
+        'FILE_EXTENSION mif'
+        'ENCODING init'
+        PASSWD
+        OGR2OGR
+        'ENCODING reset'
+        'RETURN CODE'
+        ROWID
+        'TMPFILE archivage'
     )
-    local _load_mode_ogr2ogr _tmpfile _ogr_args _layer_creation_options _rc
-
-    expect file "$get_arg_file_path" || exit $ERROR_CODE
-    local file_path="$get_arg_file_path"
-    local file_name=$(get_file_name --file_path "${_opts[FILE_PATH]}")
-    local file_extension=$(get_file_extension --file_path "${_opts[FILE_PATH]}")
-    local schema_name=$get_arg_schema_name
-    local table_name=$get_arg_table_name
-    local passwd=$get_arg_password
-    local load_mode=$get_arg_load_mode
-    local _load_mode_ogr2ogr
-    case "${_opts[LOAD_MODE]}" in
-    OVERWRITE_DATA|OVERWRITE_TABLE)
-        _load_mode_ogr2ogr=overwrite
-        ;;
-    APPEND)
-        _load_mode_ogr2ogr=append
-        ;;
-    esac
-    local encoding=$get_arg_encoding
-    local from_srid=$get_arg_from_srid
-    local to_srid=$get_arg_to_srid
-    local geometry_type=$get_arg_geometry_type
-    local spatial_index=$get_arg_spatial_index
-    local limit=$get_arg_limit
-    local rowid=$get_arg_rowid
+    local _load_mode_ogr2ogr _logfile _ogr_args _layer_creation_options _rc
 
     {
         # debug
@@ -1621,15 +1604,19 @@ import_geo_file() {
         }
     } &&
     _step+=1 &&
-    get_tmp_file --tmpfile _tmpfile --create yes --tmpext log &&
+    get_tmp_file --tmpfile _logfile --create yes --tmpext log &&
+    _step+=1 &&
+    # OGR2OGR arguments
     # http://www.bostongis.com/PrinterFriendly.aspx?content_name=ogr_cheatsheet
     # -t_srs srs_def : Reproject/transform to this SRS on output
     # -s_srs srs_def : Override source SRS
-    _step+=1 &&
     {
         [ -z "${_opts[TO_SRID]}" ] || _ogr_args="$_ogr_args -t_srs ${_opts[TO_SRID]}"
         [ -z "${_opts[FROM_SRID]}" ] || _ogr_args="$_ogr_args -s_srs ${_opts[FROM_SRID]}"
         [ -z "${_opts[LIMIT]}" ] || _ogr_args="$_ogr_args -limit ${_opts[LIMIT]}"
+
+        _layer_creation_options='-lco FID=rowid -lco GEOMETRY_NAME=geom'
+        [ "$spatial_index" = yes ] || _layer_creation_options+=' -lco SPATIAL_INDEX=no'
     }
     _step+=1 &&
     {
@@ -1667,11 +1654,6 @@ import_geo_file() {
     } &&
     _step+=1 &&
     {
-        _layer_creation_options='-lco FID=rowid -lco GEOMETRY_NAME=geom'
-        [ "$spatial_index" = yes ] || _layer_creation_options+=' -lco SPATIAL_INDEX=no'
-    } &&
-    _step+=1 &&
-    {
         [ -n "$passwd" ] || {
             get_pg_passwd --user_name $POW_PG_USERNAME --password passwd || {
                 log_error "Erreur de récupération du mot de passe (user=$POW_PG_USERNAME)"
@@ -1689,7 +1671,7 @@ import_geo_file() {
             -nln "${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]}" \
             -nlt ${_opts[GEOMETRY_TYPE]} \
             $_ogr_args \
-            $_layer_creation_options 2> "$_tmpfile"
+            $_layer_creation_options 2> "$_logfile"
         _rc=$?
     } &&
     _step+=1 &&
@@ -1700,8 +1682,8 @@ import_geo_file() {
     # returns OK even if encoding error, so search for ERROR
     _step+=1 &&
     {
-        ([ $_rc -eq 0 ] && [ -z "$(grep --max-count 1 ERROR $_tmpfile)" ]) || {
-            log_error "Erreur lors de l'import de ${_opts[FILE_NAME]}, voir $_tmpfile"
+        ([ $_rc -eq 0 ] && [ -z "$(grep --max-count 1 ERROR $_logfile)" ]) || {
+            log_error "Erreur lors de l'import de ${_opts[FILE_NAME]}, voir $_logfile"
             false
         }
     } &&
@@ -1714,7 +1696,7 @@ import_geo_file() {
         }
     } &&
     _step+=1 &&
-    archive_file "$_tmpfile" || {
+    archive_file "$_logfile" || {
         log_error "${FUNCNAME[0]}: étape #$_step (${_steps[$_step]}) en erreur"
         return $ERROR_CODE
     }
@@ -1753,6 +1735,7 @@ import_file() {
         'ARCHIVE traitement'
         'TABLE_NAME init'
         'IMPORT_OPTIONS init'
+        'LIMIT init'
         'TYPE_IMPORT MIME'
         'TYPE_IMPORT FILE_EXTENSION'
         IMPORT_FILE
@@ -1989,7 +1972,9 @@ import_file() {
     # purge
     _step+=1 &&
     {
-        [ -z "$_extract_dir" ] || rm --recursive --force "$_extract_dir"
+        [ -z "$_extract_dir" ] || {
+            rm --recursive --force "$_extract_dir"
+        }
     } || {
         log_error "${FUNCNAME[0]}: étape #$_step (${_steps[$_step]}) en erreur"
         return $ERROR_CODE

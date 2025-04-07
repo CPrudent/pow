@@ -51,6 +51,7 @@ declare -a TESTS=(
     XLS_OVERWRITE_TABLE_LOWER
     CSV_IMPORT_FILE
     JSON_IMPORT_FILE
+    SHP_IMPORT_FILE
     HISTORY_BEGIN
     HISTORY_END_OK
     HISTORY_END_KO
@@ -73,6 +74,7 @@ declare -A env_libio=(
     [XLS_TABLE]=test_libio_xls
     [XLS_NROWS]=3
     [JSON_TABLE]=test_libio_json
+    [SHP_TABLE]=test_libio_shp
 ) &&
 pow_argv \
     --args_n '
@@ -315,6 +317,41 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
         [[ $_nrows -eq 95 ]] &&
         _rc=0
         ;;
+    SHP_IMPORT_FILE)
+        _ign=$(ls -1 $POW_DIR_COMMON_GLOBAL/fr/ADMIN-EXPRESS_3-2__SHP_LAMB93_FXX_* | tail -n 1) &&
+        [ -n "$_ign" ] &&
+        extract_archive \
+            --archive_path "$_ign" \
+            --extract_path "$POW_DIR_TMP/IGN" &&
+        _shp=$(find $POW_DIR_TMP/IGN/ADMIN-EXPRESS_3-2__SHP_LAMB93_FXX*/*/1*/* -type f -iname DEPARTEMENT.shp) &&
+        expect file "$_shp" &&
+        get_pg_passwd --user_name $POW_PG_USERNAME --password _passwd &&
+        import_geo_file \
+            --file_path "$_shp" \
+            --table_name "${env_libio[SHP_TABLE]}" \
+            --password "$_passwd" \
+            --geometry_type PROMOTE_TO_MULTI \
+            --load_mode OVERWRITE_TABLE \
+            --spatial_index no &&
+        execute_query \
+            --name "${test_libio[_test]}_COUNT" \
+            --query "
+                SELECT COUNT(1)
+                FROM fr.${env_libio[SHP_TABLE]}
+            " \
+            --return _nrows &&
+        [[ $_nrows -eq 96 ]] &&
+        execute_query \
+            --name "${test_libio[_test]}_DATA" \
+            --query "
+                SELECT nom_m
+                FROM fr.${env_libio[SHP_TABLE]}
+                WHERE insee_dep = '39'
+            " \
+            --return _value &&
+        [[ "$_value" = "JURA" ]] &&
+        _rc=0
+        ;;
 
     HISTORY_BEGIN)
         io_history_begin \
@@ -404,9 +441,11 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
         "$_spaces" \
         $( [[ ${result_libio["${test_libio[$_test]}"]} -eq 0 ]] && echo OK || echo KO )
 done
+
+# purge
 [ "${env_libio[CLEAN]}" = yes ] && {
-    #rm --force "${env_libio[CSV_PATH]}"
-    :
+    rm --force "${env_libio[CSV_PATH]}"
+    rm --force --recursive $POW_DIR_TMP/IGN
 }
 
 # results
