@@ -254,7 +254,7 @@ bal_get_list() {
             local -n _as_array_ref=$get_arg_as_array
 
             array_sql_to_bash \
-                --array_sql "${_results[0]:-{}}" \
+                --array_sql "${_results[0]}" \
                 --count ${_results[1]} \
                 --array_bash _as_array_ref &&
             _return=$((_return +1))
@@ -400,7 +400,7 @@ bal_load_addresses() {
         _info=voies
         _query="
             SELECT
-                ARRAY_AGG(s.code),
+                COALESCE(ARRAY_AGG(s.code), '{}'::VARCHAR[]),
                 COUNT(1)
             FROM
                 fr.bal_street s
@@ -414,7 +414,7 @@ bal_load_addresses() {
         _info=numéros
         _query="
             SELECT
-                ARRAY_AGG(n.code),
+                COALESCE(ARRAY_AGG(n.code), '{}'::VARCHAR[]),
                 COUNT(1)
             FROM
                 fr.bal_housenumber n
@@ -448,7 +448,7 @@ bal_load_addresses() {
         --as_array _addresses &&
     bal_vars[$_field]=${#_addresses[@]} &&
     {
-        [[ ${bal_vars[$_field]} > 0 ]] && {
+        if [[ ${bal_vars[$_field]} -gt 0 ]]; then
             # load addresses as JSON in table (has to be empty!)
             execute_query \
                 --name BAL_TRUNCATE \
@@ -517,11 +517,11 @@ bal_load_addresses() {
                         execute_query --name LOAD_JSON --query 'COPY fr.'${bal_vars[TABLE_NAME]}'(data) FROM STDIN'
                 fi
             }
-        } || {
+        else
             [ "${bal_vars[PROGRESS]}" = no ] || {
                 echo 'aucune voie avec numéros certifiés'
             }
-        }
+        fi
     } || return $ERROR_CODE
 
     return $SUCCESS_CODE
