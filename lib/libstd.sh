@@ -126,19 +126,20 @@ expect() {
 
 # build index on array w/ an associative index array (key=value, value=position)
 array_index() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             array:Tableau;
             index:Index du tableau
         ' \
-        --args_o '
+        --args_m '
             array;
             index
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local -n _array_ref=$get_arg_array
-    local -n _index_ref=${get_arg_index}
+    local -n _array_ref=${_opts[ARRAY]}
+    local -n _index_ref=${_opts[INDEX]}
     local _i
 
     for _i in "${!_array_ref[@]}"; do
@@ -155,14 +156,15 @@ array_index() {
 # another solution w/ print
 # https://stackoverflow.com/questions/3685970/check-if-a-bash-array-contains-a-value
 in_array() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             array:Tableau;
             item:Elèment recherché;
             search:Recherche Clé/Valeur;
             position:Position de l élément trouvé
         ' \
-        --args_o '
+        --args_m '
             array;
             item
         ' \
@@ -172,24 +174,24 @@ in_array() {
         --args_d '
             search:VALUE
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local -n _array_ref=$get_arg_array
-    local _rc
+    local -n _array_ref=${_opts[ARRAY]}
+    local _pos _rc
 
     [ ${#_array_ref[@]} -eq 0 ] && return 1
-    case "$get_arg_search" in
+    case "${_opts[SEARCH]}" in
     VALUE)
-        _pos=$(printf '%s\n' "${_array_ref[@]}" | grep --fixed-strings --line-number --line-regexp -- "$get_arg_item")
+        _pos=$(printf '%s\n' "${_array_ref[@]}" | grep --fixed-strings --line-number --line-regexp -- "${_opts[ITEM]}")
         ;;
     KEY)
-        _pos=$(printf '%s\n' "${!_array_ref[@]}" | grep --fixed-strings --line-number --line-regexp -- "$get_arg_item")
+        _pos=$(printf '%s\n' "${!_array_ref[@]}" | grep --fixed-strings --line-number --line-regexp -- "${_opts[ITEM]}")
         ;;
     esac
     _rc=$?
     # returning position ?
-    [ -n "$get_arg_position" ] && {
-        local -n _pos_ref=$get_arg_position
+    [ -n "${_opts[POSITION]}" ] && {
+        local -n _pos_ref=${_opts[POSITION]}
         # exists item ?
         [ $_rc -eq 0 ] && {
             _pos_ref=${_pos%:*}
@@ -207,38 +209,48 @@ in_array() {
     return 1
 }
 
-# FIX ME: syntax error near unexpected token `('
-# clone_array() {
-#     bash_args \
-#         --args_p '
-#             from_array:Tableau à cloner;
-#             to_array:Tableau cloné
-#         ' \
-#         --args_o '
-#             from_array;
-#             to_array
-#         ' \
-#         "$@" || return $ERROR_CODE
-#
-#     local -n _array_ref=$get_arg_to_array
-#     local _tmp=$(declare -p $get_arg_from_array)
-#
+
+clone_array() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            from_array:Tableau à cloner;
+            to_array:Tableau cloné
+        ' \
+        --args_m '
+            from_array;
+            to_array
+        ' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
+
+#     local _tmp=$(declare -p ${_opts[FROM_ARRAY]}) _tmp2
+# syntax error near unexpected token `('
 #     echo "$_tmp"
-#     eval "${_tmp/${get_arg_from_array}=/${_array_ref}=}" &&
-#     declare -p ${_array_ref}
-#
-#     return $SUCCESS_CODE
-# }
+#     echo $_to_array_ref
+#     _tmp2="${_tmp/${_opts[FROM_ARRAY]}=/${_to_array_ref}=}"
+#     echo $_tmp2
+#     eval $_tmp2
+
+    local -n _to_array_ref=${_opts[TO_ARRAY]}
+    local _indirect
+
+    # https://unix.stackexchange.com/questions/280006/copy-array-with-array-name-inside-string-in-bash
+    _indirect=${_opts[FROM_ARRAY]}[@]
+    _to_array_ref=("${!_indirect}")
+
+    return $?
+}
 
 # eval duration of treatment (w/ its beginning)
 get_elapsed_time() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             start:Horodatage du début de traitement;
             format:Format de présentation;
             result:Durée calculée
         ' \
-        --args_o '
+        --args_m '
             start;
             result
         ' \
@@ -246,22 +258,22 @@ get_elapsed_time() {
             format:BCAA|POW
         ' \
         --args_d '
-            format:BCAA
+            format:POW
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local -n _result_ref=$get_arg_result
+    local -n _result_ref=${_opts[RESULT]}
     local _end=$(date +%s)
     local _timex _days
 
-    _timex=$(($_end - $get_arg_start))
-    case $get_arg_format in
+    _timex=$(($_end - ${_opts[START]}))
+    case ${_opts[FORMAT]} in
     BCAA)
         _result_ref="$((_timex/3600))h:$((_timex%3600/60))m:$((_timex%60))s"
         ;;
     POW)
         _result_ref="$(date --date @${_timex} --utc +%-Hh:%-Mm:%-Ss)"
-        [[ $_timex > 86400 ]] && {
+        [[ $_timex -gt 86400 ]] && {
             _days=$(($(date --date @${_timex} --utc +%d) -1))
             _result_ref="${_days}j:$_result_ref"
         }
@@ -289,16 +301,17 @@ user_exists() {
 
 # OK if var contains a Yes value
 is_yes() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             var:Variable à tester
         ' \
-        --args_o '
+        --args_m '
             var
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local -n _var_ref=$get_arg_var
+    local -n _var_ref=${_opts[VAR]}
 
     [[ $_var_ref =~ ^(yes|YES|y|Y|oui|OUI|o|O|ok|OK|t|T|true|TRUE)$ ]] && return $SUCCESS_CODE
     return $ERROR_CODE
@@ -306,19 +319,21 @@ is_yes() {
 
 # define delimiter w/o worry of bash_args!
 set_delimiter() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             delimiter_code:Code délimiteur;
             delimiter_value:Valeur délimiteur' \
-        --args_o '
+        --args_m '
             delimiter_code;
             delimiter_value' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local -n _delimiter_ref=$get_arg_delimiter_value
+    local -n _delimiter_ref=${_opts[DELIMITER_VALUE]}
+
     # https://linuxhint.com/associative_array_bash/
-    [ ${POW_DELIMITER[$get_arg_delimiter_code]+_} ] && {
-        _delimiter_ref=${POW_DELIMITER[$get_arg_delimiter_code]}
+    [ ${POW_DELIMITER[${_opts[DELIMITER_CODE]}]+_} ] && {
+        _delimiter_ref=${POW_DELIMITER[${_opts[DELIMITER_CODE]}]}
     } || {
         return $ERROR_CODE
     }
@@ -344,6 +359,9 @@ set_delimiter() {
 
 # --pow_argv <user variable>    to overload default POW_ARGV    (hash w/ argument(s))
 # --pow_argc <user variable>    to overload default POW_ARGC    (count of argument(s))
+
+# NOTE can't call another function which implements pow_argv, else infinite loop (deadlock)!
+# so can't use in_array() function, has to do itself the job here...
 
 # NOTE
 # if other name than default POW_ARGV is requested, caller code has to declare it before (as HASH)
@@ -372,12 +390,12 @@ pow_argv() {
     # prepare user parameters (from given lists)
     _pow_argv_list() {
         #echo "$#: $@"
-
         # $1= list value
         # $2= list array (result)
         # $3= optional 'key/value' hash (result)
         local _list="$1" _tmp _with_kv=0
         local -n _list_ref=$2
+
         [ -n "$3" ] && {
             local -n _kv_ref=$3
             _with_kv=1
@@ -402,8 +420,6 @@ pow_argv() {
 
     # get value of property (user if defined, or default)
     _pow_argv_property() {
-        # can't call pow_argv due to deallock!
-
         # $1= user values (array)
         # $2= option name
         # $3= option value (result)
@@ -513,8 +529,10 @@ pow_argv() {
 
         # check argument (among allowed ones)
         20)
+            # in_array --array _args_n_kv --item $_key --search KEY
+
             #declare -p _args_n_kv
-            in_array --array _args_n_kv --item $_key --search KEY && _step=$(( _end == 1 ? 91 : 1 )) || {
+            [[ -v "_args_n_kv[$_key]" ]] && _step=$(( _end == 1 ? 91 : 1 )) || {
                 _error="L'argument $_key ne fait pas partie des arguments possibles"
                 _step=99
             }
@@ -544,7 +562,8 @@ pow_argv() {
     [ "${_argv[help]}" = yes ] && {
         for _key in ${!_args_n_kv[@]}; do
             _info="${_key} : ${_args_n_kv[$_key]}"
-            in_array --array _args_m_list --item $_key && _tmp=obligatoire || _tmp=facultatif
+            # in_array --array _args_m_list --item $_key
+            [[ " ${_args_m_list[*]} " == *" $_key "* ]] && _tmp=obligatoire || _tmp=facultatif
             _info+=", $_tmp"
             [ ${_args_v_kv[$_key]+_} ] && _info+=", valeurs possibles : ${_args_v_kv[$_key]}"
             [ ${_args_d_kv[$_key]+_} ] && _info+=", valeur par défaut : ${_args_d_kv[$_key]}"
@@ -580,7 +599,8 @@ pow_argv() {
     # check values
     for _key in ${!_args_v_kv[@]}; do
         IFS='|' read -ra _args_items <<< "${_args_v_kv[$_key]}"
-        in_array --array _args_items --item ${_argv[$_key]} || {
+        # in_array --array _args_items --item ${_argv[$_key]}
+        [[ " ${_args_items[*]} " == *" ${_argv[$_key]} "* ]] || {
             log_error "La valeur de $_key (${_argv[$_key]}) ne fait pas partie des valeurs possibles (${_args_v_kv[$_key]})${_trick}"
             return $ERROR_CODE
         }
@@ -593,10 +613,10 @@ pow_argv() {
     local -n _argc_ref="$_argc_name"
     #echo "pow_argv_property=(RESET)"
     _pow_argv_property _args_p_kv RESET _property &&
-    #echo "reset=($_property)" &&
-    is_yes --var _property &&
-    #echo 'reset ARGV' &&
-    _argv_ref=()
+        #echo "reset=($_property)" &&
+        [ "$_property" = yes ] &&
+        #echo 'reset ARGV' &&
+        _argv_ref=()
     #echo "pow_argv_property=(CASE)"
     _pow_argv_property _args_p_kv CASE _property
     #echo "case=($_property)"
@@ -877,90 +897,79 @@ bash_args() {
 
 # compare
 is_different() {
-    bash_args --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             dir_a:Dossier à comparer;
             dir_b:Autre dossier à comparer à dir_a;
             file_name:Nom ou masque optionnel de sélection des fichiers ou dossiers à comparer;
             verbose:Mode verbeux (Y/N)' \
-        --args_o 'dir_a;dir_b' \
-        "$@" || return 1
+        --args_m 'dir_a;dir_b' \
+        --args_v '
+            verbose:yes|no
+        ' \
+        --args_d '
+            verbose:no
+        ' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local dir_a="$get_arg_dir_a"
-    local dir_b="$get_arg_dir_b"
-    local file_name="$get_arg_file_name"
-    if [ -z "$file_name" ]; then
-        file_name='*'
-    fi
-    local mode_verbeux="$get_arg_verbose"
-    if [ -z "$mode_verbeux" ]; then
-        mode_verbeux='N'
-    fi
+    local _tmp_path _tmp_file _size_a _size_b _git_diff
 
-    local tmp_chemin_fichier_ou_dossier
-    local tmp_nom_fichier_ou_dossier
-
-    if [ "$mode_verbeux" = 'Y' ]; then
-        echo "Lecture de $dir_a/$file_name"
-    fi
-    for tmp_chemin_fichier_ou_dossier in "$dir_a/"$file_name
-    do
+    [ -z "${_opts[FILE_NAME]}" ] && _opts[FILE_NAME]='*'
+    [ "${_opts[VERBOSE]}" = yes ] && echo "Lecture de ${_opts[DIR_A]}/${_opts[FILE_NAME]}"
+    for _tmp_path in "${_opts[DIR_A]}/"${_opts[FILE_NAME]}; do
         #si c'est un fichier
-        if [ -f "$tmp_chemin_fichier_ou_dossier" ]; then
-            tmp_nom_fichier_ou_dossier=$(basename "$tmp_chemin_fichier_ou_dossier")
-            if [ ! -f "$dir_b/$tmp_nom_fichier_ou_dossier" ]; then
-                echo "Fichier $dir_a/$tmp_nom_fichier_ou_dossier non présent dans $dir_b"
+        if [ -f "$_tmp_path" ]; then
+            _tmp_file=$(basename "$_tmp_path")
+            if [ ! -f "${_opts[DIR_B]}/$_tmp_file" ]; then
+                echo "Fichier ${_opts[DIR_A]}/$_tmp_file non présent dans ${_opts[DIR_B]}"
                 return $SUCCESS_CODE
             fi
-            if file_is_binary "$tmp_chemin_fichier_ou_dossier"; then
-                file_size_a=$(wc -c "$dir_a/$tmp_nom_fichier_ou_dossier" | cut -d' ' -f1)
-                file_size_b=$(wc -c "$dir_b/$tmp_nom_fichier_ou_dossier" | cut -d' ' -f1)
-                if [ "$file_size_a" != "$file_size_b" ]; then
-                    echo "Fichier binaire $dir_a/$tmp_nom_fichier_ou_dossier de taille différente dans $dir_b"
+            if file_is_binary "$_tmp_path"; then
+                _size_a=$(wc -c "${_opts[DIR_A]}/$_tmp_file" | cut -d' ' -f1)
+                _size_b=$(wc -c "${_opts[DIR_B]}/$_tmp_file" | cut -d' ' -f1)
+                if [ "$_size_a" != "$_size_b" ]; then
+                    echo "Fichier binaire ${_opts[DIR_A]}/$_tmp_file de taille différente dans ${_opts[DIR_B]}"
                     return $SUCCESS_CODE
-                elif [ "$mode_verbeux" = 'Y' ]; then
-                    echo "Fichier binaire $dir_a/$tmp_nom_fichier_ou_dossier de taille identique dans $dir_b"
+                elif [ "${_opts[VERBOSE]}" = yes ]; then
+                    echo "Fichier binaire ${_opts[DIR_A]}/$_tmp_file de taille identique dans ${_opts[DIR_B]}"
                 fi
             else
-                modification=$(git diff "$dir_a/$tmp_nom_fichier_ou_dossier" "$dir_b/$tmp_nom_fichier_ou_dossier")
-                if [ "$modification" ]; then
-                    echo "Fichier texte $dir_a/$tmp_nom_fichier_ou_dossier différent dans $dir_b"
+                _git_diff=$(git diff "${_opts[DIR_A]}/$_tmp_file" "${_opts[DIR_B]}/$_tmp_file")
+                if [ "$_git_diff" ]; then
+                    echo "Fichier texte ${_opts[DIR_A]}/$_tmp_file différent dans ${_opts[DIR_B]}"
                     return $SUCCESS_CODE
-                elif [ "$mode_verbeux" = 'Y' ]; then
-                    echo "Fichier texte $dir_a/$tmp_nom_fichier_ou_dossier identique dans $dir_b"
+                elif [ "${_opts[VERBOSE]}" = yes ]; then
+                    echo "Fichier texte ${_opts[DIR_A]}/$_tmp_file identique dans ${_opts[DIR_B]}"
                 fi
             fi
         #sinon, si c'est un dossier
-        elif [ -d "$tmp_chemin_fichier_ou_dossier" ]; then
-            tmp_nom_fichier_ou_dossier=$(basename "$tmp_chemin_fichier_ou_dossier")
-            if [ ! -d "$dir_b/$tmp_nom_fichier_ou_dossier" ]; then
-                echo "Dossier $dir_a/$tmp_nom_fichier_ou_dossier non présent dans $dir_b"
+        elif [ -d "$_tmp_path" ]; then
+            _tmp_file=$(basename "$_tmp_path")
+            if [ ! -d "${_opts[DIR_B]}/$_tmp_file" ]; then
+                echo "Dossier ${_opts[DIR_A]}/$_tmp_file non présent dans ${_opts[DIR_B]}"
                 return $SUCCESS_CODE
             else
-                if [ "$mode_verbeux" = 'Y' ]; then
-                    echo "Dossier $dir_a/$tmp_nom_fichier_ou_dossier présent dans $dir_b"
-                fi
-                est_different --dir_a "$dir_a/$tmp_nom_fichier_ou_dossier" --dir_b "$dir_b/$tmp_nom_fichier_ou_dossier" --file_name "$file_name" --verbose "$mode_verbeux" &&
+                [ "${_opts[VERBOSE]}" = yes ] && echo "Dossier ${_opts[DIR_A]}/$_tmp_file présent dans ${_opts[DIR_B]}"
+                est_different --dir_a "${_opts[DIR_A]}/$_tmp_file" --dir_b "${_opts[DIR_B]}/$_tmp_file" --file_name "${_opts[FILE_NAME]}" --verbose "${_opts[VERBOSE]}" &&
                 return $SUCCESS_CODE
             fi
         fi
     done
 
-    if [ "$mode_verbeux" = 'Y' ]; then
-        echo "Lecture de $dir_b/$file_name"
-    fi
-    for tmp_chemin_fichier_ou_dossier in "$dir_b/"$file_name
-    do
-        if [ -f "$tmp_chemin_fichier_ou_dossier" ]; then
-            tmp_nom_fichier_ou_dossier=$(basename "$tmp_chemin_fichier_ou_dossier")
-            if [ ! -f "$dir_a/$tmp_nom_fichier_ou_dossier" ]; then
-                echo "Fichier $dir_b/$tmp_nom_fichier_ou_dossier non présent dans $dir_a"
+    [ "${_opts[VERBOSE]}" = yes ] && echo "Lecture de ${_opts[DIR_B]}/${_opts[FILE_NAME]}"
+    for _tmp_path in "${_opts[DIR_B]}/"${_opts[FILE_NAME]}; do
+        if [ -f "$_tmp_path" ]; then
+            _tmp_file=$(basename "$_tmp_path")
+            if [ ! -f "${_opts[DIR_A]}/$_tmp_file" ]; then
+                echo "Fichier ${_opts[DIR_B]}/$_tmp_file non présent dans ${_opts[DIR_A]}"
                 return $SUCCESS_CODE
             fi
         #sinon, si c'est un dossier
-        elif [ -d "$tmp_chemin_fichier_ou_dossier" ]; then
-            tmp_nom_fichier_ou_dossier=$(basename "$tmp_chemin_fichier_ou_dossier")
-            if [ ! -d "$dir_a/$tmp_nom_fichier_ou_dossier" ]; then
-                echo "Dossier $dir_b/$tmp_nom_fichier_ou_dossier non présent dans $dir_a"
+        elif [ -d "$_tmp_path" ]; then
+            _tmp_file=$(basename "$_tmp_path")
+            if [ ! -d "${_opts[DIR_A]}/$_tmp_file" ]; then
+                echo "Dossier ${_opts[DIR_B]}/$_tmp_file non présent dans ${_opts[DIR_A]}"
                 return $SUCCESS_CODE
             fi
         fi
@@ -994,6 +1003,7 @@ get_file_name() {
 }
 
 # get MIME's type of file
+# TODO use in is_archive
 get_file_mimetype() {
     file --mime-type "$1" | sed 's/.*: //'
 }
@@ -1016,21 +1026,23 @@ get_file_nrows() {
 
 # backup file (with uniq extension as: .backup.#)
 backup_file_as_uniq() {
-    bash_args \
-        --args_p 'path:nom complet' \
-        --args_o 'path' \
-        "$@" || return $ERROR_CODE
+    local -A _opts &&
+    pow_argv \
+        --args_n 'path:nom complet' \
+        --args_m 'path' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
     local _suffix=1
 
-    [ ! -f "${get_arg_path}" ] && {
-        log_info 'Sauvegarde unique demandée pour fichier '"${get_arg_path}"' inexistant!'
+    [ ! -f "${_opts[PATH]}" ] && {
+        log_info 'Sauvegarde unique demandée pour fichier '"${_opts[PATH]}"' inexistant!'
         return $SUCCESS_CODE
     }
-    while [ -f "${get_arg_path}.backup.${_suffix}" ]; do
+    while [ -f "${_opts[PATH]}.backup.${_suffix}" ]; do
         ((_suffix++))
     done
-    cp "${get_arg_path}" "${get_arg_path}.backup.${_suffix}"
+    cp "${_opts[PATH]}" "${_opts[PATH]}.backup.${_suffix}"
+
     return $?
 }
 
@@ -1139,47 +1151,50 @@ get_tmp_file() {
 
 # sync to wait for file
 wait_for_file() {
-    bash_args	\
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             file_path:chemin complet vers le fichier attendu;
             wait_file_minute:combien de temps en minutes faut-il attendre que le fichier soit présent ?;
             max_age_file_minute:quel age maximum en minutes doit avoir le fichier ?
         ' \
-        --args_o 'file_path' \
+        --args_m 'file_path' \
         --args_d 'wait_file_minute:0;max_age_file_minute:0' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local file_path=$get_arg_file_path
-    local wait_file_minute=$get_arg_wait_file_minute
-    local max_age_file_minute=$get_arg_max_age_file_minute
+    local _size_before _size_after
 
     # waiting delay
     # AND
     #   file not available
     #   OR
     #   present file is too old
-    while [ $wait_file_minute -gt 0 ] && { [ ! -f $file_path ] || ([ $max_age_file_minute -gt 0 ] && [ $(find $file_path -mmin +$max_age_file_minute) ]) }; do
-        echo "En attente du fichier $file_path (temps restant : $wait_file_minute minutes, age maximum du fichier : $max_age_file_minute minutes, fichier présent mais trop ancien : $([ -f $file_path ] && echo 'oui' || echo 'non'))"
+    while [ ${_opts[WAIT_FILE_MINUTE]} -gt 0 ] && { [ ! -f ${_opts[FILE_PATH]} ] || ([ ${_opts[MAX_AGE_FILE_MINUTE]} -gt 0 ] && [ $(find ${_opts[FILE_PATH]} -mmin +${_opts[MAX_AGE_FILE_MINUTE]}) ]) }; do
+        echo "En attente du fichier ${_opts[FILE_PATH]} (temps restant : ${_opts[WAIT_FILE_MINUTE]} minutes, age maximum du fichier : ${_opts[MAX_AGE_FILE_MINUTE]} minutes, fichier présent mais trop ancien : $([ -f ${_opts[FILE_PATH]} ] && echo 'oui' || echo 'non'))"
         sleep 60
-        ((wait_file_minute--))
+        ((_opts[WAIT_FILE_MINUTE]--))
     done
 
-    if [ -f "$file_path" ]; then
+    if [ -f "${_opts[FILE_PATH]}" ]; then
         # older ?
-        [ $max_age_file_minute -gt 0 ] && [ $(find $file_path -mmin +$max_age_file_minute) ] && log_error "Le fichier $file_path est présent mais trop ancien et l'éventuel temps d'attente est dépassé" && return $ERROR_CODE
+        [ ${_opts[MAX_AGE_FILE_MINUTE]} -gt 0 ] && [ $(find ${_opts[FILE_PATH]} -mmin +${_opts[MAX_AGE_FILE_MINUTE]}) ] && {
+            log_error "Le fichier ${_opts[FILE_PATH]} est présent mais trop ancien et l'éventuel temps d'attente est dépassé"
+            return $ERROR_CODE
+        }
 
         # not currently growing?
-        file_size_before=$(stat --printf="%s" $file_path)
+        _size_before=$(stat --printf="%s" ${_opts[FILE_PATH]})
         sleep 5
-        file_size_after=$(stat --printf="%s" $file_path)
-        while [ "$file_size_before" != "$file_size_after" ]; do
-            echo "La taille du fichier $file_path a changée, attente de 5 secondes supplémentaires"
-            file_size_before=$file_size_after
+        _size_after=$(stat --printf="%s" ${_opts[FILE_PATH]})
+        while [ "$_size_before" != "$_size_after" ]; do
+            echo "La taille du fichier ${_opts[FILE_PATH]} a changée, attente de 5 secondes supplémentaires"
+            _size_before=$_size_after
             sleep 5
-            file_size_after=$(stat --printf="%s" $file_path)
+            _size_after=$(stat --printf="%s" ${_opts[FILE_PATH]})
         done
     else
-        echo "Le fichier $file_path n'est pas présent et l'éventuel temps d'attente est dépassé" && return $ERROR_CODE
+        echo "Le fichier ${_opts[FILE_PATH]} n'est pas présent et l'éventuel temps d'attente est dépassé"
+        return $ERROR_CODE
     fi
 
     return $SUCCESS_CODE
@@ -1190,18 +1205,20 @@ wait_for_file() {
     #
 
 is_archive() {
-    bash_args \
-        --args_p "
+    local -A _opts &&
+    pow_argv \
+        --args_n "
             archive_path:chemin complet de l'archive;
-            type_archive:obtenir le type de l'archive (MIME)
+            archive_type:obtenir le type de l'archive (MIME)
         " \
-        --args_o 'archive_path' \
-        "$@" || return $ERROR_CODE
+        --args_m 'archive_path' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    expect file "$get_arg_archive_path" || return $ERROR_CODE
-    [ -n "$get_arg_type_archive" ] && local -n _type_ref=$get_arg_type_archive
+    [ -f "${_opts[ARCHIVE_PATH]}" ] || return $ERROR_CODE
+    [ -n "${_opts[ARCHIVE_TYPE]}" ] && local -n _type_ref=${_opts[ARCHIVE_TYPE]}
+
     # TODO: (to add 7z and rar) apt install p7zip-full p7zip-rar
-	[[ $(file --mime-type "$get_arg_archive_path") =~ application/(zip|gzip|x-bzip2|x-7z-compressed) ]] && {
+	[[ $(file --mime-type "${_opts[ARCHIVE_PATH]}") =~ application/(zip|gzip|x-bzip2|x-7z-compressed) ]] && {
         _type_ref=${BASH_REMATCH[1]}
         return $SUCCESS_CODE
     }
@@ -1210,62 +1227,63 @@ is_archive() {
 
 # extract data from archive (zip, gz, ...)
 extract_archive() {
-    bash_args \
-        --args_p "
+    local -A _opts &&
+    pow_argv \
+        --args_n "
             archive_path:chemin complet de l'archive;
             extract_path:chemin complet du résultat de l'extraction de l'archive (STDOUT pour écran)
         " \
-        --args_o '
+        --args_m '
             archive_path;
             extract_path
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
     local _start=$(date +%s)
-    local _archive_name=$(basename "$get_arg_archive_path")
+    local _archive_name=$(basename "${_opts[ARCHIVE_PATH]}")
     local _log_tmp_path="$POW_DIR_TMP/extract_$_archive_name.log"
     local _log_archive_path="$POW_DIR_ARCHIVE/extract_$_archive_name.log"
+    local _archive_type
 
-    local _type_archive
-    is_archive --archive_path "$get_arg_archive_path" --type_archive _type_archive || {
-        log_error "${FUNCNAME[1]}: le fichier $get_arg_archive_path n'est pas une archive"
+    is_archive --archive_path "${_opts[ARCHIVE_PATH]}" --archive_type _archive_type || {
+        log_error "${FUNCNAME[0]}: le fichier ${_opts[ARCHIVE_PATH]} n'est pas une archive"
         return $ERROR_CODE
     }
-    case $_type_archive in
+    case $_archive_type in
     zip)
-        if [ "$get_arg_extract_path" = STDOUT ]; then
+        if [ "${_opts[EXTRACT_PATH]}" = STDOUT ]; then
             # -p : extract files to pipe (stdout)
-            unzip -p "$get_arg_archive_path" 2> $_log_tmp_path
+            unzip -p "${_opts[ARCHIVE_PATH]}" 2> $_log_tmp_path
         else
             # -o : overwrite files WITHOUT prompting
             # -d : extract files into dir
-            unzip -o "$get_arg_archive_path" -d "$get_arg_extract_path" > $_log_tmp_path 2>&1
+            unzip -o "${_opts[ARCHIVE_PATH]}" -d "${_opts[EXTRACT_PATH]}" > $_log_tmp_path 2>&1
         fi
         ;;
     gzip)
-        if [ "$get_arg_extract_path" = STDOUT ]; then
-            gunzip --stdout "$get_arg_archive_path" 2> $_log_tmp_path
+        if [ "${_opts[EXTRACT_PATH]}" = STDOUT ]; then
+            gunzip --stdout "${_opts[ARCHIVE_PATH]}" 2> $_log_tmp_path
         else
-            gunzip --stdout "$get_arg_archive_path" > "$get_arg_extract_path/${_archive_name%.*}"
+            gunzip --stdout "${_opts[ARCHIVE_PATH]}" > "${_opts[EXTRACT_PATH]}/${_archive_name%.*}"
         fi
         ;;
     x-bzip2)
-        if [ "$get_arg_extract_path" = STDOUT ]; then
-            bunzip2 --stdout "$get_arg_archive_path" 2> $_log_tmp_path
+        if [ "${_opts[EXTRACT_PATH]}" = STDOUT ]; then
+            bunzip2 --stdout "${_opts[ARCHIVE_PATH]}" 2> $_log_tmp_path
         else
-            bunzip2 --stdout "$get_arg_archive_path" > "$get_arg_extract_path/${_archive_name%.*}"
+            bunzip2 --stdout "${_opts[ARCHIVE_PATH]}" > "${_opts[EXTRACT_PATH]}/${_archive_name%.*}"
         fi
         ;;
     x-7z-compressed)
-        if [ "$get_arg_extract_path" = STDOUT ]; then
+        if [ "${_opts[EXTRACT_PATH]}" = STDOUT ]; then
             log_error "Mode d'extraction sur le type d'archive .7z non pris en charge pour le moment"
             return $ERROR_CODE
         else
-            7z x "$get_arg_archive_path" -o"$get_arg_extract_path" -y > $_log_tmp_path 2>&1
+            7z x "${_opts[ARCHIVE_PATH]}" -o"${_opts[EXTRACT_PATH]}" -y > $_log_tmp_path 2>&1
         fi
         ;;
     *)
-        log_error "${FUNCNAME[1]}: format d'archive ($_type_archive) non pris en charge"
+        log_error "${FUNCNAME[0]}: format d'archive ($_archive_type) non pris en charge"
         return $ERROR_CODE
         ;;
     esac
@@ -1273,7 +1291,7 @@ extract_archive() {
     # https://stackoverflow.com/questions/19120263/why-exit-code-141-with-grep-q
     [[ ! $? =~ 0|141 ]] && {
         archive_file "$_log_tmp_path"
-        log_error "${FUNCNAME[1]}: erreur lors de l'extraction de l'archive $_archive_name, veuillez consulter $_log_archive_path"
+        log_error "${FUNCNAME[0]}: erreur lors de l'extraction de l'archive $_archive_name, veuillez consulter $_log_archive_path"
         return $ERROR_CODE
     } || {
         local _last
@@ -1285,26 +1303,30 @@ extract_archive() {
 }
 
 create_archive() {
-    bash_args \
-        --args_p '
-            type_archive:Type archive demandée;
-            output:Chemin complet archive générée;
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            archive_type:Type archive;
+            output:Chemin complet archive résultat;
             input:Données à archiver
         ' \
-        --args_o 'output;input' \
-        --args_v 'type_archive:zip|gzip|x-bzip2' \
-        --args_d 'type_archive:gzip' \
-        "$@" || return $ERROR_CODE
+        --args_m 'output;input' \
+        --args_d 'archive_type:gzip' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    case "$get_arg_type_archive" in
+    case "${_opts[ARCHIVE_TYPE]}" in
     zip)
-        zip --filesync --recurse-paths --junk-paths "$get_arg_output" "$get_arg_input"
+        zip --filesync --recurse-paths --junk-paths "${_opts[OUTPUT]}" "${_opts[INPUT]}"
         ;;
     gzip)
-        gzip --recursive --stdout "$get_arg_input" > "$get_arg_output"
+        gzip --recursive --stdout "${_opts[INPUT]}" > "${_opts[OUTPUT]}"
         ;;
     x-bzip2)
-        bzip2 --stdout "$get_arg_input" > "$get_arg_output"
+        bzip2 --stdout "${_opts[INPUT]}" > "${_opts[OUTPUT]}"
+        ;;
+    *)
+        log_error "${FUNCNAME[0]}: format d'archive (${_opts[ARCHIVE_TYPE]}) non pris en charge"
+        return $ERROR_CODE
         ;;
     esac
 
@@ -1328,8 +1350,9 @@ create_archive() {
 #  https://stackoverflow.com/questions/5395082/how-to-send-html-body-email-with-multiple-text-attachments-using-sendmail
 #
 send_mail() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             subject:Objet du message;
             body:Texte du message;
             to:Destinataire(s);
@@ -1341,7 +1364,7 @@ send_mail() {
             tool:outil de codage;
             debug:Activer le mode debug;
             verbose:Activer le mode bavard' \
-        --args_o '
+        --args_m '
             subject;
             body;
             to' \
@@ -1358,58 +1381,55 @@ send_mail() {
             tool:base64;
             debug:no;
             verbose:no' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    # texte du message
+    # message
     local _body
-    [ -f "$get_arg_body" ] && _body=$(< "$get_arg_body") || {
-        [ -n "$get_arg_body" ] && _body="$get_arg_body" || {
+    [ -f "${_opts[BODY]}" ] && _body=$(< "${_opts[BODY]}") || {
+        [ -n "${_opts[BODY]}" ] && _body="${_opts[BODY]}" || {
             log_error 'manque texte du message!'
             return $ERROR_CODE
         }
     }
     # encoding
-    [ -n "$get_arg_encoding" ] && {
-        _body=$(echo "$_body" | iconv --from-code UTF8 --to-code $get_arg_encoding)
+    [ -n "${_opts[ENCODING]}" ] && {
+        _body=$(echo "$_body" | iconv --from-code UTF8 --to-code ${_opts[ENCODING]})
         [ $? -ne 0 ] && {
-            log_error "conversion texte du message (UTF8 vers $get_arg_encoding)!"
+            log_error "conversion texte du message (UTF8 vers ${_opts[ENCODING]})!"
             return $ERROR_CODE
         }
     }
-    # préparation message (avec éventuelle(s) pj(s))
+    # prepare message (w/ optional attachment)
     local _msg=$POW_DIR_TMP/mail_$$.msg
     {
-        echo "To: ${get_arg_to}"
-        [ -n "${get_arg_cc}" ] && echo "Cc: ${get_arg_cc}"
-        echo "Subject: ${get_arg_subject}"
+        echo "To: ${_opts[TO]}"
+        [ -n "${_opts[CC]}" ] && echo "Cc: ${_opts[CC]}"
+        echo "Subject: ${_opts[SUBJECT]}"
         echo 'MIME-Version: 1.0'
-        [ "$get_arg_debug" = yes ] && [ ! -z "$get_arg_attachment" ] && echo '###DEBUG: avec pj' > /dev/stderr
-        [ ! -z "$get_arg_attachment" ] && {
-            [ "$get_arg_debug" = yes ] && echo '###DEBUG: ajout BOUNDARY' > /dev/stderr
+        [ "${_opts[DEBUG]}" = yes ] && [ ! -z "${_opts[ATTACHMENT]}" ] && echo '###DEBUG: avec pj' > /dev/stderr
+        [ ! -z "${_opts[ATTACHMENT]}" ] && {
+            [ "${_opts[DEBUG]}" = yes ] && echo '###DEBUG: ajout BOUNDARY' > /dev/stderr
             echo 'Content-Type: multipart/mixed; boundary="###BOUNDARY"'
             echo '--###BOUNDARY'
         }
         echo 'Content-Type: text/'${get_arg_format,,}
-        # semble être indispensable, cet écho! en mode PLAIN en tout cas...
+        # seems necessary, this écho! (even in mode PLAIN)
         echo
         echo "$_body"
 
-        [ ! -z "$get_arg_attachment" ] && {
-            [ "$get_arg_debug" = yes ] && echo '###DEBUG: ajout PJ(s)' > /dev/stderr
-            local _tmplist='' _file _todo _mime _list=(${get_arg_attachment//,/ }) _i
+        [ ! -z "${_opts[ATTACHMENT]}" ] && {
+            [ "${_opts[DEBUG]}" = yes ] && echo '###DEBUG: ajout PJ(s)' > /dev/stderr
+            local _tmplist='' _file _todo _mime _list=(${_opts[ATTACHMENT]}//,/ }) _i
             for ((_i=0; _i<${#_list[*]}; _i++)); do
-            #FIX souci bash_args avec valeurs multiples séparées par un espace, 'file1 file2'
-            #for _file in $get_arg_attachment; do
                 _file=${_list[$_i]}
                 [ ! -s "$_file" ] && continue
-                [ "$get_arg_debug" = yes ] && echo '###DEBUG: ajout PJ:'$_file > /dev/stderr
+                [ "${_opts[DEBUG]}" = yes ] && echo '###DEBUG: ajout PJ:'$_file > /dev/stderr
                 _todo="$_file"
                 if ! is_archive "$_file" ; then
-                    [ "$get_arg_compress" = yes ] && {
+                    [ "${_opts[COMPRESS]}" = yes ] && {
                         _todo+='.gz'
                         gzip --force --stdout "$_file" > "$_todo"
                         [ -n "$_tmplist" ] && _tmplist+=' '
-                        # liste pièce(s) jointe(s)
                         _tmplist+="'$_todo'"
                     }
                 fi
@@ -1418,13 +1438,13 @@ send_mail() {
 
                 echo '--###BOUNDARY'
                 echo 'Content-Type: '$_mime
-                echo 'Content-Transfer-Encoding: '$get_arg_tool
+                echo 'Content-Transfer-Encoding: '${_opts[TOOL]}
                 echo 'Content-Disposition: attachment; filename="'$(basename "$_todo")'"'
 
-                # semble être indispensable, cet écho!
+                # seems necessary, this écho!
                 echo
-                # encodage des données (base64 par défaut)
-                case $get_arg_tool in
+                # encoding... (base64 as default)
+                case ${_opts[TOOL]} in
                 uuencode)
                     uuencode "$_todo" "$_todo"
                     ;;
@@ -1434,12 +1454,12 @@ send_mail() {
                 esac
                 echo
             done
-            # fermeture des pj, avec dernier --
+            # close attachment, w/ last --
             echo '--###BOUNDARY--'
         }
     } > $_msg
 
-    case "$get_arg_debug" in
+    case "${_opts[DEBUG]}" in
     yes)
         cat $_msg
         ;;
@@ -1450,6 +1470,6 @@ send_mail() {
 
     local _rc=$?
     [ -n "$_tmplist" ] && rm $_tmplist
-    [ "$get_arg_debug" = no ] && [ -f $_msg ] && rm $_msg
+    [ "${_opts[DEBUG]}" = no ] && [ -f $_msg ] && rm $_msg
     return $_rc
 }
