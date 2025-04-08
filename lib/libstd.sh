@@ -978,27 +978,54 @@ is_different() {
     return $ERROR_CODE
 }
 
-# extension of file
-get_file_extension() {
-    bash_args \
-        --args_p 'file_path:Nom du fichier' \
-        --args_o 'file_path' \
-        "$@" || return $ERROR_CODE
+# basename of file (w/o extension)
+get_file_name() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            file_path:Chemin complet du fichier;
+            file_name:Nom du fichier;
+            with_extension:Avec/sans extension;
+            output:Sortie résultat sur écran
+        ' \
+        --args_m 'file_path' \
+        --args_v '
+            with_extension:yes|no;
+            output:yes|no;
+        ' \
+        --args_d '
+            with_extension:no;
+            output:yes
+        ' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local _file_extension="${get_arg_file_path##*.}"
-    echo "${_file_extension,,}"
+    local _file_name _result
+
+    _file_name=$(basename -- "${_opts[FILE_PATH]}")
+    case ${_opts[WITH_EXTENSION]} in
+    yes)    _result=$_file_name         ;;
+    no)     _result=${_file_name%%.*}   ;;
+    esac
+    [ "${_opts[OUTPUT]}" = yes ] && echo $_result
+    [ -n "${_opts[FILE_NAME]}" ] && {
+        local -n _file_name_ref=${_opts[FILE_NAME]}
+        _file_name_ref=$_result
+    }
+
     return $SUCCESS_CODE
 }
 
-# basename of file (w/o extension)
-get_file_name() {
-    bash_args \
-        --args_p 'file_path:Nom du fichier' \
-        --args_o 'file_path' \
-        "$@" || return $ERROR_CODE
+# extension of file
+get_file_extension() {
+    local -A _opts &&
+    pow_argv \
+        --args_n 'file_path:Nom du fichier' \
+        --args_m 'file_path' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local _file_name=$(basename -- "$get_arg_file_path")
-    echo "${_file_name%%.*}"
+    local _file_extension="${_opts[FILE_PATH]}##*.}"
+    echo "${_file_extension,,}"
+
     return $SUCCESS_CODE
 }
 

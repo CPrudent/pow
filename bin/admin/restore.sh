@@ -164,7 +164,7 @@ for _schema_name in ${SCHEMAS[@]}; do
                     import_file \
                         --file_path "$POW_DIR_DATA/common/admin/$file" \
                         --schema_name ${_schema_name,,} \
-                        --table_name "$(get_file_name --file_path \"$POW_DIR_DATA/common/admin/$file\")" \
+                        --table_name "$(get_file_name --file_path "$POW_DIR_DATA/common/admin/$file")" \
                         --rowid no \
                         --load_mode OVERWRITE_TABLE
                 } || {
