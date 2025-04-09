@@ -187,7 +187,7 @@ in_array() {
         ;;
     esac
     _rc=$?
-    # returning position ?
+    # returning position (useful for array, but not for hash)
     [ -n "${_opts[POSITION]}" ] && {
         local -n _pos_ref=${_opts[POSITION]}
         # exists item ?
