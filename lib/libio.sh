@@ -1237,7 +1237,7 @@ excel_to_csv() {
     _step+=1 &&
     # MIME type
     # https://stackoverflow.com/questions/7076042/what-mime-type-should-i-use-for-csv
-    _mime=$(get_file_mimetype "${_opts[FROM_FILE_PATH]}") &&
+    _mime=$(get_file_mimetype --file_path "${_opts[FROM_FILE_PATH]}") &&
     _step+=1 &&
     case "$_mime" in
     application/vnd.openxmlformats-officedocument.spreadsheetml.sheet|application/vnd.ms-excel)
@@ -1351,7 +1351,7 @@ csv_to_excel() {
     _step+=1 &&
     # MIME type
     # https://stackoverflow.com/questions/7076042/what-mime-type-should-i-use-for-csv
-    _mime=$(get_file_mimetype "${_opts[FROM_FILE_PATH]}") &&
+    _mime=$(get_file_mimetype --file_path "${_opts[FROM_FILE_PATH]}") &&
     _step+=1 &&
     case "$_mime" in
     text/plain|text/csv|text/x-csv)
@@ -1835,7 +1835,7 @@ import_file() {
     } &&
     _step+=1 &&
     {
-        local _mime=$(get_file_mimetype "${_opts[FILE_PATH]}")
+        local _mime=$(get_file_mimetype --file_path "${_opts[FILE_PATH]}")
         case "$_mime" in
         text/plain|text/csv|text/x-csv)
             _type_import=CSV

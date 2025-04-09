@@ -151,8 +151,6 @@ array_index() {
 
 # item in array
 # https://stackoverflow.com/questions/8082947/how-to-pass-an-array-to-a-bash-function
-# optional 3rd argument gives ID of searched item, as: in_array ARRAY STR_TO_SEARCH ID
-# FIX due to error!
 # another solution w/ print
 # https://stackoverflow.com/questions/3685970/check-if-a-bash-array-contains-a-value
 in_array() {
@@ -925,7 +923,7 @@ is_different() {
                 echo "Fichier ${_opts[DIR_A]}/$_tmp_file non présent dans ${_opts[DIR_B]}"
                 return $SUCCESS_CODE
             fi
-            if file_is_binary "$_tmp_path"; then
+            if file_is_binary --file_path "$_tmp_path"; then
                 _size_a=$(wc -c "${_opts[DIR_A]}/$_tmp_file" | cut -d' ' -f1)
                 _size_b=$(wc -c "${_opts[DIR_B]}/$_tmp_file" | cut -d' ' -f1)
                 if [ "$_size_a" != "$_size_b" ]; then
@@ -978,7 +976,7 @@ is_different() {
     return $ERROR_CODE
 }
 
-# basename of file (w/o extension)
+# name of file
 get_file_name() {
     local -A _opts &&
     pow_argv \
@@ -986,16 +984,16 @@ get_file_name() {
             file_path:Chemin complet du fichier;
             file_name:Nom du fichier;
             with_extension:Avec/sans extension;
-            output:Sortie résultat sur écran
+            stdout:Sortie résultat sur écran
         ' \
         --args_m 'file_path' \
         --args_v '
             with_extension:yes|no;
-            output:yes|no;
+            stdout:yes|no;
         ' \
         --args_d '
             with_extension:no;
-            output:yes
+            stdout:yes
         ' \
         --pow_argv _opts "$@" || return $ERROR_CODE
 
@@ -1006,7 +1004,7 @@ get_file_name() {
     yes)    _result=$_file_name         ;;
     no)     _result=${_file_name%%.*}   ;;
     esac
-    [ "${_opts[OUTPUT]}" = yes ] && echo $_result
+    [ "${_opts[STDOUT]}" = yes ] && echo $_result
     [ -n "${_opts[FILE_NAME]}" ] && {
         local -n _file_name_ref=${_opts[FILE_NAME]}
         _file_name_ref=$_result
@@ -1019,36 +1017,125 @@ get_file_name() {
 get_file_extension() {
     local -A _opts &&
     pow_argv \
-        --args_n 'file_path:Nom du fichier' \
+        --args_n '
+            file_path:Chemin complet du fichier;
+            file_extension:Extension du fichier;
+            lazy:Extraction extension (complète|partielle), similaire REGEXP (greedy|lazy);
+            stdout:Sortie résultat sur écran
+        ' \
         --args_m 'file_path' \
+        --args_v '
+            lazy:yes|no;
+            stdout:yes|no
+        ' \
+        --args_d '
+            lazy:yes;
+            stdout:yes
+        ' \
         --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local _file_extension="${_opts[FILE_PATH]}##*.}"
-    echo "${_file_extension,,}"
+    # NOTE be careful, not use _file_name (same as this in get_file_name) : empty return!
+    local _name _file_extension _result
+
+    get_file_name \
+        --file_path "${_opts[FILE_PATH]}" \
+        --file_name _name \
+        --stdout no \
+        --with_extension yes &&
+    case ${_opts[LAZY]} in
+    yes)    _file_extension="${_name##*.}"  ;;
+    no)     _file_extension="${_name#*.}"   ;;
+    esac
+    # lower
+    _result="${_file_extension,,}"
+
+    [ "${_opts[STDOUT]}" = yes ] && echo $_result
+    [ -n "${_opts[FILE_EXTENSION]}" ] && {
+        local -n _file_extension_ref=${_opts[FILE_EXTENSION]}
+        _file_extension_ref=$_result
+    }
 
     return $SUCCESS_CODE
 }
 
 # get MIME's type of file
-# TODO use in is_archive
 get_file_mimetype() {
-    file --mime-type "$1" | sed 's/.*: //'
-}
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            file_path:Chemin complet du fichier;
+            file_mime:MIME du fichier;
+            stdout:Sortie résultat sur écran
+        ' \
+        --args_m 'file_path' \
+        --args_v '
+            stdout:yes|no
+        ' \
+        --args_d '
+            stdout:yes
+        ' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-# known if file is binary
-file_is_binary() {
-    file --brief --dereference --mime "$1" | grep --silent 'charset=binary'
+    local _mime_type=$(file --mime-type "${_opts[FILE_PATH]}" | sed 's/.*: //')
+
+    [ "${_opts[STDOUT]}" = yes ] && echo $_mime_type
+    [ -n "${_opts[FILE_MIME]}" ] && {
+        local -n _file_mime_ref=${_opts[FILE_MIME]}
+        _file_mime_ref=$_mime_type
+    }
+
+    return $SUCCESS_CODE
 }
 
 # get number of rows
 get_file_nrows() {
-    expect argc $0 $# 2  &&
-    expect file "$1"     || return $ERROR_CODE
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            file_path:Chemin complet du fichier;
+            file_nrows:Nombre de ligne(s) du fichier;
+            stdout:Sortie résultat sur écran
+        ' \
+        --args_m 'file_path' \
+        --args_v '
+            stdout:yes|no
+        ' \
+        --args_d '
+            stdout:yes
+        ' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local -n _nr=$2
-    _nr=$(wc --lines "$1" | cut --delimiter ' ' --fields 1)
+    local _file_nrows
+
+    expect file "${_opts[FILE_PATH]}" &&
+    _file_nrows=$(wc --lines "${_opts[FILE_PATH]}" | cut --delimiter ' ' --fields 1) &&
+    {
+        [ "${_opts[STDOUT]}" = no ] || echo $_file_nrows
+    } &&
+    {
+        [ -z "${_opts[FILE_NROWS]}" ] || {
+            local -n _file_nrows_ref=${_opts[FILE_NROWS]}
+            _file_nrows_ref=$_file_nrows
+        }
+    } || return $ERROR_CODE
 
     return $SUCCESS_CODE
+}
+
+# known if file is binary
+file_is_binary() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            file_path:Chemin complet du fichier
+        ' \
+        --args_m 'file_path' \
+        --pow_argv _opts "$@" || return $ERROR_CODE
+
+    expect file "${_opts[FILE_PATH]}" &&
+    file --brief --dereference --mime "${_opts[FILE_PATH]}" | grep --silent 'charset=binary'
+
+    return $?
 }
 
 # backup file (with uniq extension as: .backup.#)
@@ -1388,7 +1475,7 @@ send_mail() {
             encoding:Changer le jeu de caractères (la source étant en UTF8);
             format:Format du texte;
             compress:Compression piéce jointe (si pas déjà fait);
-            tool:outil de codage;
+            tool:Outil de codage;
             debug:Activer le mode debug;
             verbose:Activer le mode bavard' \
         --args_m '
@@ -1461,7 +1548,7 @@ send_mail() {
                     }
                 fi
 
-                _mime=$(get_file_mimetype "$_todo")
+                _mime=$(get_file_mimetype --file_path "$_todo")
 
                 echo '--###BOUNDARY'
                 echo 'Content-Type: '$_mime

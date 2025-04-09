@@ -455,8 +455,11 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
             --source ${altitude_sources_order[$_altitude_i]} &&
         altitude_set_list \
             --step $_altitude_i \
-            --list $_territory_list &&
-        get_file_nrows $_territory_list _rows && {
+            --list "$_territory_list" &&
+        get_file_nrows \
+            --file_path "$_territory_list" \
+            --file_nrows _rows &&
+        {
             _info="A traiter: $_rows commune"
             if [ $_rows -gt 1 ]; then
                 _info+='s'
@@ -699,7 +702,7 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                     log_error "Mise à jour ${_territory_data_copy[$TERRITORY_CODE]} en erreur"
 
                 }
-            done < $_territory_list
+            done < "$_territory_list"
         }
         # check for complete (or error)
         execute_query \
@@ -728,7 +731,7 @@ rm --force $_tmpfile || {
         --query "
             CALL fr.set_territory_altitude(usecase => 'UPDATE')
         " &&
-    archive_file $_territory_list &&
+    archive_file "$_territory_list" &&
     log_info 'Mise à jour avec succès'
     exit $SUCCESS_CODE
 }
