@@ -14,6 +14,8 @@ declare -a TESTS=(
     ELAPSED_TIME
     IS_YES
     DELIMITER
+    GET_FILE_NAME
+    GET_FILE_EXTENSION
 )
 TESTS_JOIN_PIPE=${TESTS[@]}
 TESTS_JOIN_PIPE=${TESTS_JOIN_PIPE// /|}
@@ -120,6 +122,23 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
             ((_count++))
         done
         [[ $_count -eq ${#POW_DELIMITER[@]} ]] &&
+        _rc=0
+        ;;
+    GET_FILE_NAME)
+        _fp=$POW_DIR_ROOT/tests/data/test_spreadsheet.csv
+        get_file_name --file_path "$_fp" --file_name _f1 --stdout no &&
+        _f2=$(get_file_name --file_path "$_fp") &&
+        [ "$_f1" = "$_f2" ] &&
+        get_file_name --file_path "$_fp" --file_name _f1 --stdout no --with_extension yes &&
+        _f2=$(get_file_name --file_path "$_fp" --with_extension yes) &&
+        [ "$_f1" = "$_f2" ] &&
+        _rc=0
+        ;;
+    GET_FILE_EXTENSION)
+        _fp=$POW_DIR_ROOT/tests/data/test_spreadsheet.csv
+        get_file_extension --file_path "$_fp" --file_extension _e1 --stdout no &&
+        _e2=$(get_file_extension --file_path "$_fp") &&
+        [ "$_e1" = "$_e2" ] &&
         _rc=0
         ;;
 
