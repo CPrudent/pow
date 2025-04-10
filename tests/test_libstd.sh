@@ -16,6 +16,7 @@ declare -a TESTS=(
     DELIMITER
     GET_FILE_NAME
     GET_FILE_EXTENSION
+    GET_FILE_NROWS
 )
 TESTS_JOIN_PIPE=${TESTS[@]}
 TESTS_JOIN_PIPE=${TESTS_JOIN_PIPE// /|}
@@ -138,6 +139,13 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
         _fp=$POW_DIR_ROOT/tests/data/test_spreadsheet.csv
         get_file_extension --file_path "$_fp" --file_extension _e1 --stdout no &&
         _e2=$(get_file_extension --file_path "$_fp") &&
+        [ "$_e1" = "$_e2" ] &&
+        _rc=0
+        ;;
+    GET_FILE_NROWS)
+        _fp=$POW_DIR_ROOT/tests/data/test_spreadsheet.csv
+        get_file_nrows --file_path "$_fp" --file_nrows _n1 --stdout no &&
+        _n2=$(get_file_extension --file_path "$_fp") &&
         [ "$_e1" = "$_e2" ] &&
         _rc=0
         ;;
