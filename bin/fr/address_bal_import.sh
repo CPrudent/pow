@@ -334,7 +334,7 @@ bal_import_file() {
         ' \
         --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local _try _ext _rc _file="${_opts[SOURCE]}/${bal_vars[FILE_NAME]}" _tmpfile
+    local _try _ext _rc _file="${_opts[SOURCE]}/${bal_vars[FILE_NAME]}" _tmpfile _nrows
 
     for ((_try=0; _try<2; _try++)); do
         case $_try in
@@ -347,6 +347,14 @@ bal_import_file() {
             # error: double quote inside value ?
             _ext=$(get_file_extension --file_path "$_file")
             [ "$_ext" != json ] && return $ERROR_CODE
+            # empty file ?
+            get_file_nrows --file_path "$_file" --file_nrows _nrows --stdout no &&
+            {
+                [[ $_nrows -gt 0 ]] || {
+                    log_info "Fichier ${bal_vars[FILE_NAME]} vide!"
+                    return $SUCCESS_CODE
+                }
+            }
             get_tmp_file --tmpfile _tmpfile --tmpext json
             grep --perl-regexp ':"[^"]*"[^"]+"[^"]*",?' $_file > /dev/null
             # no : other error (not catched yet)
@@ -391,8 +399,9 @@ bal_load_addresses() {
         ' \
         "$@" || return $ERROR_CODE
 
-    local _name _query _info _j _rc _field=${get_arg_level}S _code _len _url _file
+    local _name _query _info _j _rc _field=${get_arg_level}S _code _len _url _file _del _dir_common
     local -a _addresses
+    local -a _deletes
 
     _name="BAL_SELECT_${bal_vars[MUNICIPALITY_CODE]}_${_field}" &&
     case "${get_arg_level}" in
@@ -500,19 +509,41 @@ bal_load_addresses() {
                         }
                     done
                 else
+                    _dir_common="$POW_DIR_COMMON_GLOBAL_SCHEMA/bal"
                     # download
                     #+ need to (1) eventually unquote code, and (2) replace space by %20
                     #+ so 2 linked inputs
                     parallel --jobs 5 \
                         wget --quiet --limit-rate=100k \
-                        --output-document="$POW_DIR_COMMON_GLOBAL/fr/bal/{=1 uq() =}.json" \
-                        https://plateforme.adresse.data.gouv.fr/lookup/'{=2 uq() ; s/ /%20/g =}' \
+                        --output-document="${_dir_common}/{=1 uq() =}.json" \
+                        ${bal_vars[URL]}/lookup/'{=2 uq() ; s/ /%20/g =}' \
                         ::: "${_addresses[@]}" :::+ "${_addresses[@]}" &&
+                    # due to bug in obsolescence function (INSEE code)?
+                    #+ need to delete address w/ empty file (error on 2nd parallel else!)
+                    #+ https://stackoverflow.com/questions/16860877/remove-an-element-from-a-bash-array
+                    #+https://stackoverflow.com/questions/35589179/when-to-use-xargs-when-piping
+                    _deletes=($(find "${_dir_common}" \
+                        -iname "${bal_vars[MUNICIPALITY_CODE]}_*" \
+                        -size 0 \
+                        -exec basename --suffix .json {} \;)) &&
+                    {
+                        [[ ${#_deletes[@]} -eq 0 ]] || {
+                            log_info "Liste Adresse(s) avec fichier vide (${_deletes[@]})" &&
+                            for _code in "${_deletes[@]}"; do
+                                # lower INSEE but not others (street, housenumber)
+                                #_del=${_code%%_*}
+                                #_del=${_del,,}_${_code#*_}
+                                #_addresses=("${_addresses[@]/$_del}")
+
+                                _addresses=("${_addresses[@]/$_code}")
+                            done
+                        }
+                    } &&
                     # load into db
                     #+ here unquote code only is needed
                     parallel --jobs 5 \
                         jq --raw-output --compact-output '.' \
-                        "$POW_DIR_COMMON_GLOBAL/fr/bal/{=1 uq() =}.json" ::: "${_addresses[@]}" |
+                        "${_dir_common}/{=1 uq() =}.json" ::: "${_addresses[@]}" |
                         sed --expression 's/\\"/\\\\\\"/g' |
                         execute_query --name LOAD_JSON --query 'COPY fr.'${bal_vars[TABLE_NAME]}'(data) FROM STDIN'
                 fi

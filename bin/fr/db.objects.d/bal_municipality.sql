@@ -34,7 +34,7 @@ BEGIN
 END
 $proc$ LANGUAGE plpgsql;
 
--- delete obsolete addresses, dealing w/ dependences
+-- delete obsolete addresses, dealing w/ dependencies
 SELECT public.drop_all_functions_if_exists('fr', 'bal_delete_obsolete_addresses');
 CREATE OR REPLACE FUNCTION fr.bal_delete_obsolete_addresses(
     list IN VARCHAR,
@@ -65,7 +65,8 @@ BEGIN
     IF _level = 'UNKNOWN' THEN
         RAISE 'typologie des codes non reconnue (%)', _code;
     END IF;
-    _municipality := (REGEXP_MATCH(_code, '^([^_]{5})'))[1];
+    -- careful w/ Corse 2[AB] !
+    _municipality := UPPER((REGEXP_MATCH(_code, '^([^_]{5})'))[1]);
     IF simulation THEN
         RAISE NOTICE 'level=% municipality=%', _level, _municipality;
     END IF;
