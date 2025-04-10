@@ -521,7 +521,8 @@ bal_load_addresses() {
                     # due to bug in obsolescence function (INSEE code)?
                     #+ need to delete address w/ empty file (error on 2nd parallel else!)
                     #+ https://stackoverflow.com/questions/16860877/remove-an-element-from-a-bash-array
-                    #+https://stackoverflow.com/questions/35589179/when-to-use-xargs-when-piping
+                    #+ https://stackoverflow.com/questions/35589179/when-to-use-xargs-when-piping
+                    #+ https://stackoverflow.com/questions/8296710/how-to-ignore-xargs-commands-if-stdin-input-is-empty
                     _deletes=($(find "${_dir_common}" \
                         -iname "${bal_vars[MUNICIPALITY_CODE]}_*" \
                         -size 0 \
