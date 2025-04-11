@@ -399,7 +399,7 @@ bal_load_addresses() {
         ' \
         "$@" || return $ERROR_CODE
 
-    local _name _query _info _j _rc _field=${get_arg_level}S _code _len _url _file _del _dir_common
+    local _name _query _info _j _rc _field=${get_arg_level}S _code _len _url _file _dir_common
     local -a _addresses
     local -a _deletes
 
@@ -542,6 +542,8 @@ bal_load_addresses() {
                     } &&
                     # load into db
                     #+ here unquote code only is needed
+                    #+ need to protect w/ double quote into values
+                    #+ https://stackoverflow.com/questions/15637429/how-to-escape-double-quotes-in-json
                     parallel --jobs 5 \
                         jq --raw-output --compact-output '.' \
                         "${_dir_common}/{=1 uq() =}.json" ::: "${_addresses[@]}" |
