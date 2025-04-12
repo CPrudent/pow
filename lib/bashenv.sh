@@ -26,6 +26,7 @@ declare -A POW_DELIMITER=(
     [TAB]='\t'
 )
 
+# defaults used by pow_argv()
 declare -A POW_ARGV
 declare -A POW_ARGV_PROPERTIES=(
     [CASE]=UPPER
