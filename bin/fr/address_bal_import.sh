@@ -146,16 +146,17 @@ bal_last_update_municipality() {
 
 # get average time to download an address (street or housenumber) from BAL site
 bal_average_time() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             avg:Temps moyen nécessaire pour télécharger une adresse (voie ou numéro)
         ' \
-        --args_o '
+        --args_m '
             avg
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local -n _avg_ref=$get_arg_avg
+    local -n _avg_ref=${_opts[AVG]}
 
     execute_query \
         --name BAL_TIMEX \
@@ -179,17 +180,18 @@ bal_average_time() {
 
 # deal w/ temporary import table
 bal_import_table() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             command:Action SQL à faire
         ' \
-        --args_o '
+        --args_m '
             command
         ' \
         --args_v '
             command:CREATE|DROP
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
     local _query _ddl=1
 
@@ -198,7 +200,7 @@ bal_import_table() {
             && bal_vars[TABLE_NAME]=tmp_${bal_vars[IO_NAME],,} \
             || bal_vars[TABLE_NAME]=tmp_bal_${bal_vars[MUNICIPALITY_CODE]}
     } &&
-    case "$get_arg_command" in
+    case "${_opts[COMMAND]}" in
     CREATE)
         [ "${bal_vars[IO_NAME]}" = BAL_SUMMARY ] && _ddl=0
         _query="CREATE TABLE IF NOT EXISTS fr.${bal_vars[TABLE_NAME]} (data JSON)"
@@ -210,7 +212,7 @@ bal_import_table() {
     {
         [ $_ddl -eq 0 ] || {
             execute_query \
-                --name BAL_${get_arg_command} \
+                --name BAL_${_opts[COMMAND]} \
                 --query "$_query"
         }
     } || return $ERROR_CODE
@@ -220,25 +222,26 @@ bal_import_table() {
 
 # get list of code(s), checking count
 bal_get_list() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             name:Nommage de la sélection;
             query:Requête de sélection;
             as_string:Retour en tant que chaîne;
             as_array:Retour en tant que tableau
         ' \
-        --args_o '
+        --args_m '
             name;
             query
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
     local _result _return=0
     local -a _results
 
     execute_query \
-        --name "$get_arg_name" \
-        --query "$get_arg_query" \
+        --name "${_opts[NAME]}" \
+        --query "${_opts[QUERY]}" \
         --return _result &&
     {
         IFS='|' read -ra _results <<< "$_result"
@@ -250,8 +253,8 @@ bal_get_list() {
         }
     } &&
     {
-        [ -z "$get_arg_as_array" ] || {
-            local -n _as_array_ref=$get_arg_as_array
+        [ -z "${_opts[AS_ARRAY]}" ] || {
+            local -n _as_array_ref=${_opts[AS_ARRAY]}
 
             array_sql_to_bash \
                 --array_sql "${_results[0]}" \
@@ -261,8 +264,8 @@ bal_get_list() {
         }
     } &&
     {
-        [ -z "$get_arg_as_string" ] || {
-            local -n _as_string_ref=$get_arg_as_string
+        [ -z "${_opts[AS_STRING]}" ] || {
+            local -n _as_string_ref=${_opts[AS_STRING]}
 
             # TODO check count!
             [[ ${_results[1]} -gt 0 ]] && _as_string_ref="${_results[0]}" || _as_string_ref=''
@@ -387,24 +390,25 @@ bal_import_file() {
 
 # load BAL addresses (streets or housenumbers)
 bal_load_addresses() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             level:Niveau Adresses
         ' \
-        --args_o '
+        --args_m '
             level
         ' \
         --args_v '
             level:STREET|HOUSENUMBER
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local _name _query _info _j _rc _field=${get_arg_level}S _code _len _url _file _dir_common
+    local _name _query _info _j _rc _field=${_opts[LEVEL]}S _code _len _url _file _dir_common
     local -a _addresses
     local -a _deletes
 
     _name="BAL_SELECT_${bal_vars[MUNICIPALITY_CODE]}_${_field}" &&
-    case "${get_arg_level}" in
+    case "${_opts[LEVEL]}" in
     STREET)
         _info=voies
         _query="
@@ -563,21 +567,22 @@ bal_load_addresses() {
 
 # deal w/ obsolescence
 bal_deal_obsolescence() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             level:Niveau Adresses
         ' \
-        --args_o '
+        --args_m '
             level
         ' \
         --args_v '
             level:MUNICIPALITY|STREET|HOUSENUMBER
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
     local _label1=SELECT _label2 _query _info _obsolete _counters
 
-    case "$get_arg_level" in
+    case "${_opts[LEVEL]}" in
     MUNICIPALITY)
         _label2=SUMMARY
         _info=Communes
@@ -597,7 +602,7 @@ bal_deal_obsolescence() {
         "
         ;;
     STREET)
-        _label2=${bal_vars[MUNICIPALITY_CODE]}_${get_arg_level}S
+        _label2=${bal_vars[MUNICIPALITY_CODE]}_${_opts[LEVEL]}S
         _info=Voies
         _query="
             SELECT
@@ -619,7 +624,7 @@ bal_deal_obsolescence() {
         "
         ;;
     HOUSENUMBER)
-        _label2=${bal_vars[MUNICIPALITY_CODE]}_${get_arg_level}S
+        _label2=${bal_vars[MUNICIPALITY_CODE]}_${_opts[LEVEL]}S
         _info=Numéros
         _query="
             SELECT
@@ -722,19 +727,20 @@ bal_context() {
 
 # integration BAL data
 bal_integration() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             level:Niveau Adresses
         ' \
-        --args_o '
+        --args_m '
             level
         ' \
         --args_v '
             level:MUNICIPALITY|STREET|HOUSENUMBER|AREA
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    case "${get_arg_level}" in
+    case "${_opts[LEVEL]}" in
     MUNICIPALITY)
         # manage municipality, deleting obsolete ones w/ {housenumbers, streets} dependences
         execute_query \
@@ -941,22 +947,23 @@ bal_integration() {
 
 # load BAL data
 bal_load() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             level:Niveau Adresses
         ' \
-        --args_o '
+        --args_m '
             level
         ' \
         --args_v '
             level:SUMMARY|MUNICIPALITY|STREET|HOUSENUMBER
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local _level=${get_arg_level} _file _rc _option _force="${bal_vars[FORCE_LOAD]}"
+    local _file _rc _option _force="${bal_vars[FORCE_LOAD]}"
     local -A _context
 
-    case "$_level" in
+    case "${_opts[LEVEL]}" in
     SUMMARY)
         # don't need to load again
         _force=no
@@ -964,13 +971,13 @@ bal_load() {
         [ "${bal_vars[STOP_TIME]}" = 0 ] || {
             log_info "Durée de traitement allouée jusqu'à ${bal_vars[STOP_TIME]}"
         }
-        log_info "Import BAL (${_level})" &&
+        log_info "Import BAL (${_opts[LEVEL]})" &&
         {
             [ "${bal_vars[PROGRESS]}" = no ] || {
                 bal_vars[PROGRESS_START]=$(date '+%s') &&
                 bal_print_progress \
                     BEGIN \
-                    "INSEE ${_level}" \
+                    "INSEE ${_opts[LEVEL]}" \
                     ${bal_vars[PROGRESS_SIZE]} \
                     ${bal_vars[PROGRESS_CURRENT]} \
                     ${bal_vars[PROGRESS_TOTAL]} \
@@ -983,9 +990,9 @@ bal_load() {
         ;;
     esac
     # initialize context
-    bal_context --level $_level --vars _context || return $ERROR_CODE
+    bal_context --level ${_opts[LEVEL]} --vars _context || return $ERROR_CODE
 
-    case "$_level" in
+    case "${_opts[LEVEL]}" in
     SUMMARY|MUNICIPALITY)
         io_todo_import \
             --force ${bal_vars[FORCE]} \
@@ -1001,7 +1008,7 @@ bal_load() {
             _file=$(basename "${bal_vars[URL]}/${_context[URL_DATA]}") &&
             bal_vars[FILE_NAME]="$_file" &&
             {
-                [ "${_level}" = SUMMARY ] || {
+                [ "${_opts[LEVEL]}" = SUMMARY ] || {
                     bal_vars[FILE_NAME]+=.json
                     bal_vars[IO_BEGIN]=${bal_vars[IO_LAST_END]}
                 }
@@ -1012,7 +1019,7 @@ bal_load() {
             [ "${bal_vars[IO_BEGIN]}" != "${bal_vars[IO_END]}" ] || bal_vars[IO_BEGIN]=
         } &&
         {
-            [ "${_level}" = MUNICIPALITY ] || {
+            [ "${_opts[LEVEL]}" = MUNICIPALITY ] || {
                 # summary
                 execute_query \
                     --name BAL_IO_ROWS \
@@ -1032,7 +1039,7 @@ bal_load() {
             --id bal_vars[IO_ID] &&
         {
             {
-                if ([ "${_level}" = SUMMARY ] || (is_yes --var bal_vars[LEVEL_MUNICIPALITY])); then
+                if ([ "${_opts[LEVEL]}" = SUMMARY ] || (is_yes --var bal_vars[LEVEL_MUNICIPALITY])); then
                     io_download_file \
                         --url "${bal_vars[URL]}/${_context[URL_DATA]}" \
                         --overwrite_mode NEWER \
@@ -1058,7 +1065,7 @@ bal_load() {
                 fi
             } &&
             bal_import_table --command DROP &&
-            case "${_level}" in
+            case "${_opts[LEVEL]}" in
             SUMMARY)
                 {
                     [ "${bal_vars[PROGRESS]}" = no ] || bal_set_progress
@@ -1083,7 +1090,7 @@ bal_load() {
             esac &&
             {
                 # vacuum only for last municipality (or summary)
-                ([ "${_level}" = MUNICIPALITY ] &&
+                ([ "${_opts[LEVEL]}" = MUNICIPALITY ] &&
                 [[ ${bal_vars[PROGRESS_CURRENT]} -lt ${bal_vars[PROGRESS_TOTAL]} ]]) || {
                     vacuum \
                         --schema_name fr \
@@ -1129,7 +1136,7 @@ bal_fix_done() {
         --args_m '
             state
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
     local _io=BAL_${bal_vars[MUNICIPALITY_CODE]} _fix
     local -n _state_ref=${_opts[STATE]}
@@ -1237,11 +1244,31 @@ bal_fix_apply() {
     return $SUCCESS_CODE
 }
 
-# allow runing 3 hours
+# NOTE allow runing 3 hours
 # --stop_time "$(date -d 'today + 3 hours' +'%m-%d-%T')"
 
-bash_args \
-    --args_p '
+# NOTE same data (POW_DOWNLOAD_ALREADY_AVAILABLE)
+# nothing todo (already downloaded and so imported) ? but problem !
+# obsolescence (diff between level-table and json-table) can wrongly delete elements
+# if there are not loaded
+
+declare -A bal_vars=(
+    [USECASE]=IMPORT
+    [URL]='https://plateforme.adresse.data.gouv.fr'
+    [IO_END]="$(date +%F)"
+    [IO_ROWS]=0
+    [AREAS_OLD_MUNICIPALITY]=0
+    [STREETS]=-1
+    [HOUSENUMBERS]=-1
+    [PROGRESS_CURRENT]=1
+    [PROGRESS_TOTAL]=1
+    [PROGRESS_SIZE]=5
+    [LEVEL_MUNICIPALITY]=
+    [LEVEL_STREET]=
+    [LEVEL_HOUSENUMBER]=
+) &&
+pow_argv \
+    --args_n '
         municipality:Code Commune INSEE à traiter (ou ALL pour télécharger la liste complète);
         select_criteria:Sélection des Communes;
         select_order:Ordre de sélection des Communes;
@@ -1257,7 +1284,7 @@ bash_args \
         clean:Effectuer la purge des fichiers temporaires;
         verbose:Ajouter des détails sur les traitements
     ' \
-    --args_o '
+    --args_m '
         municipality
     ' \
     --args_v '
@@ -1288,51 +1315,12 @@ bash_args \
         clean:yes;
         verbose:no
     ' \
-    "$@" || exit $ERROR_CODE
+    --args_p '
+        reset:no
+    ' \
+    --pow_argv bal_vars "$@" || exit $ERROR_CODE
 
-declare -A bal_vars=(
-    [USECASE]=IMPORT
-    [MUNICIPALITY_CODE]="${get_arg_municipality^^}"
-    [URL]='https://plateforme.adresse.data.gouv.fr'
-    [IO_NAME]=
-    [IO_ID]=
-    [IO_BEGIN]=
-    [IO_END]="$(date +%F)"
-    [IO_END_EPOCH]=
-    [IO_ROWS]=0
-    [IO_LAST_ID]=
-    [IO_LAST_END]=
-    [IO_LAST_ATTRIBUTES]=
-    [FILE_NAME]=
-    [TABLE_NAME]=
-    [SELECT_CRITERIA]=$get_arg_select_criteria
-    [SELECT_ORDER]=$get_arg_select_order
-    [LIMIT]=$get_arg_limit
-    [STOP_TIME]=$get_arg_stop_time
-    [AREAS_OLD_MUNICIPALITY]=0
-    [STREETS]=-1
-    [HOUSENUMBERS]=-1
-    [FORCE]=$get_arg_force
-        # same data (POW_DOWNLOAD_ALREADY_AVAILABLE)
-        # nothing todo (already downloaded and so imported) ? but problem !
-        #  obsolescence (diff between level-table and json-table) can wrongly delete elements
-        #  if there are not loaded
-    [FORCE_LOAD]=$get_arg_force_load
-    [FIX]=$get_arg_fix
-    [DRY_RUN]=$get_arg_dry_run
-    [CLEAN]=$get_arg_clean
-    [PROGRESS]=$get_arg_progress
-    [PROGRESS_START]=
-    [PROGRESS_CURRENT]=1
-    [PROGRESS_TOTAL]=1
-    [PROGRESS_SIZE]=5
-    [PARALLEL]=$get_arg_parallel
-    [VERBOSE]=$get_arg_verbose
-    [LEVELS]=$get_arg_levels
-    [LEVEL_MUNICIPALITY]=
-    [LEVEL_STREET]=
-    [LEVEL_HOUSENUMBER]=
-)
+bal_vars[MUNICIPALITY_CODE]="${bal_vars[MUNICIPALITY]^^}"
 declare -a bal_codes=()
 bal_start=$(date '+%s')
 [ "${bal_vars[FIX]}" = NONE ] && bal_vars[FIX]=

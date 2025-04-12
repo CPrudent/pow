@@ -233,16 +233,17 @@ bal_set_municipality() {
 
 # select municipalities (w/ criteria & order) from summary
 bal_list_municipalities() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             list:Liste résultat
         ' \
-        --args_o '
+        --args_m '
             list
         ' \
-        "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $ERROR_CODE
 
-    local -n _list_ref=$get_arg_list
+    local -n _list_ref=${_opts[LIST]}
     local _query _list _date_before_fix _column
 
     if ([ "${bal_vars[USECASE]}" = MATCH ] && [ "${bal_vars[PARALLEL]}" = yes ]); then
