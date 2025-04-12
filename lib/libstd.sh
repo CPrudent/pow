@@ -354,6 +354,8 @@ set_delimiter() {
 #            RESET (no|yes)     reset returned hash, before
 #            CASE (UPPER|LOWER|USER)
 #                               apply to keys (of returned hash), USER takes name from given list
+#            ANNOTATION (k1@a1,k2@a2,...,kn@an)
+#                               apply rule to key, as BOOL|PSQL|INT|FLOAT
 # --pow_argv <user variable>    to overload default POW_ARGV    (hash w/ argument(s))
 # --pow_argc <user variable>    to overload default POW_ARGC    (count of argument(s))
 
@@ -377,13 +379,13 @@ set_delimiter() {
 #    --pow_argv _opts "$@" || return $ERROR_CODE
 
 pow_argv() {
-    local _step=1 _end=0 _key _value _i _info _valid _property _k _as_opt
+    local _step=1 _end=0 _key _value _i _info _valid _property _k _as_opt _a _tmp
     local _trick=", astuce : utilisez l'option --help pour l'aide ou --interactive pour une utilisation intéractive"
     local _argv_name _argc_name _argv_ref _argc_ref
     local -A _argv
     local -a _args_n_list _args_m_list _args_v_list _args_d_list _args_p_list
     local -A _args_n_kv _args_v_kv _args_d_kv _args_p_kv
-    local -A _args_n_a
+    local -A _args_a _args_n_a
     local -a _args_items
 
     # prepare user parameters (from given lists)
@@ -392,17 +394,12 @@ pow_argv() {
         # $1= list value
         # $2= list array (result)
         # $3= optional 'key/value' hash (result)
-        # $4= optional 'annotation' hash (result)
-        local _list="$1" _tmp _with_kv=0 _ka _a _with_a=0
+        local _list="$1" _tmp _with_kv=0
         local -n _list_ref=$2
 
         [ -n "$3" ] && {
             local -n _kv_ref=$3
             _with_kv=1
-            [ -n "$4" ] && {
-                local -n _a_ref=$4
-                _with_a=1
-            }
         }
 
         # be careful w/ <<< if list contains '\n' and spaces (prefix, suffix)
@@ -414,18 +411,7 @@ pow_argv() {
         [ $_with_kv -eq 1 ] && {
             for _tmp in "${_list_ref[@]}"; do
                 #echo "$_tmp"
-                case $_with_a in
-                0)
-                    _kv_ref+=([${_tmp%%:*}]=${_tmp#*:})
-                    ;;
-                1)
-                    _ka=${_tmp%%:*}
-                    _k=${_ka%%@*}
-                    _a=${_ka#*@}
-                    _kv_ref+=([${_k}]=${_tmp#*:})
-                    [ -n "$_a" ] && _a_ref+=([${_k}]=${_a^^})
-                    ;;
-                esac
+                _kv_ref+=([${_tmp%%:*}]=${_tmp#*:})
             done
             #declare -p _kv_ref ; read
         }
@@ -538,16 +524,24 @@ pow_argv() {
         12)
             local _argx_list_name=_${_key}_list
             local _argx_kv_name=_${_key}_kv
-            local _argx_a_name
             local -n _argx_list_ref="$_argx_list_name"
             # no key/value for mandatory list
             [ "$_key" = args_m ] && _argx_kv_name=
-            [ "$_key" = args_n ] && _argx_a_name=_${_key}_a
 
             if [ ${#_argx_list_ref[@]} -eq 0 ]; then
                 #declare -p _argv ; read
-                _pow_argv_list "${_argv[$_key]}" $_argx_list_name $_argx_kv_name $_argx_a_name
+                _pow_argv_list "${_argv[$_key]}" $_argx_list_name $_argx_kv_name
                 #[ -n "$_argx_kv_name" ] && declare -p $_argx_kv_name ; read
+                [ "$_key" = args_p ] && {
+                    [ -n "${_args_p_kv[ANNOTATION]}" ] && {
+                        IFS=, read -a _args_a <<< "${_args_p_kv[ANNOTATION]}"
+                        for _tmp in "${_args_a[@]}"; do
+                            _k=${_tmp%%@*}
+                            _a=${_tmp#*@}
+                            _args_n_a+=([$_k]=${_a^^})
+                        done
+                    }
+                }
                 _step=1
             else
                 _error="définition --$_key multiple!"
@@ -624,12 +618,28 @@ pow_argv() {
 
     # check values
     for _key in ${!_args_v_kv[@]}; do
-        IFS='|' read -ra _args_items <<< "${_args_v_kv[$_key]}"
-        # in_array --array _args_items --item ${_argv[$_key]}
-        [[ " ${_args_items[*]} " == *" ${_argv[$_key]} "* ]] || {
-            log_error "La valeur de $_key (${_argv[$_key]}) ne fait pas partie des valeurs possibles (${_args_v_kv[$_key]})${_trick}"
-            return $ERROR_CODE
-        }
+        case "${_args_n_a[$_key]}" in
+        INT)
+            [[ ${argv[$_key]} =~ ^[0-9]+$ ]] || {
+                log_error "La valeur de $_key (${_argv[$_key]}) n'est pas un nombre entier"
+                return $ERROR_CODE
+            }
+            ;;
+        FLOAT)
+            # https://stackoverflow.com/questions/12643009/regular-expression-for-floating-point-numbers
+            [[ ${argv[$_key]} =~ ^[+-]?([0-9]*[.])?[0-9]+$ ]] || {
+                log_error "La valeur de $_key (${_argv[$_key]}) n'est pas un nombre flottant"
+                return $ERROR_CODE
+            }
+            ;;
+        *)
+            IFS='|' read -ra _args_items <<< "${_args_v_kv[$_key]}"
+            [[ " ${_args_items[*]} " == *" ${_argv[$_key]} "* ]] || {
+                log_error "La valeur de $_key (${_argv[$_key]}) ne fait pas partie des valeurs possibles (${_args_v_kv[$_key]})${_trick}"
+                return $ERROR_CODE
+            }
+            ;;
+        esac
     done
 
     # return options (eventually w/ overload of default POW_ARGV)
