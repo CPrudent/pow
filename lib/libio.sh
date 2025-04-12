@@ -1132,7 +1132,7 @@ import_csv_file() {
             ENCODING ${_opts[ENCODING]}
         )
     "
-    # COPY command doesn't have \n (and blanks at beginning)
+    # \COPY command (generally PSQL) doesn't have \n (and blanks at beginning)
     _query=$(echo $_query | tr '\n' ' ' | sed --expression 's/^[ \t]*//')
     [ "$POW_DEBUG" = yes ] && echo "query=($_query)"
 

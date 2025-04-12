@@ -354,18 +354,17 @@ set_delimiter() {
 #            RESET (no|yes)     reset returned hash, before
 #            CASE (UPPER|LOWER|USER)
 #                               apply to keys (of returned hash), USER takes name from given list
-
 # --pow_argv <user variable>    to overload default POW_ARGV    (hash w/ argument(s))
 # --pow_argc <user variable>    to overload default POW_ARGC    (count of argument(s))
 
-# NOTE can't call another function which implements pow_argv, else infinite loop (deadlock)!
-# so can't use in_array() function, has to do itself the job here...
+# NOTE
+# can't call another function which implements pow_argv, else infinite loop (deadlock)!
+# so can't use in_array(), is_yes() functions, has to do itself the job here...
 
 # NOTE
 # if other name than default POW_ARGV is requested, caller code has to declare it before (as HASH)
-# or as above in implementation of a function
-#
-# local -A _opts
+# as above in implementation of a function:
+# local -A _opts &&
 # pow_argv \
 #    --args_n '
 #        opt1:Option 1;
@@ -376,6 +375,7 @@ set_delimiter() {
 #        opt1|opt3
 #    ' \
 #    --pow_argv _opts "$@" || return $ERROR_CODE
+
 pow_argv() {
     local _step=1 _end=0 _key _value _i _info _valid _property _k _as_opt
     local _trick=", astuce : utilisez l'option --help pour l'aide ou --interactive pour une utilisation intéractive"
@@ -383,6 +383,7 @@ pow_argv() {
     local -A _argv
     local -a _args_n_list _args_m_list _args_v_list _args_d_list _args_p_list
     local -A _args_n_kv _args_v_kv _args_d_kv _args_p_kv
+    local -A _args_n_a
     local -a _args_items
 
     # prepare user parameters (from given lists)
@@ -391,12 +392,17 @@ pow_argv() {
         # $1= list value
         # $2= list array (result)
         # $3= optional 'key/value' hash (result)
-        local _list="$1" _tmp _with_kv=0
+        # $4= optional 'annotation' hash (result)
+        local _list="$1" _tmp _with_kv=0 _ka _a _with_a=0
         local -n _list_ref=$2
 
         [ -n "$3" ] && {
             local -n _kv_ref=$3
             _with_kv=1
+            [ -n "$4" ] && {
+                local -n _a_ref=$4
+                _with_a=1
+            }
         }
 
         # be careful w/ <<< if list contains '\n' and spaces (prefix, suffix)
@@ -408,7 +414,18 @@ pow_argv() {
         [ $_with_kv -eq 1 ] && {
             for _tmp in "${_list_ref[@]}"; do
                 #echo "$_tmp"
-                _kv_ref+=([${_tmp%%:*}]=${_tmp#*:})
+                case $_with_a in
+                0)
+                    _kv_ref+=([${_tmp%%:*}]=${_tmp#*:})
+                    ;;
+                1)
+                    _ka=${_tmp%%:*}
+                    _k=${_ka%%@*}
+                    _a=${_ka#*@}
+                    _kv_ref+=([${_k}]=${_tmp#*:})
+                    [ -n "$_a" ] && _a_ref+=([${_k}]=${_a^^})
+                    ;;
+                esac
             done
             #declare -p _kv_ref ; read
         }
@@ -494,8 +511,19 @@ pow_argv() {
             fi
             ;;
         11)
-            # option w/o value is considered as boolean
-            _argv[$_key]=${_value:-yes}
+            case "${_args_n_a[$_key]}" in
+            BOOL)
+                # option w/o value is considered true
+                [ -z "$_value" ] && _argv[$_key]=yes
+                ;;
+            PSQL)
+                # PSQL command doesn't have LF and blanks at beginning
+                _argv[$_key]=$(echo "$_value" | tr '\n' ' ' | sed --expression 's/^[ \t]*//')
+                ;;
+            *)
+                _argv[$_key]=${_value}
+                ;;
+            esac
 
             case $_key in
             # lists
@@ -510,13 +538,15 @@ pow_argv() {
         12)
             local _argx_list_name=_${_key}_list
             local _argx_kv_name=_${_key}_kv
+            local _argx_a_name
             local -n _argx_list_ref="$_argx_list_name"
             # no key/value for mandatory list
             [ "$_key" = args_m ] && _argx_kv_name=
+            [ "$_key" = args_n ] && _argx_a_name=_${_key}_a
 
             if [ ${#_argx_list_ref[@]} -eq 0 ]; then
                 #declare -p _argv ; read
-                _pow_argv_list "${_argv[$_key]}" $_argx_list_name $_argx_kv_name
+                _pow_argv_list "${_argv[$_key]}" $_argx_list_name $_argx_kv_name $_argx_a_name
                 #[ -n "$_argx_kv_name" ] && declare -p $_argx_kv_name ; read
                 _step=1
             else
@@ -527,8 +557,6 @@ pow_argv() {
 
         # check argument (among allowed ones)
         20)
-            # in_array --array _args_n_kv --item $_key --search KEY
-
             #declare -p _args_n_kv
             [[ -v "_args_n_kv[$_key]" ]] && _step=$(( _end == 1 ? 91 : 1 )) || {
                 _error="L'argument $_key ne fait pas partie des arguments possibles"
