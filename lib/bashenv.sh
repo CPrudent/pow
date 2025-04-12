@@ -31,5 +31,6 @@ declare -A POW_ARGV
 declare -A POW_ARGV_PROPERTIES=(
     [CASE]=UPPER
     [RESET]=yes
+    [TAG]=
 )
 declare -i POW_ARGC

@@ -354,8 +354,8 @@ set_delimiter() {
 #            RESET (no|yes)     reset returned hash, before
 #            CASE (UPPER|LOWER|USER)
 #                               apply to keys (of returned hash), USER takes name from given list
-#            ANNOTATION (k1@a1,k2@a2,...,kn@an)
-#                               apply rule to key, as BOOL|PSQL|INT|FLOAT
+#            TAG (k1@a1,k2@a2,...,kn@an)
+#                               apply rule to value (of key), as BOOL|PSQL|INT|FLOAT
 # --pow_argv <user variable>    to overload default POW_ARGV    (hash w/ argument(s))
 # --pow_argc <user variable>    to overload default POW_ARGC    (count of argument(s))
 
@@ -379,14 +379,14 @@ set_delimiter() {
 #    --pow_argv _opts "$@" || return $ERROR_CODE
 
 pow_argv() {
-    local _step=1 _end=0 _key _value _i _info _valid _property _k _as_opt _a _tmp
+    local _step=1 _end=0 _key _value _i _info _valid _property _as_opt _k _tmp
     local _trick=", astuce : utilisez l'option --help pour l'aide ou --interactive pour une utilisation intéractive"
     local _argv_name _argc_name _argv_ref _argc_ref
     local -A _argv
     local -a _args_n_list _args_m_list _args_v_list _args_d_list _args_p_list
     local -A _args_n_kv _args_v_kv _args_d_kv _args_p_kv
-    local -A _args_a _args_n_a
-    local -a _args_items
+    local -A _args_n_a
+    local -a _mandatory_keys _among_values _args_a
 
     # prepare user parameters (from given lists)
     _pow_argv_list() {
@@ -497,18 +497,26 @@ pow_argv() {
             fi
             ;;
         11)
+            #echo "$_key=$_value"
             case "${_args_n_a[$_key]}" in
             BOOL)
                 # option w/o value is considered true
                 [ -z "$_value" ] && _argv[$_key]=yes
+                #echo "$_key=${_argv[$_key]}"
                 ;;
             PSQL)
                 # PSQL command doesn't have LF and blanks at beginning
                 _argv[$_key]=$(echo "$_value" | tr '\n' ' ' | sed --expression 's/^[ \t]*//')
                 ;;
             *)
-                _argv[$_key]=${_value}
-                ;;
+                case $_key in
+                help|interactive)
+                    _argv[$_key]=yes
+                    ;;
+                *)
+                    _argv[$_key]=${_value}
+                    ;;
+                esac
             esac
 
             case $_key in
@@ -528,21 +536,26 @@ pow_argv() {
             # no key/value for mandatory list
             [ "$_key" = args_m ] && _argx_kv_name=
 
-            if [ ${#_argx_list_ref[@]} -eq 0 ]; then
+            if [[ ${#_argx_list_ref[@]} -eq 0 ]]; then
                 #declare -p _argv ; read
                 _pow_argv_list "${_argv[$_key]}" $_argx_list_name $_argx_kv_name
                 #[ -n "$_argx_kv_name" ] && declare -p $_argx_kv_name ; read
                 [ "$_key" = args_p ] && {
-                    [ -n "${_args_p_kv[ANNOTATION]}" ] && {
-                        IFS=, read -a _args_a <<< "${_args_p_kv[ANNOTATION]}"
+                    local _tag _a
+                    #declare -p _args_p_kv
+                    _pow_argv_property _args_p_kv TAG _tag
+                    #echo $_tag
+                    [ -n "${_tag}" ] && {
+                        IFS=, read -a _args_a <<< ${_tag}
                         for _tmp in "${_args_a[@]}"; do
                             _k=${_tmp%%@*}
                             _a=${_tmp#*@}
                             _args_n_a+=([$_k]=${_a^^})
                         done
+                        #declare -p _args_n_a
                     }
                 }
-                _step=1
+                _step=$(( _end == 1 ? 91 : 1 ))
             else
                 _error="définition --$_key multiple!"
                 _step=99
@@ -576,13 +589,12 @@ pow_argv() {
 
         #printf 'step=%d\n' $_step ; declare -p _argv ; read
     done
-    #declare -p _argv ; read
+    #declare -p _argv _args_n_a _args_n_kv ; read
 
     # help requested ?
     [ "${_argv[help]}" = yes ] && {
         for _key in ${!_args_n_kv[@]}; do
             _info="${_key} : ${_args_n_kv[$_key]}"
-            # in_array --array _args_m_list --item $_key
             [[ " ${_args_m_list[*]} " == *" $_key "* ]] && _tmp=obligatoire || _tmp=facultatif
             _info+=", $_tmp"
             [ ${_args_v_kv[$_key]+_} ] && _info+=", valeurs possibles : ${_args_v_kv[$_key]}"
@@ -591,20 +603,35 @@ pow_argv() {
             echo $_info
         done
 
+        # not SUCCESS_CODE else following code pow_argv() is spawned!
         return $WARNING_CODE
     }
 
     # default values
     for _key in ${!_args_d_kv[@]}; do
-        [ ! ${_argv[$_key]+_} ] && _argv[$_key]=${_args_d_kv[$_key]}
+        #echo "def($_key)"
+        [ ! ${_argv[$_key]+_} ] && {
+            #echo "def($_key)=${_args_d_kv[$_key]}"
+            # duplicate from another key
+            [[ ${_args_d_kv[$_key]} =~ ^@(.*)$ ]] && {
+                #declare -p _argv
+                _k=${BASH_REMATCH[1]}
+                #echo "from($_k)"
+                _argv[$_key]=${_argv[$_k]:-${_args_d_kv[$_k]}}
+                #declare -p _argv
+                continue
+            }
+
+            _argv[$_key]=${_args_d_kv[$_key]}
+        }
     done
 
     # respect of mandatory option(s)
     # TODO implements mandatory grammar w/ |&^ operators (OR, AND, XOR) and () combinaisons
     for ((_i=0; _i<${#_args_m_list[@]}; _i++)); do
-        IFS='|' read -a _args_items <<< "${_args_m_list[$_i]}"
+        IFS='|' read -a _mandatory_keys <<< "${_args_m_list[$_i]}"
         _valid=0
-        for _key in ${_args_items[@]}; do
+        for _key in ${_mandatory_keys[@]}; do
             [ ${_argv[$_key]+_} ] && {
                 _valid=1
                 break
@@ -617,26 +644,29 @@ pow_argv() {
     done
 
     # check values
-    for _key in ${!_args_v_kv[@]}; do
+    for _key in ${!_args_n_kv[@]}; do
         case "${_args_n_a[$_key]}" in
         INT)
-            [[ ${argv[$_key]} =~ ^[0-9]+$ ]] || {
+            [[ ${_argv[$_key]} =~ ^[0-9]+$ ]] || {
                 log_error "La valeur de $_key (${_argv[$_key]}) n'est pas un nombre entier"
                 return $ERROR_CODE
             }
             ;;
         FLOAT)
             # https://stackoverflow.com/questions/12643009/regular-expression-for-floating-point-numbers
-            [[ ${argv[$_key]} =~ ^[+-]?([0-9]*[.])?[0-9]+$ ]] || {
+            [[ ${_argv[$_key]} =~ ^[+-]?([0-9]*[.])?[0-9]+$ ]] || {
                 log_error "La valeur de $_key (${_argv[$_key]}) n'est pas un nombre flottant"
                 return $ERROR_CODE
             }
             ;;
         *)
-            IFS='|' read -ra _args_items <<< "${_args_v_kv[$_key]}"
-            [[ " ${_args_items[*]} " == *" ${_argv[$_key]} "* ]] || {
-                log_error "La valeur de $_key (${_argv[$_key]}) ne fait pas partie des valeurs possibles (${_args_v_kv[$_key]})${_trick}"
-                return $ERROR_CODE
+            # with defined check ?
+            [ -n "${_args_v_kv[$_key]}" ] && {
+                IFS='|' read -ra _among_values <<< "${_args_v_kv[$_key]}"
+                [[ " ${_among_values[*]} " == *" ${_argv[$_key]} "* ]] || {
+                    log_error "La valeur de $_key (${_argv[$_key]}) ne fait pas partie des valeurs possibles (${_args_v_kv[$_key]})${_trick}"
+                    return $ERROR_CODE
+                }
             }
             ;;
         esac
@@ -660,7 +690,7 @@ pow_argv() {
     for _key in ${!_argv[@]}; do
         #echo "key=($_key)"
         [[ "$_key" =~ pow_arg[cv]|args_[nmvdp] ]] && continue
-        case $_property in
+        case "$_property" in
         UPPER)  _k=${_key^^}    ;;
         LOWER)  _k=${_key,,}    ;;
         USER)   _k=${_key}      ;;
