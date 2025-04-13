@@ -122,6 +122,9 @@ declare -a test_pow_argv=(
     [22]="t_pow_argv_3 --args_p TAG:k@1+N --k ONE TWO"
     [23]="t_pow_argv_3 --args_p TAG:k@XN --k ONE ONE"
     [24]="t_pow_argv_3 --args_p TAG:k@X+N --k ONE TWO THREE FOR"
+    # (ALL, -) syntax
+    [25]="t_pow_argv_3 --args_p TAG:k@X+N --k ALL"
+    [26]="t_pow_argv_3 --args_p TAG:k@X+N --k -TWO"
 )
 _tests_pow_argv=${#test_pow_argv[@]}
 
@@ -182,7 +185,7 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
                 _rc=$?
                 printf "POW_ARGV/%*d: rc=%d/%d\n" ${_len} $_i $_rc ${rc_pow_argv[$_i]}
                 _log=$(< $_logfile)
-                [[ $_i -gt 16 ]] && {
+                [[ $_i -gt 24 ]] && {
                     declare -p POW_ARGV POW_ARGC
                     [ -n "$_log" ] && echo "log=$_log"
                 }
@@ -238,6 +241,10 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
                     ([[ $_i -eq 23 ]]) \
                     ||
                     ([[ $_i -eq 24 ]]) \
+                    || \
+                    ([[ $_i -eq 25 ]] && [ "${POW_ARGV[K]}" = 'ONE TWO THREE' ]) \
+                    || \
+                    ([[ $_i -eq 26 ]] && [ "${POW_ARGV[K]}" = 'ONE THREE' ]) \
                 )) || {
                     env_lib[POW_ARGV]+="$_i "
                     continue

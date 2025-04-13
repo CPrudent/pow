@@ -671,14 +671,14 @@ pow_argv() {
         case "${_args_n_a[$_key]}" in
         INT)
             [[ ${_argv[$_key]} =~ ^[0-9]+$ ]] || {
-                _error="La valeur de $_key (${_argv[$_key]}) n'est pas un nombre entier"
+                _error="$_key: La valeur (${_argv[$_key]}) n'est pas un nombre entier"
                 false
             }
             ;;
         FLOAT)
             # https://stackoverflow.com/questions/12643009/regular-expression-for-floating-point-numbers
             [[ ${_argv[$_key]} =~ ^[+-]?([0-9]*[.])?[0-9]+$ ]] || {
-                _error="La valeur de $_key (${_argv[$_key]}) n'est pas un nombre flottant"
+                _error="$_key: La valeur (${_argv[$_key]}) n'est pas un nombre flottant"
                 false
             }
             ;;
@@ -686,46 +686,84 @@ pow_argv() {
             # with defined check ?
             [ -z "${_args_v_kv[$_key]}" ] || {
                 IFS='|' read -ra _among_values <<< "${_args_v_kv[$_key]}"
+
+                # special case: all requested
+                [ "${_argv[$_key]^^}" == ALL ] && _argv[$_key]="${_among_values[@]}"
+
                 # eventually many values (separated by space)
                 local -a _check_values=(${_argv[$_key]})
                 local -A _verify_values=()
-                local -a _keys
+                local -a _keys _delete_values
 
-                declare -p _among_values _check_values &&
+                #declare -p _among_values _check_values &&
+
+                # build hash w/ value as key, and occurence as value
                 for ((_i=0; _i<${#_check_values[@]}; _i++)); do
+                    # value to delete (as: -KEY)
+                    [ "${_check_values[$_i]:0:1}" != - ] || {
+                        _k=${_check_values[$_i]:1}
+                        [[ " ${_delete_values[*]} " == *" ${_k} "* ]] && continue
+                        _delete_values+=($_k)
+                        continue
+                    }
                     [ ${_verify_values[${_check_values[$_i]}]+_} ] && _verify_values[${_check_values[$_i]}]=$((_verify_values[${_check_values[$_i]}] +1)) || _verify_values[${_check_values[$_i]}]=1
                 done &&
+                #declare -p _delete_values &&
+                {
+                    if ([[ ${#_verify_values[@]} -gt 0 ]] &&
+                        [[ ${#_delete_values[@]} -gt 0 ]]); then
+                        _error="$_key: Mixité (+/-) de valeur(s) non valide"
+                        false
+#                     elif [[ ${#_delete_values[@]} == ${#_among_values[@]} ]]; then
+#                         _error="$_key: Effacement complet des valeurs possibles"
+#                         false
+                    else
+                        [[ ${#_delete_values[@]} -eq 0 ]] || {
+                            _check_values=()
+                            for ((_i=0; _i<${#_among_values[@]}; _i++)); do
+                                [[ " ${_delete_values[*]} " == *" ${_among_values[$_i]} "* ]] || {
+                                    _check_values+=(${_among_values[$_i]})
+                                    _verify_values[${_among_values[$_i]}]=1
+                                }
+                            done
+                            #declare -p _check_values _verify_values
+                            # assign new value (w/ deleted items)
+                            _argv[$_key]="${_check_values[@]}"
+                        }
+                    fi
+                } &&
                 _keys=(${!_verify_values[@]}) &&
-                declare -p _verify_values &&
+                #declare -p _verify_values &&
                 case "${_args_n_a[$_key]}" in
                 # one (eventually multiple)
                 1+N)
-                    _error='Valeur unique attendue, éventuellement multiple'
+                    _error="$_key: Valeur unique attendue, éventuellement multiple"
                     [[ ${#_verify_values[@]} -eq 1 ]]
                     ;;
                 # many (but each uniq)
                 XN)
-                    _error='Plusieurs valeurs attendues, chacune unique'
+                    _error="$_key: Plusieurs valeurs attendues, chacune unique"
                     [[ ${#_verify_values[@]} -ge 1 ]] &&
                     [[ ${_verify_values[${_keys[0]}]} == 1 ]] &&
                     [[ $(echo "${_verify_values[@]}" | tr ' ' '\n' | sort | uniq -c | wc -l) == 1 ]]
                     ;;
                 # many
                 X+N)
-                    _error='Plusieurs valeurs attendues, chacune éventuellement multiple'
+                    _error="$_key: Plusieurs valeurs attendues, chacune éventuellement multiple"
                     [[ ${#_verify_values[@]} -ge 1 ]] &&
                     [[ $(echo "${_verify_values[@]}" | tr ' ' '\n' | sort | uniq -c | wc -l) -ge 1 ]]
                     ;;
                 # default (1N) one uniq value
                 *)
-                    _error='Valeur unique attendue'
+                    _error="$_key: Valeur unique attendue"
                     [[ ${#_verify_values[@]} == 1 ]] &&
                     [[ ${_verify_values[${_keys[0]}]} == 1 ]]
                     ;;
                 esac &&
+                # check each value belongs to defined list
                 for ((_i=0; _i<${#_check_values[@]}; _i++)); do
                     [[ " ${_among_values[*]} " == *" ${_check_values[$_i]} "* ]] || {
-                        _error="La valeur de $_key (${_check_values[$_i]}) ne fait pas partie des valeurs possibles (${_args_v_kv[$_key]})${_trick}"
+                        _error="$_key: La valeur (${_check_values[$_i]}) ne fait pas partie des valeurs possibles (${_args_v_kv[$_key]})${_trick}"
                         false
                     }
                 done
