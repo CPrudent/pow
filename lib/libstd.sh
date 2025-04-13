@@ -356,8 +356,11 @@ set_delimiter() {
 #                               apply to keys (of returned hash), USER takes name from given list
 #            TAG (k1@a1,k2@a2,...,kn@an)
 #                               apply rule to value (of key), as BOOL|PSQL|INT|FLOAT
-# --pow_argv <user variable>    to overload default POW_ARGV    (hash w/ argument(s))
-# --pow_argc <user variable>    to overload default POW_ARGC    (count of argument(s))
+# --pow_argv <user variable>    to overload default POW_ARGV    (returned hash w/ argument(s))
+# --pow_argc <user variable>    to overload default POW_ARGC    (count of argument(s), except args_*)
+
+# NOTE
+# arguments counter takes into account argument w/ default value (even missing on command line)
 
 # NOTE
 # can't call another function which implements pow_argv, else infinite loop (deadlock)!
@@ -379,7 +382,7 @@ set_delimiter() {
 #    --pow_argv _opts "$@" || return $ERROR_CODE
 
 pow_argv() {
-    local _step=1 _end=0 _key _value _i _info _valid _property _as_opt _k _tmp
+    local _step=1 _error _end=0 _key _value _i _info _valid _property _as_opt _k _tmp
     local _trick=", astuce : utilisez l'option --help pour l'aide ou --interactive pour une utilisation intéractive"
     local _argv_name _argc_name _argv_ref _argc_ref
     local -A _argv
@@ -582,14 +585,34 @@ pow_argv() {
 
         # end ERROR
         99)
-            log_error "$_error"
-            return $ERROR_CODE
+            break
             ;;
         esac
 
         #printf 'step=%d\n' $_step ; declare -p _argv ; read
     done
     #declare -p _argv _args_n_a _args_n_kv ; read
+
+    # return options (values and count) eventually w/ overload of default POW_ARGV|POW_ARGC
+    [ ${_argv[pow_argv]+_} ] && _argv_name="${_argv[pow_argv]}" || _argv_name="POW_ARGV"
+    local -n _argv_ref="$_argv_name"
+    [ ${_argv[pow_argc]+_} ] && _argc_name="${_argv[pow_argc]}" || _argc_name="POW_ARGC"
+    local -n _argc_ref="$_argc_name"
+
+    # reset returned hash (default behavior)
+    #echo "pow_argv_property=(RESET)"
+    _pow_argv_property _args_p_kv RESET _property &&
+        #echo "reset=($_property)" &&
+        [ "$_property" = yes ] &&
+        #echo 'reset ARGV' &&
+        _argv_ref=()
+        _argc_ref=0
+
+    # break on error, after reseting returned values
+    [ -n "$_error" ] && {
+        log_error "$_error"
+        return $ERROR_CODE
+    }
 
     # help requested ?
     [ "${_argv[help]}" = yes ] && {
@@ -648,41 +671,73 @@ pow_argv() {
         case "${_args_n_a[$_key]}" in
         INT)
             [[ ${_argv[$_key]} =~ ^[0-9]+$ ]] || {
-                log_error "La valeur de $_key (${_argv[$_key]}) n'est pas un nombre entier"
-                return $ERROR_CODE
+                _error="La valeur de $_key (${_argv[$_key]}) n'est pas un nombre entier"
+                false
             }
             ;;
         FLOAT)
             # https://stackoverflow.com/questions/12643009/regular-expression-for-floating-point-numbers
             [[ ${_argv[$_key]} =~ ^[+-]?([0-9]*[.])?[0-9]+$ ]] || {
-                log_error "La valeur de $_key (${_argv[$_key]}) n'est pas un nombre flottant"
-                return $ERROR_CODE
+                _error="La valeur de $_key (${_argv[$_key]}) n'est pas un nombre flottant"
+                false
             }
             ;;
         *)
             # with defined check ?
-            [ -n "${_args_v_kv[$_key]}" ] && {
+            [ -z "${_args_v_kv[$_key]}" ] || {
                 IFS='|' read -ra _among_values <<< "${_args_v_kv[$_key]}"
-                [[ " ${_among_values[*]} " == *" ${_argv[$_key]} "* ]] || {
-                    log_error "La valeur de $_key (${_argv[$_key]}) ne fait pas partie des valeurs possibles (${_args_v_kv[$_key]})${_trick}"
-                    return $ERROR_CODE
-                }
+                # eventually many values (separated by space)
+                local -a _check_values=(${_argv[$_key]})
+                local -A _verify_values=()
+                local -a _keys
+
+                declare -p _among_values _check_values &&
+                for ((_i=0; _i<${#_check_values[@]}; _i++)); do
+                    [ ${_verify_values[${_check_values[$_i]}]+_} ] && _verify_values[${_check_values[$_i]}]=$((_verify_values[${_check_values[$_i]}] +1)) || _verify_values[${_check_values[$_i]}]=1
+                done &&
+                _keys=(${!_verify_values[@]}) &&
+                declare -p _verify_values &&
+                case "${_args_n_a[$_key]}" in
+                # one (eventually multiple)
+                1+N)
+                    _error='Valeur unique attendue, éventuellement multiple'
+                    [[ ${#_verify_values[@]} -eq 1 ]]
+                    ;;
+                # many (but each uniq)
+                XN)
+                    _error='Plusieurs valeurs attendues, chacune unique'
+                    [[ ${#_verify_values[@]} -ge 1 ]] &&
+                    [[ ${_verify_values[${_keys[0]}]} == 1 ]] &&
+                    [[ $(echo "${_verify_values[@]}" | tr ' ' '\n' | sort | uniq -c | wc -l) == 1 ]]
+                    ;;
+                # many
+                X+N)
+                    _error='Plusieurs valeurs attendues, chacune éventuellement multiple'
+                    [[ ${#_verify_values[@]} -ge 1 ]] &&
+                    [[ $(echo "${_verify_values[@]}" | tr ' ' '\n' | sort | uniq -c | wc -l) -ge 1 ]]
+                    ;;
+                # default (1N) one uniq value
+                *)
+                    _error='Valeur unique attendue'
+                    [[ ${#_verify_values[@]} == 1 ]] &&
+                    [[ ${_verify_values[${_keys[0]}]} == 1 ]]
+                    ;;
+                esac &&
+                for ((_i=0; _i<${#_check_values[@]}; _i++)); do
+                    [[ " ${_among_values[*]} " == *" ${_check_values[$_i]} "* ]] || {
+                        _error="La valeur de $_key (${_check_values[$_i]}) ne fait pas partie des valeurs possibles (${_args_v_kv[$_key]})${_trick}"
+                        false
+                    }
+                done
             }
             ;;
-        esac
+        esac || {
+            [ -n "$_error" ] && log_error "$_error"
+            return $ERROR_CODE
+        }
     done
 
-    # return options (eventually w/ overload of default POW_ARGV)
-    [ ${_argv[pow_argv]+_} ] && _argv_name="${_argv[pow_argv]}" || _argv_name="POW_ARGV"
-    local -n _argv_ref="$_argv_name"
-    [ ${_argv[pow_argc]+_} ] && _argc_name="${_argv[pow_argc]}" || _argc_name="POW_ARGC"
-    local -n _argc_ref="$_argc_name"
-    #echo "pow_argv_property=(RESET)"
-    _pow_argv_property _args_p_kv RESET _property &&
-        #echo "reset=($_property)" &&
-        [ "$_property" = yes ] &&
-        #echo 'reset ARGV' &&
-        _argv_ref=()
+    # case of keys in returned hash
     #echo "pow_argv_property=(CASE)"
     _pow_argv_property _args_p_kv CASE _property
     #echo "case=($_property)"

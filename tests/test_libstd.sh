@@ -5,24 +5,6 @@
     #--
     # tests libstd
 
-declare -a TESTS=(
-    POW_ARGV
-    IN_ARRAY
-    NOT_IN_ARRAY
-    IN_HASH
-    NOT_IN_HASH
-    CLONE_ARRAY
-    ELAPSED_TIME
-    IS_YES
-    DELIMITER
-    GET_FILE_NAME
-    GET_FILE_EXTENSION
-    GET_FILE_NROWS
-)
-TESTS_JOIN_PIPE=${TESTS[@]}
-TESTS_JOIN_PIPE=${TESTS_JOIN_PIPE// /|}
-TESTS_JOIN_PIPE+="|ALL"
-
 t_pow_argv_1() {
     pow_argv \
         --args_n '
@@ -64,6 +46,38 @@ t_pow_argv_2() {
     return $SUCCESS_CODE
 }
 
+t_pow_argv_3() {
+    pow_argv \
+        --args_n '
+            k:paramètre avec valeur(s) unique/multiple (selon définition via args_p)
+        ' \
+        --args_v '
+            k:ONE|TWO|THREE
+        ' \
+        "$@" || return $ERROR_CODE
+
+    # no process, only getopt
+    return $SUCCESS_CODE
+}
+
+declare -a TESTS=(
+    POW_ARGV
+    IN_ARRAY
+    NOT_IN_ARRAY
+    IN_HASH
+    NOT_IN_HASH
+    CLONE_ARRAY
+    ELAPSED_TIME
+    IS_YES
+    DELIMITER
+    GET_FILE_NAME
+    GET_FILE_EXTENSION
+    GET_FILE_NROWS
+)
+TESTS_JOIN_PIPE=${TESTS[@]}
+TESTS_JOIN_PIPE=${TESTS_JOIN_PIPE// /|}
+TESTS_JOIN_PIPE+="|ALL"
+
 declare -a test_pow_argv=(
     # help
     [0]="is_yes --help"
@@ -93,24 +107,32 @@ declare -a test_pow_argv=(
     [12]="t_pow_argv_2 --args_p TAG:k1@bool --k1"
     # default value from another undefined key (as default)
     [13]="t_pow_argv_2 --args_p TAG:k1@bool"
+    # no value, and no default (empty waited)
+    [14]="t_pow_argv_1 --mandatory M --optional_wo_d"
+    # count argument(s)
+    [15]="t_pow_argv_1 --mandatory M --optional_wo_d"
+    [16]="t_pow_argv_1 --mandatory M --optional_wo_d --pow_argc argc"
+    # OK uniq|multiple value(s)
+    [17]="t_pow_argv_3 --args_p TAG:k@1N --k ONE"
+    [18]="t_pow_argv_3 --args_p TAG:k@1+N --k TWO TWO"
+    [19]="t_pow_argv_3 --args_p TAG:k@XN --k ONE TWO"
+    [20]="t_pow_argv_3 --args_p TAG:k@X+N --k ONE TWO TWO"
+    # KO uniq|multiple value(s)
+    [21]="t_pow_argv_3 --args_p TAG:k@1N --k FOR"
+    [22]="t_pow_argv_3 --args_p TAG:k@1+N --k ONE TWO"
+    [23]="t_pow_argv_3 --args_p TAG:k@XN --k ONE ONE"
+    [24]="t_pow_argv_3 --args_p TAG:k@X+N --k ONE TWO THREE FOR"
 )
+_tests_pow_argv=${#test_pow_argv[@]}
 
-declare -a rc_pow_argv=(
-    [0]=$ERROR_CODE
-    [1]=$ERROR_CODE
-    [2]=$SUCCESS_CODE
-    [3]=$SUCCESS_CODE
-    [4]=$SUCCESS_CODE
-    [5]=$SUCCESS_CODE
-    [6]=$SUCCESS_CODE
-    [7]=$SUCCESS_CODE
-    [8]=$SUCCESS_CODE
-    [9]=$ERROR_CODE
-    [10]=$SUCCESS_CODE
-    [11]=$ERROR_CODE
-    [12]=$SUCCESS_CODE
-    [13]=$SUCCESS_CODE
-)
+declare -a rc_pow_argv=()
+for ((_i=0; _i<${_tests_pow_argv}; _i++)); do
+    rc_pow_argv[$_i]=$SUCCESS_CODE
+done
+# exceptions
+for _i in 0 1 9 11 $(seq 21 24); do
+    rc_pow_argv[$_i]=$ERROR_CODE
+done
 
 declare -A argv
 declare -A env_lib=(
@@ -152,18 +174,19 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
     POW_ARGV)
         _ok_pow_argv=0
         _logfile=$POW_DIR_TMP/pow_argv.log
-        for ((_i=0; _i<${#test_pow_argv[@]}; _i++)); do
+        _len=${#_tests_pow_argv}
+        for ((_i=0; _i<${_tests_pow_argv}; _i++)); do
             [ -n "${test_pow_argv[$_i]}" ] && {
                 rm --force $_logfile
                 ${test_pow_argv[$_i]} > $_logfile 2>&1
                 _rc=$?
-                echo "POW_ARGV/$_i: rc=$_rc/${rc_pow_argv[$_i]}"
-
+                printf "POW_ARGV/%*d: rc=%d/%d\n" ${_len} $_i $_rc ${rc_pow_argv[$_i]}
                 _log=$(< $_logfile)
-                [[ $_i -eq 13 ]] && {
-                    declare -p POW_ARGV
-                    echo "log=$_log"
+                [[ $_i -gt 16 ]] && {
+                    declare -p POW_ARGV POW_ARGC
+                    [ -n "$_log" ] && echo "log=$_log"
                 }
+
                 ([ $_rc -eq ${rc_pow_argv[$_i]} ] && ( \
                     ([[ $_i -eq 0 ]] && [[ "$_log" == 'var : Variable à tester, obligatoire' ]]) \
                     ||
@@ -193,6 +216,28 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
                     ([[ $_i -eq 12 ]] && [ "${POW_ARGV[K1]}" = yes ] && [ "${POW_ARGV[K2]}" = yes ]) \
                     || \
                     ([[ $_i -eq 13 ]] && [ "${POW_ARGV[K1]}" = no ] && [ "${POW_ARGV[K2]}" = no ]) \
+                    || \
+                    ([[ $_i -eq 14 ]] && [ -z "${POW_ARGV[OPTIONAL_WO_D]}" ]) \
+                    || \
+                    ([[ $_i -eq 15 ]] && [[ ${POW_ARGC} -eq 3 ]]) \
+                    || \
+                    ([[ $_i -eq 16 ]] && [[ ${argc} -eq 3 ]]) \
+                    || \
+                    ([[ $_i -eq 17 ]] && [ "${POW_ARGV[K]}" = ONE ]) \
+                    || \
+                    ([[ $_i -eq 18 ]] && [ "${POW_ARGV[K]}" = 'TWO TWO' ]) \
+                    || \
+                    ([[ $_i -eq 19 ]] && [ "${POW_ARGV[K]}" = 'ONE TWO' ]) \
+                    || \
+                    ([[ $_i -eq 20 ]] && [ "${POW_ARGV[K]}" = 'ONE TWO TWO' ]) \
+                    ||
+                    ([[ $_i -eq 21 ]]) \
+                    ||
+                    ([[ $_i -eq 22 ]]) \
+                    ||
+                    ([[ $_i -eq 23 ]]) \
+                    ||
+                    ([[ $_i -eq 24 ]]) \
                 )) || {
                     env_lib[POW_ARGV]+="$_i "
                     continue
@@ -201,9 +246,9 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
 
             ((_ok_pow_argv++))
         done
-        [[ $_ok_pow_argv -eq ${#test_pow_argv[@]} ]] &&
+        [[ $_ok_pow_argv -eq ${_tests_pow_argv} ]] &&
         _rc=0 || {
-            echo "POW_ARGV: ok=$_ok_pow_argv/${#test_pow_argv[@]}"
+            echo "POW_ARGV:  ok=$_ok_pow_argv/${_tests_pow_argv}"
             echo "POW_ARGV: err=${env_lib[POW_ARGV]}"
         }
         ;;
@@ -316,7 +361,7 @@ done
 
 # purge
 [ "${env_lib[CLEAN]}" = yes ] && {
-    :
+    [ -n "$_logfile" ] && rm --force $_logfile
 }
 
 # results
