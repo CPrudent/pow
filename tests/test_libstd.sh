@@ -76,7 +76,7 @@ declare -a TESTS=(
 )
 TESTS_JOIN_PIPE=${TESTS[@]}
 TESTS_JOIN_PIPE=${TESTS_JOIN_PIPE// /|}
-TESTS_JOIN_PIPE+="|ALL"
+#TESTS_JOIN_PIPE+="|ALL"
 
 declare -a test_pow_argv=(
     # help
@@ -159,12 +159,12 @@ pow_argv \
     ' \
     --args_p '
         reset:no;
-        tag:clean@bool
+        tag:clean@bool,test@X+N
     ' \
     --pow_argv env_lib "$@" || exit $ERROR_CODE
 
-declare -a test_lib
-[ "${env_lib[TEST]}" = ALL ] && test_lib=( "${TESTS[@]}" ) || test_lib[0]="${env_lib[TEST]}"
+declare -a test_lib=(${env_lib[TEST]})
+#[ "${env_lib[TEST]}" = ALL ] && test_lib=( "${TESTS[@]}" ) || test_lib[0]="${env_lib[TEST]}"
 declare -A result_lib
 
 # tests
