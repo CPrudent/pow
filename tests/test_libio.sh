@@ -19,7 +19,7 @@ test_csv() {
 
     local -n _path_ref=${_opts[PATH]}
     local -n _nrows_ref=${_opts[NROWS]}
-    local _tmpfile _csvfile="$POW_DIR_TMP/test_libio.csv"
+    local _tmpfile _csvfile="$POW_DIR_TMP/test_lib.csv"
 
     [ -f "$_csvfile" ] || {
         get_tmp_file --tmpfile _tmpfile --tmpext csv &&
@@ -59,9 +59,8 @@ declare -a TESTS=(
 )
 TESTS_JOIN_PIPE=${TESTS[@]}
 TESTS_JOIN_PIPE=${TESTS_JOIN_PIPE// /|}
-TESTS_JOIN_PIPE+="|ALL"
 
-declare -A env_libio=(
+declare -A env_lib=(
     [ERROR]=0
     [IO_NAME]=TEST_LIBIO
     [IO_ID]=
@@ -92,22 +91,22 @@ pow_argv \
         clean:yes
     ' \
     --args_p '
-        reset:no
+        reset:no;
+        tag:clean@bool,test@X+N
     ' \
-    --pow_argv env_libio "$@" || exit $ERROR_CODE
+    --pow_argv env_lib "$@" || exit $ERROR_CODE
 
-declare -a test_libio
-[ "${env_libio[TEST]}" = ALL ] && test_libio=( "${TESTS[@]}" ) || test_libio[0]="${env_libio[TEST]}"
-declare -A result_libio
+declare -a test_lib=(${env_lib[TEST]})
+declare -A result_lib
 
 # tests
 set_log_echo no &&
 set_env --schema_name fr &&
-test_csv --path env_libio[CSV_PATH] --nrows env_libio[CSV_NROWS] &&
-for ((_test=0; _test<${#test_libio[@]}; _test++)); do
+test_csv --path env_lib[CSV_PATH] --nrows env_lib[CSV_NROWS] &&
+for ((_test=0; _test<${#test_lib[@]}; _test++)); do
     _rc=1
 
-    case "${test_libio[_test]}" in
+    case "${test_lib[_test]}" in
     NEWER_DATE)
         echo 'FROM TMPFILE'
         get_tmp_file --tmpfile _tmp1 --create yes
@@ -160,30 +159,30 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
 
     CSV_OVERWRITE_TABLE)
         import_csv_file \
-            --file_path "${env_libio[CSV_PATH]}" \
-            --table_name ${env_libio[CSV_TABLE]} \
+            --file_path "${env_lib[CSV_PATH]}" \
+            --table_name ${env_lib[CSV_TABLE]} \
             --load_mode OVERWRITE_TABLE &&
         execute_query \
-            --name "${test_libio[_test]}" \
-            --query "SELECT COUNT(1) FROM fr.${env_libio[CSV_TABLE]}" \
+            --name "${test_lib[_test]}" \
+            --query "SELECT COUNT(1) FROM fr.${env_lib[CSV_TABLE]}" \
             --return _nrows &&
-        [[ $_nrows -eq $((env_libio[CSV_NROWS] -1)) ]] &&
+        [[ $_nrows -eq $((env_lib[CSV_NROWS] -1)) ]] &&
         _rc=0
         ;;
     CSV_APPEND)
         import_csv_file \
-            --file_path "${env_libio[CSV_PATH]}" \
-            --table_name ${env_libio[CSV_TABLE]} \
+            --file_path "${env_lib[CSV_PATH]}" \
+            --table_name ${env_lib[CSV_TABLE]} \
             --load_mode OVERWRITE_TABLE &&
         import_csv_file \
-            --file_path "${env_libio[CSV_PATH]}" \
-            --table_name ${env_libio[CSV_TABLE]} \
+            --file_path "${env_lib[CSV_PATH]}" \
+            --table_name ${env_lib[CSV_TABLE]} \
             --load_mode APPEND &&
         execute_query \
-            --name "${test_libio[_test]}" \
-            --query "SELECT COUNT(1) FROM fr.${env_libio[CSV_TABLE]}" \
+            --name "${test_lib[_test]}" \
+            --query "SELECT COUNT(1) FROM fr.${env_lib[CSV_TABLE]}" \
             --return _nrows &&
-        [[ $_nrows -eq $((2 * (env_libio[CSV_NROWS] -1))) ]] &&
+        [[ $_nrows -eq $((2 * (env_lib[CSV_NROWS] -1))) ]] &&
         _rc=0
         ;;
 
@@ -228,13 +227,13 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
         expect file "$_xls" &&
         import_excel_file \
             --file_path "$_xls" \
-            --table_name ${env_libio[XLS_TABLE]} \
+            --table_name ${env_lib[XLS_TABLE]} \
             --load_mode OVERWRITE_TABLE &&
         execute_query \
-            --name "${test_libio[_test]}" \
-            --query "SELECT COUNT(1) FROM fr.${env_libio[XLS_TABLE]}" \
+            --name "${test_lib[_test]}" \
+            --query "SELECT COUNT(1) FROM fr.${env_lib[XLS_TABLE]}" \
             --return _nrows &&
-        [[ $_nrows -eq ${env_libio[XLS_NROWS]} ]] &&
+        [[ $_nrows -eq ${env_lib[XLS_NROWS]} ]] &&
         _rc=0
         ;;
     XLS_OVERWRITE_TABLE)
@@ -242,13 +241,13 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
         expect file "$_xls" &&
         import_excel_file \
             --file_path "$_xls" \
-            --table_name ${env_libio[XLS_TABLE]} \
+            --table_name ${env_lib[XLS_TABLE]} \
             --load_mode OVERWRITE_TABLE &&
         execute_query \
-            --name "${test_libio[_test]}" \
+            --name "${test_lib[_test]}" \
             --query "
                 SELECT "'"'"NB_VALUE"'"'"
-                FROM fr.${env_libio[XLS_TABLE]}
+                FROM fr.${env_lib[XLS_TABLE]}
                 WHERE "'"'"ID"'"'" = '2'
             " \
             --return _value &&
@@ -261,14 +260,14 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
         expect file "$_xls" &&
         import_excel_file \
             --file_path "$_xls" \
-            --table_name ${env_libio[XLS_TABLE]} \
+            --table_name ${env_lib[XLS_TABLE]} \
             --table_columns HEADER_TO_LOWER_CODE \
             --load_mode OVERWRITE_TABLE &&
         execute_query \
-            --name "${test_libio[_test]}" \
+            --name "${test_lib[_test]}" \
             --query "
                 SELECT nb_value
-                FROM fr.${env_libio[XLS_TABLE]}
+                FROM fr.${env_lib[XLS_TABLE]}
                 WHERE id = '1'
             " \
             --return _value &&
@@ -281,13 +280,13 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
         expect file "$_csv" &&
         import_file \
             --file_path "$_csv" \
-            --table_name ${env_libio[CSV_TABLE]} \
+            --table_name ${env_lib[CSV_TABLE]} \
             --load_mode OVERWRITE_TABLE &&
         execute_query \
-            --name "${test_libio[_test]}" \
+            --name "${test_lib[_test]}" \
             --query "
                 SELECT COUNT(1)
-                FROM fr.${env_libio[CSV_TABLE]}
+                FROM fr.${env_lib[CSV_TABLE]}
             " \
             --return _nrows &&
         [[ $_nrows -gt 30000 ]] &&
@@ -299,19 +298,19 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
         execute_query \
             --name JSON_TABLE_CREATE \
             --query "
-                DROP TABLE IF EXISTS fr.${env_libio[JSON_TABLE]};
-                CREATE TABLE fr.${env_libio[JSON_TABLE]} (data JSON);
+                DROP TABLE IF EXISTS fr.${env_lib[JSON_TABLE]};
+                CREATE TABLE fr.${env_lib[JSON_TABLE]} (data JSON);
             " &&
         import_file \
             --file_path "$_json" \
-            --table_name ${env_libio[JSON_TABLE]} \
+            --table_name ${env_lib[JSON_TABLE]} \
             --import_options column_name=data \
             --load_mode OVERWRITE_DATA &&
         execute_query \
-            --name "${test_libio[_test]}" \
+            --name "${test_lib[_test]}" \
             --query "
                 SELECT data->>'nbVoies'
-                FROM fr.${env_libio[JSON_TABLE]}
+                FROM fr.${env_lib[JSON_TABLE]}
             " \
             --return _nrows &&
         [[ $_nrows -eq 95 ]] &&
@@ -328,24 +327,24 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
         get_pg_passwd --user_name $POW_PG_USERNAME --password _passwd &&
         import_geo_file \
             --file_path "$_shp" \
-            --table_name "${env_libio[SHP_TABLE]}" \
+            --table_name "${env_lib[SHP_TABLE]}" \
             --password "$_passwd" \
             --geometry_type PROMOTE_TO_MULTI \
             --load_mode OVERWRITE_TABLE \
             --spatial_index no &&
         execute_query \
-            --name "${test_libio[_test]}_COUNT" \
+            --name "${test_lib[_test]}_COUNT" \
             --query "
                 SELECT COUNT(1)
-                FROM fr.${env_libio[SHP_TABLE]}
+                FROM fr.${env_lib[SHP_TABLE]}
             " \
             --return _nrows &&
         [[ $_nrows -eq 96 ]] &&
         execute_query \
-            --name "${test_libio[_test]}_DATA" \
+            --name "${test_lib[_test]}_DATA" \
             --query "
                 SELECT nom_m
-                FROM fr.${env_libio[SHP_TABLE]}
+                FROM fr.${env_lib[SHP_TABLE]}
                 WHERE insee_dep = '39'
             " \
             --return _value &&
@@ -355,15 +354,15 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
 
     HISTORY_BEGIN)
         io_history_begin \
-            --io "${env_libio[IO_NAME]}" \
-            --date_begin "${env_libio[IO_BEGIN]:-1970-01-01}" \
-            --date_end "${env_libio[IO_END]}" \
-            --nrows_todo ${env_libio[IO_ROWS]} \
-            --id env_libio[IO_ID] &&
+            --io "${env_lib[IO_NAME]}" \
+            --date_begin "${env_lib[IO_BEGIN]:-1970-01-01}" \
+            --date_end "${env_lib[IO_END]}" \
+            --nrows_todo ${env_lib[IO_ROWS]} \
+            --id env_lib[IO_ID] &&
         execute_query \
-            --name "${test_libio[_test]}_BEGIN" \
+            --name "${test_lib[_test]}_BEGIN" \
             --query "
-                SELECT (get_last_io('${env_libio[IO_NAME]}', 'EN_COURS')).status
+                SELECT (get_last_io('${env_lib[IO_NAME]}', 'EN_COURS')).status
             " \
             --return _state &&
         [ "$_state" = EN_COURS ] &&
@@ -371,19 +370,19 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
         ;;
     HISTORY_END_OK)
         execute_query \
-            --name "${test_libio[_test]}_ID" \
+            --name "${test_lib[_test]}_ID" \
             --query "
-                SELECT (get_last_io('${env_libio[IO_NAME]}', 'EN_COURS')).id
+                SELECT (get_last_io('${env_lib[IO_NAME]}', 'EN_COURS')).id
             " \
-            --return env_libio[IO_ID] &&
-        [ -n "${env_libio[IO_ID]}" ] &&
+            --return env_lib[IO_ID] &&
+        [ -n "${env_lib[IO_ID]}" ] &&
         io_history_end_ok \
-            --nrows_processed ${env_libio[IO_ROWS]} \
-            --id ${env_libio[IO_ID]} &&
+            --nrows_processed ${env_lib[IO_ROWS]} \
+            --id ${env_lib[IO_ID]} &&
         execute_query \
-            --name "${test_libio[_test]}_STATE" \
+            --name "${test_lib[_test]}_STATE" \
             --query "
-                SELECT (get_last_io('${env_libio[IO_NAME]}')).status
+                SELECT (get_last_io('${env_lib[IO_NAME]}')).status
             " \
             --return _state &&
         [ "$_state" = SUCCES ] &&
@@ -391,38 +390,38 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
         ;;
     HISTORY_END_KO)
         execute_query \
-            --name "${test_libio[_test]}_ID" \
+            --name "${test_lib[_test]}_ID" \
             --query "
-                SELECT (get_last_io('${env_libio[IO_NAME]}', 'EN_COURS')).id
+                SELECT (get_last_io('${env_lib[IO_NAME]}', 'EN_COURS')).id
             " \
-            --return env_libio[IO_ID] &&
-        [ -n "${env_libio[IO_ID]}" ] &&
+            --return env_lib[IO_ID] &&
+        [ -n "${env_lib[IO_ID]}" ] &&
         io_history_end_ko \
-            --id ${env_libio[IO_ID]} &&
+            --id ${env_lib[IO_ID]} &&
         execute_query \
-            --name "${test_libio[_test]}_ID" \
+            --name "${test_lib[_test]}_ID" \
             --query "
-                SELECT (get_last_io('${env_libio[IO_NAME]}', 'ERREUR')).id
+                SELECT (get_last_io('${env_lib[IO_NAME]}', 'ERREUR')).id
             " \
             --return _id &&
-        [[ $_id -eq ${env_libio[IO_ID]} ]]
+        [[ $_id -eq ${env_lib[IO_ID]} ]]
         _rc=0
         ;;
     HISTORY_UPDATE)
         execute_query \
-            --name "${test_libio[_test]}_ID" \
+            --name "${test_lib[_test]}_ID" \
             --query "
-                SELECT (get_last_io('${env_libio[IO_NAME]}')).id
+                SELECT (get_last_io('${env_lib[IO_NAME]}')).id
             " \
-            --return env_libio[IO_ID] &&
-        [ -n "${env_libio[IO_ID]}" ] &&
+            --return env_lib[IO_ID] &&
+        [ -n "${env_lib[IO_ID]}" ] &&
         io_history_update \
             --nrows_processed 5 \
-            --id ${env_libio[IO_ID]} &&
+            --id ${env_lib[IO_ID]} &&
         execute_query \
-            --name "${test_libio[_test]}_STATE" \
+            --name "${test_lib[_test]}_STATE" \
             --query "
-                SELECT (get_last_io('${env_libio[IO_NAME]}')).nb_rows_processed
+                SELECT (get_last_io('${env_lib[IO_NAME]}')).nb_rows_processed
             " \
             --return _nrows &&
         [[ $_nrows -eq 5 ]] &&
@@ -431,27 +430,27 @@ for ((_test=0; _test<${#test_libio[@]}; _test++)); do
 
     esac
 
-    [[ $_rc -ne 0 ]] && ((env_libio[ERROR]++))
-    result_libio+=(["${test_libio[$_test]}"]=$_rc)
+    [[ $_rc -ne 0 ]] && ((env_lib[ERROR]++))
+    result_lib+=(["${test_lib[$_test]}"]=$_rc)
     # https://stackoverflow.com/questions/5349718/how-can-i-repeat-a-character-in-bash
-    _len=$((36 - ${#test_libio[$_test]}))
+    _len=$((36 - ${#test_lib[$_test]}))
     _spaces=$(printf ' %.0s' $(seq 1 $_len))
     printf "%s%s[%s]\n" \
-        "${test_libio[$_test]}" \
+        "${test_lib[$_test]}" \
         "$_spaces" \
-        $( [[ ${result_libio["${test_libio[$_test]}"]} -eq 0 ]] && echo OK || echo KO )
+        $( [[ ${result_lib["${test_lib[$_test]}"]} -eq 0 ]] && echo OK || echo KO )
 done
 
 # purge
-[ "${env_libio[CLEAN]}" = yes ] && {
-    rm --force "${env_libio[CSV_PATH]}"
+[ "${env_lib[CLEAN]}" = yes ] && {
+    rm --force "${env_lib[CSV_PATH]}"
     rm --force --recursive $POW_DIR_TMP/IGN
 }
 
 # results
 _error=
-[[ ${env_libio[ERROR]} -gt 0 ]] && _error="avec ${env_libio[ERROR]} erreur"
-[[ ${env_libio[ERROR]} -gt 1 ]] && _error+=s
+[[ ${env_lib[ERROR]} -gt 0 ]] && _error="avec ${env_lib[ERROR]} erreur"
+[[ ${env_lib[ERROR]} -gt 1 ]] && _error+=s
 _rc=$SUCCESS_CODE
 [ -n "$_error" ] && {
     printf '\n%40s\n' "$_error"

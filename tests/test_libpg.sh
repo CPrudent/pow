@@ -23,19 +23,19 @@ test_ddl() {
     CREATE)
         execute_query \
             --name CREATE_TABLE \
-            --query 'CREATE TABLE IF NOT EXISTS fr.test_libpg (
+            --query 'CREATE TABLE IF NOT EXISTS fr.test_lib (
                 id SERIAL NOT NULL,
                 name VARCHAR(50) NOT NULL,
                 date_data TIMESTAMP NOT NULL,
                 attributes VARCHAR
                 );
 
-                CREATE UNIQUE INDEX IF NOT EXISTS iux_test_libpg_id ON fr.test_libpg(id);
+                CREATE UNIQUE INDEX IF NOT EXISTS iux_test_libpg_id ON fr.test_lib(id);
             ' &&
         execute_query \
             --name INSERT_VALUES \
             --query "
-                INSERT INTO fr.test_libpg(name, date_data, attributes)
+                INSERT INTO fr.test_lib(name, date_data, attributes)
                 VALUES
                     ('TEST1', TIMEOFDAY()::TIMESTAMP WITHOUT TIME ZONE, 'ITEM1'),
                     ('TEST2', TIMEOFDAY()::TIMESTAMP WITHOUT TIME ZONE, 'ITEM1'),
@@ -48,7 +48,7 @@ test_ddl() {
     DROP)
         execute_query \
             --name DROP_TABLE \
-            --query 'DROP TABLE IF EXISTS fr.test_libpg'
+            --query 'DROP TABLE IF EXISTS fr.test_lib'
         ;;
     esac || return $ERROR_CODE
 
@@ -69,44 +69,48 @@ declare -a TESTS=(
 )
 TESTS_JOIN_PIPE=${TESTS[@]}
 TESTS_JOIN_PIPE=${TESTS_JOIN_PIPE// /|}
-TESTS_JOIN_PIPE+="|ALL"
 
-declare -A env_libpg=(
+declare -A env_lib=(
     [ERROR]=0
 ) &&
 pow_argv \
     --args_n '
-        test:Préciser le test à réaliser (ALL pour tous)
+        test:Préciser le test à réaliser;
+        clean:Purger les fichiers temporaires
     ' \
     --args_m '
         test
     ' \
     --args_v '
         test:'${TESTS_JOIN_PIPE}';
+        clean:no|yes
+    ' \
+    --args_d '
+        clean:yes
     ' \
     --args_p '
-        reset:no
+        reset:no;
+        tag:test@X+N
     ' \
-    --pow_argv env_libpg "$@" || exit $ERROR_CODE
+    --pow_argv env_lib "$@" || exit $ERROR_CODE
 
-declare -a test_libpg
-[ "${env_libpg[TEST]}" = ALL ] && test_libpg=( "${TESTS[@]}" ) || test_libpg[0]="${env_libpg[TEST]}"
-declare -A result_libpg
+declare -a test_lib=(${env_lib[TEST]})
+declare -A result_lib
 
 # tests
 set_log_echo no &&
 set_env --schema_name fr &&
 test_ddl --action CREATE &&
-for ((_test=0; _test<${#test_libpg[@]}; _test++)); do
+for ((_test=0; _test<${#test_lib[@]}; _test++)); do
     _rc=1
-    case "${test_libpg[$_test]}" in
+    case "${test_lib[$_test]}" in
     EXECUTE_QUERY_RETURN)
         execute_query --name RETURN_VALUE --query 'SELECT 1+2' --return _value &&
         [ "$_value" -eq 3 ] &&
         _rc=0
         ;;
     EXECUTE_QUERY_OUTPUT)
-        _output=$POW_DIR_TMP/test_libpg.output.tmp
+        _output=$POW_DIR_TMP/test_lib.output.tmp
         execute_query --name OUTPUT_VALUE --query 'SELECT 1+2' --output $_output &&
         [ -s "$_output" ] &&
         _value=$(< $_output) &&
@@ -129,7 +133,7 @@ for ((_test=0; _test<${#test_libpg[@]}; _test++)); do
     ARRAY_SQL_TO_BASH)
         execute_query \
             --name ARRAY \
-            --query "SELECT ARRAY_AGG(DISTINCT name) FROM fr.test_libpg" \
+            --query "SELECT ARRAY_AGG(DISTINCT name) FROM fr.test_lib" \
             --return _array_sql &&
         array_sql_to_bash \
             --array_sql "${_array_sql}" \
@@ -149,25 +153,25 @@ for ((_test=0; _test<${#test_libpg[@]}; _test++)); do
     BACKUP_TABLE)
         backup_table \
             --schema_name fr \
-            --table_name test_libpg \
-            --output $POW_DIR_TMP/fr.test_libpg.backup &&
-        [ -s $POW_DIR_TMP/fr.test_libpg.backup ] &&
+            --table_name test_lib \
+            --output $POW_DIR_TMP/fr.test_lib.backup &&
+        [ -s $POW_DIR_TMP/fr.test_lib.backup ] &&
         _rc=0
         ;;
     RESTORE_TABLE)
-        [ ! -f $POW_DIR_TMP/fr.test_libpg.backup ] && {
+        [ ! -f $POW_DIR_TMP/fr.test_lib.backup ] && {
             log_error 'besoin de lancer le test BACKUP_TABLE auparavant!'
             _rc=1
         } || {
             restore_table \
                 --schema_name fr \
-                --table_name test_libpg \
-                --input $POW_DIR_TMP/fr.test_libpg.backup \
+                --table_name test_lib \
+                --input $POW_DIR_TMP/fr.test_lib.backup \
                 --backup_before_restore no \
                 --sql_to_filter "NEW.name = 'TEST3'" &&
             execute_query \
                 --name COUNT \
-                --query "SELECT COUNT(*) FROM fr.test_libpg" \
+                --query "SELECT COUNT(*) FROM fr.test_lib" \
                 --return _value &&
             [[ $_value -eq 3 ]] &&
             _rc=0
@@ -175,23 +179,27 @@ for ((_test=0; _test<${#test_libpg[@]}; _test++)); do
         ;;
     esac
 
-    [[ $_rc -ne 0 ]] && ((env_libpg[ERROR]++))
-    result_libpg+=(["${test_libpg[$_test]}"]=$_rc)
+    [[ $_rc -ne 0 ]] && ((env_lib[ERROR]++))
+    result_lib+=(["${test_lib[$_test]}"]=$_rc)
     # https://stackoverflow.com/questions/5349718/how-can-i-repeat-a-character-in-bash
-    _len=$((36 - ${#test_libpg[$_test]}))
+    _len=$((36 - ${#test_lib[$_test]}))
     _spaces=$(printf ' %.0s' $(seq 1 $_len))
     printf "%s%s[%s]\n" \
-        "${test_libpg[$_test]}" \
+        "${test_lib[$_test]}" \
         "$_spaces" \
-        $( [[ ${result_libpg["${test_libpg[$_test]}"]} -eq 0 ]] && echo OK || echo KO )
+        $( [[ ${result_lib["${test_lib[$_test]}"]} -eq 0 ]] && echo OK || echo KO )
 done
-test_ddl --action DROP
-rm --force $POW_DIR_TMP/fr.test_libpg.backup
+
+# purge
+[ "${env_lib[CLEAN]}" = yes ] && {
+    test_ddl --action DROP
+    rm --force $POW_DIR_TMP/fr.test_lib.backup
+}
 
 # results
 _error=
-[[ ${env_libpg[ERROR]} -gt 0 ]] && _error="avec ${env_libpg[ERROR]} erreur"
-[[ ${env_libpg[ERROR]} -gt 1 ]] && _error+=s
+[[ ${env_lib[ERROR]} -gt 0 ]] && _error="avec ${env_lib[ERROR]} erreur"
+[[ ${env_lib[ERROR]} -gt 1 ]] && _error+=s
 _rc=$SUCCESS_CODE
 [ -n "$_error" ] && {
     printf '\n%40s\n' "$_error"

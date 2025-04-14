@@ -60,6 +60,7 @@ t_pow_argv_3() {
     return $SUCCESS_CODE
 }
 
+# libstd tests
 declare -a TESTS=(
     POW_ARGV
     IN_ARRAY
@@ -77,6 +78,7 @@ declare -a TESTS=(
 TESTS_JOIN_PIPE=${TESTS[@]}
 TESTS_JOIN_PIPE=${TESTS_JOIN_PIPE// /|}
 
+# pow_argv tests
 declare -a cmd_pow_argv=(
     # help
     [0]="is_yes --help"
@@ -126,14 +128,42 @@ declare -a cmd_pow_argv=(
     [26]="t_pow_argv_3 --args_p TAG:k@X+N --k -TWO"
 )
 _tests_pow_argv=${#cmd_pow_argv[@]}
-
+# return code
 declare -a rc_pow_argv=()
+# waiting success
 for ((_i=0; _i<${_tests_pow_argv}; _i++)); do
     rc_pow_argv[$_i]=$SUCCESS_CODE
 done
-# exceptions
+# waiting error
 for _i in 0 1 9 11 $(seq 21 24); do
     rc_pow_argv[$_i]=$ERROR_CODE
+done
+# assert conditions
+declare -a assert_pow_argv=(
+    [0]='[[ "$_log" == '"'"'var : Variable à tester, obligatoire'"'"' ]]'
+    [2]='[ "${POW_ARGV[OPTIONAL_W_D]}" = no ]'
+    [3]='[ "${POW_ARGV[OPTIONAL_WO_D]}" = V ]'
+    [4]='[ "${argv[OPTIONAL_WO_D]}" = V ]'
+    [5]='[ "${POW_ARGV[OPTIONAL_W_D]}" = yes ]'
+    [6]='[ "${POW_ARGV[OPTIONAL_WO_D]}" = '"'"'--opt1 VALUE1 --opt2 VALUE2'"'"' ]'
+    [7]='[[ "$(grep '"'"'host:port'"'"' $_logfile)" =~ '"'"'host:port'"'"' ]]'
+    [8]='[[ ${POW_ARGV[OPTIONAL_WO_D]} -eq 123 ]]'
+    [10]='[ "$(awk '"'"'BEGIN { print ('"'"'${POW_ARGV[OPTIONAL_WO_D]}'"'"' == -123.5) ? "OK" : "KO" }'"'"')" = OK ]'
+    [12]='[ "${POW_ARGV[K1]}" = yes ] && [ "${POW_ARGV[K2]}" = yes ]'
+    [13]='[ "${POW_ARGV[K1]}" = no ] && [ "${POW_ARGV[K2]}" = no ]'
+    [14]='[ -z "${POW_ARGV[OPTIONAL_WO_D]}" ]'
+    [15]='[[ ${POW_ARGC} -eq 3 ]]'
+    [16]='[[ ${argc} -eq 3 ]]'
+    [17]='[ "${POW_ARGV[K]}" = ONE ]'
+    [18]='[ "${POW_ARGV[K]}" = '"'"'TWO TWO'"'"' ]'
+    [19]='[ "${POW_ARGV[K]}" = '"'"'ONE TWO'"'"' ]'
+    [20]='[ "${POW_ARGV[K]}" = '"'"'ONE TWO TWO'"'"' ]'
+    [25]='[ "${POW_ARGV[K]}" = '"'"'ONE TWO THREE'"'"' ]'
+    [26]='[ "${POW_ARGV[K]}" = '"'"'ONE THREE'"'"' ]'
+)
+# no condition (when error waited)
+for ((_i=0; _i<${_tests_pow_argv}; _i++)); do
+    [ -z "${assert_pow_argv[$_i]}" ] && assert_pow_argv[$_i]='true'
 done
 
 declare -A argv
@@ -188,62 +218,7 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
                     [ -n "$_log" ] && echo "log=$_log"
                 }
 
-                ([ $_rc -eq ${rc_pow_argv[$_i]} ] && ( \
-                    ([[ $_i -eq 0 ]] && [[ "$_log" == 'var : Variable à tester, obligatoire' ]]) \
-                    ||
-                    ([[ $_i -eq 1 ]]) \
-                    || \
-                    ([[ $_i -eq 2 ]] && [ "${POW_ARGV[OPTIONAL_W_D]}" = no ]) \
-                    || \
-                    ([[ $_i -eq 3 ]] && [ "${POW_ARGV[OPTIONAL_WO_D]}" = V ]) \
-                    || \
-                    ([[ $_i -eq 4 ]] && [ "${argv[OPTIONAL_WO_D]}" = V ]) \
-                    || \
-                    ([[ $_i -eq 5 ]] && [ "${POW_ARGV[OPTIONAL_W_D]}" = yes ]) \
-                    || \
-                    ([[ $_i -eq 6 ]] && [ "${POW_ARGV[OPTIONAL_WO_D]}" = '--opt1 VALUE1 --opt2 VALUE2' ]) \
-                    || \
-                    ([[ $_i -eq 7 ]] && [[ "$(grep 'host:port' $_logfile)" =~ 'host:port' ]]) \
-                    || \
-                    ([[ $_i -eq 8 ]] && [[ ${POW_ARGV[OPTIONAL_WO_D]} -eq 123 ]]) \
-                    ||
-                    ([[ $_i -eq 9 ]]) \
-                    || \
-                    # https://stackoverflow.com/questions/8654051/how-can-i-compare-two-floating-point-numbers-in-bash
-                    ([[ $_i -eq 10 ]] && [ "$(awk 'BEGIN { print ('${POW_ARGV[OPTIONAL_WO_D]}' == -123.5) ? "OK" : "KO" }')" = OK ]) \
-                    ||
-                    ([[ $_i -eq 11 ]]) \
-                    || \
-                    ([[ $_i -eq 12 ]] && [ "${POW_ARGV[K1]}" = yes ] && [ "${POW_ARGV[K2]}" = yes ]) \
-                    || \
-                    ([[ $_i -eq 13 ]] && [ "${POW_ARGV[K1]}" = no ] && [ "${POW_ARGV[K2]}" = no ]) \
-                    || \
-                    ([[ $_i -eq 14 ]] && [ -z "${POW_ARGV[OPTIONAL_WO_D]}" ]) \
-                    || \
-                    ([[ $_i -eq 15 ]] && [[ ${POW_ARGC} -eq 3 ]]) \
-                    || \
-                    ([[ $_i -eq 16 ]] && [[ ${argc} -eq 3 ]]) \
-                    || \
-                    ([[ $_i -eq 17 ]] && [ "${POW_ARGV[K]}" = ONE ]) \
-                    || \
-                    ([[ $_i -eq 18 ]] && [ "${POW_ARGV[K]}" = 'TWO TWO' ]) \
-                    || \
-                    ([[ $_i -eq 19 ]] && [ "${POW_ARGV[K]}" = 'ONE TWO' ]) \
-                    || \
-                    ([[ $_i -eq 20 ]] && [ "${POW_ARGV[K]}" = 'ONE TWO TWO' ]) \
-                    ||
-                    ([[ $_i -eq 21 ]]) \
-                    ||
-                    ([[ $_i -eq 22 ]]) \
-                    ||
-                    ([[ $_i -eq 23 ]]) \
-                    ||
-                    ([[ $_i -eq 24 ]]) \
-                    || \
-                    ([[ $_i -eq 25 ]] && [ "${POW_ARGV[K]}" = 'ONE TWO THREE' ]) \
-                    || \
-                    ([[ $_i -eq 26 ]] && [ "${POW_ARGV[K]}" = 'ONE THREE' ]) \
-                )) || {
+                ([ $_rc -eq ${rc_pow_argv[$_i]} ] && $(eval ${assert_pow_argv[$_i]})) || {
                     env_lib[POW_ARGV]+="$_i "
                     continue
                 }
