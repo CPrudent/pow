@@ -37,7 +37,7 @@ bash_args \
         constant:no;
         relocate:no
     ' \
-    "$@" || exit $ERROR_CODE
+    "$@" || exit $?
 
 [ -n "$get_arg_schema_only" ] && _schemas=($get_arg_schema_only)
 

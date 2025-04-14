@@ -15,7 +15,7 @@ bash_args \
     --args_d '
         force:no;
     ' \
-    "$@" || exit $ERROR_CODE
+    "$@" || exit $?
 
 force="$get_arg_force"
 set_env --schema_name public &&

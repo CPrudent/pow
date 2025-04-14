@@ -17,7 +17,7 @@ on_integration_error() {
         --args_o '
             id
         ' \
-        "$@" || return $ERROR_CODE
+        "$@" || return $?
 
     # history created?
     [ "$POW_DEBUG" = yes ] && { echo "id=$get_arg_id"; }
@@ -36,7 +36,7 @@ bash_args \
     --args_d '
         force:no
     ' \
-    "$@" || exit $ERROR_CODE
+    "$@" || exit $?
 
 io_name=FR-CONSTANT
 io_info='Mise à jour des constantes (FR)'

@@ -29,7 +29,7 @@ execute_query() {
             with_log:yes;
             temporary:USER
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _start=$(date +%s) _info _rc _last _i _error
     local _opt _quiet _psql_level=NOTICE _psql_output
@@ -205,7 +205,7 @@ table_exists() {
         --args_d '
             schema_name:public
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _exists _rc=$ERROR_CODE
 
@@ -232,7 +232,7 @@ view_exists() {
         --args_d '
             schema_name:public
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _exists _rc=$ERROR_CODE
 
@@ -263,7 +263,7 @@ vacuum() {
             mode:ANALYZE;
             dry_run:no
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     if [ -z "${_opts[MODE]}" ]; then
         log_error "Veuillez préciser le mode de VACUUM (ANALYZE, FULL). Exemple : --mode ANALYZE"
@@ -375,7 +375,7 @@ get_table_sequences() {
             schema_name;
             table_name
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _sequences
 
@@ -422,7 +422,7 @@ backup_table() {
             format:custom;
             sections:pre-data+data+post-data
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _backup_label="${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]}"
     local _backup_log=${POW_DIR_ARCHIVE}/pg_dump_${_backup_label}.log
@@ -520,7 +520,7 @@ restore_table() {
             wait_file_minute:0;
             max_age_file_minute:0
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     #ATTENTION : maintenir avec la variable de même nom dans la fonction copy_tables
     local _restore_label="${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]}"
@@ -782,7 +782,7 @@ array_sql_to_bash() {
             array_sql;
             array_bash
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _array_ref=${_opts[ARRAY_BASH]}
 

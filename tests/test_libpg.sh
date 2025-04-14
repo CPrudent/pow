@@ -17,7 +17,7 @@ test_ddl() {
         --args_v '
             action:CREATE|DROP
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     case "${_opts[ACTION]}" in
     CREATE)
@@ -92,7 +92,7 @@ pow_argv \
         reset:no;
         tag:test@X+N
     ' \
-    --pow_argv env_lib "$@" || exit $ERROR_CODE
+    --pow_argv env_lib "$@" || exit $?
 
 declare -a test_lib=(${env_lib[TEST]})
 declare -A result_lib

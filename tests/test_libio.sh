@@ -15,7 +15,7 @@ test_csv() {
         --args_m '
             path;nrows
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _path_ref=${_opts[PATH]}
     local -n _nrows_ref=${_opts[NROWS]}
@@ -94,7 +94,7 @@ pow_argv \
         reset:no;
         tag:clean@bool,test@X+N
     ' \
-    --pow_argv env_lib "$@" || exit $ERROR_CODE
+    --pow_argv env_lib "$@" || exit $?
 
 declare -a test_lib=(${env_lib[TEST]})
 declare -A result_lib

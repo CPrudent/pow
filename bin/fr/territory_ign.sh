@@ -75,7 +75,7 @@ bash_args \
         force:no;
         clean:yes
     ' \
-    "$@" || exit $ERROR_CODE
+    "$@" || exit $?
 
 io_name=FR-TERRITORY-IGN
 io_force=$get_arg_force

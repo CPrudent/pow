@@ -21,7 +21,7 @@ t_pow_argv_1() {
         --args_d '
             optional_w_d:no
         ' \
-        "$@" || return $ERROR_CODE
+        "$@" || return $?
 
     # no process, only getopt
     return $SUCCESS_CODE
@@ -40,7 +40,7 @@ t_pow_argv_2() {
             k1:no;
             k2:@k1
         ' \
-        "$@" || return $ERROR_CODE
+        "$@" || return $?
 
     # no process, only getopt
     return $SUCCESS_CODE
@@ -54,7 +54,7 @@ t_pow_argv_3() {
         --args_v '
             k:ONE|TWO|THREE
         ' \
-        "$@" || return $ERROR_CODE
+        "$@" || return $?
 
     # no process, only getopt
     return $SUCCESS_CODE
@@ -190,7 +190,7 @@ pow_argv \
         reset:no;
         tag:clean@bool,test@X+N
     ' \
-    --pow_argv env_lib "$@" || exit $ERROR_CODE
+    --pow_argv env_lib "$@" || exit $?
 
 declare -a test_lib=(${env_lib[TEST]})
 declare -A result_lib

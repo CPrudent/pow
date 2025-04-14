@@ -16,7 +16,7 @@ bash_args \
     --args_d '
         force:no
     ' \
-    "$@" || exit $ERROR_CODE
+    "$@" || exit $?
 
 io_name=FR-MUNICIPALITY-EVENT-INSEE
 io_force="$get_arg_force"

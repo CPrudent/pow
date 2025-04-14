@@ -136,7 +136,7 @@ array_index() {
             array;
             index
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _array_ref=${_opts[ARRAY]}
     local -n _index_ref=${_opts[INDEX]}
@@ -172,7 +172,7 @@ in_array() {
         --args_d '
             search:VALUE
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _array_ref=${_opts[ARRAY]}
     local _pos _rc
@@ -219,7 +219,7 @@ clone_array() {
             from_array;
             to_array
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
 #     local _tmp=$(declare -p ${_opts[FROM_ARRAY]}) _tmp2
 # syntax error near unexpected token `('
@@ -258,7 +258,7 @@ get_elapsed_time() {
         --args_d '
             format:POW
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _result_ref=${_opts[RESULT]}
     local _end=$(date +%s)
@@ -307,7 +307,7 @@ is_yes() {
         --args_m '
             var
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _var_ref=${_opts[VAR]}
 
@@ -325,7 +325,7 @@ set_delimiter() {
         --args_m '
             delimiter_code;
             delimiter_value' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _delimiter_ref=${_opts[DELIMITER_VALUE]}
 
@@ -379,7 +379,7 @@ set_delimiter() {
 #    --args_m '
 #        opt1|opt3
 #    ' \
-#    --pow_argv _opts "$@" || return $ERROR_CODE
+#    --pow_argv _opts "$@" || return $?
 
 pow_argv() {
     local _step=1 _error _end=0 _key _value _i _info _valid _property _as_opt _k _tmp
@@ -1070,7 +1070,7 @@ is_different() {
         --args_d '
             verbose:no
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _tmp_path _tmp_file _size_a _size_b _git_diff
 
@@ -1156,7 +1156,7 @@ get_file_name() {
             with_extension:no;
             stdout:yes
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _file_name _result
 
@@ -1193,7 +1193,7 @@ get_file_extension() {
             lazy:yes;
             stdout:yes
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     # NOTE be careful, not use _file_name (same as this in get_file_name) : empty return!
     local _name _file_extension _result
@@ -1235,7 +1235,7 @@ get_file_mimetype() {
         --args_d '
             stdout:yes
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _mime_type=$(file --mime-type "${_opts[FILE_PATH]}" | sed 's/.*: //')
 
@@ -1264,7 +1264,7 @@ get_file_nrows() {
         --args_d '
             stdout:yes
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _file_nrows
 
@@ -1291,7 +1291,7 @@ file_is_binary() {
             file_path:Chemin complet du fichier
         ' \
         --args_m 'file_path' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     expect file "${_opts[FILE_PATH]}" &&
     file --brief --dereference --mime "${_opts[FILE_PATH]}" | grep --silent 'charset=binary'
@@ -1305,7 +1305,7 @@ backup_file_as_uniq() {
     pow_argv \
         --args_n 'path:nom complet' \
         --args_m 'path' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _suffix=1
 
@@ -1344,7 +1344,7 @@ get_tmp_file() {
             tool:MKTEMP;
             chmod:666;
             create:no' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _tmp_file _tmp_create=0
     local -n _tmp_ref=${_opts[TMPFILE]}
@@ -1435,7 +1435,7 @@ wait_for_file() {
         ' \
         --args_m 'file_path' \
         --args_d 'wait_file_minute:0;max_age_file_minute:0' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _size_before _size_after
 
@@ -1487,7 +1487,7 @@ is_archive() {
             archive_type:obtenir le type de l'archive (MIME)
         " \
         --args_m 'archive_path' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     [ -f "${_opts[ARCHIVE_PATH]}" ] || return $ERROR_CODE
     [ -n "${_opts[ARCHIVE_TYPE]}" ] && local -n _type_ref=${_opts[ARCHIVE_TYPE]}
@@ -1512,7 +1512,7 @@ extract_archive() {
             archive_path;
             extract_path
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _start=$(date +%s)
     local _archive_name=$(basename "${_opts[ARCHIVE_PATH]}")
@@ -1587,7 +1587,7 @@ create_archive() {
         ' \
         --args_m 'output;input' \
         --args_d 'archive_type:gzip' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     case "${_opts[ARCHIVE_TYPE]}" in
     zip)
@@ -1656,7 +1656,7 @@ send_mail() {
             tool:base64;
             debug:no;
             verbose:no' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     # message
     local _body

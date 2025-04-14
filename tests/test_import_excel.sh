@@ -18,7 +18,7 @@ bash_args \
         clean:yes;
         dry_run:no
     ' \
-    "$@" || exit $ERROR_CODE
+    "$@" || exit $?
 
 set_env --schema_name public
 

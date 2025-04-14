@@ -17,7 +17,7 @@ set_request() {
             key;
             value
         ' \
-        "$@" || return $ERROR_CODE
+        "$@" || return $?
 
     local _data _source _format _parameters _filter _query
     local -n _value_ref=$get_arg_value
@@ -70,7 +70,7 @@ set_context() {
         --args_o '
             test;
         ' \
-        "$@" || return $ERROR_CODE
+        "$@" || return $?
 
     case "$get_arg_test" in
     STANDARDIZE_*)
@@ -138,7 +138,7 @@ bash_args \
     --args_d '
         force:no
     ' \
-    "$@" || exit $ERROR_CODE
+    "$@" || exit $?
 
 declare -A test_request
 [[ $get_arg_test =~ ^(.*)_FROM ]] && test_request[STEP]=${BASH_REMATCH[1]}

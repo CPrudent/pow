@@ -35,7 +35,7 @@ bash_args \
         sources:ALL;
         dry_run:no
     ' \
-    "$@" || exit $ERROR_CODE
+    "$@" || exit $?
 
 schema_name=$get_arg_schema_name
 data_except_re=$get_arg_data_except_re

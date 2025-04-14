@@ -20,7 +20,7 @@ bash_args \
         force:no;
         public:yes
     ' \
-    "$@" || exit $ERROR_CODE
+    "$@" || exit $?
 
 force="$get_arg_force"
 

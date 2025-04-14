@@ -18,7 +18,7 @@ bash_args \
     --args_d '
         check:yes
     ' \
-    "$@" || exit $ERROR_CODE
+    "$@" || exit $?
 
     # check installation
 [ "$get_arg_check" = yes ] && {

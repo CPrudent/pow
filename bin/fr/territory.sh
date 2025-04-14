@@ -14,7 +14,7 @@ on_integration_error() {
         --args_o '
             id
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     # history created?
     [ "$POW_DEBUG" = yes ] && { echo "id=${_opts[ID]}"; }
@@ -52,7 +52,7 @@ pow_argv \
     --args_p '
         reset:no
     ' \
-    --pow_argv io_vars "$@" || exit $ERROR_CODE
+    --pow_argv io_vars "$@" || exit $?
 
 declare -A io_hash &&
 set_env --schema_name fr &&

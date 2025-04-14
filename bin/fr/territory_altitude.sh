@@ -57,7 +57,7 @@ altitude_log_info() {
             step;
             source
         ' \
-        "$@" || return $ERROR_CODE
+        "$@" || return $?
 
     local _info='Téléchargement '
     [ $get_arg_step -eq 0 ] && _info+='de base' || _info='en complément'
@@ -93,7 +93,7 @@ altitude_set_list() {
             step;
             list
         ' \
-        "$@" || return $ERROR_CODE
+        "$@" || return $?
 
     local _where
     [ $get_arg_step -eq 0 ] && _where='NOT done' || _where='(z_min IS NULL OR z_max IS NULL OR z_max < z_min)'
@@ -153,7 +153,7 @@ altitude_set_cache() {
             source;
             cache
         ' \
-        "$@" || return $ERROR_CODE
+        "$@" || return $?
 
     local -n _dir_cache_ref=$get_arg_cache
     local -n _file_tr_ref=$get_arg_tmpfile
@@ -190,7 +190,7 @@ altitude_set_url() {
             source;
             url
         ' \
-        "$@" || return $ERROR_CODE
+        "$@" || return $?
 
     local -n _territory_data_ref=$get_arg_territory_data
     local -n _url_ref=$get_arg_url
@@ -300,7 +300,7 @@ altitude_set_values() {
             min;
             max
         ' \
-        "$@" || return $ERROR_CODE
+        "$@" || return $?
 
     local -n _min_ref=$get_arg_min
     local -n _max_ref=$get_arg_max
@@ -357,7 +357,7 @@ bash_args \
         from_date:2009-01-01;
         reset_municipality:no
     ' \
-    "$@" || exit $ERROR_CODE
+    "$@" || exit $?
 
 # TODO be careful w/ name of option, because general variable (get_arg_*) can be changed
 #      by another call of bash_args !

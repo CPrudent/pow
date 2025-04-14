@@ -51,7 +51,7 @@ bal_check_municipality() {
         --args_m '
             code
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _valid _error
 
@@ -97,7 +97,7 @@ bal_set_municipality() {
         --args_m '
             code
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _tmp _info
     local -a _array
@@ -241,7 +241,7 @@ bal_list_municipalities() {
         --args_m '
             list
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _list_ref=${_opts[LIST]}
     local _query _list _date_before_fix _column

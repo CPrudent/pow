@@ -24,7 +24,7 @@ t_bash_args_1() {
         --args_d '
             optional_w_d:no
         ' \
-        "$@" || return $ERROR_CODE
+        "$@" || return $?
 
     # no process, only getopt
     return $SUCCESS_CODE
@@ -47,7 +47,7 @@ t_pow_argv_1() {
         --args_d '
             optional_w_d:no
         ' \
-        "$@" || return $ERROR_CODE
+        "$@" || return $?
 
     # no process, only getopt
     return $SUCCESS_CODE

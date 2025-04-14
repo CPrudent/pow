@@ -16,7 +16,7 @@ match_info() {
         --args_m '
             steps_info;step
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _steps_ref=${_opts[STEPS_INFO]}
 
@@ -38,7 +38,7 @@ get_definition() {
         --args_v '
             property:format|parameters
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _vars_ref=${_opts[VARS]}
     local _property=${_opts[PROPERTY]^^}
@@ -79,7 +79,7 @@ export_get_columns() {
         --args_v '
             columns_set:IN|MORE
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _user_ref=${_opts[COLUMNS_USER]}
     local -n _todo_ref=${_opts[COLUMNS_TODO]}
@@ -133,7 +133,7 @@ export_get_entry() {
         --args_m '
             request;vars;entry
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _request_ref=${_opts[REQUEST]}
     local -n _vars_ref=${_opts[VARS]}
@@ -162,7 +162,7 @@ export_build() {
         --args_m '
             columns_in;columns_more;table_name;request;vars
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _in_ref=${_opts[COLUMNS_IN]}
     local -n _more_ref=${_opts[COLUMNS_MORE]}
@@ -251,7 +251,7 @@ report_get_result() {
         --args_m '
             request;vars;result
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _request_ref=${_opts[REQUEST]}
     local -n _vars_ref=${_opts[VARS]}
@@ -283,7 +283,7 @@ report_build() {
         --args_m '
             request;vars;result
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _request_ref=${_opts[REQUEST]}
     local -n _vars_ref=${_opts[VARS]}
@@ -376,7 +376,7 @@ pow_argv \
     --args_p '
         RESET:no
     ' \
-    --pow_argv match_vars "$@" || exit $ERROR_CODE
+    --pow_argv match_vars "$@" || exit $?
 
 _k=0
 MATCH_REQUEST_ID=$((_k++))                  # ID de la demande

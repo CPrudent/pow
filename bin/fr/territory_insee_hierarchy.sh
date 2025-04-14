@@ -19,7 +19,7 @@ bash_args \
         force:no;
         load_mode:APPEND
     ' \
-    "$@" || exit $ERROR_CODE
+    "$@" || exit $?
 
 io_name=FR-TERRITORY-INSEE
 io_force=$get_arg_force

@@ -35,7 +35,7 @@ bash_args \
     --args_d '
         number_line:no
     ' \
-    "$@" || exit $ERROR_CODE
+    "$@" || exit $?
 
 _ok=0
 _ko=0

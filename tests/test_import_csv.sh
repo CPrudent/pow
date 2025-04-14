@@ -34,7 +34,7 @@ bash_args \
         clean:yes;
         dry_run:no
     ' \
-    "$@" || exit $ERROR_CODE
+    "$@" || exit $?
 
 # FIXME not found to insert TAB into Kate!
 > $POW_DIR_TMP/${TEST_IMPORT_CSV_FILES[0]}

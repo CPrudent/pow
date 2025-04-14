@@ -71,7 +71,7 @@ set_param_conf_file() {
         --args_m 'conf_file;param_code;param_value' \
         --args_v 'param_is_multiple:yes|no' \
         --args_d 'param_is_multiple:no;param_separator:=' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _line_content _search_pattern _line_number
 
@@ -162,7 +162,7 @@ set_params_conf_file() {
         --args_m 'conf_file;param_codes;param_values' \
         --args_v 'param_is_multiple:yes|no' \
         --args_d 'param_is_multiple:no;param_separator:=' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _index_param_code=0 _param_code
 
@@ -194,7 +194,7 @@ get_pg_passwd() {
             user_name;
             password
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _passwd_file=.pgpass _passwd_home _dir_home _tmp
     local -n _passwd_ref=${_opts[PASSWORD]}
@@ -274,7 +274,7 @@ _set_pg_env() {
     pow_argv \
         --args_n 'schema_name:code applicatif du schéma à utiliser' \
         --args_d 'schema_name:public' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _std=(admin public)
 
@@ -315,7 +315,7 @@ set_env_pg() {
             print:no;
             schema_name:public
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     [ "${_opts[PRINT]}" = yes ] && {
         echo "POW's PostgreSQL context"
@@ -354,7 +354,7 @@ set_env_dirs() {
     pow_argv \
         --args_n 'schema_name:code applicatif du schéma à utiliser' \
         --args_d 'schema_name:public' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     # define DIRs
     local _dir
@@ -390,7 +390,7 @@ set_env() {
     pow_argv \
         --args_n 'schema_name:code applicatif du schéma à utiliser' \
         --args_d 'schema_name:public' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     # check for schema (from directory source)
     {

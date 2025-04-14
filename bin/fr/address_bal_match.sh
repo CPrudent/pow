@@ -17,7 +17,7 @@ bal_match_municipality() {
         --args_m '
             code;io_id
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _query=${bal_vars[QUERY_ADDRESSES]//XXXXX/${_opts[CODE]}} _request_id
 
@@ -109,7 +109,7 @@ pow_argv \
     --args_p '
         RESET:no
     ' \
-    --pow_argv bal_vars "$@" || exit $ERROR_CODE
+    --pow_argv bal_vars "$@" || exit $?
 
 bal_vars[MUNICIPALITY_CODE]=${bal_vars[MUNICIPALITY]^^}
 declare -a bal_codes=()

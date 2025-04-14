@@ -13,7 +13,7 @@ bash_args \
         force:yes|no' \
     --args_d '
         force:no' \
-    "$@" || exit $ERROR_CODE
+    "$@" || exit $?
 
 io_name=FR-TERRITORY-GOUV-EPCI
 io_force="$get_arg_force"

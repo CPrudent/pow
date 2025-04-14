@@ -77,7 +77,7 @@ bal_set_rows() {
         --args_m '
             streets;housenumbers;total
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _total_ref=${_opts[TOTAL]}
 
@@ -107,7 +107,7 @@ bal_get_counters() {
         --args_v '
             usage:NROWS|ATTRIBUTES|PROGRESS
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _value_ref=${_opts[VALUE]}
 
@@ -154,7 +154,7 @@ bal_average_time() {
         --args_m '
             avg
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _avg_ref=${_opts[AVG]}
 
@@ -191,7 +191,7 @@ bal_import_table() {
         --args_v '
             command:CREATE|DROP
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _query _ddl=1
 
@@ -234,7 +234,7 @@ bal_get_list() {
             name;
             query
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _result _return=0
     local -a _results
@@ -335,7 +335,7 @@ bal_import_file() {
         --args_m '
             mode;source
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _try _ext _rc _file="${_opts[SOURCE]}/${bal_vars[FILE_NAME]}" _tmpfile _nrows
 
@@ -401,7 +401,7 @@ bal_load_addresses() {
         --args_v '
             level:STREET|HOUSENUMBER
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _name _query _info _j _rc _field=${_opts[LEVEL]}S _code _len _url _file _dir_common
     local -a _addresses
@@ -578,7 +578,7 @@ bal_deal_obsolescence() {
         --args_v '
             level:MUNICIPALITY|STREET|HOUSENUMBER
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _label1=SELECT _label2 _query _info _obsolete _counters
 
@@ -684,7 +684,7 @@ bal_context() {
         --args_v '
             level:SUMMARY|MUNICIPALITY|STREET|HOUSENUMBER
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _vars_ref=${_opts[VARS]}
 
@@ -738,7 +738,7 @@ bal_integration() {
         --args_v '
             level:MUNICIPALITY|STREET|HOUSENUMBER|AREA
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     case "${_opts[LEVEL]}" in
     MUNICIPALITY)
@@ -958,7 +958,7 @@ bal_load() {
         --args_v '
             level:SUMMARY|MUNICIPALITY|STREET|HOUSENUMBER
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _file _rc _option _force="${bal_vars[FORCE_LOAD]}"
     local -A _context
@@ -1136,7 +1136,7 @@ bal_fix_done() {
         --args_m '
             state
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _io=BAL_${bal_vars[MUNICIPALITY_CODE]} _fix
     local -n _state_ref=${_opts[STATE]}
@@ -1318,7 +1318,7 @@ pow_argv \
     --args_p '
         reset:no
     ' \
-    --pow_argv bal_vars "$@" || exit $ERROR_CODE
+    --pow_argv bal_vars "$@" || exit $?
 
 bal_vars[MUNICIPALITY_CODE]="${bal_vars[MUNICIPALITY]^^}"
 declare -a bal_codes=()

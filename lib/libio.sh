@@ -25,7 +25,7 @@ _io_history_manager() {
         --args_m '
             method
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _query _return _output _with_log=no
     [ "$POW_DEBUG" = yes ] && _with_log=yes
@@ -180,7 +180,7 @@ io_history_exists() {
         --args_d '
             status:SUCCES
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     [ -n "${_opts[ID]}" ] && local -n _io_id=${_opts[ID]} || local _io_id
 
@@ -214,7 +214,7 @@ io_history_begin() {
             nrows_todo;
             id
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -n _io_id=${_opts[ID]} _infos
 
@@ -245,7 +245,7 @@ io_history_end_ok() {
             nrows_processed;
             id
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _infos
 
@@ -269,7 +269,7 @@ io_history_end_ko() {
         --args_m '
             id
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     _io_history_manager \
         --method UPDATE_KO \
@@ -291,7 +291,7 @@ io_history_update() {
         --args_m '
             id
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _todo _processed
     [ -n "${_opts[NROWS_TODO]}" ] && _todo="--nrows_todo ${_opts[NROWS_TODO]}"
@@ -319,7 +319,7 @@ io_history_export_last() {
             io;
             output
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     _io_history_manager \
         --method EXPORT_LAST \
@@ -532,7 +532,7 @@ io_get_property_online_available() {
             key;
             value
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local _url_base _url_data _re1 _re2
     local -n _value_ref=${_opts[VALUE]}
@@ -602,7 +602,7 @@ io_get_list_online_available() {
             details_file;
             dates_list
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     # NOTE _only_matching_re1=--only-matching
     # reset it if not only matching
@@ -708,7 +708,7 @@ io_download_file() {
             common_save:yes;
             verbose:no
         ' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     _opts[ID]=-1                             # found file ID (not necessary newer!)
     _opts[FOUND]=0                           # (0) no, (1) output_directory, (2) common
@@ -871,7 +871,7 @@ remove_bom() {
     pow_argv \
         --args_n 'file_path:Chemin absolu vers le fichier à traiter;' \
         --args_m 'file_path' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     sed --in-place --expression '1s/^\xEF\xBB\xBF//' --expression '1s/^\xFF\xFE//' ${_opts[FILE_PATH]}
 }
@@ -910,7 +910,7 @@ import_csv_file() {
             encoding:UTF8;
             load_mode:OVERWRITE_DATA;
             rowid:yes' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     #echo ${FUNCNAME[0]} && declare -p _opts &&
     expect file "${_opts[FILE_PATH]}" &&
@@ -1184,7 +1184,7 @@ excel_to_csv() {
         --args_d '
             delimiter:COMMA;
             to_file_path:INPUT' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -i _step=0
     local -a _steps=(
@@ -1313,7 +1313,7 @@ csv_to_excel() {
             to_file_path:Chemin absolu vers le fichier de sortie' \
         --args_m 'from_file_path' \
         --args_d 'to_file_path:INPUT' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -i _step=0
     local -a _steps=(
@@ -1413,7 +1413,7 @@ import_excel_file() {
             delimiter:PIPE;
             load_mode:OVERWRITE_DATA;
             rowid:yes' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     local -i _step=0
     local -a _steps=(
@@ -1519,7 +1519,7 @@ import_geo_file() {
             geometry_type:GEOMETRY;
             spatial_index:yes;
             rowid:yes' \
-        --pow_argv _opts "$@" || return $ERROR_CODE
+        --pow_argv _opts "$@" || return $?
 
     # geometry_type :
     # Define the geometry type for the created layer.
@@ -1725,7 +1725,7 @@ import_file() {
         schema_name:'$POW_PG_DEFAULT_SCHEMA';
         load_mode:OVERWRITE_DATA;
         rowid:yes' \
-    --pow_argv _opts "$@" || return $ERROR_CODE
+    --pow_argv _opts "$@" || return $?
 
     local -i _step=0
     local -a _steps=(
