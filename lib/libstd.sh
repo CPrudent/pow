@@ -753,11 +753,15 @@ pow_argv() {
                     [[ ${#_verify_values[@]} -ge 1 ]] &&
                     [[ $(echo "${_verify_values[@]}" | tr ' ' '\n' | sort | uniq -c | wc -l) -ge 1 ]]
                     ;;
-                # default (1N) one uniq value
+                # default ([01]N) one uniq value, eventually none (0N)
                 *)
                     _error="$_key: Valeur unique attendue"
-                    [[ ${#_verify_values[@]} == 1 ]] &&
-                    [[ ${_verify_values[${_keys[0]}]} == 1 ]]
+                    local _min=${_args_n_a[$_key]:0:1} _max=1
+                    # due to other tags, different from among list  (as bool, ...)
+                    ([[ $_min == 0 ]] || [[ $_min == 1 ]]) || _min=1
+                    [[ ${#_verify_values[@]} -ge ${_min:-1} ]] &&
+                    [[ ${#_verify_values[@]} -le $_max ]] &&
+                    (([[ $_min == 1 ]] && [[ ${_verify_values[${_keys[0]}]} == 1 ]]) || [[ $_min == 0 ]])
                     ;;
                 esac &&
                 # check each value belongs to defined list
