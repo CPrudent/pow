@@ -76,9 +76,8 @@ declare -a TESTS=(
 )
 TESTS_JOIN_PIPE=${TESTS[@]}
 TESTS_JOIN_PIPE=${TESTS_JOIN_PIPE// /|}
-#TESTS_JOIN_PIPE+="|ALL"
 
-declare -a test_pow_argv=(
+declare -a cmd_pow_argv=(
     # help
     [0]="is_yes --help"
     # miss mandatory argument
@@ -126,7 +125,7 @@ declare -a test_pow_argv=(
     [25]="t_pow_argv_3 --args_p TAG:k@X+N --k ALL"
     [26]="t_pow_argv_3 --args_p TAG:k@X+N --k -TWO"
 )
-_tests_pow_argv=${#test_pow_argv[@]}
+_tests_pow_argv=${#cmd_pow_argv[@]}
 
 declare -a rc_pow_argv=()
 for ((_i=0; _i<${_tests_pow_argv}; _i++)); do
@@ -164,7 +163,6 @@ pow_argv \
     --pow_argv env_lib "$@" || exit $ERROR_CODE
 
 declare -a test_lib=(${env_lib[TEST]})
-#[ "${env_lib[TEST]}" = ALL ] && test_lib=( "${TESTS[@]}" ) || test_lib[0]="${env_lib[TEST]}"
 declare -A result_lib
 
 # tests
@@ -179,9 +177,9 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
         _logfile=$POW_DIR_TMP/pow_argv.log
         _len=${#_tests_pow_argv}
         for ((_i=0; _i<${_tests_pow_argv}; _i++)); do
-            [ -n "${test_pow_argv[$_i]}" ] && {
+            [ -n "${cmd_pow_argv[$_i]}" ] && {
                 rm --force $_logfile
-                ${test_pow_argv[$_i]} > $_logfile 2>&1
+                ${cmd_pow_argv[$_i]} > $_logfile 2>&1
                 _rc=$?
                 printf "POW_ARGV/%*d: rc=%d/%d\n" ${_len} $_i $_rc ${rc_pow_argv[$_i]}
                 _log=$(< $_logfile)
