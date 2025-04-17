@@ -7,8 +7,8 @@
 
 source $POW_DIR_ROOT/lib/libenv.sh || exit ${ERROR_CODE:-3}
 
-bash_args \
-    --args_p '
+pow_argv \
+    --args_n '
         filter:filtre (REGEX) des scripts à exécuter;
         check:contrôle installation
     ' \
@@ -21,7 +21,7 @@ bash_args \
     "$@" || exit $?
 
     # check installation
-[ "$get_arg_check" = yes ] && {
+[ "${POW_ARGV[CHECK]}" = yes ] && {
     expect env POW_DIR_ROOT && {
         [ -d "$POW_DIR_ROOT" ] || {
             echo "manque dossier $POW_DIR_ROOT"
@@ -50,8 +50,8 @@ bash_args \
 
     # execute scripts
 for _script in $POW_DIR_ROOT/bin/admin/install.d/*; do
-    [ -n "$get_arg_filter" ] &&
-    [[ ! $_script =~ $get_arg_filter ]] &&
+    [ -n "${POW_ARGV[FILTER]}" ] &&
+    [[ ! $_script =~ ${POW_ARGV[FILTER]} ]] &&
     continue
 
     # execute it
