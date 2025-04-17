@@ -685,8 +685,10 @@ pow_argv() {
         *)
             # with defined check ?
             [ -z "${_args_v_kv[$_key]}" ] || {
-                IFS='|' read -ra _among_values <<< "${_args_v_kv[$_key]}"
+                # no value
+                [ -z "${_argv[$_key]}" ] && [ "${_args_n_a[$_key]}" = 0N ] && continue
 
+                IFS='|' read -ra _among_values <<< "${_args_v_kv[$_key]}"
                 # special case: all requested
                 [ "${_argv[$_key]^^}" == ALL ] && _argv[$_key]="${_among_values[@]}"
 
@@ -756,12 +758,8 @@ pow_argv() {
                 # default ([01]N) one uniq value, eventually none (0N)
                 *)
                     _error="$_key: Valeur unique attendue"
-                    local _min=${_args_n_a[$_key]:0:1} _max=1
-                    # due to other tags, different from among list  (as bool, ...)
-                    ([[ $_min == 0 ]] || [[ $_min == 1 ]]) || _min=1
-                    [[ ${#_verify_values[@]} -ge ${_min:-1} ]] &&
-                    [[ ${#_verify_values[@]} -le $_max ]] &&
-                    (([[ $_min == 1 ]] && [[ ${_verify_values[${_keys[0]}]} == 1 ]]) || [[ $_min == 0 ]])
+                    [[ ${#_verify_values[@]} -eq 1 ]] &&
+                    [[ ${_verify_values[${_keys[0]}]} == 1 ]]
                     ;;
                 esac &&
                 # check each value belongs to defined list
