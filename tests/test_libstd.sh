@@ -126,16 +126,20 @@ declare -a cmd_pow_argv=(
     # (ALL, -) syntax
     [25]="t_pow_argv_3 --args_p TAG:k@X+N --k ALL"
     [26]="t_pow_argv_3 --args_p TAG:k@X+N --k -TWO"
+    # bool w/ value
+    [27]="t_pow_argv_1 --args_p TAG:optional_w_d@bool --mandatory M --optional_w_d no"
 )
 _tests_pow_argv=${#cmd_pow_argv[@]}
 # return code
 declare -a rc_pow_argv=()
 # waiting success
-for ((_i=0; _i<${_tests_pow_argv}; _i++)); do
+for ((_i=1; _i<${_tests_pow_argv}; _i++)); do
     rc_pow_argv[$_i]=$SUCCESS_CODE
 done
+# waiting warning
+rc_pow_argv[0]=$WARNING_CODE
 # waiting error
-for _i in 0 1 9 11 $(seq 21 24); do
+for _i in 1 9 11 $(seq 21 24); do
     rc_pow_argv[$_i]=$ERROR_CODE
 done
 # assert conditions
@@ -160,6 +164,7 @@ declare -a assert_pow_argv=(
     [20]='[ "${POW_ARGV[K]}" = '"'"'ONE TWO TWO'"'"' ]'
     [25]='[ "${POW_ARGV[K]}" = '"'"'ONE TWO THREE'"'"' ]'
     [26]='[ "${POW_ARGV[K]}" = '"'"'ONE THREE'"'"' ]'
+    [27]='[ "${POW_ARGV[OPTIONAL_W_D]}" = no ]'
 )
 # no condition (when error waited)
 for ((_i=0; _i<${_tests_pow_argv}; _i++)); do
@@ -213,7 +218,7 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
                 _rc=$?
                 printf "POW_ARGV/%*d: rc=%d/%d\n" ${_len} $_i $_rc ${rc_pow_argv[$_i]}
                 _log=$(< $_logfile)
-                [[ $_i -gt 24 ]] && {
+                [[ $_i -gt 26 ]] && {
                     declare -p POW_ARGV POW_ARGC
                     [ -n "$_log" ] && echo "log=$_log"
                 }

@@ -107,7 +107,8 @@ pow_argv \
         verbose:no
     ' \
     --args_p '
-        RESET:no
+        reset:no;
+        tag:select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,dry_run@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,limit@int,parallel_chunk@int
     ' \
     --pow_argv bal_vars "$@" || exit $?
 

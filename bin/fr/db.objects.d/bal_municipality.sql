@@ -37,6 +37,7 @@ $proc$ LANGUAGE plpgsql;
 -- delete obsolete addresses, dealing w/ dependencies
 SELECT public.drop_all_functions_if_exists('fr', 'bal_delete_obsolete_addresses');
 CREATE OR REPLACE FUNCTION fr.bal_delete_obsolete_addresses(
+    municipality IN VARCHAR,
     list IN VARCHAR,
     simulation IN BOOLEAN DEFAULT FALSE,
     counters OUT INT[]
@@ -47,7 +48,6 @@ DECLARE
     _queries        TEXT[];
     _code           VARCHAR;
     _level          VARCHAR;
-    _municipality   VARCHAR;
     _i              INT;
     _nrows          INT;
 BEGIN
@@ -65,10 +65,8 @@ BEGIN
     IF _level = 'UNKNOWN' THEN
         RAISE 'typologie des codes non reconnue (%)', _code;
     END IF;
-    -- careful w/ Corse 2[AB] !
-    _municipality := UPPER((REGEXP_MATCH(_code, '^([^_]{5})'))[1]);
     IF simulation THEN
-        RAISE NOTICE 'level=% municipality=%', _level, _municipality;
+        RAISE NOTICE 'level=% municipality=%', _level, municipality;
     END IF;
 
     _queries := ARRAY_FILL(NULL::TEXT, ARRAY[3]);
@@ -148,7 +146,7 @@ BEGIN
             RAISE NOTICE '%: query=%', _i, _queries[_i];
         ELSE
             EXECUTE _queries[_i]
-                USING list::VARCHAR[], _municipality
+                USING list::VARCHAR[], municipality
                 ;
             GET DIAGNOSTICS _nrows = ROW_COUNT;
             counters[_i] := _nrows;

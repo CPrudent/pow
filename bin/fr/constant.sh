@@ -10,24 +10,32 @@
     #       FR-CONSTANT-ADDRESS-FAULT
 
 on_integration_error() {
-    bash_args \
-        --args_p "
+    local -A _opts &&
+    pow_argv \
+        --args_n "
             id:ID historique en cours
         " \
-        --args_o '
+        --args_m '
             id
         ' \
-        "$@" || return $?
+        --pow_argv _opts "$@" || return $?
 
     # history created?
-    [ "$POW_DEBUG" = yes ] && { echo "id=$get_arg_id"; }
-    [ -n "$get_arg_id" ] && io_history_end_ko --id $get_arg_id
+    [ "$POW_DEBUG" = yes ] && { echo "id=${_opts[ID]}"; }
+    [ -n "${_opts[ID]}" ] && io_history_end_ko --id ${_opts[ID]}
 
     return $ERROR_CODE
 }
 
-bash_args \
-    --args_p '
+declare -A io_vars=(
+    [NAME]=FR-CONSTANT
+    [INFO]='Mise à jour des constantes (FR)'
+    [DATE]=$(date '+%F')
+    [ID_MAIN]=
+    [ID_STEP]=
+) &&
+pow_argv \
+    --args_n '
         force:Forcer le traitement même si celui-ci a déjà été fait
     ' \
     --args_v '
@@ -36,26 +44,25 @@ bash_args \
     --args_d '
         force:no
     ' \
-    "$@" || exit $?
+    --args_p '
+        reset:no;
+        tag:force@bool
+    ' \
+    --pow_argv io_vars "$@" || exit $?
 
-io_name=FR-CONSTANT
-io_info='Mise à jour des constantes (FR)'
-io_date=$(date +%F)
-io_force=$get_arg_force
-declare -A io_hash
-
+declare -A io_hash &&
 set_env --schema_name fr &&
-io_get_info_integration --io $io_name --to_hash io_hash || exit $ERROR_CODE
+io_get_info_integration --io ${io_vars[NAME]} --to_hash io_hash || exit $ERROR_CODE
 
-([ "$io_force" = no ] && (! is_yes --var io_hash[TODO])) && {
-    log_info "IO '$io_name' déjà à jour!"
+([ "${io_vars[FORCE]}" = no ] && (! is_yes --var io_hash[TODO])) && {
+    log_info "IO '${io_vars[NAME]}' déjà à jour!"
     exit $SUCCESS_CODE
 } || {
     # already done or in progress ?
     io_todo_import \
-        --force $io_force \
-        --io $io_name \
-        --date_end "$io_date"
+        --force ${io_vars[FORCE]} \
+        --io ${io_vars[NAME]} \
+        --date_end "${io_vars[DATE]}"
     case $? in
     $POW_IO_SUCCESSFUL)
         exit $SUCCESS_CODE
@@ -66,12 +73,12 @@ io_get_info_integration --io $io_name --to_hash io_hash || exit $ERROR_CODE
     esac
 }
 
-log_info "$io_info" &&
+log_info "${io_vars[INFO]}" &&
 io_history_begin \
-    --io $io_name \
-    --date_begin "$io_date" \
-    --date_end "$io_date" \
-    --id io_main_id && {
+    --io ${io_vars[NAME]} \
+    --date_begin "${io_vars[DATE]}" \
+    --date_end "${io_vars[DATE]}" \
+    --id io_vars[ID_MAIN] && {
 
     io_steps=(${io_hash[DEPENDS]//:/ })
     io_ids=()
@@ -83,14 +90,14 @@ io_history_begin \
         # last id
         io_ids[$io_step]=${io_hash[${io_steps[$io_step]}_i]}
         # step todo or force it ?
-        ([ "$io_force" = no ] && (! is_yes --var io_hash[${_step}_t])) || {
+        ([ "${io_vars[FORCE]}" = no ] && (! is_yes --var io_hash[${_step}_t])) || {
             #breakpoint "${io_steps[$io_step]}: io begin"
             io_history_begin \
                 --io ${io_steps[$io_step]} \
-                --date_begin "$io_date" \
-                --date_end "$io_date" \
+                --date_begin "${io_vars[DATE]}" \
+                --date_end "${io_vars[DATE]}" \
                 --nrows_todo ${io_counts[$io_step]:-1} \
-                --id io_step_id && {
+                --id io_vars[ID_STEP] && {
                 case ${io_steps[$io_step]} in
                 FR-CONSTANT-ADDRESS)
                     io_count="
@@ -121,9 +128,9 @@ io_history_begin \
             io_history_end_ok \
                 --nrows_processed "($io_count)" \
                 --infos "$_ids" \
-                --id $io_step_id &&
-            io_ids[$io_step]=$io_step_id || {
-                on_integration_error --id $io_step_id
+                --id ${io_vars[ID_STEP]} &&
+            io_ids[$io_step]=${io_vars[ID_STEP]} || {
+                on_integration_error --id ${io_vars[ID_STEP]}
                 io_error=1
                 break
             }
@@ -139,15 +146,15 @@ io_history_begin \
     io_history_end_ok \
         --nrows_processed 1 \
         --infos "$_ids" \
-        --id $io_main_id
+        --id ${io_vars[ID_MAIN]}
 } &&
 vacuum \
     --schema_name fr \
     --table_name constant,laposte_address_street_uniq,laposte_address_street_word_descriptor,laposte_address_keyword,laposte_address_street_kw_exception,laposte_address_fault_street \
     --mode ANALYZE || {
-    on_integration_error --id $io_main_id
+    on_integration_error --id ${io_vars[ID_MAIN]}
     exit $ERROR_CODE
 }
 
-log_info "$io_info avec succès"
+log_info "${io_vars[INFO]} avec succès"
 exit $SUCCESS_CODE

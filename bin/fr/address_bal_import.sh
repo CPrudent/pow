@@ -337,7 +337,7 @@ bal_import_file() {
         ' \
         --pow_argv _opts "$@" || return $?
 
-    local _try _ext _rc _file="${_opts[SOURCE]}/${bal_vars[FILE_NAME]}" _tmpfile _nrows
+    local _try _ext _rc _file="${_opts[SOURCE]}/${bal_vars[FILE_NAME]}" _tmpfile _sz
 
     for ((_try=0; _try<2; _try++)); do
         case $_try in
@@ -351,12 +351,10 @@ bal_import_file() {
             _ext=$(get_file_extension --file_path "$_file")
             [ "$_ext" != json ] && return $ERROR_CODE
             # empty file ?
-            get_file_nrows --file_path "$_file" --file_nrows _nrows --stdout no &&
-            {
-                [[ $_nrows -gt 0 ]] || {
-                    log_info "Fichier ${bal_vars[FILE_NAME]} vide!"
-                    return $SUCCESS_CODE
-                }
+            _sz=$(stat --format '%s' "$_file")
+            [[ $_sz -gt 0 ]] || {
+                log_info "Fichier ${bal_vars[FILE_NAME]} vide!"
+                return $ERROR_CODE
             }
             get_tmp_file --tmpfile _tmpfile --tmpext json
             grep --perl-regexp ':"[^"]*"[^"]+"[^"]*",?' $_file > /dev/null
@@ -533,7 +531,7 @@ bal_load_addresses() {
                         -exec basename --suffix .json {} \;)) &&
                     {
                         [[ ${#_deletes[@]} -eq 0 ]] || {
-                            log_info "Liste Adresse(s) avec fichier vide (${_deletes[@]})" &&
+                            log_info 'Liste Adresse(s) avec fichier vide ('"${_deletes[@]}"')' &&
                             for _code in "${_deletes[@]}"; do
                                 # lower INSEE but not others (street, housenumber)
                                 #_del=${_code%%_*}
@@ -541,6 +539,7 @@ bal_load_addresses() {
                                 #_addresses=("${_addresses[@]/$_del}")
 
                                 _addresses=("${_addresses[@]/$_code}")
+                                rm --force "${_dir_common}/$_code".json
                             done
                         }
                     } &&
@@ -654,16 +653,17 @@ bal_deal_obsolescence() {
     {
         [ -z "$_obsolete" ] || {
             _label1=DELETE
-            log_info "liste ${_info} obsolètes: ($_obsolete)" &&
+            log_info "Liste ${_info} obsolètes: ($_obsolete)" &&
             execute_query \
                 --name "BAL_${_label1}_OBSOLETE_${_label2}" \
                 --query "
                     SELECT counters FROM fr.bal_delete_obsolete_addresses(
+                        municipality => '${bal_vars[MUNICIPALITY_CODE]}',
                         list => '$_obsolete'
                     )
                 " \
                 --return _counters &&
-            log_info "effacement {Commune,Voie,Numéro}: ${_counters}"
+            log_info "Effacement {Commune,Voie,Numéro}: ${_counters}"
         }
     } || return $ERROR_CODE
 
@@ -1292,7 +1292,7 @@ pow_argv \
         select_order:ASC|DESC;
         force:yes|no;
         force_load:yes|no;
-        fix:NONE|SPACE_IN_CODE|CONVERT_ATTRIBUTES|MORE_ATTRIBUTES;
+        fix:SPACE_IN_CODE|CONVERT_ATTRIBUTES|MORE_ATTRIBUTES;
         levels:MSN|MS|N;
         dry_run:yes|no;
         progress:yes|no;
@@ -1305,7 +1305,6 @@ pow_argv \
         select_order:DESC;
         force:no;
         force_load:yes;
-        fix:NONE;
         levels:MS;
         dry_run:no;
         limit:3;
@@ -1316,14 +1315,14 @@ pow_argv \
         verbose:no
     ' \
     --args_p '
-        reset:no
+        reset:no;
+        tag:select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,force_load@bool,dry_run@bool,progress@bool,parallel@bool,clean@bool,verbose@bool
     ' \
     --pow_argv bal_vars "$@" || exit $?
 
 bal_vars[MUNICIPALITY_CODE]="${bal_vars[MUNICIPALITY]^^}"
 declare -a bal_codes=()
 bal_start=$(date '+%s')
-[ "${bal_vars[FIX]}" = NONE ] && bal_vars[FIX]=
 # reset LIMIT if STOP_TIME
 [ "${bal_vars[STOP_TIME]}" != 0 ] && [ ${bal_vars[LIMIT]} -gt 0 ] && bal_vars[LIMIT]=0
 # with level(s)
