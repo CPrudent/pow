@@ -670,16 +670,20 @@ pow_argv() {
     for _key in ${!_args_n_kv[@]}; do
         case "${_args_n_a[$_key]}" in
         INT)
-            [[ ${_argv[$_key]} =~ ^[0-9]+$ ]] || {
-                _error="$_key: La valeur (${_argv[$_key]}) n'est pas un nombre entier"
-                false
+            [ -z "${_argv[$_key]}" ] || {
+                [[ ${_argv[$_key]} =~ ^[0-9]+$ ]] || {
+                    _error="$_key: La valeur (${_argv[$_key]}) n'est pas un nombre entier"
+                    false
+                }
             }
             ;;
         FLOAT)
-            # https://stackoverflow.com/questions/12643009/regular-expression-for-floating-point-numbers
-            [[ ${_argv[$_key]} =~ ^[+-]?([0-9]*[.])?[0-9]+$ ]] || {
-                _error="$_key: La valeur (${_argv[$_key]}) n'est pas un nombre flottant"
-                false
+            [ -z "${_argv[$_key]}" ] || {
+                # https://stackoverflow.com/questions/12643009/regular-expression-for-floating-point-numbers
+                [[ ${_argv[$_key]} =~ ^[+-]?([0-9]*[.])?[0-9]+$ ]] || {
+                    _error="$_key: La valeur (${_argv[$_key]}) n'est pas un nombre flottant"
+                    false
+                }
             }
             ;;
         *)
