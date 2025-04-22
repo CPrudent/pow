@@ -205,7 +205,7 @@ io_steps=(${io_hash[RESSOURCES]//:/ })
                         FROM fr.municipality_altitude
                         WHERE z_min IS NOT NULL AND z_max IS NOT NULL
                         " &&
-                        $POW_DIR_BATCH/territory_altitude.sh --reset_municipality yes
+                        $POW_DIR_BATCH/territory_altitude.sh --reset
                     ;;
                 esac
             } &&

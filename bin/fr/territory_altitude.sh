@@ -48,21 +48,23 @@ TERRITORY_EVENT_CODE_AFTER=$((_k++))
 TERRITORY_EVENT_NAME_AFTER=$((_k++))
 
 altitude_log_info() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             step:Etape du traitement (0 étant la première itération);
             source:Source des Données
         ' \
-        --args_o '
+        --args_m '
             step;
             source
         ' \
-        "$@" || return $?
+        --pow_argv _opts "$@" || return $?
 
     local _info='Téléchargement '
-    [ $get_arg_step -eq 0 ] && _info+='de base' || _info='en complément'
+
+    [ ${_opts[STEP]} -eq 0 ] && _info+='de base' || _info='en complément'
     _info+=' (à partir de '
-    case $get_arg_source in
+    case ${_opts[SOURCE]} in
     $ALTITUDE_SOURCE_WIKIPEDIA)
         _info+='WIKIPEDIA'
         ;;
@@ -73,6 +75,7 @@ altitude_log_info() {
         _info+='CARTESFRANCE'
         ;;
     *)
+        log_error "source ${_opts[SOURCE]} non valide!"
         return $ERROR_CODE
         ;;
     esac
@@ -84,19 +87,21 @@ altitude_log_info() {
 
 # initiate list of municipalities (according w/ step) : 1st=all, 2nd=only missing (or error)
 altitude_set_list() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             step:Etape du traitement (0 étant la première itération);
             list:Ensemble des communes à traiter
         ' \
-        --args_o '
+        --args_m '
             step;
             list
         ' \
-        "$@" || return $?
+        --pow_argv _opts "$@" || return $?
 
     local _where
-    [ $get_arg_step -eq 0 ] && _where='NOT done' || _where='(z_min IS NULL OR z_max IS NULL OR z_max < z_min)'
+
+    [ ${_opts[STEP]} -eq 0 ] && _where='NOT done' || _where='(z_min IS NULL OR z_max IS NULL OR z_max < z_min)'
 
     execute_query \
         --name TODO_MUNICIPALITY_ALTITUDE \
@@ -137,28 +142,29 @@ altitude_set_list() {
                     $_where
             ) TO STDOUT WITH (DELIMITER E':', FORMAT CSV, HEADER FALSE, ENCODING UTF8)
         " \
-        --output $get_arg_list || return $ERROR_CODE
+        --output ${_opts[LIST]} || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
 
 altitude_set_cache() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             source:Source des Données;
             cache:Dossier du cache;
             tmpfile:Fichier temporaire de travail
         ' \
-        --args_o '
+        --args_m '
             source;
             cache
         ' \
-        "$@" || return $?
+        --pow_argv _opts "$@" || return $?
 
-    local -n _dir_cache_ref=$get_arg_cache
-    local -n _file_tr_ref=$get_arg_tmpfile
+    local -n _dir_cache_ref=${_opts[CACHE]}
+    local -n _file_tr_ref=${_opts[TMPFILE]}
 
-    case $get_arg_source in
+    case ${_opts[SOURCE]} in
     $ALTITUDE_SOURCE_WIKIPEDIA)
         # temporary transformed Wikipedia downloaded file
         get_tmp_file --tmpext html --tmpfile _file_tr_ref
@@ -171,6 +177,7 @@ altitude_set_cache() {
         _dir_cache_ref=cartesfrance
         ;;
     *)
+        log_error "source ${_opts[SOURCE]} non valide!"
         return $ERROR_CODE
         ;;
     esac
@@ -180,25 +187,26 @@ altitude_set_cache() {
 }
 
 altitude_set_url() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             source:Source des Données;
             territory_data:Tableau des données de la commune;
             url:URL à interroger
         ' \
-        --args_o '
+        --args_m '
             source;
             url
         ' \
-        "$@" || return $?
+        --pow_argv _opts "$@" || return $?
 
-    local -n _territory_data_ref=$get_arg_territory_data
-    local -n _url_ref=$get_arg_url
-    local _url_site _url_page
+    local -n _territory_data_ref=${_opts[TERRITORY_DATA]}
+    local -n _url_ref=${_opts[URL]}
+    local _url_site _url_page _error
 
     # exceptions :
         # no altitude for Polynésie française (987*)
-    case $get_arg_source in
+    case ${_opts[SOURCE]} in
     $ALTITUDE_SOURCE_WIKIPEDIA)
         # exceptions :
             # namesake! ex: Devoluy, need suffix _(commune) to access it
@@ -210,8 +218,8 @@ altitude_set_url() {
         _url_page=${_url_page// /_}
         ;;
     $ALTITUDE_SOURCE_LALTITUDE)
-        log_error 'non implémenté!'
-        return $ERROR_CODE
+        _error="source ${_opts[SOURCE]} non implémentée!"
+        false
         ;;
     $ALTITUDE_SOURCE_CARTESFRANCE)
         # exceptions :
@@ -231,9 +239,13 @@ altitude_set_url() {
         _url_site='https://www.cartesfrance.fr/carte-france-ville'
         ;;
     *)
-        return $ERROR_CODE
+        _error="source ${_opts[SOURCE]} non valide!"
+        false
         ;;
-    esac
+    esac || {
+        [ -n "$_error" ] && log_error "$_error"
+        return $ERROR_CODE
+    }
 
     # encode URL (see: https://stackoverflow.com/questions/296536/how-to-urlencode-data-for-curl-command)
     # don't work on CARTESFRANCE!
@@ -286,45 +298,52 @@ altitude_set_exceptions() {
 
 # get (min, max) values from downloaded HTML
 altitude_set_values() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             source:Source des Données;
             file_path:Contenu de la commune;
             tmpfile:Fichier temporaire de transformation;
             min:Altitude minimum;
             max:Altitude maximum
         ' \
-        --args_o '
+        --args_m '
             source;
             file_path;
             min;
             max
         ' \
-        "$@" || return $?
+        --pow_argv _opts "$@" || return $?
 
-    local -n _min_ref=$get_arg_min
-    local -n _max_ref=$get_arg_max
+    local -n _min_ref=${_opts[MIN]}
+    local -n _max_ref=${_opts[MAX]}
+    local _error
 
     # negative altitude (min) : re w/ minus
-    case $get_arg_source in
+    case ${_opts[SOURCE]} in
     $ALTITUDE_SOURCE_WIKIPEDIA)
         # duplicate altitude, ie Condé-sur-Vire : max-count 1
-        sed --expression 's/&#[0-9]*;//g' "$get_arg_file_path" > $get_arg_tmpfile
-        _min_ref=$(grep --only-matching --perl-regexp 'Min\.[ ]*[0-9 -]*' --max-count 1 $get_arg_tmpfile | grep --only-matching --perl-regexp '[0-9 -]*')
-        _max_ref=$(grep --only-matching --perl-regexp 'Max\.[ ]*[0-9 -]*' --max-count 1 $get_arg_tmpfile | grep --only-matching --perl-regexp '[0-9 -]*')
+        sed --expression 's/&#[0-9]*;//g' "${_opts[FILE_PATH]}" > ${_opts[TMPFILE]}
+        _min_ref=$(grep --only-matching --perl-regexp 'Min\.[ ]*[0-9 -]*' --max-count 1 ${_opts[TMPFILE]} | grep --only-matching --perl-regexp '[0-9 -]*')
+        _max_ref=$(grep --only-matching --perl-regexp 'Max\.[ ]*[0-9 -]*' --max-count 1 ${_opts[TMPFILE]} | grep --only-matching --perl-regexp '[0-9 -]*')
         ;;
     $ALTITUDE_SOURCE_LALTITUDE)
-        log_error 'non implémenté!'
-        return $ERROR_CODE
+        _error="source ${_opts[SOURCE]} non implémentée!"
+        false
         ;;
     $ALTITUDE_SOURCE_CARTESFRANCE)
-        _min_ref=$(sed --silent '/Altitude minimum/,/align/p' "$get_arg_file_path" | grep --only-matching --perl-regexp '<td>[0-9 -]*' | grep --only-matching --perl-regexp '[0-9 -]*')
-        _max_ref=$(sed --silent '/Altitude maximum/,/align/p' "$get_arg_file_path" | grep --only-matching --perl-regexp '<td>[0-9 -]*' | grep --only-matching --perl-regexp '[0-9 -]*')
+        _min_ref=$(sed --silent '/Altitude minimum/,/align/p' "${_opts[FILE_PATH]}" | grep --only-matching --perl-regexp '<td>[0-9 -]*' | grep --only-matching --perl-regexp '[0-9 -]*')
+        _max_ref=$(sed --silent '/Altitude maximum/,/align/p' "${_opts[FILE_PATH]}" | grep --only-matching --perl-regexp '<td>[0-9 -]*' | grep --only-matching --perl-regexp '[0-9 -]*')
         ;;
     *)
-        return $ERROR_CODE
+        _error="source ${_opts[SOURCE]} non valide!"
+        false
         ;;
-    esac
+    esac || {
+        [ -n "$_error" ] && log_error "$_error"
+        return $ERROR_CODE
+    }
+
     # delete potential space
     _min_ref=${_min_ref// }
     _max_ref=${_max_ref// }
@@ -333,12 +352,12 @@ altitude_set_values() {
 }
 
 # main
-bash_args \
-    --args_p '
+pow_argv \
+    --args_n '
         force_list:Lister les communes même si elles possèdent déjà des altitudes;
         force_public:Forcer la mise à jour des altitudes, même si données incomplètes;
         use_cache:Utiliser les données présentes dans le cache;
-        reset_municipality:Effacer la table de préparation;
+        reset:Effacer la table de préparation;
         except_municipality:RE pour écarter certaines communes;
         only_municipality:RE pour traiter certaines communes;
         from_date:Prise en compte des fusions de communes à partir de cette date
@@ -348,25 +367,24 @@ bash_args \
         force_list:yes|no;
         force_public:yes|no;
         use_cache:yes|no;
-        reset_municipality:yes|no
+        reset:yes|no
     ' \
     --args_d '
+        from_date:2009-01-01;
         force_list:no;
         force_public:no;
         use_cache:yes;
-        from_date:2009-01-01;
-        reset_municipality:no
+        reset:no
+    ' \
+    --args_p '
+        tag:force_list@bool,force_public:@bool,use_cache@bool,reset@bool
     ' \
     "$@" || exit $?
 
-# TODO be careful w/ name of option, because general variable (get_arg_*) can be changed
-#      by another call of bash_args !
-#      get_arg_reset also used by set_env_pg()
-
-[ "$get_arg_force_list" = no ] && _where='(t.z_min IS NULL OR t.z_max IS NULL OR t.z_max < t.z_min)' || _where=''
+[ "${POW_ARGV[FORCE_LIST]}" = no ] && _where='(t.z_min IS NULL OR t.z_max IS NULL OR t.z_max < t.z_min)' || _where=''
 set_env --schema_name fr &&
 log_info 'Mise à jour des données Altitude (min, max) des Communes' && {
-    [ "$get_arg_reset_municipality" = yes ] && {
+    [ "${POW_ARGV[RESET]}" = yes ] && {
         execute_query \
             --name RESET_MUNICIPALITY_ALTITUDE \
             --query "DROP TABLE IF EXISTS fr.municipality_altitude"
@@ -436,16 +454,15 @@ execute_query \
             )
         " &&
 altitude_set_exceptions && {
-execute_query \
-    --name COUNT_MUNICIPALITY_ALTITUDE \
-    --query 'SELECT COUNT(1) FROM fr.municipality_altitude' \
-    --psql_arguments 'tuples-only:pset=format=unaligned' \
-    --return _territory_count && {
-        [ ${_territory_count:-0} -eq 0 ] && {
-            log_info 'Mise à jour non nécessaire'
-            exit $SUCCESS_CODE
-        } || true
-    }
+    execute_query \
+        --name COUNT_MUNICIPALITY_ALTITUDE \
+        --query 'SELECT COUNT(1) FROM fr.municipality_altitude' \
+        --return _territory_count && {
+            [ ${_territory_count} -gt 0 ] || {
+                log_info 'Mise à jour Altitude non nécessaire'
+                exit $SUCCESS_CODE
+            }
+        }
 } &&
 _error_complete=0 &&
 _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
@@ -472,9 +489,9 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
             --tmpfile _tmpfile && {
             while IFS=: read -a _territory_data; do
                 # only municipality?
-                [ -n "$get_arg_only_municipality" ] && [[ ! ${_territory_data[$TERRITORY_CODE]} =~ $get_arg_only_municipality ]] && continue
+                [ -n "${POW_ARGV[ONLY_MUNICIPALITY]}" ] && [[ ! ${_territory_data[$TERRITORY_CODE]} =~ ${POW_ARGV[ONLY_MUNICIPALITY]} ]] && continue
                 # except municipality?
-                [ -n "$get_arg_except_municipality" ] && [[ ${_territory_data[$TERRITORY_CODE]} =~ $get_arg_except_municipality ]] && continue
+                [ -n "${POW_ARGV[EXCEPT_MUNICIPALITY]}" ] && [[ ${_territory_data[$TERRITORY_CODE]} =~ ${POW_ARGV[EXCEPT_MUNICIPALITY]} ]] && continue
 
                 _first=1
                 while true; do
@@ -486,7 +503,7 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                     _file=$(basename "$_url")
                     _rc=$?
                     [ "$POW_DEBUG" = yes ] && declare -p _territory_data _url
-                    ([ "$get_arg_use_cache" = no ] || [ ! -s "$_territory_cache/$_file" ]) && {
+                    ([ "${POW_ARGV[USE_CACHE]}" = no ] || [ ! -s "$_territory_cache/$_file" ]) && {
                         curl --fail --output "$_territory_cache/$_file" "$_url"
                         _rc=$?
                     }
@@ -578,7 +595,6 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                                                     AND me.typecom_av = 'COM'
                                                     AND me.typecom_ap = 'COM'
                                         " \
-                                        --psql_arguments 'tuples-only:pset=format=unaligned' \
                                         --output $_tmpfile && {
                                         [ -s $_tmpfile ] && {
                                             [ "$POW_DEBUG" = yes ] && echo 'avec séparation'
@@ -593,10 +609,9 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                                                 --query "
                                                     SELECT * FROM fr.get_municipalities_of_merge(
                                                         municipality_code => '${_territory_data[$TERRITORY_CODE]}'
-                                                        , from_date => '${get_arg_from_date}'
+                                                        , from_date => '${POW_ARGV[FROM_DATE]}'
                                                     )
                                                 " \
-                                                --psql_arguments 'tuples-only:pset=format=unaligned' \
                                                 --output $_tmpfile &&
                                             set +o noglob &&
                                             readarray -t _altitude_code < <(cut --delimiter \| --field 4 $_tmpfile) &&
@@ -708,7 +723,6 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
         execute_query \
             --name IS_KO_MUNICIPALITY_ALTITUDE \
             --query 'SELECT EXISTS(SELECT 1 FROM fr.municipality_altitude WHERE z_min IS NULL OR z_max IS NULL OR z_max < z_min)' \
-            --psql_arguments 'tuples-only:pset=format=unaligned' \
             --return _territory_ko && {
             is_yes --var _territory_ko || break
         } || {
@@ -725,7 +739,7 @@ rm --force $_tmpfile || {
 }
 
 # update territory w/ altitude values (municipality then supra)
-([ "$get_arg_force_public" = no ] && is_yes --var _territory_ko) || {
+([ "${POW_ARGV[FORCE_PUBLIC]}" = no ] && is_yes --var _territory_ko) || {
     execute_query \
         --name SET_TERRITORY_ALTITUDE \
         --query "
