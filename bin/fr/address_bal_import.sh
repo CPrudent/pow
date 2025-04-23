@@ -401,14 +401,15 @@ bal_load_addresses() {
         ' \
         --pow_argv _opts "$@" || return $?
 
-    local _name _query _info _j _rc _field=${_opts[LEVEL]}S _code _len _url _file _dir_common
-    local -a _addresses
-    local -a _deletes
+    local _name _query _info _mask _j _rc _field=${_opts[LEVEL]}S _code _len _url _file
+    local _dir_common _i _count_del
+    local -a _addresses _deletes
 
     _name="BAL_SELECT_${bal_vars[MUNICIPALITY_CODE]}_${_field}" &&
     case "${_opts[LEVEL]}" in
     STREET)
         _info=voies
+        _mask='[^_]*'
         _query="
             SELECT
                 COALESCE(ARRAY_AGG(s.code), '{}'::VARCHAR[]),
@@ -423,6 +424,7 @@ bal_load_addresses() {
         ;;
     HOUSENUMBER)
         _info=numéros
+        _mask='[^_]*_*'
         _query="
             SELECT
                 COALESCE(ARRAY_AGG(n.code), '{}'::VARCHAR[]),
@@ -515,39 +517,74 @@ bal_load_addresses() {
                     # download
                     #+ need to (1) eventually unquote code, and (2) replace space by %20
                     #+ so 2 linked inputs
-                    parallel --jobs 5 \
+                    #
+                    #+ exitval=8 Server issued an error response (when unknown code!)
+                    #+ no && block
+                    #+ 79066 has 2 obsolete streets (B216, nuj9dt) in its JSON (whereas lookup doesn't known these!)
+                    parallel \
+                        --jobs 5 \
+                        --joblog $POW_DIR_ARCHIVE/parallel_${bal_vars[MUNICIPALITY_CODE]}_wget.log \
                         wget --quiet --limit-rate=100k \
                         --output-document="${_dir_common}/{=1 uq() =}.json" \
                         ${bal_vars[URL]}/lookup/'{=2 uq() ; s/ /%20/g =}' \
-                        ::: "${_addresses[@]}" :::+ "${_addresses[@]}" &&
+                        ::: "${_addresses[@]}" :::+ "${_addresses[@]}"
+
                     # due to bug in obsolescence function (INSEE code)?
                     #+ need to delete address w/ empty file (error on 2nd parallel else!)
                     #+ https://stackoverflow.com/questions/16860877/remove-an-element-from-a-bash-array
                     #+ https://stackoverflow.com/questions/35589179/when-to-use-xargs-when-piping
                     #+ https://stackoverflow.com/questions/8296710/how-to-ignore-xargs-commands-if-stdin-input-is-empty
                     _deletes=($(find "${_dir_common}" \
-                        -iname "${bal_vars[MUNICIPALITY_CODE]}_*" \
+                        -iname "${bal_vars[MUNICIPALITY_CODE]}_${_mask}" \
                         -size 0 \
                         -exec basename --suffix .json {} \;)) &&
                     {
                         [[ ${#_deletes[@]} -eq 0 ]] || {
+#                             declare -p _addresses _deletes
+#                             echo ${#_addresses[@]}
+#                             read
+
+                            _count_del=0
                             log_info 'Liste Adresse(s) avec fichier vide ('"${_deletes[@]}"')' &&
                             for _code in "${_deletes[@]}"; do
-                                # lower INSEE but not others (street, housenumber)
-                                #_del=${_code%%_*}
-                                #_del=${_del,,}_${_code#*_}
-                                #_addresses=("${_addresses[@]/$_del}")
+                                # delete item (if exists, not remaining as previous error)
+                                _i=-1
+                                in_array \
+                                    --array _addresses \
+                                    --item "$_code" \
+                                    --position _i &&
+                                # hard: delete subscript
+                                unset '_addresses['$_i']' &&
+                                ((_count_del++))
+                                # soft: always present as subscript!
+                                #_addresses=("${_addresses[@]/$_code}")
 
-                                _addresses=("${_addresses[@]/$_code}")
                                 rm --force "${_dir_common}/$_code".json
-                            done
+                            done &&
+                            {
+                                # check
+                                [[ ${#_addresses[@]} -eq $((${bal_vars[$_field]} - _count_del)) ]] || {
+                                    log_error "purge: ${bal_vars[$_field]}-${_count_del}!=${#_addresses[@]}"
+                                    return $ERROR_CODE
+                                }
+                            } &&
+                            bal_vars[$_field]=${#_addresses[@]}
                         }
                     } &&
+#                     {
+#                         [[ ${#_deletes[@]} -eq 0 ]] || {
+#                             declare -p _addresses _deletes
+#                             echo ${#_addresses[@]}
+#                             read
+#                         }
+#                     } &&
                     # load into db
                     #+ here unquote code only is needed
                     #+ need to protect w/ double quote into values
                     #+ https://stackoverflow.com/questions/15637429/how-to-escape-double-quotes-in-json
-                    parallel --jobs 5 \
+                    parallel \
+                        --jobs 5 \
+                        --joblog $POW_DIR_ARCHIVE/parallel_${bal_vars[MUNICIPALITY_CODE]}_load.log \
                         jq --raw-output --compact-output '.' \
                         "${_dir_common}/{=1 uq() =}.json" ::: "${_addresses[@]}" |
                         sed --expression 's/\\"/\\\\\\"/g' |
