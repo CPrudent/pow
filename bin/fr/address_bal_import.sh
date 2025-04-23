@@ -545,7 +545,7 @@ bal_load_addresses() {
 #                             read
 
                             _count_del=0
-                            log_info 'Liste Adresse(s) avec fichier vide ('"${_deletes[@]}"')' &&
+                            log_info "Liste Adresse(s) avec fichier vide (${_deletes[@]})" &&
                             for _code in "${_deletes[@]}"; do
                                 # delete item (if exists, not remaining as previous error)
                                 _i=-1
@@ -690,7 +690,7 @@ bal_deal_obsolescence() {
     {
         [ -z "$_obsolete" ] || {
             _label1=DELETE
-            log_info "Liste ${_info} obsolètes: ($_obsolete)" &&
+            log_info "Liste ${_info} obsolètes: ${_obsolete}" &&
             execute_query \
                 --name "BAL_${_label1}_OBSOLETE_${_label2}" \
                 --query "
