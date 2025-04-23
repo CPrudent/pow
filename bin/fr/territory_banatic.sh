@@ -11,7 +11,7 @@ on_import_error() {
         --args_n '
             id:ID historique en cours
         ' \
-        --args_o '
+        --args_m '
             id
         ' \
         --pow_argv _opts "$@" || return $?
@@ -55,7 +55,7 @@ if [ -z "${io_vars[YEAR]}" ]; then
 else
     in_array --array years --item "${io_vars[YEAR]}-01-01" --position year_id || {
         log_error "Impossible de trouver le millésime ${io_vars[YEAR]} de ${io_vars[NAME]}, les millésimes disponibles sont ${years[@]}"
-        on_import_error
+        on_import_error --id ${io_vars[ID]}
     }
 fi
 year=$(date -d "${years[$year_id]}" '+%Y')
@@ -79,7 +79,7 @@ $POW_IO_SUCCESSFUL)
     exit $SUCCESS_CODE
     ;;
 $POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
-    on_import_error
+    on_import_error --id ${io_vars[ID]}
     ;;
 esac
 
@@ -167,7 +167,7 @@ io_history_end_ok \
 vacuum \
     --schema_name fr \
     --table_name gouv_epci,gouv_epci_municipality \
-    --mode ANALYZE || on_import_error
+    --mode ANALYZE || on_import_error --id ${io_vars[ID]}
 
 log_info "Import du millésime $year de ${io_vars[NAME]} avec succès"
 exit $SUCCESS_CODE

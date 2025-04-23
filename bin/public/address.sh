@@ -5,8 +5,8 @@
     #--
     # build addresses (for all available countries)
 
-bash_args \
-    --args_p '
+pow_argv \
+    --args_n '
         force:Forcer le traitement même si celui-ci a déjà été fait;
     ' \
     --args_v '
@@ -15,14 +15,15 @@ bash_args \
     --args_d '
         force:no;
     ' \
+    --args_p '
+        tag:force@bool
+    ' \
     "$@" || exit $?
 
-force="$get_arg_force"
 set_env --schema_name public &&
-log_info "Publication des adresses"
-
+log_info "Publication des Adresses" &&
 execute_query \
     --name SET_ADDRESS \
-    --query "SELECT public.set_address('$force'='yes')" || exit $ERROR_CODE
+    --query "SELECT public.set_address('${POW_ARGV[FORCE]}'='yes')" || exit $ERROR_CODE
 
 exit $SUCCESS_CODE

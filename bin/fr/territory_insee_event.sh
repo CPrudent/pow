@@ -5,32 +5,24 @@
     #--
     # import INSEE events of municipality updates (into FR schema)
 
-bash_args \
-    --args_p "
-        force:Forcer l'import même si celui-ci a déjà été fait;
-        year:Importer un millésime spécifique (au format YYYY) au lieu du dernier millésime disponible
-    " \
-    --args_v '
-        force:yes|no
-    ' \
-    --args_d '
-        force:no
-    ' \
-    "$@" || exit $?
-
-io_name=FR-MUNICIPALITY-EVENT-INSEE
-io_force="$get_arg_force"
-# year of municipality events (w/ YYYY format)
-year=
-
 on_import_error() {
-    # import created?
-    [ "$POW_DEBUG" = yes ] && { echo "year_history_id=$year_history_id"; }
-    [ -n "$year_history_id" ] && io_history_end_ko --id $year_history_id
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            id:ID historique en cours
+        ' \
+        --args_m '
+            id
+        ' \
+        --pow_argv _opts "$@" || return $?
+
+    # history created?
+    [ "$POW_DEBUG" = yes ] && { echo "id=${_opts[ID]}"; }
+    [ -n "${_opts[ID]}" ] && io_history_end_ko --id ${_opts[ID]}
 
     # ignoring error if last year already exists
-    if io_history_exists --io $io_name --date_end "${years[$year_id]}"; then
-        if [ -z "$get_arg_year" ]; then
+    if io_history_exists --io ${io_vars[NAME]} --date_end "${years[$year_id]}"; then
+        if [ -z "${io_vars[YEAR]}" ]; then
             log_info "Erreur ignorée car le millésime de l'année courante (${year}) a déjà été importé avec succès"
         else
             log_info "Erreur ignorée car le millésime demandé (${year}) a déjà été importé avec succès"
@@ -42,9 +34,32 @@ on_import_error() {
     exit $ERROR_CODE
 }
 
+declare -A io_vars=(
+    [NAME]=FR-MUNICIPALITY-EVENT-INSEE
+    [ID]=
+) &&
+pow_argv \
+    --args_n "
+        force:Forcer l'import même si celui-ci a déjà été fait;
+        year:Importer un millésime spécifique (au format YYYY) au lieu du dernier millésime disponible
+    " \
+    --args_v '
+        force:yes|no
+    ' \
+    --args_d '
+        force:no
+    ' \
+    --args_p '
+        reset:no;
+        tag:force@bool,year@int
+    ' \
+    --pow_argv io_vars "$@" || exit $?
+
+# year of municipality events (w/ YYYY format)
+year=
 # get years
 io_get_list_online_available \
-    --name $io_name \
+    --name ${io_vars[NAME]} \
     --details_file years_list_path \
     --dates_list years || exit $ERROR_CODE
 [ "$POW_DEBUG" = yes ] && { declare -p years; declare -p years_list_path; }
@@ -85,8 +100,8 @@ year_id=0
 url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/8377162/cog_ensemble_${year}_csv.zip" "$years_list_path")
 [ "$POW_DEBUG" = yes ] && { echo "url=$url_data"; }
 [ -z "$url_data" ] && {
-    log_error "Impossible de trouver URL de $io_name"
-    on_import_error
+    log_error "Impossible de trouver URL de ${io_vars[NAME]}"
+    on_import_error --id ${io_vars[ID]}
 }
 
 url_data="https://www.insee.fr/${url_data}"
@@ -96,29 +111,29 @@ rm --force "$years_list_path"
 
 set_env --schema_name fr &&
 io_todo_import \
-    --force $io_force \
-    --io $io_name \
+    --force ${io_vars[FORCE]} \
+    --io ${io_vars[NAME]} \
     --date_end "${years[$year_id]}"
 case $? in
 $POW_IO_SUCCESSFUL)
     exit $SUCCESS_CODE
     ;;
 $POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
-    on_import_error
+    on_import_error --id ${io_vars[ID]}
     ;;
 esac
 
 # estimate to ~35000 municipalities
-log_info "Import du millésime $year de $io_name" &&
+log_info "Import du millésime $year de ${io_vars[NAME]}" &&
 # execute_query \
-#     --name "DELETE_IO_${io_name}" \
-#     --query "DELETE FROM io_history WHERE name = '${io_name}'" &&
+#     --name "DELETE_IO_${io_vars[NAME]}" \
+#     --query "DELETE FROM io_history WHERE name = '${io_vars[NAME]}'" &&
 io_history_begin \
-    --io $io_name \
+    --io ${io_vars[NAME]} \
     --date_begin "${years[$year_id]}" \
     --date_end "${years[$year_id]}" \
     --nrows_todo 35000 \
-    --id year_history_id &&
+    --id io_vars[ID] &&
 io_download_file \
     --url "$url_data" \
     --overwrite_mode no \
@@ -140,13 +155,13 @@ execute_query \
     --query "$POW_DIR_BATCH/territory_insee_event.sql" &&
 io_history_end_ok \
     --nrows_processed '(SELECT COUNT(*) FROM fr.insee_municipality_event)' \
-    --id $year_history_id &&
+    --id ${io_vars[ID]} &&
 vacuum \
     --schema_name fr \
     --table_name insee_municipality_event \
     --mode ANALYZE &&
 rm --force "$POW_DIR_IMPORT/$year_data" &&
-rm --force --recursive "$POW_DIR_TMP/$year_data" || on_import_error
+rm --force --recursive "$POW_DIR_TMP/$year_data" || on_import_error --id ${io_vars[ID]}
 
-log_info "Import du millésime $year de $io_name avec succès"
+log_info "Import du millésime $year de ${io_vars[NAME]} avec succès"
 exit $SUCCESS_CODE

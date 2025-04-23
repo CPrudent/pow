@@ -11,7 +11,7 @@ on_integration_error() {
         --args_n '
             id:ID historique en cours
         ' \
-        --args_o '
+        --args_m '
             id
         ' \
         --pow_argv _opts "$@" || return $?

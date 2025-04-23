@@ -5,8 +5,41 @@
     #--
     # import INSEE administrative cuttings (into FR schema)
 
-bash_args \
-    --args_p "
+on_import_error() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            id:ID historique en cours
+        ' \
+        --args_m '
+            id
+        ' \
+        --pow_argv _opts "$@" || return $?
+
+    # history created?
+    [ "$POW_DEBUG" = yes ] && { echo "id=${_opts[ID]}"; }
+    [ -n "${_opts[ID]}" ] && io_history_end_ko --id ${_opts[ID]}
+
+    # ignoring error if last year already exists
+    if io_history_exists --io ${io_vars[NAME]} --date_end "${years[$year_id]}"; then
+        if [ -z "${io_vars[YEAR]}" ]; then
+            log_info "Erreur ignorée car le millésime de l'année courante (${year}) a déjà été importé avec succès"
+        else
+            log_info "Erreur ignorée car le millésime demandé (${year}) a déjà été importé avec succès"
+        fi
+        exit $SUCCESS_CODE
+    fi
+
+    log_error "Erreur import du millésime (${year})"
+    exit $ERROR_CODE
+}
+
+declare -A io_vars=(
+    [NAME]=FR-TERRITORY-INSEE
+    [ID]=
+) &&
+pow_argv \
+    --args_n "
         force:Forcer l'import même si celui-ci a déjà été fait;
         year:Importer un millésime spécifique (au format YY ou ALL pour tous) au lieu du dernier millésime disponible;
         load_mode:Mode de chargement des données
@@ -19,73 +52,55 @@ bash_args \
         force:no;
         load_mode:APPEND
     ' \
-    "$@" || exit $?
+    --args_p '
+        reset:no;
+        tag:force@bool,load_mode@1N
+    ' \
+    --pow_argv io_vars "$@" || exit $?
 
-io_name=FR-TERRITORY-INSEE
-io_force=$get_arg_force
-io_load_mode=$get_arg_load_mode
 # year of administrative cutting (w/ YY format)
 year=
-
-on_import_error() {
-    # import created?
-    [ "$POW_DEBUG" = yes ] && { echo "year_history_id=$year_history_id"; }
-    [ -n "$year_history_id" ] && io_history_end_ko --id $year_history_id
-
-    # ignoring error if last year already exists
-    if io_history_exists --io $io_name --date_end "${years[$year_id]}"; then
-        if [ -z "$get_arg_year" ]; then
-            log_info "Erreur ignorée car le millésime de l'année courante (${year}) a déjà été importé avec succès"
-        else
-            log_info "Erreur ignorée car le millésime demandé (${year}) a déjà été importé avec succès"
-        fi
-        exit $SUCCESS_CODE
-    fi
-
-    log_error "Erreur import du millésime (${year})"
-    exit $ERROR_CODE
-}
-
 # get years
 io_get_list_online_available \
-    --name $io_name \
+    --name ${io_vars[NAME]} \
     --details_file years_list_path \
     --dates_list years || exit $ERROR_CODE
 [ "$POW_DEBUG" = yes ] && { declare -p years years_list_path; }
 
 # get year (w/ format YY)
-if [ -z "$get_arg_year" ]; then
+if [ -z "${io_vars[YEAR]}" ]; then
     # get more recent
     year_id=0
-elif [ "$get_arg_year" = ALL ]; then
+elif [ "${io_vars[YEAR]}" = ALL ]; then
     # get all available
-    load_mode_all=$io_load_mode
+    load_mode_all=${io_vars[LOAD_MODE]}
     for _year in ${years[@]}; do
-        _yy=$(date -d _year +%y)
+        # _year w/ format YYYY-01-01
+        _yy=$(date -d $_year +%y)
         $POW_DIR_BATCH/territory_insee_hierarchy.sh \
             --year $_yy \
             --load_mode $load_mode_all \
-            --force $io_force || exit $ERROR_CODE
+            --force ${io_vars[FORCE]} || exit $ERROR_CODE
         load_mode_all=APPEND
     done
     exit $SUCCESS_CODE
 else
-    in_array --array years --item "$(date +%C)${get_arg_year}-01-01" --position year_id || {
-        log_error "Impossible de trouver le millésime $get_arg_year de $io_name, les millésimes disponibles sont ${years[@]}"
-        on_import_error
+    in_array --array years --item "$(date +%C)${io_vars[YEAR]}-01-01" --position year_id || {
+        log_error "Impossible de trouver le millésime ${io_vars[YEAR]} de ${io_vars[NAME]}, les millésimes disponibles sont ${years[@]}"
+        on_import_error --id ${io_vars[ID]}
     }
 fi
 year=$(date -d ${years[$year_id]} +%y)
 [ -z "$year" ] && {
-    log_error "Impossible de trouver le millésime de $io_name"
-    on_import_error
+    log_error "Impossible de trouver le millésime de ${io_vars[NAME]}"
+    on_import_error --id ${io_vars[ID]}
 }
 # up to 2024, year coded on 4 digits
 [ $year -ge 24 ] && year="$(date +%C)$year"
 [ "$POW_DEBUG" = yes ] && { echo "year=$year (${years[$year_id]})"; }
 
 io_get_property_online_available    \
-    --name $io_name                 \
+    --name ${io_vars[NAME]}                 \
     --key URL_BASE                  \
     --value url_base                &&
 url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/7671844/table-appartenance-geo-communes-${year}[^.]*\.zip" "$years_list_path" | head --lines 1) &&
@@ -93,8 +108,8 @@ url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/7671844/
     [ "$POW_DEBUG" = yes ] && { declare -p url_data; } || true
 } &&
 [ -n "$url_data" ] || {
-    log_error "Impossible de trouver URL de $io_name"
-    on_import_error
+    log_error "Impossible de trouver URL de ${io_vars[NAME]}"
+    on_import_error --id ${io_vars[ID]}
 }
 
 url_data="${url_base}/${url_data}"
@@ -105,15 +120,15 @@ rm --force "$years_list_path"
 
 set_env --schema_name fr &&
 io_todo_import \
-    --force $io_force \
-    --io $io_name \
+    --force ${io_vars[FORCE]} \
+    --io ${io_vars[NAME]} \
     --date_end "${years[$year_id]}"
 case $? in
 $POW_IO_SUCCESSFUL)
     exit $SUCCESS_CODE
     ;;
 $POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
-    on_import_error
+    on_import_error --id ${io_vars[ID]}
     ;;
 esac
 
@@ -141,20 +156,20 @@ fi
     echo "line_number_supra=$line_number_supra"
 }
 
-log_info "Import du millésime $year de $io_name" &&
+log_info "Import du millésime $year de ${io_vars[NAME]}" &&
 {
     execute_query \
-        --name "DELETE_IO_${io_name}_${year}" \
+        --name "DELETE_IO_${io_vars[NAME]}_${year}" \
         --query "
             DELETE FROM io_history
-            WHERE name = '${io_name}' AND date_data_begin = '${years[$year_id]}'"
+            WHERE name = '${io_vars[NAME]}' AND date_data_begin = '${years[$year_id]}'"
 } &&
 io_history_begin \
-    --io $io_name \
+    --io ${io_vars[NAME]} \
     --date_begin "${years[$year_id]}" \
     --date_end "${years[$year_id]}" \
     --nrows_todo 35000 \
-    --id year_history_id &&
+    --id io_vars[ID] &&
 io_download_file \
     --url "$url_data" \
     --output_directory "$POW_DIR_IMPORT" &&
@@ -270,12 +285,12 @@ io_history_end_ok \
             (SELECT COUNT(*) FROM fr.insee_supra)
         )
         ' \
-    --id $year_history_id &&
+    --id ${io_vars[ID]} &&
 vacuum \
     --schema_name fr \
     --table_name insee_municipality,insee_supra \
     --mode ANALYZE &&
-rm --force "$year_ressource" || on_import_error
+rm --force "$year_ressource" || on_import_error --id ${io_vars[ID]}
 
-log_info "Import du millésime $year de $io_name avec succès"
+log_info "Import du millésime $year de ${io_vars[NAME]} avec succès"
 exit $SUCCESS_CODE

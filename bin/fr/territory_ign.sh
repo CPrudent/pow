@@ -60,10 +60,33 @@ declare -A _TABLES=(
     [REGION]=region
 )
 
-bash_args \
-    --args_p '
+on_import_error() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            id:ID historique en cours
+        ' \
+        --args_m '
+            id
+        ' \
+        --pow_argv _opts "$@" || return $?
+
+    # history created?
+    [ "$POW_DEBUG" = yes ] && { echo "id=${_opts[ID]}"; }
+    [ -n "${_opts[ID]}" ] && io_history_end_ko --id ${_opts[ID]}
+
+    exit $ERROR_CODE
+}
+
+declare -A io_vars=(
+    [NAME]=FR-TERRITORY-IGN
+    [ID]=
+    [PASSWD]=
+) &&
+pow_argv \
+    --args_n '
         force:Forcer le traitement même si celui-ci a déjà été fait;
-        item:Type d élément a importer;
+        item:Type d élément à importer;
         year:Importer un millésime spécifique (au format YYYY-MM-DD) au lieu du dernier millésime disponible;
         clean:Effacer les résultats intermédiaires
     ' \
@@ -75,62 +98,32 @@ bash_args \
         force:no;
         clean:yes
     ' \
-    "$@" || exit $?
-
-io_name=FR-TERRITORY-IGN
-io_force=$get_arg_force
-io_clean=$get_arg_clean
-io_passwd=
-
-on_import_error() {
-    # import created?
-    [ "$POW_DEBUG" = yes ] && { echo "year_history_id=$year_history_id"; }
-    [ -n "$year_history_id" ] && io_history_end_ko --id $year_history_id
-
-    # not requested, so more recent
-#     if [ -z "$get_arg_year" ]; then
-#         # import OK w/ another (than last one) : reimport it else reimport previous
-#         if [ -n "$_last_io" ] && [ "$_last_io" != "${years[0]}" ]; then
-#             $POW_DIR_BATCH/ign_geometry_territories.sh \
-#                 --force $force \
-#                 --item $get_arg_item \
-#                 --year "$_last_io" &&
-#             exit $SUCCESS_CODE ||
-#             exit $ERROR_CODE
-#         else
-#             $POW_DIR_BATCH/ign_geometry_territories.sh \
-#                 --force $force \
-#                 --item $get_arg_item \
-#                 --year "${years[1]}" &&
-#             exit $SUCCESS_CODE ||
-#             exit $ERROR_CODE
-#         fi
-#     else
-        exit $ERROR_CODE
-#    fi
-}
+    --args_p '
+        reset:no;
+        tag:force@bool,clean@bool,item@0N
+    ' \
+    --pow_argv io_vars "$@" || exit $?
 
 # according command line
-if [ -z "$get_arg_item" ]; then
+if [ -z "${io_vars[ITEM]}" ]; then
     # NOTE: some items seem not useful, and EPCI is taken elsewhere
     declare -a ITEMS=(COMMUNE ARRONDISSEMENT_MUNICIPAL DEPARTEMENT REGION)
 else
-    io_name=FR-TERRITORY-IGN-$get_arg_item
-    declare -a ITEMS=($get_arg_item)
+    io_name=FR-TERRITORY-IGN-${io_vars[ITEM]}
+    declare -a ITEMS=(${io_vars[ITEM]})
 fi
 
 set_env --schema_name fr &&
 # get last import
 execute_query \
-    --name "LAST_IO_${io_name}" \
+    --name "LAST_IO_${io_vars[NAME]}" \
     --query "
         SELECT TO_CHAR(date_data_end, 'YYYY-MM-DD')
-        FROM get_last_io('${io_name}')" \
-    --psql_arguments 'tuples-only:pset=format=unaligned' \
+        FROM get_last_io('${io_vars[NAME]}')" \
     --return _last_io &&
 # get years
 io_get_list_online_available \
-    --name $io_name \
+    --name ${io_vars[NAME]} \
     --details_file years_list_path \
     --dates_list years || {
     [ -n "$_last_io" ] && _rc=$SUCCESS_CODE || _rc=$ERROR_CODE
@@ -139,52 +132,52 @@ io_get_list_online_available \
 [ "$POW_DEBUG" = yes ] && { declare -p years; declare -p years_list_path; }
 
 # get year (w/ format YYYY)
-if [ -z "$get_arg_year" ]; then
+if [ -z "${io_vars[ITEM]}" ]; then
     # get more recent
     year_id=0
 else
-    in_array --array years --item "${get_arg_year}" --position year_id || {
-        log_error "Impossible de trouver le millésime $get_arg_year de $io_name, les millésimes disponibles sont ${years[@]}"
-        on_import_error
+    in_array --array years --item "${io_vars[ITEM]}" --position year_id || {
+        log_error "Impossible de trouver le millésime ${io_vars[ITEM]} de ${io_vars[NAME]}, les millésimes disponibles sont ${years[@]}"
+        on_import_error --id ${io_vars[ID]}
     }
 fi
 year=${years[$year_id]}
 [ -z "$year" ] && {
-    log_error "Impossible de trouver le millésime de $io_name"
-    on_import_error
+    log_error "Impossible de trouver le millésime de ${io_vars[NAME]}"
+    on_import_error --id ${io_vars[ID]}
 }
 [ "$POW_DEBUG" = yes ] && { echo "year=$year (${years[$year_id]})"; }
 
 io_todo_import \
-    --force $io_force \
-    --io $io_name \
+    --force ${io_vars[FORCE]} \
+    --io ${io_vars[NAME]} \
     --date_end "${years[$year_id]}"
 case $? in
 $POW_IO_SUCCESSFUL)
     exit $SUCCESS_CODE
     ;;
 $POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
-    on_import_error
+    on_import_error --id ${io_vars[ID]}
     ;;
 esac
 
-log_info "Import du millésime $year de $io_name" && {
-    get_pg_passwd --user_name $POW_PG_USERNAME --password io_passwd || {
+log_info "Import du millésime $year de ${io_vars[NAME]}" && {
+    get_pg_passwd --user_name $POW_PG_USERNAME --password io_vars[PASSWD] || {
         log_error "Erreur de récupération du mot de passe (user=$POW_PG_USERNAME)"
         false
     }
 } &&
-[ -n "$io_passwd" ] &&
+[ -n "${io_vars[PASSWD]}" ] &&
 # # no history (think about requested item, so REGEX)
 # execute_query \
-#     --name "DELETE_IO_${io_name}" \
-#     --query "DELETE FROM io_history WHERE name ~ '^${io_name}'" &&
+#     --name "DELETE_IO_${io_vars[NAME]}" \
+#     --query "DELETE FROM io_history WHERE name ~ '^${io_vars[NAME]}'" &&
 io_history_begin \
-    --io $io_name \
+    --io ${io_vars[NAME]} \
     --date_begin "${years[$year_id]}" \
     --date_end "${years[$year_id]}" \
     --nrows_todo 35000 \
-    --id year_history_id &&
+    --id io_vars[ID] &&
 {
     # search for ADMIN-EXPRESS_XXX to avoid ADMIN-EXPRESS-COG
     # exclude WGS84 full (from v3.1)
@@ -223,10 +216,10 @@ io_history_begin \
                     import_geo_file \
                         --file_path "$_shapefile_full_path" \
                         --table_name "$_table_name_tmp" \
-                        --password "$io_passwd" \
+                        --password "${io_vars[PASSWD]}" \
                         --geometry_type PROMOTE_TO_MULTI \
                         --load_mode OVERWRITE_TABLE \
-                        --spatial_index no || on_import_error
+                        --spatial_index no || on_import_error --id ${io_vars[ID]}
                     [ -n "$_query_union" ] && _query_union="${_query_union} UNION ALL "
                     _query_union+="(SELECT * FROM fr.${_table_name_tmp})"
                     _query_drop+="DROP TABLE fr.${_table_name_tmp};"
@@ -264,12 +257,12 @@ io_history_begin \
                         set +o noglob
                     fi
                 } && {
-                    if ([ "$io_clean" = yes ] && [ -n "$_query_drop" ]); then
+                    if ([ "${io_vars[CLEAN]}" = yes ] && [ -n "$_query_drop" ]); then
                         execute_query \
                             --name "DROP_TMP_${_table_name}" \
                             --query "$_query_drop"
                     fi
-                } || on_import_error
+                } || on_import_error --id ${io_vars[ID]}
             done
         } &&
         rm --recursive "$POW_DIR_TMP/$year_data" &&
@@ -306,7 +299,7 @@ io_history_begin \
                     --query "
                         UPDATE fr.${_table_name}
                         SET siren_epci = '200054781'
-                        WHERE POSITION('200054781/' IN siren_epci) > 0" || on_import_error
+                        WHERE POSITION('200054781/' IN siren_epci) > 0" || on_import_error --id ${io_vars[ID]}
                 ;;
             COMMUNE_ASSOCIEE_OU_DELEGUEE)
                 _key_idx=insee_cad
@@ -335,7 +328,7 @@ io_history_begin \
                     --name CREATE_UNIQUE_INDEX \
                     --query "
                         CREATE UNIQUE INDEX ON fr.${_table_name}($_key_idx)
-                        " || on_import_error
+                        " || on_import_error --id ${io_vars[ID]}
             fi
         } &&
         vacuum \
@@ -352,7 +345,7 @@ rm --force "$years_list_path" &&
 set -o noglob &&
 io_history_end_ok \
     --nrows_processed "($_query_count)" \
-    --id $year_history_id || on_import_error
+    --id ${io_vars[ID]} || on_import_error --id ${io_vars[ID]}
 
-log_info "Import du millésime $year de $io_name avec succès"
+log_info "Import du millésime $year de ${io_vars[NAME]} avec succès"
 exit $SUCCESS_CODE
