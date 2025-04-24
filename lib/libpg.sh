@@ -29,6 +29,9 @@ execute_query() {
             with_log:yes;
             temporary:USER
         ' \
+        --args_p '
+            tag:with_log@bool,temporary@1N
+        ' \
         --pow_argv _opts "$@" || return $?
 
     local _start=$(date +%s) _info _rc _last _i _error
@@ -263,6 +266,9 @@ vacuum() {
             mode:ANALYZE;
             dry_run:no
         ' \
+        --args_p '
+            tag:mode@1N,dry_run@bool
+        ' \
         --pow_argv _opts "$@" || return $?
 
     if [ -z "${_opts[MODE]}" ]; then
@@ -415,18 +421,21 @@ backup_table() {
         ' \
         --args_v '
             format:custom|plain|directory|tar;
-            sections:pre-data+data+post-data|pre-data|data|post-data|data+post-data
+            sections:pre-data|data|post-data
         ' \
         --args_d '
             output:STDOUT;
             format:custom;
-            sections:pre-data+data+post-data
+            sections:pre-data data post-data
+        ' \
+        --args_p '
+            tag:format@1N,sections@XN
         ' \
         --pow_argv _opts "$@" || return $?
 
     local _backup_label="${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]}"
     local _backup_log=${POW_DIR_ARCHIVE}/pg_dump_${_backup_label}.log
-    local _backup_sections=(${_opts[SECTIONS]//+/ }) _backup_section
+    local _backup_sections=(${_opts[SECTIONS]}) _backup_section
     local _backup_arg_file _backup_arg_section _backup_arg_sequence
     local _backup_table_sequences _backup_table_sequences_array _backup_table_sequence
     local _previous_log_echo=$POW_LOG_ECHO
@@ -507,7 +516,7 @@ restore_table() {
             mode:TRUNCATE|DROP|APPEND;
             backup_before_restore:yes|no;
             restore_on_error:yes|no;
-            sections:pre-data+data+post-data|pre-data|data|post-data|data+post-data;
+            sections:pre-data|data|post-data;
             subprocess:yes|no
         ' \
         --args_d '
@@ -515,10 +524,13 @@ restore_table() {
             backup_before_restore:yes;
             input:STDIN;
             restore_on_error:yes;
-            sections:pre-data+data+post-data;
+            sections:pre-data data post-data;
             subprocess:no;
             wait_file_minute:0;
             max_age_file_minute:0
+        ' \
+        --args_p '
+            tag:mode@1N,backup_before_restore@bool,restore_on_error@bool,sections@XN,subprocess@bool
         ' \
         --pow_argv _opts "$@" || return $?
 
@@ -527,7 +539,7 @@ restore_table() {
     local _backup_before_restore_path=$POW_DIR_TMP/${_restore_label}_$$.backup.before_restore
 
     local _table_to_restore_exists=no
-    local _restore_sections=(${_opts[SECTIONS]//+/ })
+    local _restore_sections=(${_opts[SECTIONS]})
     local _restore_sections_todo=()
     local _restore_arg_file _restore_arg_section
     local _restore_table_sequences _restore_table_sequences_array _restore_table_sequence

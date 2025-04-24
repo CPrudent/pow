@@ -71,6 +71,9 @@ set_param_conf_file() {
         --args_m 'conf_file;param_code;param_value' \
         --args_v 'param_is_multiple:yes|no' \
         --args_d 'param_is_multiple:no;param_separator:=' \
+        --args_p '
+            tag:param_is_multiple@bool
+        ' \
         --pow_argv _opts "$@" || return $?
 
     local _line_content _search_pattern _line_number
@@ -162,6 +165,9 @@ set_params_conf_file() {
         --args_m 'conf_file;param_codes;param_values' \
         --args_v 'param_is_multiple:yes|no' \
         --args_d 'param_is_multiple:no;param_separator:=' \
+        --args_p '
+            tag:param_is_multiple@bool
+        ' \
         --pow_argv _opts "$@" || return $?
 
     local _index_param_code=0 _param_code
@@ -314,6 +320,9 @@ set_env_pg() {
             reset:no;
             print:no;
             schema_name:public
+        ' \
+        --args_p '
+            tag:reset@bool,print@bool
         ' \
         --pow_argv _opts "$@" || return $?
 

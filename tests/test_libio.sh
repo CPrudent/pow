@@ -38,6 +38,64 @@ EOF
     return $SUCCESS_CODE
 }
 
+declare -a TEST_IMPORT_CSV_FILES=(
+    test_libio_csv_tab.csv
+    test_libio_csv_comma.csv
+    test_libio_csv_semicolon.csv
+    test_libio_csv_colon.csv
+    test_libio_csv_pipe.csv
+)
+
+declare -a TEST_IMPORT_CSV_DELIMITERS=(
+    TAB
+    COMMA
+    SEMICOLON
+    COLON
+    PIPE
+)
+
+declare -a TEST_IMPORT_CSV_STATUS
+
+test_csv2() {
+
+# FIXME not found to insert TAB into Kate!
+> $POW_DIR_TMP/${TEST_IMPORT_CSV_FILES[0]}
+echo -e "COL1\tCOL2\tCOL3"     >> $POW_DIR_TMP/${TEST_IMPORT_CSV_FILES[0]}
+echo -e "data1\t1\t2023-02-15" >> $POW_DIR_TMP/${TEST_IMPORT_CSV_FILES[0]}
+echo -e "data2\t2\t2023-02-16" >> $POW_DIR_TMP/${TEST_IMPORT_CSV_FILES[0]}
+echo -e "data3\t3\t2023-02-17" >> $POW_DIR_TMP/${TEST_IMPORT_CSV_FILES[0]}
+
+cat <<EOF > $POW_DIR_TMP/${TEST_IMPORT_CSV_FILES[1]}
+COL1,COL2,COL3
+data1,1,2023-02-15
+data2,2,2023-02-16
+data3,3,2023-02-17
+EOF
+
+cat <<EOF > $POW_DIR_TMP/${TEST_IMPORT_CSV_FILES[2]}
+COL1;COL2;COL3
+data1;1;2023-02-15
+data2;2;2023-02-16
+data3;3;2023-02-17
+EOF
+
+cat <<EOF > $POW_DIR_TMP/${TEST_IMPORT_CSV_FILES[3]}
+COL1:COL2:COL3
+data1:1:2023-02-15
+data2:2:2023-02-16
+data3:3:2023-02-17
+EOF
+
+cat <<EOF > $POW_DIR_TMP/${TEST_IMPORT_CSV_FILES[4]}
+COL1|COL2|COL3
+data1|1|2023-02-15
+data2|2|2023-02-16
+data3|3|2023-02-17
+EOF
+
+    return $SUCCESS_CODE
+}
+
 declare -a TESTS=(
     NEWER_DATE
     NEWER_TIME
@@ -49,6 +107,7 @@ declare -a TESTS=(
     ODS_OVERWRITE_TABLE
     XLS_OVERWRITE_TABLE
     XLS_OVERWRITE_TABLE_LOWER
+    CSV_IMPORTS
     CSV_IMPORT_FILE
     JSON_IMPORT_FILE
     SHP_IMPORT_FILE
@@ -103,6 +162,7 @@ declare -A result_lib
 set_log_echo no &&
 set_env --schema_name fr &&
 test_csv --path env_lib[CSV_PATH] --nrows env_lib[CSV_NROWS] &&
+test_csv2 &&
 for ((_test=0; _test<${#test_lib[@]}; _test++)); do
     _rc=1
 
@@ -272,6 +332,54 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
             " \
             --return _value &&
         [[ "$_value" = "1E+03" ]] &&
+        _rc=0
+        ;;
+
+    CSV_IMPORTS)
+        for ((_csv_i=0; _csv_i<${#TEST_IMPORT_CSV_FILES[@]}; _csv_i++)); do
+            [[ $_csv_i -gt 0 ]] && echo
+            # avoid TAB !
+            #[[ $_csv_i -eq 0 ]] && continue
+            # only TAB
+            #[[ $_csv_i -ne 0 ]] && continue
+            TEST_IMPORT_CSV_STATUS+=([$_csv_i]=1)
+            # check header detection
+            echo "Contrôle (HEADER)"
+            delimiter_value=${POW_DELIMITER[${TEST_IMPORT_CSV_DELIMITERS[$_csv_i]}]}
+            cat $POW_DIR_TMP/${TEST_IMPORT_CSV_FILES[$_csv_i]} \
+                | grep --max-count 1 --line-number --perl-regexp '([^"'$delimiter_value']"|'$delimiter_value'[^"'$delimiter_value']*|'$delimiter_value'"[^"'$delimiter_value']+")$'
+
+            echo "Import ${TEST_IMPORT_CSV_DELIMITERS[$_csv_i]} (AUTODETECT, OVERWRITE_TABLE)" &&
+            import_csv_file \
+                --file_path $POW_DIR_TMP/${TEST_IMPORT_CSV_FILES[$_csv_i]} \
+                --load_mode OVERWRITE_TABLE &&
+            echo "Import ${TEST_IMPORT_CSV_DELIMITERS[$_csv_i]} (AUTODETECT, OVERWRITE_DATA)" &&
+            import_csv_file \
+                --file_path $POW_DIR_TMP/${TEST_IMPORT_CSV_FILES[$_csv_i]} \
+                --load_mode OVERWRITE_DATA &&
+            echo "Import ${TEST_IMPORT_CSV_DELIMITERS[$_csv_i]} (DELIMITER, OVERWRITE_DATA)" &&
+            import_csv_file \
+                --file_path $POW_DIR_TMP/${TEST_IMPORT_CSV_FILES[$_csv_i]} \
+                --load_mode OVERWRITE_DATA \
+                --delimiter ${TEST_IMPORT_CSV_DELIMITERS[$_csv_i]} &&
+            echo "Import ${TEST_IMPORT_CSV_DELIMITERS[$_csv_i]} (DELIMITER, OVERWRITE_TABLE, HEADER_TO_LOWER_CODE)" &&
+            import_csv_file \
+                --file_path $POW_DIR_TMP/${TEST_IMPORT_CSV_FILES[$_csv_i]} \
+                --delimiter ${TEST_IMPORT_CSV_DELIMITERS[$_csv_i]} \
+                --load_mode OVERWRITE_TABLE \
+                --table_columns HEADER_TO_LOWER_CODE &&
+            echo "Import ${TEST_IMPORT_CSV_DELIMITERS[$_csv_i]} (DELIMITER, APPEND, LIST)" &&
+            import_csv_file \
+                --file_path $POW_DIR_TMP/${TEST_IMPORT_CSV_FILES[$_csv_i]} \
+                --delimiter ${TEST_IMPORT_CSV_DELIMITERS[$_csv_i]} \
+                --load_mode APPEND \
+                --table_columns LIST \
+                --table_columns_list 'col1,col2,col3' &&
+            TEST_IMPORT_CSV_STATUS[$_csv_i]=0
+        done
+        in_array \
+            --array TEST_IMPORT_CSV_STATUS \
+            --item 1 ||
         _rc=0
         ;;
 
@@ -445,6 +553,9 @@ done
 [ "${env_lib[CLEAN]}" = yes ] && {
     rm --force "${env_lib[CSV_PATH]}"
     rm --force --recursive $POW_DIR_TMP/IGN
+    for ((_i=0; _i<${#TEST_IMPORT_CSV_FILES[@]}; _i++)); do
+        rm --force "${TEST_IMPORT_CSV_FILES[$_i]}"
+    done
 }
 
 # results

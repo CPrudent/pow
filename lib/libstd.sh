@@ -539,7 +539,8 @@ pow_argv() {
             # no key/value for mandatory list
             [ "$_key" = args_m ] && _argx_kv_name=
 
-            if [[ ${#_argx_list_ref[@]} -eq 0 ]]; then
+            # args_p can be multiple (execute_query w/ psql syntax need to define psql tag)
+            if ([ "$_key" = args_p ] || [[ ${#_argx_list_ref[@]} -eq 0 ]]); then
                 #declare -p _argv ; read
                 _pow_argv_list "${_argv[$_key]}" $_argx_list_name $_argx_kv_name
                 #[ -n "$_argx_kv_name" ] && declare -p $_argx_kv_name ; read
@@ -631,21 +632,27 @@ pow_argv() {
     }
 
     # default values
-    for _key in ${!_args_d_kv[@]}; do
+    for _key in ${!_args_n_kv[@]}; do
         #echo "def($_key)"
         [ ! ${_argv[$_key]+_} ] && {
-            #echo "def($_key)=${_args_d_kv[$_key]}"
-            # duplicate from another key
-            [[ ${_args_d_kv[$_key]} =~ ^@(.*)$ ]] && {
-                #declare -p _argv
-                _k=${BASH_REMATCH[1]}
-                #echo "from($_k)"
-                _argv[$_key]=${_argv[$_k]:-${_args_d_kv[$_k]}}
-                #declare -p _argv
-                continue
-            }
 
-            _argv[$_key]=${_args_d_kv[$_key]}
+            # given default value?
+            if [ ${_args_d_kv[$_key]+_} ]; then
+                #echo "def($_key)=${_args_d_kv[$_key]}"
+                # duplicate from another key
+                [[ ${_args_d_kv[$_key]} =~ ^@(.*)$ ]] && {
+                    #declare -p _argv
+                    _k=${BASH_REMATCH[1]}
+                    #echo "from($_k)"
+                    _argv[$_key]=${_argv[$_k]:-${_args_d_kv[$_k]}}
+                    #declare -p _argv
+                    continue
+                }
+                _argv[$_key]=${_args_d_kv[$_key]}
+            else
+                # empty as default (even if not present among arguments)
+                _argv[$_key]=
+            fi
         }
     done
 

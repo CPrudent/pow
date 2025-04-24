@@ -180,6 +180,9 @@ io_history_exists() {
         --args_d '
             status:SUCCES
         ' \
+        --args_p '
+            tag:status@1N
+        ' \
         --pow_argv _opts "$@" || return $?
 
     [ -n "${_opts[ID]}" ] && local -n _io_id=${_opts[ID]} || local _io_id
@@ -214,6 +217,9 @@ io_history_begin() {
             nrows_todo;
             id
         ' \
+        --args_p '
+            tag:nrows_todo@int
+        ' \
         --pow_argv _opts "$@" || return $?
 
     local -n _io_id=${_opts[ID]} _infos
@@ -245,6 +251,9 @@ io_history_end_ok() {
             nrows_processed;
             id
         ' \
+        --args_p '
+            tag:id@int
+        ' \
         --pow_argv _opts "$@" || return $?
 
     local _infos
@@ -269,6 +278,9 @@ io_history_end_ko() {
         --args_m '
             id
         ' \
+        --args_p '
+            tag:id@int
+        ' \
         --pow_argv _opts "$@" || return $?
 
     _io_history_manager \
@@ -290,6 +302,9 @@ io_history_update() {
         ' \
         --args_m '
             id
+        ' \
+        --args_p '
+            tag:id@int
         ' \
         --pow_argv _opts "$@" || return $?
 
@@ -356,6 +371,9 @@ io_todo_import() {
         --args_d '
             force:no;
             purge:no
+        ' \
+        --args_p '
+            tag:force@bool,purge@bool
         ' \
         --pow_argv _opts "$@" || return $POW_IO_ERROR
 
@@ -452,6 +470,9 @@ io_get_ids_integration() {
         ' \
         --args_d '
             from:HASH
+        ' \
+        --args_p '
+            tag:from@1N
         ' \
         --pow_argv _opts "$@" || return $POW_IO_ERROR
 
@@ -604,10 +625,6 @@ io_get_list_online_available() {
         ' \
         --pow_argv _opts "$@" || return $?
 
-    # NOTE _only_matching_re1=--only-matching
-    # reset it if not only matching
-    # no more used (previously needed for BANATIC)
-
     local _url _regexp1 _regexp2 _i
     local -n _details_file_ref=${_opts[DETAILS_FILE]}
     local -n _dates_ref=${_opts[DATES_LIST]}
@@ -707,6 +724,9 @@ io_download_file() {
             overwrite_key:DATE;
             common_save:yes;
             verbose:no
+        ' \
+        --args_p '
+            tag:overwrite_mode@1N,overwrite_key@1N,common_save@bool,verbose@bool
         ' \
         --pow_argv _opts "$@" || return $?
 
@@ -910,6 +930,9 @@ import_csv_file() {
             encoding:UTF8;
             load_mode:OVERWRITE_DATA;
             rowid:yes' \
+        --args_p '
+            tag:file_with_header@bool,table_columns@1N,load_mode@1N,delimiter@1N,limit@int,encoding@1N,rowid@bool
+        ' \
         --pow_argv _opts "$@" || return $?
 
     #echo ${FUNCNAME[0]} && declare -p _opts &&
@@ -976,13 +999,16 @@ import_csv_file() {
         return $ERROR_CODE
     }
     [ "$POW_DEBUG" = yes ] && echo "delimiter_value=[$_delimiter_value]"
+    #echo "###DELIMITER/3 ($_delimiter_value)"
 
     if [ -z "${_opts[TABLE_NAME]}" ]; then
+        # NOTE can't use _opts[TABLE_NAME] as return (circular trouble?) !
+        local _table_name
         execute_query \
             --name LABEL_TO_CODE \
             --query "SELECT public.label_to_code('${_opts[FILE_NAME]}')" \
-            --with_log no \
-            --return _opts[TABLE_NAME] || return $ERROR_CODE
+            --return _table_name || return $ERROR_CODE
+        _opts[TABLE_NAME]=$_table_name
     fi
     [ "$POW_DEBUG" = yes ] && echo "table_name=${_opts[TABLE_NAME]}"
 
@@ -1019,21 +1045,21 @@ import_csv_file() {
             )
             [ -z "$_line_end_header" ] && _line_end_header=1
 
-            _opts[TABLE_COLUMNS_LIST]=$(head --lines $_line_end_header "${_opts[FILE_PATH]}" \
-                | iconv --from-code ${_opts[ENCODING]} \
-                | sed --expression 's/^\xEF\xBB\xBF//' \
-                | sed --expression 's/\r//g' \
-            )
-
             #echo '###TABLE_COLUMNS_LIST/1' ; declare -p _opts ; read
 
+            # NOTE
+            #+ be careful w/ bash subprocess as result=$(command)
+            #+ this replace TAB in space
             if [ "${_opts[TABLE_COLUMNS]}" = HEADER_TO_LOWER_CODE ]; then
                     # to lower
                     # w/o accent
                     # replace no-alphanum by _ (except delimiter)
                     # replace delimiter by ,
                     # trim _ (begin or end)
-                _opts[TABLE_COLUMNS_LIST]=$(echo ${_opts[TABLE_COLUMNS_LIST]} \
+                _opts[TABLE_COLUMNS_LIST]=$(head --lines $_line_end_header "${_opts[FILE_PATH]}" \
+                    | iconv --from-code ${_opts[ENCODING]} \
+                    | sed --expression 's/^\xEF\xBB\xBF//' \
+                    | sed --expression 's/\r//g' \
                     | tr '[:upper:]' '[:lower:]' \
                     | sed 'y/àáâãäåçêéèëìíîïìñòóôõöùúûüýÿ/aaaaaaceeeeiiiiinooooouuuuyy/' \
                     | tr 'œ' 'oe' \
@@ -1047,14 +1073,17 @@ import_csv_file() {
                     # replace delimiter by "," (so surround each column by ")
                     # add " at begin
                     # add " at end
-                _opts[TABLE_COLUMNS_LIST]=$(echo ${_opts[TABLE_COLUMNS_LIST]} \
+                _opts[TABLE_COLUMNS_LIST]=$(head --lines $_line_end_header "${_opts[FILE_PATH]}" \
+                    | iconv --from-code ${_opts[ENCODING]} \
+                    | sed --expression 's/^\xEF\xBB\xBF//' \
+                    | sed --expression 's/\r//g' \
                     | sed --expression "s/\"\?${_delimiter_value}\"\?/\",\"/g" \
                     | sed --expression 's/^"\?/"/g' \
                     | sed --expression 's/"\?$/"/g' \
                 )
             fi
 
-            #echo '###TABLE_COLUMNS_LIST/2' ; declare -p _opts _delimiter_value ; read
+            #echo '###TABLE_COLUMNS_LIST/2' ; declare -p _opts #; read
         fi
         # each column as VARCHAR type
         _table_columns_create=$(echo "${_opts[TABLE_COLUMNS_LIST]}" \
@@ -1064,6 +1093,7 @@ import_csv_file() {
             _table_columns_create="rowid SERIAL,${_table_columns_create}"
         fi
         [ "$POW_DEBUG" = yes ] && echo "table_columns_create=${_table_columns_create}"
+        #echo "###TABLE_COLUMNS_CREATE (${_table_columns_create})"
     fi
 
     local _table_to_load_exists=no
@@ -1133,8 +1163,8 @@ import_csv_file() {
         )
     "
     # \COPY command (generally PSQL) doesn't have \n (and blanks at beginning)
-    _query=$(echo $_query | tr '\n' ' ' | sed --expression 's/^[ \t]*//')
-    [ "$POW_DEBUG" = yes ] && echo "query=($_query)"
+    #_query=$(echo $_query | tr '\n' ' ' | sed --expression 's/^[ \t]*//')
+    #[ "$POW_DEBUG" = yes ] && echo "query=($_query)"
 
     #echo '###COPY' ; declare -p _opts _query ; read
 
@@ -1144,10 +1174,12 @@ import_csv_file() {
         [ "${_opts[FILE_WITH_HEADER]}" = yes ] && _limit=$((_limit+1))
         head --lines $_limit "${_opts[FILE_PATH]}" \
             | execute_query \
+                --args_p 'tag:query@psql' \
                 --name "COPY_${_opts[TABLE_NAME]}_FROM_${_opts[FILE_NAME]}" \
                 --query "$_query" || return $ERROR_CODE
     else
         execute_query \
+            --args_p 'tag:query@psql' \
             --name "COPY_${_opts[TABLE_NAME]}_FROM_${_opts[FILE_NAME]}" \
             --query "$_query" || return $ERROR_CODE
     fi
@@ -1184,6 +1216,9 @@ excel_to_csv() {
         --args_d '
             delimiter:COMMA;
             to_file_path:INPUT' \
+        --args_p '
+            tag:delimiter@1N
+        ' \
         --pow_argv _opts "$@" || return $?
 
     local -i _step=0
@@ -1413,6 +1448,9 @@ import_excel_file() {
             delimiter:PIPE;
             load_mode:OVERWRITE_DATA;
             rowid:yes' \
+        --args_p '
+            tag:delimiter@1N,table_columns@1N,load_mode@1N,rowid@bool
+        ' \
         --pow_argv _opts "$@" || return $?
 
     local -i _step=0
@@ -1519,6 +1557,9 @@ import_geo_file() {
             geometry_type:GEOMETRY;
             spatial_index:yes;
             rowid:yes' \
+        --args_p '
+            tag:load_mode@1N,encoding@1N,geometry_type@1N,spatial_index@bool,rowid@bool,limit@int
+        ' \
         --pow_argv _opts "$@" || return $?
 
     # geometry_type :
@@ -1709,23 +1750,26 @@ import_geo_file() {
 import_file() {
     local -A _opts &&
     pow_argv \
-    --args_n '
-        file_path:Chemin absolu vers le fichier à importer;
-        schema_name:Nom du schema cible;
-        table_name:Nom de la table cible;
-        load_mode:Mode de chargement des données;
-        import_options:Options d import du fichier spécifiques à son format;
-        limit:Limiter a n enregistrements;
-        rowid:Générer un identifiant unique rowid' \
-    --args_m 'file_path' \
-    --args_v '
-        load_mode:OVERWRITE_DATA|OVERWRITE_TABLE|APPEND;
-        rowid:yes|no' \
-    --args_d '
-        schema_name:'$POW_PG_DEFAULT_SCHEMA';
-        load_mode:OVERWRITE_DATA;
-        rowid:yes' \
-    --pow_argv _opts "$@" || return $?
+        --args_n '
+            file_path:Chemin absolu vers le fichier à importer;
+            schema_name:Nom du schema cible;
+            table_name:Nom de la table cible;
+            load_mode:Mode de chargement des données;
+            import_options:Options d import du fichier spécifiques à son format;
+            limit:Limiter a n enregistrements;
+            rowid:Générer un identifiant unique rowid' \
+        --args_m 'file_path' \
+        --args_v '
+            load_mode:OVERWRITE_DATA|OVERWRITE_TABLE|APPEND;
+            rowid:yes|no' \
+        --args_d '
+            schema_name:'$POW_PG_DEFAULT_SCHEMA';
+            load_mode:OVERWRITE_DATA;
+            rowid:yes' \
+        --args_p '
+            tag:load_mode@1N,limit@int,rowid@bool
+        ' \
+        --pow_argv _opts "$@" || return $?
 
     local -i _step=0
     local -a _steps=(
