@@ -1240,7 +1240,7 @@ excel_to_csv() {
         'TO_FILE_PATH init'
         STDOUT
     )
-    local _stdout=0 _delimiter_value _mime _spreadsheet _options _convert
+    local _stdout=0 _delimiter_value _mime _spreadsheet _options _convert _log_echo
 
     {
         # debug
@@ -1256,6 +1256,7 @@ excel_to_csv() {
     _step+=1 &&
     case "${_opts[TO_FILE_PATH]}" in
     STDOUT)
+        _log_echo=$POW_LOG_ECHO ; set_log_echo no
         _stdout=1
         _opts[TO_FILE_PATH]="$POW_DIR_TMP/STDOUT.$$.txt"
         ;;
@@ -1327,6 +1328,8 @@ excel_to_csv() {
     _step+=1 &&
     {
         [[ $_stdout -eq 0 ]] || {
+            # restore log echo
+            set_log_echo $_log_echo
             [ -f "${_opts[TO_FILE_PATH]}" ] &&
             cat "${_opts[TO_FILE_PATH]}" &&
             rm "${_opts[TO_FILE_PATH]}"

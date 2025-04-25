@@ -102,7 +102,10 @@ declare -a TESTS=(
     CSV_OVERWRITE_TABLE
     CSV_APPEND
     XLS_CSV
+    XLS_CSV_PIPE
+    XLS_CSV_STDOUT
     ODS_CSV
+    ODS_CSV_COLON
     CSV_XLS
     ODS_OVERWRITE_TABLE
     XLS_OVERWRITE_TABLE
@@ -252,6 +255,18 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
         expect file "$_xls" &&
         rm --force "$_csv" &&
         excel_to_csv \
+            --from_file_path "$_xls" &&
+        expect file "$_csv" &&
+        _field=$(tail -n 1 "$_csv" | cut --delimiter ',' --field 1) &&
+        [ "$_field" = 3 ] &&
+        _rc=0
+        ;;
+    XLS_CSV_PIPE)
+        _xls=$POW_DIR_ROOT/tests/data/test_spreadsheet.xlsx
+        _csv=$POW_DIR_TMP/test_spreadsheet.csv
+        expect file "$_xls" &&
+        rm --force "$_csv" &&
+        excel_to_csv \
             --from_file_path "$_xls" \
             --delimiter PIPE &&
         expect file "$_csv" &&
@@ -259,6 +274,22 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
         [ "$_field" = 3 ] &&
         _rc=0
         ;;
+    XLS_CSV_STDOUT)
+        _xls=$POW_DIR_ROOT/tests/data/test_spreadsheet.xlsx
+        _csv=$POW_DIR_TMP/test_spreadsheet.csv
+        expect file "$_xls" &&
+        rm --force "$_csv" &&
+        _field=$(excel_to_csv \
+            --from_file_path "$_xls" \
+            --to_file_path STDOUT \
+            --delimiter COLON \
+            | tail --lines 1 \
+            | cut --delimiter : --field 1 \
+        ) &&
+        [ "$_field" = 3 ] &&
+        _rc=0
+        ;;
+
     ODS_CSV)
         _ods=$POW_DIR_ROOT/tests/data/test_spreadsheet.ods
         _csv=$POW_DIR_TMP/test_spreadsheet.csv
@@ -271,6 +302,19 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
         [ "$_field" = WORLD ] &&
         _rc=0
         ;;
+    ODS_CSV_COLON)
+        _ods=$POW_DIR_ROOT/tests/data/test_spreadsheet.ods
+        expect file "$_ods" &&
+        rm --force "$_csv" &&
+        excel_to_csv \
+            --from_file_path "$_ods" \
+            --delimiter COLON &&
+        expect file "$_csv" &&
+        _field=$(tail -n 2 "$_csv" | head -n 1 | cut --delimiter ':' --field 3) &&
+        [ "$_field" = WORLD ] &&
+        _rc=0
+        ;;
+
     CSV_XLS)
         _csv=$POW_DIR_ROOT/tests/data/test_spreadsheet.csv
         _xls=$POW_DIR_TMP/test_spreadsheet.xls
@@ -554,7 +598,18 @@ done
     rm --force "${env_lib[CSV_PATH]}"
     rm --force --recursive $POW_DIR_TMP/IGN
     for ((_i=0; _i<${#TEST_IMPORT_CSV_FILES[@]}; _i++)); do
+        _f=$(get_file_name --file_path "${TEST_IMPORT_CSV_FILES[$_i]}")
+        execute_query \
+            --name "DROP_$_f" \
+            --query "DROP TABLE IF EXISTS fr.$_f"
         rm --force "${TEST_IMPORT_CSV_FILES[$_i]}"
+    done
+    for _k in ${!env_lib[@]}; do
+        [[ $_k =~ _TABLE$ ]] && {
+            execute_query \
+                --name "DROP_$_k" \
+                --query "DROP TABLE IF EXISTS fr.${env_lib[$_k]}"
+        }
     done
 }
 
