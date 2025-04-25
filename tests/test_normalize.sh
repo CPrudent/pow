@@ -19,13 +19,13 @@ echo_number_line() {
     printf "%*d: " ${#1} $2
 }
 
-bash_args \
-    --args_p '
+pow_argv \
+    --args_n '
         test:Préciser le test à réaliser;
         number_line:Ajouter le numéro de chaque test;
         limit:Limiter la requête
     ' \
-    --args_o '
+    --args_m '
         test
     ' \
     --args_v '
@@ -35,12 +35,14 @@ bash_args \
     --args_d '
         number_line:no
     ' \
+    --args_p '
+        tag:test@XN,number_line@bool,limit@int
+    ' \
     "$@" || exit $?
 
-_ok=0
-_ko=0
-
-[ "$get_arg_test" = SPLIT ] && {
+[ "${POW_ARGV[TEST]}" = SPLIT ] && {
+    _ok=0
+    _ko=0
     declare -a _array
     set_log_echo no
     for ((_i=0; _i < ${#TEST_A4S_NAME[*]}; _i++)); do
@@ -66,7 +68,6 @@ _ko=0
                 $([ $_is_normalized -eq 1 ] && echo ', is_normalized => TRUE')
             )
         " \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _normalize || {
             cat $POW_DIR_ARCHIVE/SPLIT.error.log
             exit $ERROR_CODE
@@ -78,7 +79,7 @@ _ko=0
         _array[0]=${_array[0]//:/ }
         _array[1]=${_array[1]//:/ }
         #declare -p _array
-        [ "$get_arg_number_line" = yes ] && { echo_number_line $TEST_A4S_SZ $((_i +1)); }
+        [ "${POW_ARGV[NUMBER_LINE]}" = yes ] && { echo_number_line $TEST_A4S_SZ $((_i +1)); }
         echo -n "nom='$_name' descripteur='$_descriptor' : "
         [ "${_array[0]}" = "$_split_name" ] &&
         [ "${_array[1]}" = "$_split_descriptor" ] && {
@@ -100,7 +101,7 @@ _ko=0
     exit $_rc
 }
 
-[ "$get_arg_test" = STREET_DESCRIPTORS_DIFF ] && {
+[ "${POW_ARGV[TEST]}" = STREET_DESCRIPTORS_DIFF ] && {
     execute_query \
         --name STREET_DESCRIPTORS_DIFF \
         --query "
@@ -117,7 +118,7 @@ _ko=0
                                 element => 'STREET'
                                 , name => u.name
                             ) d
-                    $([ -n "$get_arg_limit" ] && echo ' LIMIT '$get_arg_limit)
+                    $([ -n "${POW_ARGV[LIMIT]}" ] && echo ' LIMIT '${POW_ARGV[LIMIT]})
                 )
                 SELECT
                     UNNEST(
@@ -142,7 +143,9 @@ _ko=0
     exit $SUCCESS_CODE
 }
 
-[ "$get_arg_test" = STREET_DESCRIPTORS_LIST ] && {
+[ "${POW_ARGV[TEST]}" = STREET_DESCRIPTORS_LIST ] && {
+    _ok=0
+    _ko=0
     set_log_echo no
     for ((_i=0; _i < ${#TEST_A4S_NAME[*]}; _i++)); do
         execute_query \
@@ -153,13 +156,12 @@ _ko=0
                 , name => '${TEST_A4S_NAME[$_i]}'
             )
         " \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _normalize || {
             cat $POW_DIR_ARCHIVE/STREET_DESCRIPTORS_LIST.error.log
             exit $ERROR_CODE
         }
 
-        [ "$get_arg_number_line" = yes ] && { echo_number_line $TEST_A4S_SZ $((_i +1)); }
+        [ "${POW_ARGV[NUMBER_LINE]}" = yes ] && { echo_number_line $TEST_A4S_SZ $((_i +1)); }
         echo -n "nom='${TEST_A4S_NAME[$_i]}' descripteurs='${TEST_A4S_DESCRIPTORS[$_i]}' : "
         [ "$_normalize" = "${TEST_A4S_DESCRIPTORS[$_i]}" ] && {
             echo 'OK'
@@ -179,7 +181,9 @@ _ko=0
     exit $_rc
 }
 
-[ "$get_arg_test" = STREET_DESCRIPTORS_CASE ] && {
+[ "${POW_ARGV[TEST]}" = STREET_DESCRIPTORS_CASE ] && {
+    _ok=0
+    _ko=0
     declare -a _TEST_A4S_NAME=(
         # successive titles (two of one word, one of two words)
         'LE PETIT HAUT CHEMIN'                                                  #  1
@@ -256,13 +260,12 @@ _ko=0
                 , name => '${_TEST_A4S_NAME[$_i]}'
             )
         " \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _normalize || {
             cat $POW_DIR_ARCHIVE/STREET_DESCRIPTORS_CASE.error.log
             exit $ERROR_CODE
         }
 
-        [ "$get_arg_number_line" = yes ] && { echo_number_line ${#_TEST_A4S_NAME[*]} $((_i +1)); }
+        [ "${POW_ARGV[NUMBER_LINE]}" = yes ] && { echo_number_line ${#_TEST_A4S_NAME[*]} $((_i +1)); }
         echo -n "nom='${_TEST_A4S_NAME[$_i]}' descripteurs='${_TEST_A4S_DESCRIPTORS[$_i]}' : "
         [ "$_normalize" = "${_TEST_A4S_DESCRIPTORS[$_i]}" ] && {
             echo 'OK'
@@ -281,7 +284,7 @@ _ko=0
     exit $_rc
 }
 
-[ "$get_arg_test" = COMPLEMENT_DESCRIPTORS_DIFF ] && {
+[ "${POW_ARGV[TEST]}" = COMPLEMENT_DESCRIPTORS_DIFF ] && {
     execute_query \
         --name COMPLEMENT_DESCRIPTORS_DIFF \
         --query "
@@ -298,7 +301,7 @@ _ko=0
                                 element => 'COMPLEMENT'
                                 , name => u.name
                             ) d
-                    $([ -n "$get_arg_limit" ] && echo ' LIMIT '$get_arg_limit)
+                    $([ -n "${POW_ARGV[LIMIT]}" ] && echo ' LIMIT '${POW_ARGV[LIMIT]})
                 )
                 SELECT
                     UNNEST(
@@ -323,7 +326,7 @@ _ko=0
     exit $SUCCESS_CODE
 }
 
-[ "$get_arg_test" = STREET_NAME_DIFF ] && {
+[ "${POW_ARGV[TEST]}" = STREET_NAME_DIFF ] && {
     execute_query \
         --name STREET_NAME_DIFF \
         --query "
@@ -351,7 +354,7 @@ _ko=0
                             ) aw
                     WHERE
                         u.name_normalized IS NOT NULL
-                    $([ -n "$get_arg_limit" ] && echo ' LIMIT '$get_arg_limit)
+                    $([ -n "${POW_ARGV[LIMIT]}" ] && echo ' LIMIT '${POW_ARGV[LIMIT]})
                 )
                 SELECT
                     dnn.differences
@@ -380,7 +383,9 @@ _ko=0
     exit $SUCCESS_CODE
 }
 
-[ "$get_arg_test" = STREET_NAME_LIST ] && {
+[ "${POW_ARGV[TEST]}" = STREET_NAME_LIST ] && {
+    _ok=0
+    _ko=0
     set_log_echo no
     for ((_i=0; _i < ${#TEST_A4S_NAME[*]}; _i++)); do
         execute_query \
@@ -391,7 +396,6 @@ _ko=0
                 name => '${TEST_A4S_NAME[$_i]}'
             )
         " \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _normalize || {
             cat $POW_DIR_ARCHIVE/STREET_NAME_LIST.error.log
             exit $ERROR_CODE
@@ -402,7 +406,7 @@ _ko=0
         _array[0]=${_array[0]//:/ }
         _array[1]=${_array[1]//:/ }
 
-        [ "$get_arg_number_line" = yes ] && { echo_number_line $TEST_A4S_SZ $((_i +1)); }
+        [ "${POW_ARGV[NUMBER_LINE]}" = yes ] && { echo_number_line $TEST_A4S_SZ $((_i +1)); }
         echo -n "nom='${TEST_A4S_NAME[$_i]}' : "
         [ "${_array[0]}" = "${TEST_A4S_NAME_NORMALIZED[$_i]}" ] &&
         [ "${_array[1]}" = "${TEST_A4S_DESCRIPTORS_NORMALIZED[$_i]}" ] && {
@@ -424,7 +428,9 @@ _ko=0
     exit $_rc
 }
 
-[ "$get_arg_test" = STREET_NAME_CASE ] && {
+[ "${POW_ARGV[TEST]}" = STREET_NAME_CASE ] && {
+    _ok=0
+    _ko=0
     declare -a _TEST_A4S_NAME=(
         # abbr at the end (N|P)
         'CHEMIN VICINAL 5 DE BRATEAU A LA GARE DE BOURAY'                       #  1
@@ -566,7 +572,6 @@ _ko=0
                 name => '${_TEST_A4S_NAME[$_i]}'
             )
         " \
-        --psql_arguments 'tuples-only:pset=format=unaligned' \
         --return _normalize || {
             cat $POW_DIR_ARCHIVE/STREET_NAME_CASE.error.log
             exit $ERROR_CODE
@@ -577,7 +582,7 @@ _ko=0
         _array[0]=${_array[0]//:/ }
         _array[1]=${_array[1]//:/ }
 
-        [ "$get_arg_number_line" = yes ] && { echo_number_line ${#_TEST_A4S_NAME[*]} $((_i +1)); }
+        [ "${POW_ARGV[NUMBER_LINE]}" = yes ] && { echo_number_line ${#_TEST_A4S_NAME[*]} $((_i +1)); }
         echo -n "nom='${_TEST_A4S_NAME[$_i]}' : "
         [ "${_array[0]}" = "${_TEST_A4S_NAME_NORMALIZED[$_i]}" ] &&
         [ "${_array[1]}" = "${_TEST_A4S_DESCRIPTORS_NORMALIZED[$_i]}" ] && {
