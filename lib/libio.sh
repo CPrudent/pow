@@ -1319,6 +1319,7 @@ excel_to_csv() {
     _step+=1 &&
     get_tmp_file --tmpext txt --tmpfile _convert &&
     _step+=1 &&
+    # ssconvert --export-options 'separator=\t' --export-type=Gnumeric_stf:stf_assistant IN OUT
     ssconvert \
         --export-options "$_options" \
         "${_opts[FROM_FILE_PATH]}" \

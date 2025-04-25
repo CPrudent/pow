@@ -103,6 +103,7 @@ declare -a TESTS=(
     CSV_APPEND
     XLS_CSV
     XLS_CSV_PIPE
+    XLS_CSV_TAB
     XLS_CSV_STDOUT
     ODS_CSV
     ODS_CSV_COLON
@@ -272,6 +273,29 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
         expect file "$_csv" &&
         _field=$(tail -n 1 "$_csv" | cut --delimiter '|' --field 1) &&
         [ "$_field" = 3 ] &&
+        _rc=0
+        ;;
+    XLS_CSV_TAB)
+        _xls=$POW_DIR_ROOT/tests/data/test_spreadsheet.xlsx
+        _csv=$POW_DIR_TMP/test_spreadsheet.csv
+        expect file "$_xls" &&
+        rm --force "$_csv" &&
+        excel_to_csv \
+            --from_file_path "$_xls" \
+            --delimiter TAB &&
+        expect file "$_csv" &&
+
+#         echo CSV &&
+#         cat "$_csv" &&
+#         echo TR &&
+#         tr $'\t' "$(printf '%b' $'\t')" < "$_csv" &&
+#         _field=$(tr $'\t' "$(printf '%b' $'\t')" < "$_csv" \
+#             | tail --lines 1 \
+#             | cut --field 3 \
+#         ) &&
+#         echo "result=($_field)" &&
+#        [ "$_field" = \! ] &&
+
         _rc=0
         ;;
     XLS_CSV_STDOUT)
