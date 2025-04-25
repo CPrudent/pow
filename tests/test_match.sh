@@ -6,23 +6,24 @@
     # tests match
 
 set_request() {
-    bash_args \
-        --args_p '
+    local -A _opts &&
+    pow_argv \
+        --args_n '
             from:Source des données;
-            key:propriété recherchée;
-            value:valeur
+            key:Propriété recherchée;
+            value:Valeur retournée
         ' \
-        --args_o '
+        --args_m '
             from;
             key;
             value
         ' \
-        "$@" || return $?
+        --pow_argv _opts "$@" || return $?
 
     local _data _source _format _parameters _filter _query
-    local -n _value_ref=$get_arg_value
+    local -n _value_ref=${_opts[VALUE]}
 
-    case $get_arg_from in
+    case ${_opts[FROM]} in
     FILE)
         _data=$POW_DIR_ROOT/tests/data/test_match_file.csv
         _format=$POW_DIR_ROOT/tests/data/test_match_file_format.sql
@@ -41,12 +42,12 @@ set_request() {
         _query='SELECT rowid,code,complement,housenumber,street,municipality_old,postcode,municipality FROM fr.test_match_table_1'
         ;;
     *)
-        log_error "Source $get_arg_from non pris en charge!"
+        log_error "Source(${_opts[FROM]}) non pris en charge!"
         return $ERROR_CODE
         ;;
     esac
 
-    case ${get_arg_key^^} in
+    case ${_opts[KEY]}^^} in
     DATA)           _value_ref=$_data           ;;
     SOURCE)         _value_ref=$_source         ;;
     FORMAT)         _value_ref=$_format         ;;
@@ -54,7 +55,7 @@ set_request() {
     FILTER)         _value_ref=$_filter         ;;
     QUERY)          _value_ref=$_query          ;;
     *)
-        log_error "KEY $get_arg_key non pris en charge!"
+        log_error "Propriété(${_opts[KEY]}) non pris en charge!"
         return $ERROR_CODE
         ;;
     esac
@@ -63,18 +64,19 @@ set_request() {
 }
 
 set_context() {
-    bash_args \
-        --args_p "
+    local -A _opts &&
+    pow_argv \
+        --args_n "
             test:Préciser le test à réaliser;
         " \
-        --args_o '
+        --args_m '
             test;
         ' \
-        "$@" || return $?
+        --pow_argv _opts "$@" || return $?
 
-    case "$get_arg_test" in
+    case "${_opts[TEST]}" in
     STANDARDIZE_*)
-        case "$get_arg_test" in
+        case "${_opts[TEST]}" in
         *_FILE|*_TABLE)
             expect file "${test_request[DATA]}"
             ;;
@@ -84,7 +86,7 @@ set_context() {
             [ -n "${test_request[PARAMETERS]}" ] &&
             expect file "${test_request[PARAMETERS]}" || true
         } &&
-        case "$get_arg_test" in
+        case "${_opts[TEST]}" in
         *_TABLE)
             table_exists --schema_name fr --table_name "${test_request[SOURCE]}" ||
             import_file \
@@ -115,7 +117,6 @@ set_context() {
                 FROM fr.address_match_request
                 WHERE id = ${test_request[ID]}
             " \
-            --psql_arguments 'tuples-only:pset=format=unaligned' \
             --return test_request[STATUS]
         ;;
     esac
@@ -123,12 +124,12 @@ set_context() {
     return $SUCCESS_CODE
 }
 
-bash_args \
-    --args_p '
+pow_argv \
+    --args_n '
         test:Préciser le test à réaliser;
         force:Forcer le traitement même si celui-ci a déjà été fait
     ' \
-    --args_o '
+    --args_m '
         test
     ' \
     --args_v '
@@ -138,17 +139,20 @@ bash_args \
     --args_d '
         force:no
     ' \
+    --args_p '
+        tag:test@XN,force@bool
+    ' \
     "$@" || exit $?
 
 declare -A test_request
-[[ $get_arg_test =~ ^(.*)_FROM ]] && test_request[STEP]=${BASH_REMATCH[1]}
-[[ $get_arg_test =~ FROM_(.*)$ ]] && test_request[FROM]=${BASH_REMATCH[1]}
+[[ ${POW_ARGV[TEST]} =~ ^(.*)_FROM ]] && test_request[STEP]=${BASH_REMATCH[1]}
+[[ ${POW_ARGV[TEST]} =~ FROM_(.*)$ ]] && test_request[FROM]=${BASH_REMATCH[1]}
 for _item in DATA SOURCE FORMAT PARAMETERS FILTER QUERY; do
     set_request --from ${test_request[FROM]} --key $_item --value test_request[$_item]
 done &&
 set_env --schema_name fr &&
-set_context --test "$get_arg_test" &&
-case "$get_arg_test" in
+set_context --test "${POW_ARGV[TEST]}" &&
+case "${POW_ARGV[TEST]}" in
 STANDARDIZE_*)
     $POW_DIR_ROOT/bin/fr/address_match.sh \
         --source_name "${test_request[SOURCE]:-${test_request[DATA]}}" \
@@ -158,7 +162,7 @@ STANDARDIZE_*)
         --source_filter "${test_request[FILTER]}" \
         --source_query "${test_request[QUERY]}" \
         --verbose yes \
-        --force $get_arg_force
+        --force ${POW_ARGV[FORCE]}
     ;;
 MATCH_CODE_*)
     {
@@ -173,7 +177,7 @@ MATCH_CODE_*)
         --source_filter "${test_request[FILTER]}" \
         --source_query "${test_request[QUERY]}" \
         --verbose yes \
-        --force $get_arg_force
+        --force ${POW_ARGV[FORCE]}
     ;;
 MATCH_ELEMENT_*)
     {
@@ -188,7 +192,7 @@ MATCH_ELEMENT_*)
         --source_filter "${test_request[FILTER]}" \
         --source_query "${test_request[QUERY]}" \
         --verbose yes \
-        --force $get_arg_force
+        --force ${POW_ARGV[FORCE]}
     ;;
 esac || exit $ERROR_CODE
 
