@@ -340,6 +340,28 @@ bal_list_municipalities() {
                 (io.attributes::JSONB)->'integration'->>'levels' IS NULL
         "
         ;;
+    OBSOLESCENCE_STREET)
+        _date_before_fix='2025-04-18'
+        _query="
+            SELECT
+                m.code municipality,
+                m.code criteria
+            FROM
+                fr.bal_municipality m
+            WHERE
+                EXISTS(
+                    SELECT 1
+                    FROM
+                        fr.bal_street s
+                    WHERE
+                        s.id_municipality = m.id
+                        AND
+                        s.housenumbers_auth > 0
+                        AND
+                        s.code !~ ('^(' || LOWER(m.code) || '|' || m.code || ')_')
+                )
+        "
+        ;;
     esac &&
     _query="
         WITH
@@ -366,41 +388,43 @@ bal_list_municipalities() {
                     JOIN fr.bal_municipality m ON c.municipality = m.code
                     LEFT OUTER JOIN history h ON h.municipality = c.municipality
             WHERE
-    "
-    [ -n "${bal_vars[FIX]}" ] && {
-        _query+="
-                h.date_data_end IS NOT NULL
-                AND
-                h.date_data_end < '$_date_before_fix'::DATE
-                AND
-                POSITION('${bal_vars[FIX]}' IN h.attributes) = 0
-        "
-    } || {
-        case "${bal_vars[USECASE]}" in
-        # only not already downloaded or newer import available
-        IMPORT)
-            _query+="
-                    h.date_data_end IS NULL
-                    OR
-                    m.last_update > h.date_data_end
-            "
-            ;;
-        # only already downloaded, but not matched yet (w/ at least 1 street)
-        MATCH)
+    " &&
+    {
+        [ -n "${bal_vars[FIX]}" ] && {
             _query+="
                     h.date_data_end IS NOT NULL
                     AND
-                    h.attributes IS JSON OBJECT
+                    h.date_data_end < '$_date_before_fix'::DATE
                     AND
-                    'match' NOT IN (
-                        SELECT (JSON_ARRAY_ELEMENTS((h.attributes::JSON)->'usecases'))->>'name'
-                    )
-                    AND
-                    ((h.attributes::JSON)->'integration'->>'streets')::INT > 0
+                    POSITION('${bal_vars[FIX]}' IN h.attributes) = 0
             "
-            ;;
-        esac
-    }
+        } || {
+            case "${bal_vars[USECASE]}" in
+            # only not already downloaded or newer import available
+            IMPORT)
+                _query+="
+                        h.date_data_end IS NULL
+                        OR
+                        m.last_update > h.date_data_end
+                "
+                ;;
+            # only already downloaded, but not matched yet (w/ at least 1 street)
+            MATCH)
+                _query+="
+                        h.date_data_end IS NOT NULL
+                        AND
+                        h.attributes IS JSON OBJECT
+                        AND
+                        'match' NOT IN (
+                            SELECT (JSON_ARRAY_ELEMENTS((h.attributes::JSON)->'usecases'))->>'name'
+                        )
+                        AND
+                        ((h.attributes::JSON)->'integration'->>'streets')::INT > 0
+                "
+                ;;
+            esac
+        }
+    } &&
     _query+="
             ORDER BY
                 c.criteria ${bal_vars[SELECT_ORDER]}

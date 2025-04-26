@@ -1188,7 +1188,7 @@ bal_fix_done() {
             SELECT
                 (JSONB_PATH_QUERY(
                     io.attributes::JSONB,
-                    '$ ? (@.integration.fixes[*].name == "${bal_vars[FIX]}")'
+                    '$ ? (@.integration.fixes[*].name == "'"'"${bal_vars[FIX]}"'"'")'
                 ))->'integration'->'fixes' ->> 0
             FROM
                 get_last_io('$_io') io
@@ -1210,25 +1210,13 @@ bal_fix_done() {
 
 # fix problems
 bal_fix_apply() {
-    local _done
+    local _done _force
 
     bal_fix_done --state _done &&
     {
         ([ "${bal_vars[FORCE]}" = no ] && is_yes --var _done) || {
-            {
-                [ "${bal_vars[PROGRESS]}" = no ] || {
-                    bal_vars[PROGRESS_START]=$(date '+%s') &&
-                    bal_print_progress \
-                        BEGIN \
-                        "INSEE ${bal_vars[MUNICIPALITY_CODE]}" \
-                        ${bal_vars[PROGRESS_SIZE]} \
-                        ${bal_vars[PROGRESS_CURRENT]} \
-                        ${bal_vars[PROGRESS_TOTAL]} \
-                        '\n'
-                }
-            } &&
             case "${bal_vars[FIX]}" in
-            # some housenumber's codes have space!
+            # NOTE some housenumber's codes have space!
             # for these, list returned by PostgreSQL (bal_get_list) contains code between quotes
             # these quotes are now deleted, and don't worry download...
             SPACE_IN_CODE)
@@ -1273,6 +1261,21 @@ bal_fix_apply() {
                 io_history_update \
                     --infos '{"integration":{"levels":"'${bal_vars[LEVELS]}'","areas":'${bal_vars[AREAS_OLD_MUNICIPALITY]}'}}' \
                     --id ${bal_vars[IO_ID]}
+                ;;
+            OBSOLESCENCE_STREET)
+                # NOTE reload municipality to redo obsolescence
+                bal_vars[IO_NAME]=BAL_${bal_vars[MUNICIPALITY_CODE]} &&
+                bal_vars[FILE_NAME]=${bal_vars[MUNICIPALITY_CODE]}.json &&
+                bal_import_table --command CREATE &&
+                bal_import_file \
+                    --mode OVERWRITE_DATA \
+                    --source "$POW_DIR_COMMON_GLOBAL_SCHEMA/bal" \
+                    --option '\--import_options column_name=data' &&
+                bal_integration --level STREET &&
+                bal_import_table --command DROP &&
+                io_history_update \
+                    --id ${bal_vars[IO_LAST_ID]} \
+                    --infos '{"integration":{"fixes":[{"name":"OBSOLESCENCE_STREET"}]}}'
                 ;;
             esac
         }
@@ -1329,7 +1332,7 @@ pow_argv \
         select_order:ASC|DESC;
         force:yes|no;
         force_load:yes|no;
-        fix:SPACE_IN_CODE|CONVERT_ATTRIBUTES|MORE_ATTRIBUTES;
+        fix:SPACE_IN_CODE|CONVERT_ATTRIBUTES|MORE_ATTRIBUTES|OBSOLESCENCE_STREET;
         levels:MSN|MS|N;
         dry_run:yes|no;
         progress:yes|no;
@@ -1363,6 +1366,11 @@ bal_start=$(date '+%s')
 # reset LIMIT if STOP_TIME
 [ "${bal_vars[STOP_TIME]}" != 0 ] && [ ${bal_vars[LIMIT]} -gt 0 ] && bal_vars[LIMIT]=0
 # with level(s)
+case "${bal_vars[FIX]}" in
+OBSOLESCENCE_STREET)
+    bal_vars[LEVELS]=M
+    ;;
+esac
 bal_set_levels &&
 set_env --schema_name fr &&
 {
