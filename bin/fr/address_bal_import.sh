@@ -1496,8 +1496,17 @@ done
 
 [[ $bal_error -eq 0 ]] &&
 [[ $bal_i -eq 0 ]] && {
-    log_error "Import préalable de l'ensemble des Communes (--municipality ALL)"
-    exit $ERROR_CODE
+    case "${bal_vars[MUNICIPALITY_CODE]}" in
+    ^[0-9]*)
+        log_error "Import préalable de l'ensemble des Communes (--municipality ALL)"
+        exit $ERROR_CODE
+        ;;
+    ALL)
+        [ "${bal_vars[PROGRESS]}" = no ] || set_log_echo yes
+        log_info "Import BAL déjà à jour!"
+        exit $SUCCESS_CODE
+        ;;
+    esac
 }
 
 [ "${bal_vars[STOP_TIME]}" != 0 ] && {
