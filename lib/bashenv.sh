@@ -34,3 +34,10 @@ declare -A POW_ARGV_PROPERTIES=(
     [TAG]=
 )
 declare -i POW_ARGC
+
+# debug
+declare -A POW_DEBUG_STEPS
+declare -A POW_DEBUG_BREAKPOINTS
+declare -A POW_DEBUG_PROPERTIES=(
+    [INIT]=STARTUP
+)

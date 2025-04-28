@@ -1488,6 +1488,15 @@ wait_for_file() {
     return $SUCCESS_CODE
 }
 
+# archive file (log, ...)
+archive_file() {
+    expect file "$1" || return $ERROR_CODE
+    [ ! -d $POW_DIR_ARCHIVE ] && mkdir --parents $POW_DIR_ARCHIVE
+    local _file=$(basename "$1")
+    mv --force "$1" $POW_DIR_ARCHIVE/"$_file"
+    return $?
+}
+
     #
     # archive
     #

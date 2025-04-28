@@ -60,9 +60,34 @@ t_pow_argv_3() {
     return $SUCCESS_CODE
 }
 
+t_pow_debug_1() {
+    local _steps _bps _step
+    local -a _array_steps _array_bps
+
+    POW_DEBUG_JSON='{"codes":[{"name":"t_pow_debug_1","steps":["step1@break","step2","step3"]}]}'
+    get_env_debug --code t_pow_debug_1 --steps _steps --breakpoints _bps --all 'step1 step2 step3'
+    #declare -p POW_DEBUG_STEPS POW_DEBUG_BREAKPOINTS POW_DEBUG_PROPERTIES
+
+    _array_steps=($_steps)
+    _array_bps=($_bps)
+    #declare -p _array_steps _array_bps
+    for _step in "${_array_steps[@]}"; do
+        in_array --array _array_steps --item $_step && {
+            echo "###DEBUG($_step)"
+            declare -p _array_steps
+            in_array --array _array_bps --item $_step && {
+                read
+            }
+        }
+    done
+
+    return $SUCCESS_CODE
+}
+
 # libstd tests
 declare -a TESTS=(
     POW_ARGV
+    POW_DEBUG
     IN_ARRAY
     NOT_IN_ARRAY
     IN_HASH
@@ -236,6 +261,10 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
             echo "POW_ARGV:  ok=$_ok_pow_argv/${_tests_pow_argv}"
             echo "POW_ARGV: err=${env_lib[POW_ARGV]}"
         }
+        ;;
+    POW_DEBUG)
+        t_pow_debug_1
+        _rc=0
         ;;
     IN_ARRAY)
         declare -a _array=([0]=ZERO [1]=ONE [2]=TWO)

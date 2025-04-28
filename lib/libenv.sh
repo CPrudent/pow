@@ -418,11 +418,101 @@ set_env() {
     return $SUCCESS_CODE
 }
 
-# archive file (log, ...)
-archive_file() {
-    expect file "$1" || return $ERROR_CODE
-    [ ! -d $POW_DIR_ARCHIVE ] && mkdir --parents $POW_DIR_ARCHIVE
-    local _file=$(basename "$1")
-    mv --force "$1" $POW_DIR_ARCHIVE/"$_file"
-    return $?
+# set DEBUG env (from global variable: POW_DEBUG_JSON)
+set_env_debug() {
+    local _tmp _tmp2 _code _step _steps _break _list_steps _list_breaks
+    local -a _array_steps
+
+    [ -n "$POW_DEBUG_JSON" ] && {
+        # already initialized ?
+        [ "${POW_DEBUG_PROPERTIES[INIT]}" = STARTUP ] &&
+        [[ ${#POW_DEBUG_STEPS[@]} -gt 0 ]] && return $SUCCESS_CODE
+
+        # steps of code(s)
+        for _tmp in $(jq \
+            --compact-output \
+            --raw-output \
+            '.codes[] | .name + ":" + (.steps | join(","))' <<< "$POW_DEBUG_JSON"
+        ); do
+            #echo $_tmp
+            _code=${_tmp%%:*}
+            _steps=${_tmp#*:}
+            _array_steps=(${_steps//,/ })
+            for _tmp2 in "${_array_steps[@]}"; do
+                #echo tmp2=$_tmp2
+                _step=${_tmp2%%@*}
+                #echo step=$_step
+                _break=${_tmp2#*@}
+                #echo break=$_break
+
+                [ -n "$_list_steps" ] && _list_steps+=' '
+                _list_steps+=$_step
+                #echo list_steps=$_list_steps
+
+                [ "${_break^^}" = BREAK ] && {
+                    [ -n "$_list_breaks" ] && _list_breaks+=' '
+                    _list_breaks+=$_step
+                }
+                #echo list_breaks=$_list_breaks
+            done
+            # add code w/ it(s) step(s) ...
+            POW_DEBUG_STEPS[$_code]=$_list_steps
+            # ... and optional breakpoint(s)
+            [ -n "$_list_breaks" ] && POW_DEBUG_BREAKPOINTS[$_code]=$_list_breaks
+        done
+
+        # properties
+        local _k _v _property _key
+        local -A _properties
+        _tmp=$(jq --compact-output --raw-output '.properties // empty' <<< $POW_DEBUG_JSON)
+        [ -n "$_tmp" ] && {
+            for _tmp in $(jq \
+                --compact-output \
+                --raw-output \
+                '.properties | to_entries[] | .key + "=" + .value // empty ' <<< $POW_DEBUG_JSON
+            ); do
+                [ -z "$_tmp" ] && continue
+                _k=${_tmp%%=*}
+                _v=${_tmp#*=}
+                properties+=([$_k]=$_v)
+            done
+            for _key in ${!_properties[@]}; do
+                POW_DEBUG_PROPERTIES[${_key^^}]=${_properties[$_key]^^}
+            done
+        }
+    }
+
+    return $SUCCESS_CODE
+}
+
+# get DEBUG env for a given code
+get_env_debug() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            code:Code applicatif (script ou fonction);
+            steps:Ensemble des étapes avec DEBUG;
+            breakpoints:Ensemble des points arrêt (sur étape);
+            all:Ensemble des étapes du Code
+        ' \
+        --args_m 'code;steps;breakpoints' \
+        --pow_argv _opts "$@" || return $?
+
+    local -n _steps_ref=${_opts[STEPS]} _breakpoints_ref=${_opts[BREAKPOINTS]}
+
+    set_env_debug
+    [ ${POW_DEBUG_STEPS[${_opts[CODE]}]+_} ] && {
+        case "${POW_DEBUG_STEPS[${_opts[CODE]}]}" in
+        all|ALL)
+            _steps_ref="${_opts[ALL]}"
+            ;;
+        *)
+            _steps_ref="${POW_DEBUG_STEPS[${_opts[CODE]}]}"
+            ;;
+        esac
+
+        [ ${POW_DEBUG_BREAKPOINTS[${_opts[CODE]}]+_} ] && _breakpoints_ref="${POW_DEBUG_BREAKPOINTS[${_opts[CODE]}]}"
+    }
+
+    return $SUCCESS_CODE
 }
