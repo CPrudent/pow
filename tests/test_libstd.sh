@@ -64,12 +64,13 @@ t_pow_debug_1() {
     local _steps _bps _step
     local -a _array_steps _array_bps
 
-    POW_DEBUG_JSON='{"codes":[{"name":"t_pow_debug_1","steps":["step1@break","step2","step3"]}]}'
-    get_env_debug --code t_pow_debug_1 --steps _steps --breakpoints _bps --all 'step1 step2 step3'
+    POW_DEBUG_JSON='{"codes":[{"name":"t_pow_debug_1","steps":["step1@break","step3"]}]}'
+    get_env_debug t_pow_debug_1 _steps _bps 'step1 step2 step3 step4'
     #declare -p POW_DEBUG_STEPS POW_DEBUG_BREAKPOINTS POW_DEBUG_PROPERTIES
-
-    _array_steps=($_steps)
-    _array_bps=($_bps)
+    [ -n "$_steps" ] && {
+        _array_steps=($_steps)
+        _array_bps=($_bps)
+    }
     #declare -p _array_steps _array_bps
     for _step in "${_array_steps[@]}"; do
         in_array --array _array_steps --item $_step && {
@@ -88,6 +89,7 @@ t_pow_debug_1() {
 declare -a TESTS=(
     POW_ARGV
     POW_DEBUG
+    POW_DEBUG_2
     IN_ARRAY
     NOT_IN_ARRAY
     IN_HASH
@@ -263,7 +265,13 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
         }
         ;;
     POW_DEBUG)
+        # export POW_DEBUG_JSON='{"codes":[{"name":"t_pow_debug_1","steps":["step1@break","step3"]}]}'
+        # or inline def
         t_pow_debug_1
+        _rc=0
+        ;;
+    POW_DEBUG_2)
+        # export POW_DEBUG_JSON='{"codes":[{"name":"pow_argv","steps":["all"]}]}'
         _rc=0
         ;;
     IN_ARRAY)

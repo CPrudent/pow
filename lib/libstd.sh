@@ -359,12 +359,12 @@ set_delimiter() {
 # --pow_argv <user variable>    to overload default POW_ARGV    (returned hash w/ argument(s))
 # --pow_argc <user variable>    to overload default POW_ARGC    (count of argument(s), except args_*)
 
-# NOTE
-# arguments counter takes into account argument w/ default value (even missing on command line)
-
-# NOTE
+# NOTE !
 # can't call another function which implements pow_argv, else infinite loop (deadlock)!
 # so can't use in_array(), is_yes() functions, has to do itself the job here...
+
+# NOTE
+# arguments counter takes into account argument w/ default value (even missing on command line)
 
 # NOTE
 # if other name than default POW_ARGV is requested, caller code has to declare it before (as HASH)
@@ -388,8 +388,8 @@ pow_argv() {
     local -A _argv
     local -a _args_n_list _args_m_list _args_v_list _args_d_list _args_p_list
     local -A _args_n_kv _args_v_kv _args_d_kv _args_p_kv
-    local -A _args_n_a
-    local -a _mandatory_keys _among_values _args_a
+    local -A _args_n_t
+    local -a _mandatory_keys _among_values _args_t
 
     # prepare user parameters (from given lists)
     _pow_argv_list() {
@@ -448,9 +448,21 @@ pow_argv() {
         return $ERROR_CODE
     }
 
+    # DEBUG steps
+    local _str_steps _str_bps
+    local -a _debug_steps _debug_bps
+    get_env_debug pow_argv _str_steps _str_bps 'cmdl args_p def check reset case'
+    [ -n "$_str_steps" ] && {
+        _debug_steps=($_str_steps)
+        _debug_bps=($_str_bps)
+    }
+
     # read from command line
     while :; do
-        #echo "step=($_step) key=($_key) \$1=$1"
+        [ ${#_debug_steps[@]} -gt 0 ] && {
+            [[ " ${_debug_steps[*]} " == *" cmdl "* ]] && echo "step=($_step) key=($_key) \$1=$1"
+            [[ " ${_debug_bps[*]} " == *" cmdl "* ]] && read
+        }
         case $_step in
         # name of argument
         1)
@@ -500,8 +512,11 @@ pow_argv() {
             fi
             ;;
         11)
-            #echo "$_key=$_value"
-            case "${_args_n_a[$_key]}" in
+            [ ${#_debug_steps[@]} -gt 0 ] && {
+                [[ " ${_debug_steps[*]} " == *" cmdl "* ]] && echo "$_key=$_value"
+                [[ " ${_debug_bps[*]} " == *" cmdl "* ]] && read
+            }
+            case "${_args_n_t[$_key]}" in
             BOOL)
                 # option w/o value is considered true
                 [ -z "$_value" ] && _argv[$_key]=yes
@@ -541,22 +556,37 @@ pow_argv() {
 
             # args_p can be multiple (execute_query w/ psql syntax need to define psql tag)
             if ([ "$_key" = args_p ] || [[ ${#_argx_list_ref[@]} -eq 0 ]]); then
-                #declare -p _argv ; read
+                [ ${#_debug_steps[@]} -gt 0 ] && {
+                    [[ " ${_debug_steps[*]} " == *" args_p "* ]] && declare -p _argv
+                    [[ " ${_debug_bps[*]} " == *" args_p "* ]] && read
+                }
                 _pow_argv_list "${_argv[$_key]}" $_argx_list_name $_argx_kv_name
-                #[ -n "$_argx_kv_name" ] && declare -p $_argx_kv_name ; read
+                [ ${#_debug_steps[@]} -gt 0 ] && {
+                    [[ " ${_debug_steps[*]} " == *" args_p "* ]] && declare -p _argx_kv_name
+                    [[ " ${_debug_bps[*]} " == *" args_p "* ]] && read
+                }
                 [ "$_key" = args_p ] && {
-                    local _tag _a
-                    #declare -p _args_p_kv
+                    local _tag _t
+                    [ ${#_debug_steps[@]} -gt 0 ] && {
+                        [[ " ${_debug_steps[*]} " == *" args_p "* ]] && declare -p _args_p_kv
+                        [[ " ${_debug_bps[*]} " == *" args_p "* ]] && read
+                    }
                     _pow_argv_property _args_p_kv TAG _tag
-                    #echo $_tag
+                    [ ${#_debug_steps[@]} -gt 0 ] && {
+                        [[ " ${_debug_steps[*]} " == *" args_p "* ]] && echo "tag=($_tag)"
+                        [[ " ${_debug_bps[*]} " == *" args_p "* ]] && read
+                    }
                     [ -n "${_tag}" ] && {
-                        IFS=, read -a _args_a <<< ${_tag}
-                        for _tmp in "${_args_a[@]}"; do
+                        IFS=, read -a _args_t <<< ${_tag}
+                        for _tmp in "${_args_t[@]}"; do
                             _k=${_tmp%%@*}
-                            _a=${_tmp#*@}
-                            _args_n_a+=([$_k]=${_a^^})
+                            _t=${_tmp#*@}
+                            _args_n_t+=([$_k]=${_t^^})
                         done
-                        #declare -p _args_n_a
+                        [ ${#_debug_steps[@]} -gt 0 ] && {
+                            [[ " ${_debug_steps[*]} " == *" args_p "* ]] && declare -p _args_n_t
+                            [[ " ${_debug_bps[*]} " == *" args_p "* ]] && read
+                        }
                     }
                 }
                 _step=$(( _end == 1 ? 91 : 1 ))
@@ -568,7 +598,10 @@ pow_argv() {
 
         # check argument (among allowed ones)
         20)
-            #declare -p _args_n_kv
+            [ ${#_debug_steps[@]} -gt 0 ] && {
+                [[ " ${_debug_steps[*]} " == *" cmdl "* ]] && declare -p _args_n_kv
+                [[ " ${_debug_bps[*]} " == *" cmdl "* ]] && read
+            }
             [[ -v "_args_n_kv[$_key]" ]] && _step=$(( _end == 1 ? 91 : 1 )) || {
                 _error="L'argument $_key ne fait pas partie des arguments possibles"
                 _step=99
@@ -590,9 +623,15 @@ pow_argv() {
             ;;
         esac
 
-        #printf 'step=%d\n' $_step ; declare -p _argv ; read
+        [ ${#_debug_steps[@]} -gt 0 ] && {
+            [[ " ${_debug_steps[*]} " == *" cmdl "* ]] && printf 'step=%d\n' $_step ; declare -p _argv
+            [[ " ${_debug_bps[*]} " == *" cmdl "* ]] && read
+        }
     done
-    #declare -p _argv _args_n_a _args_n_kv ; read
+    [ ${#_debug_steps[@]} -gt 0 ] && {
+        [[ " ${_debug_steps[*]} " == *" cmdl "* ]] && declare -p _argv _args_n_t _args_n_kv
+        [[ " ${_debug_bps[*]} " == *" cmdl "* ]] && read
+    }
 
     # return options (values and count) eventually w/ overload of default POW_ARGV|POW_ARGC
     [ ${_argv[pow_argv]+_} ] && _argv_name="${_argv[pow_argv]}" || _argv_name="POW_ARGV"
@@ -601,13 +640,15 @@ pow_argv() {
     local -n _argc_ref="$_argc_name"
 
     # reset returned hash (default behavior)
-    #echo "pow_argv_property=(RESET)"
-    _pow_argv_property _args_p_kv RESET _property &&
-        #echo "reset=($_property)" &&
-        [ "$_property" = yes ] &&
-        #echo 'reset ARGV' &&
+    _pow_argv_property _args_p_kv RESET _property
+    [ ${#_debug_steps[@]} -gt 0 ] && {
+        [[ " ${_debug_steps[*]} " == *" reset "* ]] && echo "reset=($_property)"
+        [[ " ${_debug_bps[*]} " == *" reset "* ]] && read
+    }
+    [ "$_property" = yes ] && {
         _argv_ref=()
         _argc_ref=0
+    }
 
     # break on error, after reseting returned values
     [ -n "$_error" ] && {
@@ -633,19 +674,33 @@ pow_argv() {
 
     # default values
     for _key in ${!_args_n_kv[@]}; do
-        #echo "def($_key)"
+        [ ${#_debug_steps[@]} -gt 0 ] && {
+            [[ " ${_debug_steps[*]} " == *" def "* ]] && echo "def=($_key)"
+            [[ " ${_debug_bps[*]} " == *" def "* ]] && read
+        }
         [ ! ${_argv[$_key]+_} ] && {
-
             # given default value?
             if [ ${_args_d_kv[$_key]+_} ]; then
-                #echo "def($_key)=${_args_d_kv[$_key]}"
+                [ ${#_debug_steps[@]} -gt 0 ] && {
+                    [[ " ${_debug_steps[*]} " == *" def "* ]] && echo "def($_key)=${_args_d_kv[$_key]}"
+                    [[ " ${_debug_bps[*]} " == *" def "* ]] && read
+                }
                 # duplicate from another key
                 [[ ${_args_d_kv[$_key]} =~ ^@(.*)$ ]] && {
-                    #declare -p _argv
+                    [ ${#_debug_steps[@]} -gt 0 ] && {
+                        [[ " ${_debug_steps[*]} " == *" def "* ]] && declare -p _argv
+                        [[ " ${_debug_bps[*]} " == *" def "* ]] && read
+                    }
                     _k=${BASH_REMATCH[1]}
-                    #echo "from($_k)"
+                    [ ${#_debug_steps[@]} -gt 0 ] && {
+                        [[ " ${_debug_steps[*]} " == *" def "* ]] && echo "from($_k)"
+                        [[ " ${_debug_bps[*]} " == *" def "* ]] && read
+                    }
                     _argv[$_key]=${_argv[$_k]:-${_args_d_kv[$_k]}}
-                    #declare -p _argv
+                    [ ${#_debug_steps[@]} -gt 0 ] && {
+                        [[ " ${_debug_steps[*]} " == *" def "* ]] && declare -p _argv
+                        [[ " ${_debug_bps[*]} " == *" def "* ]] && read
+                    }
                     continue
                 }
                 _argv[$_key]=${_args_d_kv[$_key]}
@@ -675,7 +730,7 @@ pow_argv() {
 
     # check values
     for _key in ${!_args_n_kv[@]}; do
-        case "${_args_n_a[$_key]}" in
+        case "${_args_n_t[$_key]}" in
         INT)
             [ -z "${_argv[$_key]}" ] || {
                 [[ ${_argv[$_key]} =~ ^[0-9]+$ ]] || {
@@ -697,7 +752,7 @@ pow_argv() {
             # with defined check ?
             [ -z "${_args_v_kv[$_key]}" ] || {
                 # no value
-                [ -z "${_argv[$_key]}" ] && [ "${_args_n_a[$_key]}" = 0N ] && continue
+                [ -z "${_argv[$_key]}" ] && [ "${_args_n_t[$_key]}" = 0N ] && continue
 
                 IFS='|' read -ra _among_values <<< "${_args_v_kv[$_key]}"
                 # special case: all requested
@@ -708,7 +763,10 @@ pow_argv() {
                 local -A _verify_values=()
                 local -a _keys _delete_values
 
-                #declare -p _among_values _check_values &&
+                [ ${#_debug_steps[@]} -gt 0 ] && {
+                    [[ " ${_debug_steps[*]} " == *" check "* ]] && declare -p _among_values _check_values
+                    [[ " ${_debug_bps[*]} " == *" check "* ]] && read
+                }
 
                 # build hash w/ value as key, and occurence as value
                 for ((_i=0; _i<${#_check_values[@]}; _i++)); do
@@ -721,7 +779,12 @@ pow_argv() {
                     }
                     [ ${_verify_values[${_check_values[$_i]}]+_} ] && _verify_values[${_check_values[$_i]}]=$((_verify_values[${_check_values[$_i]}] +1)) || _verify_values[${_check_values[$_i]}]=1
                 done &&
-                #declare -p _delete_values &&
+                {
+                    [ ${#_debug_steps[@]} -eq 0 ] || {
+                        [[ ! " ${_debug_steps[*]} " == *" check "* ]] || declare -p _delete_values
+                        [[ ! " ${_debug_bps[*]} " == *" check "* ]] || read
+                    }
+                } &&
                 {
                     if ([[ ${#_verify_values[@]} -gt 0 ]] &&
                         [[ ${#_delete_values[@]} -gt 0 ]]); then
@@ -739,15 +802,23 @@ pow_argv() {
                                     _verify_values[${_among_values[$_i]}]=1
                                 }
                             done
-                            #declare -p _check_values _verify_values
+                            [ ${#_debug_steps[@]} -gt 0 ] && {
+                                [[ " ${_debug_steps[*]} " == *" check "* ]] && declare -p _check_values
+                                [[ " ${_debug_bps[*]} " == *" check "* ]] && read
+                            }
                             # assign new value (w/ deleted items)
                             _argv[$_key]="${_check_values[@]}"
                         }
                     fi
                 } &&
                 _keys=(${!_verify_values[@]}) &&
-                #declare -p _verify_values &&
-                case "${_args_n_a[$_key]}" in
+                {
+                    [ ${#_debug_steps[@]} -eq 0 ] || {
+                        [[ ! " ${_debug_steps[*]} " == *" check "* ]] || declare -p _verify_values
+                        [[ ! " ${_debug_bps[*]} " == *" check "* ]] || read
+                    }
+                } &&
+                case "${_args_n_t[$_key]}" in
                 # one (eventually multiple)
                 1+N)
                     _error="$_key: Valeur unique attendue, éventuellement multiple"
@@ -789,19 +860,27 @@ pow_argv() {
     done
 
     # case of keys in returned hash
-    #echo "pow_argv_property=(CASE)"
     _pow_argv_property _args_p_kv CASE _property
-    #echo "case=($_property)"
+    [ ${#_debug_steps[@]} -gt 0 ] && {
+        [[ " ${_debug_steps[*]} " == *" case "* ]] && echo "case=($_property)"
+        [[ " ${_debug_bps[*]} " == *" case "* ]] && read
+    }
     _argc_ref=0
     for _key in ${!_argv[@]}; do
-        #echo "key=($_key)"
+        [ ${#_debug_steps[@]} -gt 0 ] && {
+            [[ " ${_debug_steps[*]} " == *" case "* ]] && echo "key=($_key)"
+            [[ " ${_debug_bps[*]} " == *" case "* ]] && read
+        }
         [[ "$_key" =~ pow_arg[cv]|args_[nmvdp] ]] && continue
         case "$_property" in
         UPPER)  _k=${_key^^}    ;;
         LOWER)  _k=${_key,,}    ;;
         USER)   _k=${_key}      ;;
         esac
-        #echo "k=($_k)"
+        [ ${#_debug_steps[@]} -gt 0 ] && {
+            [[ " ${_debug_steps[*]} " == *" case "* ]] && echo "k=($_k)"
+            [[ " ${_debug_bps[*]} " == *" case "* ]] && read
+        }
         _argv_ref[$_k]=${_argv[$_key]}
         ((_argc_ref++))
     done

@@ -35,8 +35,6 @@ on_import_error() {
     local _info=$( [ -n "${bal_vars[FIX]}" ] && echo ${bal_vars[FIX]} || echo ${bal_vars[IO_NAME]#*_} )
 
     # IO created?
-    [ "$POW_DEBUG" = yes ] && { echo "io_history_id=${bal_vars[IO_ID]}"; }
-
     [ "${bal_vars[DRY_RUN]}" = no ] &&
     [ -n "${bal_vars[IO_ID]}" ] &&
     io_history_end_ko --id ${bal_vars[IO_ID]}
