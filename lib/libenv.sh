@@ -420,14 +420,10 @@ set_env() {
 
 # set DEBUG env (from global variable: POW_DEBUG_JSON)
 set_env_debug() {
-    local _tmp _tmp2 _code _step _steps _break _list_steps _list_breaks
+    local _tmp _tmp2 _code _steps _step _break _list_steps _list_breaks
     local -a _array_steps
 
     [ -n "$POW_DEBUG_JSON" ] && {
-        # already initialized ?
-        [ "${POW_DEBUG_PROPERTIES[INIT]}" = STARTUP ] &&
-        [[ ${#POW_DEBUG_STEPS[@]} -gt 0 ]] && return $SUCCESS_CODE
-
         # steps of code(s)
         for _tmp in $(jq \
             --compact-output \
@@ -513,21 +509,33 @@ get_env_debug() {
 #
 #     local -n _steps_ref=${_opts[STEPS]} _breakpoints_ref=${_opts[BREAKPOINTS]}
 
-    local _code=$1 _all="$4"
-    local -n _steps_ref=$2 _breakpoints_ref=$3
+    local _code=$1 _all_steps="$4" _list_steps _step
+    local -a _debug_steps _debug_bps
+    local -n _with_steps_ref=$2 _with_bps_ref=$3
 
     set_env_debug
     [ ${POW_DEBUG_STEPS[${_code}]+_} ] && {
         case "${POW_DEBUG_STEPS[${_code}]}" in
         all|ALL)
-            _steps_ref="$_all"
+            _list_steps="$_all_steps"
             ;;
         *)
-            _steps_ref="${POW_DEBUG_STEPS[${_code}]}"
+            _list_steps="${POW_DEBUG_STEPS[${_code}]}"
             ;;
         esac
 
-        [ ${POW_DEBUG_BREAKPOINTS[${_code}]+_} ] && _breakpoints_ref="${POW_DEBUG_BREAKPOINTS[${_code}]}"
+        [ -n "$_list_steps" ] && {
+            _debug_steps=($_list_steps)
+            _debug_bps=(${POW_DEBUG_BREAKPOINTS[${_code}]})
+
+            for _step in $_list_steps; do
+                _with_steps_ref[$_step]=$([[ " ${_debug_steps[*]} " == *" $_step "* ]] ; echo $?)
+                _with_bps_ref[$_step]=$([[ " ${_debug_bps[*]} " == *" $_step "* ]] ; echo $?)
+            done
+
+            echo "with_steps=${_with_steps_ref[@]}"
+            echo "with_bps=${_with_bps_ref[@]}"
+        }
     }
 
     return $SUCCESS_CODE

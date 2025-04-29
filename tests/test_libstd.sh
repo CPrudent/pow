@@ -61,24 +61,18 @@ t_pow_argv_3() {
 }
 
 t_pow_debug_1() {
-    local _steps _bps _step
-    local -a _array_steps _array_bps
+    local _code=t_pow_debug_1 _step
+    local -A _with_steps _with_bps
 
-    POW_DEBUG_JSON='{"codes":[{"name":"t_pow_debug_1","steps":["step1@break","step3"]}]}'
-    get_env_debug t_pow_debug_1 _steps _bps 'step1 step2 step3 step4'
+    #POW_DEBUG_JSON='{"codes":[{"name":"t_pow_debug_1","steps":["step1@break","step3"]}],"properties":{"init":"always"}}'
+    #echo $POW_DEBUG_JSON
+    get_env_debug $_code _with_steps _with_bps 'step1 step2 step3 step4'
+    #declare -p _with_steps _with_bps
     #declare -p POW_DEBUG_STEPS POW_DEBUG_BREAKPOINTS POW_DEBUG_PROPERTIES
-    [ -n "$_steps" ] && {
-        _array_steps=($_steps)
-        _array_bps=($_bps)
-    }
-    #declare -p _array_steps _array_bps
-    for _step in "${_array_steps[@]}"; do
-        in_array --array _array_steps --item $_step && {
+    for _step in ${POW_DEBUG_STEPS[${_code}]}; do
+        [[ ${_with_steps[$_step]} -eq 0 ]] && {
             echo "###DEBUG($_step)"
-            declare -p _array_steps
-            in_array --array _array_bps --item $_step && {
-                read
-            }
+            [[ ${_with_bps[$_step]} -eq 0 ]] && read
         }
     done
 
@@ -265,13 +259,14 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
         }
         ;;
     POW_DEBUG)
-        # export POW_DEBUG_JSON='{"codes":[{"name":"t_pow_debug_1","steps":["step1@break","step3"]}]}'
+        # export POW_DEBUG_JSON='{"codes":[{"name":"t_pow_debug_1","steps":["step1@break","step3"]}],"properties":{"init":"always"}}'
         # or inline def
         t_pow_debug_1
         _rc=0
         ;;
     POW_DEBUG_2)
-        # export POW_DEBUG_JSON='{"codes":[{"name":"pow_argv","steps":["all"]}]}'
+        # export POW_DEBUG_JSON='{"codes":[{"name":"pow_argv","steps":["all"]}],"properties":{"init":"always"}}'
+        declare -p POW_DEBUG_STEPS POW_DEBUG_BREAKPOINTS POW_DEBUG_PROPERTIES
         _rc=0
         ;;
     IN_ARRAY)
