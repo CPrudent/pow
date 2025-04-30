@@ -75,7 +75,7 @@ on_import_error() {
         --pow_argv _opts "$@" || return $?
 
     # history created?
-    [ "$POW_DEBUG" = yes ] && { echo "id=${_opts[ID]}"; }
+    #echo "id=${_opts[ID]}"
     [ -n "${_opts[ID]}" ] && io_history_end_ko --id ${_opts[ID]}
 
     exit $ERROR_CODE

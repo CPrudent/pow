@@ -419,6 +419,9 @@ set_env() {
 }
 
 # set DEBUG env (from global variable: POW_DEBUG_JSON)
+# TODO
+#+ add "parent" of code to limit (or not if null) at this parent (solution w/ caller?)
+#+ add "init" field ONCE|EVERYTIME of code to do (or not) JSON init
 set_env_debug() {
     local _tmp _tmp2 _code _steps _step _break _list_steps _list_breaks
     local -a _array_steps _array_codes
