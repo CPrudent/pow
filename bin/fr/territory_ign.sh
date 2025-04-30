@@ -60,6 +60,9 @@ declare -A _TABLES=(
     [REGION]=region
 )
 
+# NOTE to debug,
+# export POW_DEBUG_JSON='{"codes":[{"name":"territory_ign","steps":["argv"]},{"name":"io_download_file","steps":["diff@break","result@break"]}]}'
+
 on_import_error() {
     local -A _opts &&
     pow_argv \
@@ -79,6 +82,7 @@ on_import_error() {
 }
 
 declare -A io_vars=(
+    [SCRIPT]=$(basename $0 .sh)
     [NAME]=FR-TERRITORY-IGN
     [ID]=
     [PASSWD]=
@@ -104,6 +108,19 @@ pow_argv \
     ' \
     --pow_argv io_vars "$@" || exit $?
 
+# DEBUG steps
+declare -A _debug_steps _debug_bps
+get_env_debug \
+    ${io_vars[SCRIPT]} \
+    _debug_steps \
+    _debug_bps \
+    'argv items io_last years year io_begin url_all url table sql'
+
+[[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
+    declare -p io_vars
+    [[ ${_debug_bps[argv]} -eq 0 ]] && read
+}
+
 # according command line
 if [ -z "${io_vars[ITEM]}" ]; then
     # NOTE: some items seem not useful, and EPCI is taken elsewhere
@@ -112,6 +129,10 @@ else
     io_name=FR-TERRITORY-IGN-${io_vars[ITEM]}
     declare -a ITEMS=(${io_vars[ITEM]})
 fi
+[[ ${_debug_steps[items]:-1} -eq 0 ]] && {
+    declare -p ITEMS
+    [[ ${_debug_bps[items]} -eq 0 ]] && read
+}
 
 set_env --schema_name fr &&
 # get last import
@@ -121,6 +142,12 @@ execute_query \
         SELECT TO_CHAR(date_data_end, 'YYYY-MM-DD')
         FROM get_last_io('${io_vars[NAME]}')" \
     --return _last_io &&
+{
+    [[ ${_debug_steps[io_last]:-1} -ne 0 ]] || {
+        echo "last_io=($_last_io)"
+        [[ ${_debug_bps[io_last]} -ne 0 ]] || read
+    }
+} &&
 # get years
 io_get_list_online_available \
     --name ${io_vars[NAME]} \
@@ -129,7 +156,10 @@ io_get_list_online_available \
     [ -n "$_last_io" ] && _rc=$SUCCESS_CODE || _rc=$ERROR_CODE
     exit $_rc
 }
-[ "$POW_DEBUG" = yes ] && { declare -p years; declare -p years_list_path; }
+[[ ${_debug_steps[years]:-1} -eq 0 ]] && {
+    declare -p years years_list_path
+    [[ ${_debug_bps[years]} -eq 0 ]] && read
+}
 
 # get year (w/ format YYYY)
 if [ -z "${io_vars[ITEM]}" ]; then
@@ -146,7 +176,10 @@ year=${years[$year_id]}
     log_error "Impossible de trouver le millésime de ${io_vars[NAME]}"
     on_import_error --id ${io_vars[ID]}
 }
-[ "$POW_DEBUG" = yes ] && { echo "year=$year (${years[$year_id]})"; }
+[[ ${_debug_steps[year]:-1} -eq 0 ]] && {
+    echo "year=$year (${years[$year_id]})"
+    [[ ${_debug_bps[year]} -eq 0 ]] && read
+}
 
 io_todo_import \
     --force ${io_vars[FORCE]} \
@@ -168,10 +201,6 @@ log_info "Import du millésime $year de ${io_vars[NAME]}" && {
     }
 } &&
 [ -n "${io_vars[PASSWD]}" ] &&
-# # no history (think about requested item, so REGEX)
-# execute_query \
-#     --name "DELETE_IO_${io_vars[NAME]}" \
-#     --query "DELETE FROM io_history WHERE name ~ '^${io_vars[NAME]}'" &&
 io_history_begin \
     --io ${io_vars[NAME]} \
     --date_begin "${years[$year_id]}" \
@@ -179,17 +208,29 @@ io_history_begin \
     --nrows_todo 35000 \
     --id io_vars[ID] &&
 {
+    [[ ${_debug_steps[io_begin]:-1} -ne 0 ]] || {
+        echo "id=(${io_vars[ID]})"
+        [[ ${_debug_bps[io_begin]} -ne 0 ]] || read
+    }
+} &&
+{
     # search for ADMIN-EXPRESS_XXX to avoid ADMIN-EXPRESS-COG
     # exclude WGS84 full (from v3.1)
     url_data_all=($(grep --only-matching --perl-regexp 'href="(http|ftp)[^"]+ADMIN-EXPRESS_(?(?!WM)[^"])+'$year'\.7z[^"]*' "$years_list_path" | grep --only-matching --perl-regexp '(http|ftp).*' | grep --invert-match WGS84))
-    [ "$POW_DEBUG" = yes ] && { declare -p url_data_all; }
+    [[ ${_debug_steps[url_all]:-1} -eq 0 ]] && {
+        declare -p url_data_all
+        [[ ${_debug_bps[url_all]} -eq 0 ]] && read
+    }
 
     for ((_i=0; _i<${#url_data_all[*]}; _i++)); do
         url_data_one=${url_data_all[$_i]}
         year_data=$(basename $url_data_one)
         # remove optionnal .001
         year_data=${year_data/.001/}
-        [ "$POW_DEBUG" = yes ] && echo "data=${year_data}"
+        [[ ${_debug_steps[url]:-1} -eq 0 ]] && {
+            echo "data=${year_data}"
+            [[ ${_debug_bps[url]} -eq 0 ]] && read
+        }
 
         io_download_file \
             --url "${url_data_one}" \
@@ -207,7 +248,10 @@ io_history_begin \
                 _query_drop=
                 _file_count=1
                 _table_name=ign_${_TABLES[$_item]}
-                [ "$POW_DEBUG" = yes ] && echo "table=${_table_name}"
+                [[ ${_debug_steps[table]:-1} -eq 0 ]] && {
+                    echo "table=${_table_name}"
+                    [[ ${_debug_bps[table]} -eq 0 ]] && read
+                }
                 for _shapefile_full_path in $(find "$POW_DIR_TMP/$year_data" -type f -iname ${_item}.shp); do
                     # NOTE: no spatial index (not slow down)
                     # NOTE: more temporary tables to insert different SRID
@@ -226,9 +270,9 @@ io_history_begin \
                     _file_count=$((_file_count+1))
                 done
 
-                [ "$POW_DEBUG" = yes ] && {
+                [[ ${_debug_steps[sql]:-1} -eq 0 ]] && {
                     echo -e "item=${_item}\nload=${_query_union}\ndrop=${_query_drop}"
-                    #exprDebug "vérification en base ... <ENTREE>"
+                    [[ ${_debug_bps[sql]} -eq 0 ]] && read
                 }
 
                 {

@@ -421,7 +421,7 @@ set_env() {
 # set DEBUG env (from global variable: POW_DEBUG_JSON)
 set_env_debug() {
     local _tmp _tmp2 _code _steps _step _break _list_steps _list_breaks
-    local -a _array_steps
+    local -a _array_steps _array_codes
 
     [ -n "$POW_DEBUG_JSON" ] && {
         # steps of code(s)
@@ -440,8 +440,12 @@ set_env_debug() {
                 }
                 continue
             }
+            # add new code
+            _array_codes+=($_code)
+            # get steps
             _steps=${_tmp#*:}
             _array_steps=(${_steps//,/ })
+            POW_DEBUG_BREAKPOINTS[$_code]=
             for _tmp2 in "${_array_steps[@]}"; do
                 #echo tmp2=$_tmp2
                 _step=${_tmp2%%@*}
@@ -464,6 +468,13 @@ set_env_debug() {
             POW_DEBUG_STEPS[$_code]=$_list_steps
             # ... and optional breakpoint(s)
             [ -n "$_list_breaks" ] && POW_DEBUG_BREAKPOINTS[$_code]=$_list_breaks
+        done
+        # purge old codes
+        for _code in ${!POW_DEBUG_STEPS[@]}; do
+            [[ " ${_array_codes[*]} " == *" $_code "* ]] || {
+                unset 'POW_DEBUG_STEPS[${_code}]'
+                [ ${POW_DEBUG_BREAKPOINTS[${_code}]+_} ] && unset 'POW_DEBUG_BREAKPOINTS[${_code}]'
+            }
         done
 
         # properties

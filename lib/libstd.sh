@@ -514,7 +514,7 @@ pow_argv() {
             case "${_args_n_t[$_key]}" in
             BOOL)
                 # option w/o value is considered true
-                [ -z "$_value" ] && _argv[$_key]=yes
+                [ -z "$_value" ] && _argv[$_key]=yes || _argv[$_key]=${_value}
                 #echo "$_key=${_argv[$_key]}"
                 ;;
             PSQL)
@@ -699,6 +699,10 @@ pow_argv() {
                     continue
                 }
                 _argv[$_key]=${_args_d_kv[$_key]}
+                [[ ${_debug_steps[def]:-1} -eq 0 ]] && {
+                    declare -p _argv
+                    [[ ${_debug_bps[def]} -eq 0 ]] && read
+                }
             else
                 # empty as default (even if not present among arguments)
                 _argv[$_key]=

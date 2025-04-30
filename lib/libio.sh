@@ -707,8 +707,7 @@ io_download_file() {
             user:compte HTTP;
             password:mot de passe HTTP;
             common_save:Copier sur le dépôt;
-            common_subdir:copie dans un sous-dossier du dépôt;
-            verbose:Ajouter des détails sur les traitements
+            common_subdir:copie dans un sous-dossier du dépôt
         ' \
         --args_m '
             url;output_directory
@@ -716,27 +715,36 @@ io_download_file() {
         --args_v '
             overwrite_mode:no|yes|NEWER;
             overwrite_key:DATE|TIME;
-            common_save:yes|no;
-            verbose:yes|no
+            common_save:yes|no
         ' \
         --args_d '
             overwrite_mode:yes;
             overwrite_key:DATE;
-            common_save:yes;
-            verbose:no
+            common_save:yes
         ' \
         --args_p '
-            tag:overwrite_mode@1N,overwrite_key@1N,common_save@bool,verbose@bool
+            tag:overwrite_mode@1N,overwrite_key@1N,common_save@bool
         ' \
         --pow_argv _opts "$@" || return $?
+
+    # DEBUG steps
+    local -A _debug_steps _debug_bps
+    get_env_debug \
+        io_download_file \
+        _debug_steps \
+        _debug_bps \
+        'argv files overwrite context diff result'
 
     _opts[ID]=-1                             # found file ID (not necessary newer!)
     _opts[FOUND]=0                           # (0) no, (1) output_directory, (2) common
     # deal space in URL, https://stackoverflow.com/questions/497908/is-a-url-allowed-to-contain-a-space
     _opts[URL]=${_opts[URL]// /%20}
-
     [ -z "${_opts[OUTPUT_FILE]}" ] && _opts[OUTPUT_FILE]=$(basename "${_opts[URL]}")
     [ -z "${_opts[OUTPUT_NAME]}" ] && _opts[OUTPUT_NAME]=${_opts[OUTPUT_FILE]}
+    [[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
+        declare -p _opts
+        [[ ${_debug_bps[argv]} -eq 0 ]] && read
+    }
 
     local -a _files=(
         [0]="${_opts[OUTPUT_DIRECTORY]}/${_opts[OUTPUT_FILE]}"
@@ -747,7 +755,10 @@ io_download_file() {
         _files[1]+="/${_opts[COMMON_SUBDIR]}"
     }
     _files[1]+="/${_opts[OUTPUT_FILE]}"
-    [ "${_opts[VERBOSE]}" = yes ] && declare -p _opts _files
+    [[ ${_debug_steps[files]:-1} -eq 0 ]] && {
+        declare -p _files
+        [[ ${_debug_bps[files]} -eq 0 ]] && read
+    }
 
     # yes mode, nothing to test!
     [ "${_opts[OVERWRITE_MODE]}" = yes ] || {
@@ -785,9 +796,10 @@ io_download_file() {
                 _epoch2=$(($(date '+%s') - ${_opts[OVERWRITE_VALUE]}))
                 ;;
             esac
-            [ "${_opts[VERBOSE]}" = yes ] && {
+            [[ ${_debug_steps[overwrite]:-1} -eq 0 ]] && {
                 log_info "epoch(${_files[$_i]})=$_epoch1"
                 log_info "epoch(OVERWRITE_VALUE)=$_epoch2"
+                [[ ${_debug_bps[overwrite]} -eq 0 ]] && read
             }
             #declare -p _i _epoch1 _epoch2
             [[ $_epoch1 -ge $_epoch2 ]] && {
@@ -825,7 +837,10 @@ io_download_file() {
     # temporary downloaded file
     local _tmp_path
     get_tmp_file --tmpfile _tmp_path
-    [ "${_opts[VERBOSE]}" = yes ] && declare -p _log_tmp_path _log_archive_path _tmp_path
+    [[ ${_debug_steps[context]:-1} -eq 0 ]] && {
+        declare -p _log_tmp_path _log_archive_path _tmp_path
+        [[ ${_debug_bps[context]} -eq 0 ]] && read
+    }
 
     wget \
         ${_opts[URL]} \
@@ -850,6 +865,10 @@ io_download_file() {
             return $POW_DOWNLOAD_ERROR
         }
 
+    [[ ${_debug_steps[diff]:-1} -eq 0 ]] && {
+        echo 'DIFF...' ; declare -p _opts
+        [[ ${_debug_bps[diff]} -eq 0 ]] && read
+    }
     [[ ${_opts[ID]} -gt -1 ]] && {
         # different from available version ?
         diff --brief "$_tmp_path" "${_files[${_opts[ID]}]}" > /dev/null
@@ -867,6 +886,10 @@ io_download_file() {
     }
 
     # result
+    [[ ${_debug_steps[result]:-1} -eq 0 ]] && {
+        echo 'RESULT...'
+        [[ ${_debug_bps[result]} -eq 0 ]] && read
+    }
     {
         [ "${_opts[COMMON_SAVE]}" = no ] || {
             log_info "Copie de ${_opts[OUTPUT_FILE]} sur le Dépôt" &&
