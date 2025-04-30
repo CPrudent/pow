@@ -510,8 +510,8 @@ get_env_debug() {
 #     local -n _steps_ref=${_opts[STEPS]} _breakpoints_ref=${_opts[BREAKPOINTS]}
 
     local _code=$1 _all_steps="$4" _list_steps _step
-    local -a _debug_steps _debug_bps
-    local -n _with_steps_ref=$2 _with_bps_ref=$3
+    local -a _array_steps _array_bps
+    local -n _debug_steps_ref=$2 _debug_bps_ref=$3
 
     set_env_debug
     [ ${POW_DEBUG_STEPS[${_code}]+_} ] && {
@@ -525,16 +525,16 @@ get_env_debug() {
         esac
 
         [ -n "$_list_steps" ] && {
-            _debug_steps=($_list_steps)
-            _debug_bps=(${POW_DEBUG_BREAKPOINTS[${_code}]})
+            _array_steps=($_list_steps)
+            _array_bps=(${POW_DEBUG_BREAKPOINTS[${_code}]})
 
             for _step in $_list_steps; do
-                _with_steps_ref[$_step]=$([[ " ${_debug_steps[*]} " == *" $_step "* ]] ; echo $?)
-                _with_bps_ref[$_step]=$([[ " ${_debug_bps[*]} " == *" $_step "* ]] ; echo $?)
+                _debug_steps_ref[$_step]=$([[ " ${_array_steps[*]} " == *" $_step "* ]] ; echo $?)
+                _debug_bps_ref[$_step]=$([[ " ${_array_bps[*]} " == *" $_step "* ]] ; echo $?)
             done
 
-            echo "with_steps=${_with_steps_ref[@]}"
-            echo "with_bps=${_with_bps_ref[@]}"
+#             echo "with_steps=${_debug_steps_ref[@]}"
+#             echo "with_bps=${_debug_bps_ref[@]}"
         }
     }
 

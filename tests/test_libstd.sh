@@ -65,6 +65,7 @@ t_pow_debug_1() {
     local -A _with_steps _with_bps
 
     #POW_DEBUG_JSON='{"codes":[{"name":"t_pow_debug_1","steps":["step1@break","step3"]}],"properties":{"init":"always"}}'
+    POW_DEBUG_JSON='{"codes":[{"name":"t_pow_debug_1","steps":["step1@break","step3"]}]}'
     #echo $POW_DEBUG_JSON
     get_env_debug $_code _with_steps _with_bps 'step1 step2 step3 step4'
     #declare -p _with_steps _with_bps

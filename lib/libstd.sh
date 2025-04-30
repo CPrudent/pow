@@ -449,16 +449,14 @@ pow_argv() {
     }
 
     # DEBUG steps
-    local -A _with_steps _with_bps
-    get_env_debug pow_argv _with_steps _with_bps 'cmdl args_p def check reset case'
+    local -A _debug_steps _debug_bps
+    get_env_debug pow_argv _debug_steps _debug_bps 'cmdl args_p def check reset case'
 
     # read from command line
     while :; do
-        [ -n "${_with_steps[cmdl]}" ] && {
-            [[ ${_with_steps[cmdl]} -eq 0 ]] && {
-                echo "step=($_step) key=($_key) \$1=$1"
-                [[ ${_with_bps[cmdl]} -eq 0 ]] && read
-            }
+        [[ ${_debug_steps[cmdl]:-1} -eq 0 ]] && {
+            echo "step=($_step) key=($_key) \$1=$1"
+            [[ ${_debug_bps[cmdl]} -eq 0 ]] && read
         }
         case $_step in
         # name of argument
@@ -509,11 +507,9 @@ pow_argv() {
             fi
             ;;
         11)
-            [ -n "${_with_steps[cmdl]}" ] && {
-                [[ ${_with_steps[cmdl]} -eq 0 ]] && {
-                    echo "$_key=$_value"
-                    [[ ${_with_bps[cmdl]} -eq 0 ]] && read
-                }
+            [[ ${_debug_steps[cmdl]:-1} -eq 0 ]] && {
+                echo "$_key=$_value"
+                [[ ${_debug_bps[cmdl]} -eq 0 ]] && read
             }
             case "${_args_n_t[$_key]}" in
             BOOL)
@@ -555,33 +551,25 @@ pow_argv() {
 
             # args_p can be multiple (execute_query w/ psql syntax need to define psql tag)
             if ([ "$_key" = args_p ] || [[ ${#_argx_list_ref[@]} -eq 0 ]]); then
-                [ -n "${_with_steps[args_p]}" ] && {
-                    [[ ${_with_steps[args_p]} -eq 0 ]] && {
-                        declare -p _argv
-                        [[ ${_with_bps[args_p]} -eq 0 ]] && read
-                    }
+                [[ ${_debug_steps[args_p]:-1} -eq 0 ]] && {
+                    declare -p _argv
+                    [[ ${_debug_bps[args_p]} -eq 0 ]] && read
                 }
                 _pow_argv_list "${_argv[$_key]}" $_argx_list_name $_argx_kv_name
-                [ -n "${_with_steps[args_p]}" ] && {
-                    [[ ${_with_steps[args_p]} -eq 0 ]] && {
-                        declare -p _argx_kv_name
-                        [[ ${_with_bps[args_p]} -eq 0 ]] && read
-                    }
+                [[ ${_debug_steps[args_p]:-1} -eq 0 ]] && {
+                    declare -p _argx_kv_name
+                    [[ ${_debug_bps[args_p]} -eq 0 ]] && read
                 }
                 [ "$_key" = args_p ] && {
                     local _tag _t
-                    [ -n "${_with_steps[args_p]}" ] && {
-                        [[ ${_with_steps[args_p]} -eq 0 ]] && {
-                            declare -p _args_p_kv
-                            [[ ${_with_bps[args_p]} -eq 0 ]] && read
-                        }
+                    [[ ${_debug_steps[args_p]:-1} -eq 0 ]] && {
+                        declare -p _args_p_kv
+                        [[ ${_debug_bps[args_p]} -eq 0 ]] && read
                     }
                     _pow_argv_property _args_p_kv TAG _tag
-                    [ -n "${_with_steps[args_p]}" ] && {
-                        [[ ${_with_steps[args_p]} -eq 0 ]] && {
-                            echo "tag=($_tag)"
-                            [[ ${_with_bps[args_p]} -eq 0 ]] && read
-                        }
+                    [[ ${_debug_steps[args_p]:-1} -eq 0 ]] && {
+                        echo "tag=($_tag)"
+                        [[ ${_debug_bps[args_p]} -eq 0 ]] && read
                     }
                     [ -n "${_tag}" ] && {
                         IFS=, read -a _args_t <<< ${_tag}
@@ -590,11 +578,9 @@ pow_argv() {
                             _t=${_tmp#*@}
                             _args_n_t+=([$_k]=${_t^^})
                         done
-                        [ -n "${_with_steps[args_p]}" ] && {
-                            [[ ${_with_steps[args_p]} -eq 0 ]] && {
-                                declare -p _args_n_t
-                                [[ ${_with_bps[args_p]} -eq 0 ]] && read
-                            }
+                        [[ ${_debug_steps[args_p]:-1} -eq 0 ]] && {
+                            declare -p _args_n_t
+                            [[ ${_debug_bps[args_p]} -eq 0 ]] && read
                         }
                     }
                 }
@@ -607,11 +593,9 @@ pow_argv() {
 
         # check argument (among allowed ones)
         20)
-            [ -n "${_with_steps[cmdl]}" ] && {
-                [[ ${_with_steps[cmdl]} -eq 0 ]] && {
-                    declare -p _args_n_kv
-                    [[ ${_with_bps[cmdl]} -eq 0 ]] && read
-                }
+            [[ ${_debug_steps[cmdl]:-1} -eq 0 ]] && {
+                declare -p _args_n_kv
+                [[ ${_debug_bps[cmdl]} -eq 0 ]] && read
             }
             [[ -v "_args_n_kv[$_key]" ]] && _step=$(( _end == 1 ? 91 : 1 )) || {
                 _error="L'argument $_key ne fait pas partie des arguments possibles"
@@ -634,18 +618,14 @@ pow_argv() {
             ;;
         esac
 
-        [ -n "${_with_steps[cmdl]}" ] && {
-            [[ ${_with_steps[cmdl]} -eq 0 ]] && {
-                printf 'step=%d\n' $_step ; declare -p _argv
-                [[ ${_with_bps[cmdl]} -eq 0 ]] && read
-            }
+        [[ ${_debug_steps[cmdl]:-1} -eq 0 ]] && {
+            printf 'step=%d\n' $_step ; declare -p _argv
+            [[ ${_debug_bps[cmdl]} -eq 0 ]] && read
         }
     done
-    [ -n "${_with_steps[cmdl]}" ] && {
-        [[ ${_with_steps[cmdl]} -eq 0 ]] && {
-            declare -p _argv _args_n_t _args_n_kv
-            [[ ${_with_bps[cmdl]} -eq 0 ]] && read
-        }
+    [[ ${_debug_steps[cmdl]:-1} -eq 0 ]] && {
+        declare -p _argv _args_n_t _args_n_kv
+        [[ ${_debug_bps[cmdl]} -eq 0 ]] && read
     }
 
     # return options (values and count) eventually w/ overload of default POW_ARGV|POW_ARGC
@@ -656,11 +636,9 @@ pow_argv() {
 
     # reset returned hash (default behavior)
     _pow_argv_property _args_p_kv RESET _property
-    [ -n "${_with_steps[reset]}" ] && {
-        [[ ${_with_steps[reset]} -eq 0 ]] && {
-            echo "reset=($_property)"
-            [[ ${_with_bps[reset]} -eq 0 ]] && read
-        }
+    [[ ${_debug_steps[reset]:-1} -eq 0 ]] && {
+        echo "reset=($_property)"
+        [[ ${_debug_bps[reset]} -eq 0 ]] && read
     }
     [ "$_property" = yes ] && {
         _argv_ref=()
@@ -691,42 +669,32 @@ pow_argv() {
 
     # default values
     for _key in ${!_args_n_kv[@]}; do
-        [ -n "${_with_steps[def]}" ] && {
-            [[ ${_with_steps[def]} -eq 0 ]] && {
-                echo "def=($_key)"
-                [[ ${_with_bps[def]} -eq 0 ]] && read
-            }
+        [[ ${_debug_steps[def]:-1} -eq 0 ]] && {
+            echo "def=($_key)"
+            [[ ${_debug_bps[def]} -eq 0 ]] && read
         }
         [ ! ${_argv[$_key]+_} ] && {
             # given default value?
             if [ ${_args_d_kv[$_key]+_} ]; then
-                [ -n "${_with_steps[def]}" ] && {
-                    [[ ${_with_steps[def]} -eq 0 ]] && {
-                        echo "def($_key)=${_args_d_kv[$_key]}"
-                        [[ ${_with_bps[def]} -eq 0 ]] && read
-                    }
+                [[ ${_debug_steps[def]:-1} -eq 0 ]] && {
+                    echo "def($_key)=${_args_d_kv[$_key]}"
+                    [[ ${_debug_bps[def]} -eq 0 ]] && read
                 }
                 # duplicate from another key
                 [[ ${_args_d_kv[$_key]} =~ ^@(.*)$ ]] && {
-                    [ -n "${_with_steps[def]}" ] && {
-                        [[ ${_with_steps[def]} -eq 0 ]] && {
-                            declare -p _argv
-                            [[ ${_with_bps[def]} -eq 0 ]] && read
-                        }
+                    [[ ${_debug_steps[def]:-1} -eq 0 ]] && {
+                        declare -p _argv
+                        [[ ${_debug_bps[def]} -eq 0 ]] && read
                     }
                     _k=${BASH_REMATCH[1]}
-                    [ -n "${_with_steps[def]}" ] && {
-                        [[ ${_with_steps[def]} -eq 0 ]] && {
-                            echo "from($_k)"
-                            [[ ${_with_bps[def]} -eq 0 ]] && read
-                        }
+                    [[ ${_debug_steps[def]:-1} -eq 0 ]] && {
+                        echo "from($_k)"
+                        [[ ${_debug_bps[def]} -eq 0 ]] && read
                     }
                     _argv[$_key]=${_argv[$_k]:-${_args_d_kv[$_k]}}
-                    [ -n "${_with_steps[def]}" ] && {
-                        [[ ${_with_steps[def]} -eq 0 ]] && {
-                            declare -p _argv
-                            [[ ${_with_bps[def]} -eq 0 ]] && read
-                        }
+                    [[ ${_debug_steps[def]:-1} -eq 0 ]] && {
+                        declare -p _argv
+                        [[ ${_debug_bps[def]} -eq 0 ]] && read
                     }
                     continue
                 }
@@ -790,11 +758,9 @@ pow_argv() {
                 local -A _verify_values=()
                 local -a _keys _delete_values
 
-                [ -n "${_with_steps[check]}" ] && {
-                    [[ ${_with_steps[check]} -eq 0 ]] && {
-                        declare -p _among_values _check_values
-                        [[ ${_with_bps[check]} -eq 0 ]] && read
-                    }
+                [[ ${_debug_steps[check]:-1} -eq 0 ]] && {
+                    declare -p _among_values _check_values
+                    [[ ${_debug_bps[check]} -eq 0 ]] && read
                 }
 
                 # build hash w/ value as key, and occurence as value
@@ -809,11 +775,9 @@ pow_argv() {
                     [ ${_verify_values[${_check_values[$_i]}]+_} ] && _verify_values[${_check_values[$_i]}]=$((_verify_values[${_check_values[$_i]}] +1)) || _verify_values[${_check_values[$_i]}]=1
                 done &&
                 {
-                    [ -z "${_with_steps[check]}" ] || {
-                        [[ ${_with_steps[check]} -ne 0 ]] || {
-                            declare -p _delete_values
-                            [[ ${_with_bps[check]} -ne 0 ]] || read
-                        }
+                    [[ ${_debug_steps[check]:-1} -ne 0 ]] || {
+                        declare -p _delete_values
+                        [[ ${_debug_bps[check]} -ne 0 ]] || read
                     }
                 } &&
                 {
@@ -833,11 +797,9 @@ pow_argv() {
                                     _verify_values[${_among_values[$_i]}]=1
                                 }
                             done
-                            [ -n "${_with_steps[check]}" ] && {
-                                [[ ${_with_steps[check]} -eq 0 ]] && {
-                                    declare -p _check_values
-                                    [[ ${_with_bps[check]} -eq 0 ]] && read
-                                }
+                            [[ ${_debug_steps[check]:-1} -eq 0 ]] && {
+                                declare -p _check_values
+                                [[ ${_debug_bps[check]} -eq 0 ]] && read
                             }
                             # assign new value (w/ deleted items)
                             _argv[$_key]="${_check_values[@]}"
@@ -846,11 +808,9 @@ pow_argv() {
                 } &&
                 _keys=(${!_verify_values[@]}) &&
                 {
-                    [ -z "${_with_steps[check]}" ] || {
-                        [[ ${_with_steps[check]} -ne 0 ]] || {
-                            declare -p _verify_values
-                            [[ ${_with_bps[check]} -ne 0 ]] || read
-                        }
+                    [[ ${_debug_steps[check]:-1} -ne 0 ]] || {
+                        declare -p _verify_values
+                        [[ ${_debug_bps[check]} -ne 0 ]] || read
                     }
                 } &&
                 case "${_args_n_t[$_key]}" in
@@ -896,19 +856,15 @@ pow_argv() {
 
     # case of keys in returned hash
     _pow_argv_property _args_p_kv CASE _property
-    [ -n "${_with_steps[case]}" ] && {
-        [[ ${_with_steps[case]} -eq 0 ]] && {
-            echo "case=($_property)"
-            [[ ${_with_bps[case]} -eq 0 ]] && read
-        }
+    [[ ${_debug_steps[case]:-1} -eq 0 ]] && {
+        echo "case=($_property)"
+        [[ ${_debug_bps[case]} -eq 0 ]] && read
     }
     _argc_ref=0
     for _key in ${!_argv[@]}; do
-        [ -n "${_with_steps[case]}" ] && {
-            [[ ${_with_steps[case]} -eq 0 ]] && {
-                echo "key=($_key)"
-                [[ ${_with_bps[case]} -eq 0 ]] && read
-            }
+        [[ ${_debug_steps[case]:-1} -eq 0 ]] && {
+            echo "key=($_key)"
+            [[ ${_debug_bps[case]} -eq 0 ]] && read
         }
         [[ "$_key" =~ pow_arg[cv]|args_[nmvdp] ]] && continue
         case "$_property" in
@@ -916,11 +872,9 @@ pow_argv() {
         LOWER)  _k=${_key,,}    ;;
         USER)   _k=${_key}      ;;
         esac
-        [ -n "${_with_steps[case]}" ] && {
-            [[ ${_with_steps[case]} -eq 0 ]] && {
-                echo "k=($_k)"
-                [[ ${_with_bps[case]} -eq 0 ]] && read
-            }
+        [[ ${_debug_steps[case]:-1} -eq 0 ]] && {
+            echo "k=($_k)"
+            [[ ${_debug_bps[case]} -eq 0 ]] && read
         }
         _argv_ref[$_k]=${_argv[$_key]}
         ((_argc_ref++))
