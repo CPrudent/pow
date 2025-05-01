@@ -17,8 +17,7 @@ on_import_error() {
         --pow_argv _opts "$@" || return $?
 
     # history created?
-    [ "$POW_DEBUG" = yes ] && { echo "id=${_opts[ID]}"; }
-    [ -n "${_opts[ID]}" ] && io_history_end_ko --id ${_opts[ID]}
+    #echo "id=${_opts[ID]}"    [ -n "${_opts[ID]}" ] && io_history_end_ko --id ${_opts[ID]}
 
     # ignoring error if last year already exists
     if io_history_exists --io ${io_vars[NAME]} --date_end "${years[$year_id]}"; then
@@ -58,14 +57,31 @@ pow_argv \
     ' \
     --pow_argv io_vars "$@" || exit $?
 
+# DEBUG steps
+declare -A _debug_steps _debug_bps
+get_env_debug \
+    "$(basename $0 .sh)" \
+    _debug_steps \
+    _debug_bps \
+    'argv years year url_data context io_begin ressource'
+
+[[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
+    declare -p io_vars
+    [[ ${_debug_bps[argv]} -eq 0 ]] && read
+}
+
 # year of administrative cutting (w/ YY format)
 year=
 # get years
+set_env --schema_name fr &&
 io_get_list_online_available \
     --name ${io_vars[NAME]} \
     --details_file years_list_path \
     --dates_list years || exit $ERROR_CODE
-[ "$POW_DEBUG" = yes ] && { declare -p years years_list_path; }
+[[ ${_debug_steps[years]:-1} -eq 0 ]] && {
+    declare -p years years_list_path
+    [[ ${_debug_bps[years]} -eq 0 ]] && read
+}
 
 # get year (w/ format YY)
 if [ -z "${io_vars[YEAR]}" ]; then
@@ -91,21 +107,31 @@ else
     }
 fi
 year=$(date -d ${years[$year_id]} +%y)
+[[ ${_debug_steps[year]:-1} -eq 0 ]] && {
+    echo "year=$year (${years[$year_id]})"
+    [[ ${_debug_bps[year]} -eq 0 ]] && read
+}
 [ -z "$year" ] && {
     log_error "Impossible de trouver le millésime de ${io_vars[NAME]}"
     on_import_error --id ${io_vars[ID]}
 }
 # up to 2024, year coded on 4 digits
 [ $year -ge 24 ] && year="$(date +%C)$year"
-[ "$POW_DEBUG" = yes ] && { echo "year=$year (${years[$year_id]})"; }
+[[ ${_debug_steps[year]:-1} -eq 0 ]] && {
+    echo "year=$year"
+    [[ ${_debug_bps[year]} -eq 0 ]] && read
+}
 
 io_get_property_online_available    \
-    --name ${io_vars[NAME]}                 \
+    --name ${io_vars[NAME]}         \
     --key URL_BASE                  \
     --value url_base                &&
 url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/7671844/table-appartenance-geo-communes-${year}[^.]*\.zip" "$years_list_path" | head --lines 1) &&
 {
-    [ "$POW_DEBUG" = yes ] && { declare -p url_data; } || true
+    [[ ${_debug_steps[url_data]:-1} -ne 0 ]] || {
+        declare -p url_data
+        [[ ${_debug_bps[url_data]} -ne 0 ]] || read
+    }
 } &&
 [ -n "$url_data" ] || {
     log_error "Impossible de trouver URL de ${io_vars[NAME]}"
@@ -118,7 +144,6 @@ rm --force "$years_list_path"
 # fix current year w/ century!
 [ ${#year} -eq 2 ] && year="$(date +%C)$year"
 
-set_env --schema_name fr &&
 io_todo_import \
     --force ${io_vars[FORCE]} \
     --io ${io_vars[NAME]} \
@@ -149,11 +174,12 @@ elif [ $year -le 2013 ]; then
     name_worksheet_district=
     name_worksheet_supra='Zones supra-communales'
 fi
-[ "$POW_DEBUG" = yes ] && {
+[[ ${_debug_steps[context]:-1} -eq 0 ]] && {
     echo "name_worksheet_municipality=$name_worksheet_municipality"
     echo "name_worksheet_district=$name_worksheet_district"
     echo "name_worksheet_supra=$name_worksheet_supra"
     echo "line_number_supra=$line_number_supra"
+    [[ ${_debug_bps[context]} -eq 0 ]] && read
 }
 
 log_info "Import du millésime $year de ${io_vars[NAME]}" &&
@@ -170,12 +196,24 @@ io_history_begin \
     --date_end "${years[$year_id]}" \
     --nrows_todo 35000 \
     --id io_vars[ID] &&
-io_download_file \
-    --url "$url_data" \
-    --output_directory "$POW_DIR_IMPORT" &&
+{
+    [[ ${_debug_steps[io_begin]:-1} -ne 0 ]] || {
+        echo "id=(${io_vars[ID]})"
+        [[ ${_debug_bps[io_begin]} -ne 0 ]] || read
+    }
+} &&
+{
+    io_download_file \
+        --url "$url_data" \
+        --output_directory "$POW_DIR_IMPORT"
+    [ $? -lt $POW_DOWNLOAD_ERROR ] || false
+} &&
 year_ressource="$POW_DIR_IMPORT/$year_data" &&
 {
-    [ "$POW_DEBUG" = yes ] && { declare -p year_ressource; } || true
+    [[ ${_debug_steps[ressource]:-1} -ne 0 ]] || {
+        echo "year_ressource=($year_ressource)"
+        [[ ${_debug_bps[ressource]} -ne 0 ]] || read
+    }
 } &&
 import_file \
     --file_path "$year_ressource" \

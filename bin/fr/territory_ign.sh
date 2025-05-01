@@ -82,7 +82,6 @@ on_import_error() {
 }
 
 declare -A io_vars=(
-    [SCRIPT]=$(basename $0 .sh)
     [NAME]=FR-TERRITORY-IGN
     [ID]=
     [PASSWD]=
@@ -111,7 +110,7 @@ pow_argv \
 # DEBUG steps
 declare -A _debug_steps _debug_bps
 get_env_debug \
-    ${io_vars[SCRIPT]} \
+    "$(basename $0 .sh)" \
     _debug_steps \
     _debug_bps \
     'argv items io_last years year io_begin url_all url table sql'

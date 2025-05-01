@@ -38,6 +38,19 @@ execute_query() {
     local _opt _quiet _psql_level=NOTICE _psql_output
     local _log_tmp_ext=log _log_tmp_path _log_tmp_dir _log_tmp_file _log_tmp_wo_ext
 
+    # DEBUG steps
+    local -A _debug_steps _debug_bps
+    get_env_debug \
+        ${FUNCNAME[0]} \
+        _debug_steps \
+        _debug_bps \
+        'argv context output'
+    {
+        [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
+            echo ${FUNCNAME[0]} ; declare -p _opts
+            [[ ${_debug_bps[argv]} -ne 0 ]] || read
+        }
+    } &&
     {
         # query option
         [ -f "${_opts[QUERY]}" ] && {
@@ -114,12 +127,12 @@ execute_query() {
         [ "${_opts[WITH_LOG]}" = no ] || log_info "Lancement de l'exécution de ${_opts[NAME]} ($_info)"
     } &&
     {
-        # debug
-        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
+        [[ ${_debug_steps[context]:-1} -ne 0 ]] || {
             echo "PGOPTIONS=-c client_min_messages=$_psql_level"
-            echo "psql_arguments=${_opts[PSQL_ARGUMENTS]}"
-            echo "input=$_opt ${_opts[QUERY]}"
-            echo "output=$_psql_output"
+            echo "psql_arguments=(${_opts[PSQL_ARGUMENTS]})"
+            echo "input=($_opt ${_opts[QUERY]})"
+            echo "output=($_psql_output)"
+            [[ ${_debug_bps[context]} -ne 0 ]] || read
         }
     } &&
     {
@@ -138,10 +151,9 @@ execute_query() {
         _rc=$?
     } &&
     {
-        # debug
-        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
-            echo "output:"
-            cat $_psql_output
+        [[ ${_debug_steps[output]:-1} -ne 0 ]] || {
+            echo "OUTPUT:" ; cat $_psql_output
+            [[ ${_debug_bps[output]} -ne 0 ]] || read
         }
     } &&
     {

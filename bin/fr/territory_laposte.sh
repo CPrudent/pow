@@ -17,7 +17,7 @@ on_integration_error() {
         --pow_argv _opts "$@" || return $?
 
     # history created?
-    [ "$POW_DEBUG" = yes ] && { echo "id=${_opts[ID]}"; }
+    #echo "id=${_opts[ID]}"
     [ -n "${_opts[ID]}" ] && io_history_end_ko --id ${_opts[ID]}
 
     return $ERROR_CODE
@@ -41,15 +41,32 @@ pow_argv \
         force:no
     ' \
     --args_p '
-        reset:no
+        reset:no;
+        tag:force@bool
     ' \
     --pow_argv io_vars "$@" || exit $?
+
+# DEBUG steps
+declare -A _debug_steps _debug_bps
+get_env_debug \
+    "$(basename $0 .sh)" \
+    _debug_steps \
+    _debug_bps \
+    'argv todo io_begin'
+
+[[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
+    declare -p io_vars
+    [[ ${_debug_bps[argv]} -eq 0 ]] && read
+}
 
 # to declare on command line before calling function (else array)
 declare -A io_hash &&
 set_env --schema_name fr &&
 log_info 'Calcul des territoires postaux français' &&
-io_get_info_integration --io ${io_vars[NAME]} --to_hash io_hash || {
+io_get_info_integration \
+    --io ${io_vars[NAME]} \
+    --to_hash io_hash \
+    --to_string io_string || {
     log_error "IO '${io_vars[NAME]}' en erreur!"
     exit $ERROR_CODE
 }
@@ -78,11 +95,21 @@ io_get_info_integration --io ${io_vars[NAME]} --to_hash io_hash || {
 
 [ "${io_vars[TODO]}" = yes ] && {
     log_info "IO '${io_vars[NAME]}' mise à jour (dépendances)"
+    [[ ${_debug_steps[todo]:-1} -eq 0 ]] && {
+        echo $io_string | tr ',' '\n'
+        [[ ${_debug_bps[todo]} -eq 0 ]] && read
+    }
     io_history_begin \
         --io ${io_vars[NAME]} \
         --date_begin "${io_vars[DATE]}" \
         --date_end "${io_vars[DATE]}" \
         --id io_vars[ID_IO_MAIN] &&
+    {
+        [[ ${_debug_steps[io_begin]:-1} -ne 0 ]] || {
+            echo "id_main=(${io_vars[ID_IO_MAIN]})"
+            [[ ${_debug_bps[io_begin]} -ne 0 ]] || read
+        }
+    } &&
     {
         declare -a io_steps=(${io_hash[DEPENDS]//:/ })
         declare -a io_ids=()
@@ -103,7 +130,14 @@ io_get_info_integration --io ${io_vars[NAME]} --to_hash io_hash || {
                     --date_begin "${io_vars[DATE]}" \
                     --date_end "${io_vars[DATE]}" \
                     --nrows_todo ${io_counts[${io_steps[$io_step]}]:-1} \
-                    --id io_vars[ID_IO_STEP] && {
+                    --id io_vars[ID_IO_STEP] &&
+                {
+                    [[ ${_debug_steps[io_begin]:-1} -ne 0 ]] || {
+                        echo "id_step=(${io_vars[ID_IO_STEP]})"
+                        [[ ${_debug_bps[io_begin]} -ne 0 ]] || read
+                    }
+                } &&
+                {
                     case ${io_steps[$io_step]} in
                     FR-TERRITORY-LAPOSTE-EVENT)
                         io_count="

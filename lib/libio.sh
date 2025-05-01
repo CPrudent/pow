@@ -28,7 +28,20 @@ _io_history_manager() {
         --pow_argv _opts "$@" || return $?
 
     local _query _return _output _with_log=no
-    [ "$POW_DEBUG" = yes ] && _with_log=yes
+
+    # DEBUG steps
+    # example: export POW_DEBUG_JSON='{"codes":[{"name":"_io_history_manager","steps":["argv","query@break"]}]}'
+    local -A _debug_steps _debug_bps
+    get_env_debug \
+        ${FUNCNAME[0]} \
+        _debug_steps \
+        _debug_bps \
+        'argv query return output'
+
+    [[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
+        declare -p _opts
+        [[ ${_debug_bps[argv]} -eq 0 ]] && read
+    }
 
     case ${_opts[METHOD]} in
     EXISTS)
@@ -143,6 +156,11 @@ _io_history_manager() {
         ;;
     esac
 
+    [[ ${_debug_steps[query]:-1} -eq 0 ]] && {
+        echo "query=($_query)"
+        [[ ${_debug_bps[query]} -eq 0 ]] && read
+    }
+
     execute_query \
         --name IO_${_opts[METHOD]}_${_opts[IO]:-${_opts[ID]}} \
         --query "$_query" \
@@ -151,7 +169,20 @@ _io_history_manager() {
         --with_log $_with_log || return $ERROR_CODE
 
     [ -n "$_return" ] &&
-    [ "$POW_DEBUG" = yes ] && { echo io_id=$_io_id_manager; }
+    {
+        [[ ${_debug_steps[return]:-1} -eq 0 ]] && {
+            echo "io_id=($_io_id_manager)"
+            [[ ${_debug_bps[return]} -eq 0 ]] && read
+        }
+    }
+
+    [ -n "$_output" ] &&
+    {
+        [[ ${_debug_steps[output]:-1} -eq 0 ]] && {
+            echo 'OUTPUT:' ; cat ${_opts[OUTPUT]}
+            [[ ${_debug_bps[output]} -eq 0 ]] && read
+        }
+    }
 
     return $SUCCESS_CODE
 }
@@ -314,10 +345,10 @@ io_history_update() {
 
     _io_history_manager \
         --method UPDATE \
-        $_todo \
-        $_processed \
+        --id ${_opts[ID]} \
         --infos "${_opts[INFOS]}" \
-        --id ${_opts[ID]} || return $ERROR_CODE
+        $_todo \
+        $_processed || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }
@@ -431,18 +462,43 @@ io_get_info_integration() {
     [ -n "${_opts[TO_STRING]}" ] && local -n _str_ref=${_opts[TO_STRING]}
     local _tmpfile
 
+    # DEBUG steps
+    local -A _debug_steps _debug_bps
+    get_env_debug \
+        ${FUNCNAME[0]} \
+        _debug_steps \
+        _debug_bps \
+        'argv todo hash string'
+
+    [[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
+        declare -p _opts
+        [[ ${_debug_bps[argv]} -eq 0 ]] && read
+    }
+
     get_tmp_file --tmpfile _tmpfile &&
     execute_query \
         --name "TODO-${_opts[IO]}" \
         --query "SELECT io_is_todo('${_opts[IO]}')" \
         --output $_tmpfile || return $ERROR_CODE
-    [ "$POW_DEBUG" = yes ] && cat $_tmpfile
+
+    [[ ${_debug_steps[todo]:-1} -eq 0 ]] && {
+        cat $_tmpfile
+        [[ ${_debug_bps[todo]} -eq 0 ]] && read
+    }
     # each row contains: key=>value
     _hash_ref=()
     while read; do
         _hash_ref[${REPLY%=*}]=${REPLY#*>}
     done < <(sed --expression 's/"//g' --expression 's/,/\n/g' < $_tmpfile | sed --expression 's/^[ ]*//')
     [ -n "${_opts[TO_STRING]}" ] && _str_ref=$(< $_tmpfile)
+    [[ ${_debug_steps[hash]:-1} -eq 0 ]] && {
+        echo "hash=${_hash_ref[@]}"
+        [[ ${_debug_bps[hash]} -eq 0 ]] && read
+    }
+    [[ ${_debug_steps[string]:-1} -eq 0 ]] && {
+        echo "string=${!_str_ref}"
+        [[ ${_debug_bps[string]} -eq 0 ]] && read
+    }
     rm $_tmpfile
 
     return $SUCCESS_CODE
@@ -730,7 +786,7 @@ io_download_file() {
     # DEBUG steps
     local -A _debug_steps _debug_bps
     get_env_debug \
-        io_download_file \
+        ${FUNCNAME[0]} \
         _debug_steps \
         _debug_bps \
         'argv files overwrite context diff result'
@@ -958,7 +1014,19 @@ import_csv_file() {
         ' \
         --pow_argv _opts "$@" || return $?
 
-    #echo ${FUNCNAME[0]} && declare -p _opts &&
+    # DEBUG steps
+    local -A _debug_steps _debug_bps
+    get_env_debug \
+        ${FUNCNAME[0]} \
+        _debug_steps \
+        _debug_bps \
+        'argv some delimiter table columns'
+    {
+        [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
+            echo ${FUNCNAME[0]} ; declare -p _opts
+            [[ ${_debug_bps[argv]} -ne 0 ]] || read
+        }
+    } &&
     expect file "${_opts[FILE_PATH]}" &&
     _opts[FILE_NAME]=$(get_file_name --file_path "${_opts[FILE_PATH]}") &&
     _opts[FILE_EXTENSION]=$(get_file_extension --file_path "${_opts[FILE_PATH]}") &&
@@ -967,9 +1035,10 @@ import_csv_file() {
 
     # only part of data?
     if [ -n "${_opts[FROM_LINE_NUMBER]}" ] || [ -n "${_opts[TO_LINE_NUMBER]}" ]; then
-        [ "$POW_DEBUG" = yes ] && {
+        [[ ${_debug_steps[some]:-1} -eq 0 ]] && {
             echo "from_line_number=${_opts[FROM_LINE_NUMBER]}"
             echo "to_line_number=${_opts[TO_LINE_NUMBER]}"
+            [[ ${_debug_bps[some]} -eq 0 ]] && read
         }
 
         _opts[FILE_NAME]+='.filtered'
@@ -1001,10 +1070,16 @@ import_csv_file() {
                 | tr --delete --complement "${POW_DELIMITER[$_code]}\n" \
                 | awk '{ print length }'
             )
-            [ "$POW_DEBUG" = yes ] && echo "tokens[$_code]=${_tokens[$_code]}"
+            [[ ${_debug_steps[delimiter]:-1} -eq 0 ]] && {
+                echo "tokens[$_code]=${_tokens[$_code]}"
+                [[ ${_debug_bps[delimiter]} -eq 0 ]] && read
+            }
         done
 
-        #echo '###DELIMITER/1' ; declare -p _tokens ; read
+        [[ ${_debug_steps[delimiter]:-1} -eq 0 ]] && {
+            declare -p _tokens
+            [[ ${_debug_bps[delimiter]} -eq 0 ]] && read
+        }
 
         local _ntokens=0
         for _code in ${!POW_DELIMITER[@]}; do
@@ -1014,15 +1089,20 @@ import_csv_file() {
             }
         done
 
-        #echo '###DELIMITER/2' ; declare -p _opts ; read
+        [[ ${_debug_steps[delimiter]:-1} -eq 0 ]] && {
+            declare -p _opts
+            [[ ${_debug_bps[delimiter]} -eq 0 ]] && read
+        }
     fi
     set_delimiter --delimiter_code "${_opts[DELIMITER]}" --delimiter_value _delimiter_value
     [ ${#_delimiter_value} -eq 0 ] && {
         log_error "Non détection du séparateur CSV"
         return $ERROR_CODE
     }
-    [ "$POW_DEBUG" = yes ] && echo "delimiter_value=[$_delimiter_value]"
-    #echo "###DELIMITER/3 ($_delimiter_value)"
+    [[ ${_debug_steps[delimiter]:-1} -eq 0 ]] && {
+        echo "delimiter_value=($_delimiter_value)"
+        [[ ${_debug_bps[delimiter]} -eq 0 ]] && read
+    }
 
     if [ -z "${_opts[TABLE_NAME]}" ]; then
         # NOTE can't use _opts[TABLE_NAME] as return (circular trouble?) !
@@ -1033,7 +1113,10 @@ import_csv_file() {
             --return _table_name || return $ERROR_CODE
         _opts[TABLE_NAME]=$_table_name
     fi
-    [ "$POW_DEBUG" = yes ] && echo "table_name=${_opts[TABLE_NAME]}"
+    [[ ${_debug_steps[table]:-1} -eq 0 ]] && {
+        echo "table_name=(${_opts[TABLE_NAME]})"
+        [[ ${_debug_bps[table]} -eq 0 ]] && read
+    }
 
     # encoding
     file --mime "${_opts[FILE_PATH]}" | grep --silent 'charset=iso-8859-1' && _opts[ENCODING]=LATIN1
@@ -1068,7 +1151,10 @@ import_csv_file() {
             )
             [ -z "$_line_end_header" ] && _line_end_header=1
 
-            #echo '###TABLE_COLUMNS_LIST/1' ; declare -p _opts ; read
+            [[ ${_debug_steps[columns]:-1} -eq 0 ]] && {
+                declare _opts
+                [[ ${_debug_bps[columns]} -eq 0 ]] && read
+            }
 
             # NOTE
             #+ be careful w/ bash subprocess as result=$(command)
@@ -1106,7 +1192,10 @@ import_csv_file() {
                 )
             fi
 
-            #echo '###TABLE_COLUMNS_LIST/2' ; declare -p _opts #; read
+            [[ ${_debug_steps[columns]:-1} -eq 0 ]] && {
+                declare _opts
+                [[ ${_debug_bps[columns]} -eq 0 ]] && read
+            }
         fi
         # each column as VARCHAR type
         _table_columns_create=$(echo "${_opts[TABLE_COLUMNS_LIST]}" \
@@ -1115,8 +1204,10 @@ import_csv_file() {
         if [ "${_opts[ROWID]}" = yes ]; then
             _table_columns_create="rowid SERIAL,${_table_columns_create}"
         fi
-        [ "$POW_DEBUG" = yes ] && echo "table_columns_create=${_table_columns_create}"
-        #echo "###TABLE_COLUMNS_CREATE (${_table_columns_create})"
+        [[ ${_debug_steps[columns]:-1} -eq 0 ]] && {
+            echo "table_columns_create=(${_table_columns_create})"
+            [[ ${_debug_bps[columns]} -eq 0 ]] && read
+        }
     fi
 
     local _table_to_load_exists=no
@@ -1124,7 +1215,6 @@ import_csv_file() {
     local _backup_post_data_full_path="$POW_DIR_TMP/${_schema_table}_post-data_$$.backup"
     table_exists --schema_name "${_opts[SCHEMA_NAME]}" --table_name "${_opts[TABLE_NAME]}" && _table_to_load_exists=yes
     if [ "$_table_to_load_exists" = yes ]; then
-        [ "$POW_DEBUG" = yes ] && echo "load_mode=${_opts[LOAD_MODE]}"
         # only in APPEND mode (backup post-data); alternative: don't remove
         case "${_opts[LOAD_MODE]}" in
         OVERWRITE_DATA|APPEND)
@@ -1185,12 +1275,6 @@ import_csv_file() {
             ENCODING ${_opts[ENCODING]}
         )
     "
-    # \COPY command (generally PSQL) doesn't have \n (and blanks at beginning)
-    #_query=$(echo $_query | tr '\n' ' ' | sed --expression 's/^[ \t]*//')
-    #[ "$POW_DEBUG" = yes ] && echo "query=($_query)"
-
-    #echo '###COPY' ; declare -p _opts _query ; read
-
     if [ -n "${_opts[LIMIT]}" ]; then
         # NOTE: ko if CR exist in values
         local _limit=${_opts[LIMIT]}
@@ -1265,10 +1349,18 @@ excel_to_csv() {
     )
     local _stdout=0 _delimiter_value _mime _spreadsheet _options _convert _log_echo
 
+    # DEBUG steps
+    local -A _debug_steps _debug_bps
+    get_env_debug \
+        ${FUNCNAME[0]} \
+        _debug_steps \
+        _debug_bps \
+        'argv mime extension delimiter table columns'
+
     {
-        # debug
-        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
-            echo ${FUNCNAME[0]} && declare -p _opts
+        [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
+            echo ${FUNCNAME[0]} ; declare -p _opts
+            [[ ${_debug_bps[argv]} -ne 0 ]] || read
         }
     } &&
     [ -f "${_opts[FROM_FILE_PATH]}" ] &&
@@ -1307,9 +1399,9 @@ excel_to_csv() {
         ;;
     esac &&
     {
-        # debug
-        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
-            echo "spreadsheet (MIME)=$_mime"
+        [[ ${_debug_steps[mime]:-1} -ne 0 ]] || {
+            echo "spreadsheet/MIME=($_mime)"
+            [[ ${_debug_bps[mime]} -ne 0 ]] || read
         }
     } &&
     _step+=1 &&
@@ -1327,9 +1419,9 @@ excel_to_csv() {
         }
     } &&
     {
-        # debug
-        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
-            echo "spreadsheet (EXTENSION)=${_opts[FROM_FILE_EXTENSION]}"
+        [[ ${_debug_steps[extension]:-1} -ne 0 ]] || {
+            echo "spreadsheet/EXTENSION=(${_opts[FROM_FILE_EXTENSION]})"
+            [[ ${_debug_bps[extension]} -ne 0 ]] || read
         }
     } &&
     _step+=1 &&
@@ -1393,10 +1485,18 @@ csv_to_excel() {
     )
     local _tmpfile _mime
 
+    # DEBUG steps
+    local -A _debug_steps _debug_bps
+    get_env_debug \
+        ${FUNCNAME[0]} \
+        _debug_steps \
+        _debug_bps \
+        'argv'
+
     {
-        # debug
-        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
-            echo ${FUNCNAME[0]} && declare -p _opts
+        [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
+            echo ${FUNCNAME[0]} ; declare -p _opts
+            [[ ${_debug_bps[argv]} -ne 0 ]] || read
         }
     } &&
     [ -f "${_opts[FROM_FILE_PATH]}" ] &&
@@ -1493,10 +1593,18 @@ import_excel_file() {
     )
     local _tmpfile _sheet _list _limit _from _to
 
+    # DEBUG steps
+    local -A _debug_steps _debug_bps
+    get_env_debug \
+        ${FUNCNAME[0]} \
+        _debug_steps \
+        _debug_bps \
+        'argv'
+
     {
-        # debug
-        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
-            echo ${FUNCNAME[0]} && declare -p _opts
+        [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
+            echo ${FUNCNAME[0]} ; declare -p _opts
+            [[ ${_debug_bps[argv]} -ne 0 ]] || read
         }
     } &&
     [ -f "${_opts[FILE_PATH]}" ] &&
@@ -1626,10 +1734,18 @@ import_geo_file() {
     )
     local _load_mode_ogr2ogr _logfile _ogr_args _layer_creation_options _rc
 
+    # DEBUG steps
+    local -A _debug_steps _debug_bps
+    get_env_debug \
+        ${FUNCNAME[0]} \
+        _debug_steps \
+        _debug_bps \
+        'argv'
+
     {
-        # debug
-        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
-            echo ${FUNCNAME[0]} && declare -p _opts
+        [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
+            echo ${FUNCNAME[0]} ; declare -p _opts
+            [[ ${_debug_bps[argv]} -ne 0 ]] || read
         }
     } &&
     [ -f "${_opts[FILE_PATH]}" ] &&
@@ -1654,12 +1770,6 @@ import_geo_file() {
                 --query "SELECT public.label_to_code('${_opts[FILE_NAME]}')" \
                 --with_log no \
                 --return _opts[TABLE_NAME]
-        }
-    } &&
-    {
-        # debug
-        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
-            echo "table_name=${_opts[TABLE_NAME]}"
         }
     } &&
     _step+=1 &&
@@ -1813,12 +1923,20 @@ import_file() {
         'ARCHIVE purge'
     )
     local -a _list_options=()
-    local _extract_dir _import_options _limit _type_import
+    local _extract_dir _import_options _limit _type_import _table_name
+
+    # DEBUG steps
+    local -A _debug_steps _debug_bps
+    get_env_debug \
+        ${FUNCNAME[0]} \
+        _debug_steps \
+        _debug_bps \
+        'argv table context'
 
     {
-        # debug
-        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
-            echo ${FUNCNAME[0]} && declare -p _opts
+        [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
+            echo ${FUNCNAME[0]} ; declare -p _opts
+            [[ ${_debug_bps[argv]} -ne 0 ]] || read
         }
     } &&
     [ -f "${_opts[FILE_PATH]}" ] &&
@@ -1868,13 +1986,14 @@ import_file() {
                 --name LABEL_TO_CODE \
                 --query "SELECT public.label_to_code('${_opts[FILE_NAME]}')" \
                 --with_log no \
-                --return table_name
+                --return _table_name &&
+            _opts[TABLE_NAME]=$_table_name
         }
     } &&
     {
-        # debug
-        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
-            echo "table_name=${_opts[TABLE_NAME]}"
+        [[ ${_debug_steps[table]:-1} -ne 0 ]] || {
+            echo "table_name=(${_opts[TABLE_NAME]})"
+            [[ ${_debug_bps[table]} -ne 0 ]] || read
         }
     } &&
     # options
@@ -1924,12 +2043,6 @@ import_file() {
             ;;
         esac
     } &&
-    {
-        # debug
-        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
-            echo "type_import (MIME)=$_type_import"
-        }
-    } &&
     _step+=1 &&
     {
         [ -n "$_type_import" ] || {
@@ -1942,12 +2055,12 @@ import_file() {
         }
     } &&
     {
-        # debug
-        ([ -z "$POW_DEBUG" ] || [ "$POW_DEBUG" = no ]) || {
-            echo "type_import (EXTENSION)=$_type_import"
+        [[ ${_debug_steps[context]:-1} -ne 0 ]] || {
+            echo "type_import=($_type_import)"
             echo "options=${_import_options}"
             echo "limit=${_opts[LIMIT]}"
             echo "rowid=${_opts[ROWID]}"
+            [[ ${_debug_bps[context]} -ne 0 ]] || read
         }
     } &&
     _step+=1 &&

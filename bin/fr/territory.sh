@@ -49,9 +49,23 @@ pow_argv \
         mode:AUTO
     ' \
     --args_p '
-        reset:no
+        reset:no;
+        tag:force@bool
     ' \
     --pow_argv io_vars "$@" || exit $?
+
+# DEBUG steps
+declare -A _debug_steps _debug_bps
+get_env_debug \
+    "$(basename $0 .sh)" \
+    _debug_steps \
+    _debug_bps \
+    'argv todo io_begin'
+
+[[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
+    declare -p io_vars
+    [[ ${_debug_bps[argv]} -eq 0 ]] && read
+}
 
 declare -A io_hash &&
 set_env --schema_name fr &&
@@ -95,7 +109,10 @@ io_get_info_integration \
 
 [ "${io_vars[TODO]}" = yes ] && {
     log_info "IO '${io_vars[NAME]}' mise à jour (dépendances)"
-    [ "$POW_DEBUG" = yes ] && { echo $io_string | tr ',' '\n'; }
+    [[ ${_debug_steps[todo]:-1} -eq 0 ]] && {
+        echo $io_string | tr ',' '\n'
+        [[ ${_debug_bps[todo]} -eq 0 ]] && read
+    }
     _not_ok=''
     # check up-to-date dependences (w/ municipality events)
     for _io in INSEE IGN LAPOSTE; do
@@ -110,8 +127,14 @@ io_get_info_integration \
         --io ${io_vars[NAME]} \
         --date_begin "${io_vars[DATE]}" \
         --date_end "${io_vars[DATE]}" \
-        --id io_vars[ID_IO_MAIN] && {
-
+        --id io_vars[ID_IO_MAIN] &&
+    {
+        [[ ${_debug_steps[io_begin]:-1} -ne 0 ]] || {
+            echo "id_main=(${io_vars[ID_IO_MAIN]})"
+            [[ ${_debug_bps[io_begin]} -ne 0 ]] || read
+        }
+    } &&
+    {
         declare -a io_steps=(${io_hash[DEPENDS]//:/ })
         declare -a io_ids=()
         # default counts
@@ -173,7 +196,14 @@ io_steps=(${io_hash[RESSOURCES]//:/ })
                 --date_begin "${io_vars[DATE]}" \
                 --date_end "${io_vars[DATE]}" \
                 --nrows_todo ${io_counts[$io_step]:-1} \
-                --id io_vars[ID_IO_STEP] && {
+                --id io_vars[ID_IO_STEP] &&
+            {
+                [[ ${_debug_steps[io_begin]:-1} -ne 0 ]] || {
+                    echo "id_step=(${io_vars[ID_IO_STEP]})"
+                    [[ ${_debug_bps[io_begin]} -ne 0 ]] || read
+                }
+            } &&
+            {
                 case ${io_steps[$io_step]} in
                 # build geometry on low level (ZA as default), then set supra
                 FR-TERRITORY-GEOMETRY)

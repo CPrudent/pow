@@ -381,14 +381,30 @@ pow_argv \
     ' \
     "$@" || exit $?
 
-[ "${POW_ARGV[FORCE_LIST]}" = no ] && _where='(t.z_min IS NULL OR t.z_max IS NULL OR t.z_max < t.z_min)' || _where=''
+# DEBUG steps
+declare -A _debug_steps _debug_bps
+get_env_debug \
+    "$(basename $0 .sh)" \
+    _debug_steps \
+    _debug_bps \
+    'argv url merge1 merge2 merge3 set'
+
+[[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
+    declare -p POW_ARGV
+    [[ ${_debug_bps[argv]} -eq 0 ]] && read
+}
+
+[ "${POW_ARGV[FORCE_LIST]}" = no ]
+    && _where='(t.z_min IS NULL OR t.z_max IS NULL OR t.z_max < t.z_min)'
+    || _where=''
 set_env --schema_name fr &&
-log_info 'Mise à jour des données Altitude (min, max) des Communes' && {
-    [ "${POW_ARGV[RESET]}" = yes ] && {
+log_info 'Mise à jour des données Altitude (min, max) des Communes' &&
+{
+    [ "${POW_ARGV[RESET]}" = no ] || {
         execute_query \
             --name RESET_MUNICIPALITY_ALTITUDE \
             --query "DROP TABLE IF EXISTS fr.municipality_altitude"
-    } || true
+    }
 } &&
 execute_query \
     --name PREPARE_MUNICIPALITY_ALTITUDE \
@@ -457,15 +473,17 @@ altitude_set_exceptions && {
     execute_query \
         --name COUNT_MUNICIPALITY_ALTITUDE \
         --query 'SELECT COUNT(1) FROM fr.municipality_altitude' \
-        --return _territory_count && {
-            [ ${_territory_count} -gt 0 ] || {
-                log_info 'Mise à jour Altitude non nécessaire'
-                exit $SUCCESS_CODE
-            }
+        --return _territory_count &&
+    {
+        [ ${_territory_count} -gt 0 ] || {
+            log_info 'Mise à jour Altitude non nécessaire'
+            exit $SUCCESS_CODE
         }
+    }
 } &&
 _error_complete=0 &&
-_territory_list=$POW_DIR_TMP/territory_altitude.txt && {
+_territory_list=$POW_DIR_TMP/territory_altitude.txt &&
+{
     for ((_altitude_i=0; _altitude_i < ${#altitude_sources_order[@]}; _altitude_i++)); do
         altitude_log_info \
             --step $_altitude_i \
@@ -486,7 +504,8 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
         altitude_set_cache \
             --source ${altitude_sources_order[$_altitude_i]} \
             --cache _territory_cache \
-            --tmpfile _tmpfile && {
+            --tmpfile _tmpfile &&
+        {
             while IFS=: read -a _territory_data; do
                 # only municipality?
                 [ -n "${POW_ARGV[ONLY_MUNICIPALITY]}" ] && [[ ! ${_territory_data[$TERRITORY_CODE]} =~ ${POW_ARGV[ONLY_MUNICIPALITY]} ]] && continue
@@ -502,7 +521,11 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                         --url _url &&
                     _file=$(basename "$_url")
                     _rc=$?
-                    [ "$POW_DEBUG" = yes ] && declare -p _territory_data _url
+                    [[ ${_debug_steps[url]:-1} -eq 0 ]] && {
+                        echo "url=($url)"
+                        echo "territory_data=($_territory_data)"
+                        [[ ${_debug_bps[url]} -eq 0 ]] && read
+                    }
                     ([ "${POW_ARGV[USE_CACHE]}" = no ] || [ ! -s "$_territory_cache/$_file" ]) && {
                         curl --fail --output "$_territory_cache/$_file" "$_url"
                         _rc=$?
@@ -552,10 +575,11 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                                     ;;
                                 3[1-4]) # merge
                                     _altitude_update=$ALTITUDE_UPDATE_MERGE
-                                    [ "$POW_DEBUG" = yes ] && {
+                                    [[ ${_debug_steps[merge1]:-1} -eq 0 ]] && {
                                         echo 'Fusion de communes'
                                         declare -p _territory_data
                                         echo 'recherche séparation'
+                                        [[ ${_debug_bps[merge1]} -eq 0 ]] && read
                                     }
                                     # find if eventually "separated", and final name of merged _municipality
                                     # SQL: exists abort (code 21)?, more recent merge ?
@@ -597,11 +621,17 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                                         " \
                                         --output $_tmpfile && {
                                         [ -s $_tmpfile ] && {
-                                            [ "$POW_DEBUG" = yes ] && echo 'avec séparation'
+                                            [[ ${_debug_steps[merge2]:-1} -eq 0 ]] && {
+                                                echo 'avec séparation'
+                                                [[ ${_debug_bps[merge2]} -eq 0 ]] && read
+                                            }
                                             _altitude_code=($(head -n 1 $_tmpfile | cut --delimiter \| --field 1))
                                             _altitude_name=("$(head -n 1 $_tmpfile | cut --delimiter \| --field 2)")
                                         } || {
-                                            [ "$POW_DEBUG" = yes ] && echo 'ensemble des communes'
+                                            [[ ${_debug_steps[merge2]:-1} -eq 0 ]] && {
+                                                echo 'ensemble des communes'
+                                                [[ ${_debug_bps[merge2]} -eq 0 ]] && read
+                                            }
                                             # else, find old municipalities (before merge) starting at 2009/1/1 (web seems updated up to this date), not before!
                                             set -o noglob &&
                                             execute_query \
@@ -622,7 +652,10 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                                         _altitude_file=()
                                         _territory_data[$TERRITORY_CODE]=${_altitude_code[0]}
                                         _territory_data[$TERRITORY_NAME]=${_altitude_name[0]}
-                                        [ "$POW_DEBUG" = yes ] && declare -p _altitude_code _altitude_name
+                                        [[ ${_debug_steps[merge3]:-1} -eq 0 ]] && {
+                                            declare -p _altitude_code _altitude_name
+                                            [[ ${_debug_bps[merge3]} -eq 0 ]] && read
+                                        }
                                     }
                                     ;;
                                 *)
@@ -686,7 +719,12 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                 [ $_territory_skip -eq 1 ] && continue
 
                 declare -A _altitude_min _altitude_max
-                [ "$POW_DEBUG" = yes ] && declare -p _altitude_code _altitude_name _altitude_file
+                [[ ${_debug_steps[set]:-1} -eq 0 ]] && {
+                    declare -p _altitude_code _altitude_name _altitude_file
+                    [[ ${_debug_bps[set]} -eq 0 ]] && read
+                }
+
+                # eval (min, max)
                 for ((_altitude_k=0; _altitude_k < ${#_altitude_code[*]}; _altitude_k++)); do
                     altitude_set_values \
                         --source ${altitude_sources_order[$_altitude_i]} \
@@ -694,7 +732,9 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                         --tmpfile $_tmpfile \
                         --min _altitude_min[${_altitude_code[$_altitude_k]}] \
                         --max _altitude_max[${_altitude_code[$_altitude_k]}]
+
                     echo "${_altitude_name[$_altitude_k]} (${_altitude_code[$_altitude_k]}) min=${_altitude_min[${_altitude_code[$_altitude_k]}]} max=${_altitude_max[${_altitude_code[$_altitude_k]}]}"
+
                     [ $_altitude_k -eq 0 ] && {
                         _min=${_altitude_min[${_altitude_code[$_altitude_k]}]}
                         _max=${_altitude_max[${_altitude_code[$_altitude_k]}]}
@@ -713,16 +753,20 @@ _territory_list=$POW_DIR_TMP/territory_altitude.txt && {
                             , done = TRUE
                         WHERE
                             code = '${_territory_data_copy[$TERRITORY_CODE]}'
-                    " || {
+                    " ||
+                {
                     log_error "Mise à jour ${_territory_data_copy[$TERRITORY_CODE]} en erreur"
-
                 }
             done < "$_territory_list"
         }
         # check for complete (or error)
         execute_query \
             --name IS_KO_MUNICIPALITY_ALTITUDE \
-            --query 'SELECT EXISTS(SELECT 1 FROM fr.municipality_altitude WHERE z_min IS NULL OR z_max IS NULL OR z_max < z_min)' \
+            --query '
+                SELECT EXISTS(
+                    SELECT 1 FROM fr.municipality_altitude
+                    WHERE z_min IS NULL OR z_max IS NULL OR z_max < z_min
+                )' \
             --return _territory_ko && {
             is_yes --var _territory_ko || break
         } || {
@@ -752,5 +796,3 @@ rm --force $_tmpfile || {
 
 log_error 'Mise à jour Altitudes des communes non complète!'
 exit $ERROR_CODE
-
-

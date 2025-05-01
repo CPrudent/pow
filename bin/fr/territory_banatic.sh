@@ -17,7 +17,7 @@ on_import_error() {
         --pow_argv _opts "$@" || return $?
 
     # history created?
-    [ "$POW_DEBUG" = yes ] && { echo "id=${_opts[ID]}"; }
+    #echo "id=${_opts[ID]}"
     [ -n "${_opts[ID]}" ] && io_history_end_ko --id ${_opts[ID]}
 
     exit $ERROR_CODE
@@ -41,12 +41,29 @@ pow_argv \
     ' \
     --pow_argv io_vars "$@" || exit $?
 
+# DEBUG steps
+declare -A _debug_steps _debug_bps
+get_env_debug \
+    "$(basename $0 .sh)" \
+    _debug_steps \
+    _debug_bps \
+    'argv years year io_begin ressource'
+
+[[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
+    declare -p io_vars
+    [[ ${_debug_bps[argv]} -eq 0 ]] && read
+}
+
 # get years
+set_env --schema_name fr &&
 io_get_list_online_available \
     --name ${io_vars[NAME]} \
     --details_file years_list_path \
     --dates_list years || exit $ERROR_CODE
-[ "$POW_DEBUG" = yes ] && { declare -p years years_list_path; }
+[[ ${_debug_steps[years]:-1} -eq 0 ]] && {
+    declare -p years years_list_path
+    [[ ${_debug_bps[years]} -eq 0 ]] && read
+}
 
 # get year (w/ format YYYY)
 if [ -z "${io_vars[YEAR]}" ]; then
@@ -59,17 +76,17 @@ else
     }
 fi
 year=$(date -d "${years[$year_id]}" '+%Y')
+[[ ${_debug_steps[year]:-1} -eq 0 ]] && {
+    echo "year=$year (${years[$year_id]})"
+    [[ ${_debug_bps[year]} -eq 0 ]] && read
+}
 [ -z "$year" ] && {
     log_error "Impossible de trouver le millésime de ${io_vars[NAME]} (${years[@]})"
     exit $ERROR_CODE
 }
-[ "$POW_DEBUG" = yes ] && { echo "year=$year (${years[$year_id]})"; }
 # not useful here
 rm "$years_list_path"
 
-#declare -p io_vars years year_id ; read
-
-set_env --schema_name fr &&
 io_todo_import \
     --force ${io_vars[FORCE]} \
     --io ${io_vars[NAME]} \
@@ -92,7 +109,11 @@ url_compose=/files/Accueil/DESL/${year}/epcicom${year}.xlsx     &&
 url_list=${url_base}/${url_list}                                &&
 url_compose=${url_base}/${url_compose}                          &&
 {
-    [ "$POW_DEBUG" = yes ] && { declare -p url_list url_compose; } || true
+    [[ ${_debug_steps[ressource]:-1} -ne 0 ]] || {
+        echo "url_list=($url_list)"
+        echo "url_compose=($url_compose)"
+        [[ ${_debug_bps[ressource]} -ne 0 ]] || read
+    }
 } &&
 log_info "Import du millésime $year de ${io_vars[NAME]}" &&
 io_history_begin \
@@ -102,13 +123,18 @@ io_history_begin \
     --nrows_todo 1250 \
     --id io_vars[ID] &&
 {
+    [[ ${_debug_steps[io_begin]:-1} -ne 0 ]] || {
+        echo "id=(${io_vars[ID]})"
+        [[ ${_debug_bps[io_begin]} -ne 0 ]] || read
+    }
+} &&
+{
     io_download_file \
         --url "${url_list}" \
         --overwrite_mode no \
         --output_directory "$POW_DIR_IMPORT" \
         --output_file gouv_epci_${year}.xlsx
-    _rc=$?
-    [ $_rc -lt $POW_DOWNLOAD_ERROR ] || false
+    [ $? -lt $POW_DOWNLOAD_ERROR ] || false
 } &&
 {
     io_download_file \
@@ -116,8 +142,7 @@ io_history_begin \
         --overwrite_mode no \
         --output_directory "$POW_DIR_IMPORT" \
         --output_file gouv_epci_municipality_${year}.xlsx
-    _rc=$?
-    [ $_rc -lt $POW_DOWNLOAD_ERROR ] || false
+    [ $? -lt $POW_DOWNLOAD_ERROR ] || false
 } &&
 import_file \
     --file_path "$POW_DIR_IMPORT/gouv_epci_${year}.xlsx" \

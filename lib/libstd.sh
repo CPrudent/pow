@@ -514,8 +514,7 @@ pow_argv() {
             case "${_args_n_t[$_key]}" in
             BOOL)
                 # option w/o value is considered true
-                [ -z "$_value" ] && _argv[$_key]=yes || _argv[$_key]=${_value}
-                #echo "$_key=${_argv[$_key]}"
+                _argv[$_key]=${_value:-yes}
                 ;;
             PSQL)
                 # PSQL command doesn't have LF and blanks at beginning

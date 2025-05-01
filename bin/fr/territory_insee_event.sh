@@ -17,7 +17,7 @@ on_import_error() {
         --pow_argv _opts "$@" || return $?
 
     # history created?
-    [ "$POW_DEBUG" = yes ] && { echo "id=${_opts[ID]}"; }
+    #echo "id=${_opts[ID]}"
     [ -n "${_opts[ID]}" ] && io_history_end_ko --id ${_opts[ID]}
 
     # ignoring error if last year already exists
@@ -55,19 +55,39 @@ pow_argv \
     ' \
     --pow_argv io_vars "$@" || exit $?
 
+# DEBUG steps
+declare -A _debug_steps _debug_bps
+get_env_debug \
+    "$(basename $0 .sh)" \
+    _debug_steps \
+    _debug_bps \
+    'argv years year url url_data io_begin ressource'
+
+[[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
+    declare -p io_vars
+    [[ ${_debug_bps[argv]} -eq 0 ]] && read
+}
+
 # year of municipality events (w/ YYYY format)
 year=
 # get years
+set_env --schema_name fr &&
 io_get_list_online_available \
     --name ${io_vars[NAME]} \
     --details_file years_list_path \
     --dates_list years || exit $ERROR_CODE
-[ "$POW_DEBUG" = yes ] && { declare -p years; declare -p years_list_path; }
+[[ ${_debug_steps[years]:-1} -eq 0 ]] && {
+    declare -p years years_list_path
+    [[ ${_debug_bps[years]} -eq 0 ]] && read
+}
 
 # fix INSEE change (only last year available)
 year=$(date +%Y)
 year_id=0
-[ "$POW_DEBUG" = yes ] && { echo "year=$year (${years[$year_id]})"; }
+[[ ${_debug_steps[year]:-1} -eq 0 ]] && {
+    echo "year=$year (${years[$year_id]})"
+    [[ ${_debug_bps[year]} -eq 0 ]] && read
+}
 
 # example: https://www.insee.fr/fr/statistiques/fichier/3720946/mvtcommune-01012019-csv.zip
 # example: https://www.insee.fr/fr/statistiques/fichier/4316069/mvtcommune2020-csv.zip
@@ -98,7 +118,10 @@ year_id=0
 #+ v_tom_depuis_1943.csv
 
 url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/8377162/cog_ensemble_${year}_csv.zip" "$years_list_path")
-[ "$POW_DEBUG" = yes ] && { echo "url=$url_data"; }
+[[ ${_debug_steps[url]:-1} -eq 0 ]] && {
+    echo "url=$url_data"
+    [[ ${_debug_bps[url]} -eq 0 ]] && read
+}
 [ -z "$url_data" ] && {
     log_error "Impossible de trouver URL de ${io_vars[NAME]}"
     on_import_error --id ${io_vars[ID]}
@@ -106,10 +129,12 @@ url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/8377162/
 
 url_data="https://www.insee.fr/${url_data}"
 year_data=$(basename "$url_data")
-[ "$POW_DEBUG" = yes ] && { echo "year_data=$year_data"; }
+[[ ${_debug_steps[url_data]:-1} -eq 0 ]] && {
+    echo "year_data=$year_data"
+    [[ ${_debug_bps[url_data]} -eq 0 ]] && read
+}
 rm --force "$years_list_path"
 
-set_env --schema_name fr &&
 io_todo_import \
     --force ${io_vars[FORCE]} \
     --io ${io_vars[NAME]} \
@@ -125,22 +150,31 @@ esac
 
 # estimate to ~35000 municipalities
 log_info "Import du millésime $year de ${io_vars[NAME]}" &&
-# execute_query \
-#     --name "DELETE_IO_${io_vars[NAME]}" \
-#     --query "DELETE FROM io_history WHERE name = '${io_vars[NAME]}'" &&
 io_history_begin \
     --io ${io_vars[NAME]} \
     --date_begin "${years[$year_id]}" \
     --date_end "${years[$year_id]}" \
     --nrows_todo 35000 \
     --id io_vars[ID] &&
-io_download_file \
-    --url "$url_data" \
-    --overwrite_mode no \
-    --output_directory "$POW_DIR_IMPORT" &&
+{
+    [[ ${_debug_steps[io_begin]:-1} -ne 0 ]] || {
+        echo "id=(${io_vars[ID]})"
+        [[ ${_debug_bps[io_begin]} -ne 0 ]] || read
+    }
+} &&
+{
+    io_download_file \
+        --url "$url_data" \
+        --overwrite_mode no \
+        --output_directory "$POW_DIR_IMPORT"
+    [ $? -lt $POW_DOWNLOAD_ERROR ] || false
+} &&
 year_ressource="$POW_DIR_TMP/$year_data/v_mvt_commune_${year}.csv" &&
 {
-    [ "$POW_DEBUG" = yes ] && { echo "year_ressource=$year_ressource"; } || true
+    [[ ${_debug_steps[ressource]:-1} -ne 0 ]] || {
+        echo "year_ressource=($year_ressource)"
+        [[ ${_debug_bps[ressource]} -ne 0 ]] || read
+    }
 } &&
 extract_archive \
     --archive_path "$POW_DIR_IMPORT/$year_data" \
