@@ -698,7 +698,7 @@ bal_deal_obsolescence() {
                     )
                 " \
                 --return _counters &&
-            log_info "Effacement {Commune,Voie,Numéro}: ${_counters}"
+            log_info "Effacement {${bal_vars[MUNICIPALITY_CODE]},Voie,Numéro}: ${_counters}"
         }
     } || return $ERROR_CODE
 
