@@ -427,51 +427,55 @@ set_env_debug() {
     local -a _array_steps _array_codes
 
     [ -n "$POW_DEBUG_JSON" ] && {
-        # steps of code(s)
-        for _tmp in $(jq \
-            --compact-output \
-            --raw-output \
-            '.codes[] | .name + ":" + (.steps | join(","))' <<< "$POW_DEBUG_JSON"
-        ); do
-            #echo $_tmp
-            _code=${_tmp%%:*}
-            # minus case
-            [ "${_code:0:1}" = - ] && {
-                [ ${POW_DEBUG_STEPS[${_code:1}]+_} ] && {
-                    unset 'POW_DEBUG_STEPS[${_code:1}]'
-                    [ ${POW_DEBUG_BREAKPOINTS[${_code:1}]+_} ] && unset 'POW_DEBUG_BREAKPOINTS[${_code:1}]'
+        _tmp=$(jq --compact-output --raw-output '.codes // empty' <<< $POW_DEBUG_JSON)
+        [ -n "$_tmp" ] && {
+            # steps of code(s)
+            for _tmp in $(jq \
+                --compact-output \
+                --raw-output \
+                '.codes[] | .name + ":" + (.steps | join(","))' <<< "$POW_DEBUG_JSON"
+            ); do
+                #echo $_tmp
+                _code=${_tmp%%:*}
+                # minus case
+                [ "${_code:0:1}" = - ] && {
+                    [ ${POW_DEBUG_STEPS[${_code:1}]+_} ] && {
+                        unset 'POW_DEBUG_STEPS[${_code:1}]'
+                        [ ${POW_DEBUG_BREAKPOINTS[${_code:1}]+_} ] && unset 'POW_DEBUG_BREAKPOINTS[${_code:1}]'
+                    }
+                    continue
                 }
-                continue
-            }
-            # add new code
-            _array_codes+=($_code)
-            # get steps
-            _steps=${_tmp#*:}
-            _array_steps=(${_steps//,/ })
-            POW_DEBUG_BREAKPOINTS[$_code]=
-            for _tmp2 in "${_array_steps[@]}"; do
-                #echo tmp2=$_tmp2
-                _step=${_tmp2%%@*}
-                #echo step=$_step
-                _break=${_tmp2#*@}
-                #echo break=$_break
+                # add new code
+                _array_codes+=($_code)
+                # get steps
+                _steps=${_tmp#*:}
+                _array_steps=(${_steps//,/ })
+                POW_DEBUG_BREAKPOINTS[$_code]=
+                for _tmp2 in "${_array_steps[@]}"; do
+                    #echo tmp2=$_tmp2
+                    _step=${_tmp2%%@*}
+                    #echo step=$_step
+                    _break=${_tmp2#*@}
+                    #echo break=$_break
 
-                [ -n "$_list_steps" ] && _list_steps+=' '
-                _list_steps+=$_step
-                #echo list_steps=$_list_steps
+                    [ -n "$_list_steps" ] && _list_steps+=' '
+                    _list_steps+=$_step
+                    #echo list_steps=$_list_steps
 
-                [ "${_break^^}" = BREAK ] && {
-                    [ -n "$_list_breaks" ] && _list_breaks+=' '
-                    _list_breaks+=$_step
-                }
-                #echo list_breaks=$_list_breaks
-                #read
+                    [ "${_break^^}" = BREAK ] && {
+                        [ -n "$_list_breaks" ] && _list_breaks+=' '
+                        _list_breaks+=$_step
+                    }
+                    #echo list_breaks=$_list_breaks
+                    #read
+                done
+                # add code w/ it(s) step(s) ...
+                POW_DEBUG_STEPS[$_code]=$_list_steps
+                # ... and optional breakpoint(s)
+                [ -n "$_list_breaks" ] && POW_DEBUG_BREAKPOINTS[$_code]=$_list_breaks
             done
-            # add code w/ it(s) step(s) ...
-            POW_DEBUG_STEPS[$_code]=$_list_steps
-            # ... and optional breakpoint(s)
-            [ -n "$_list_breaks" ] && POW_DEBUG_BREAKPOINTS[$_code]=$_list_breaks
-        done
+        }
+
         # purge old codes
         for _code in ${!POW_DEBUG_STEPS[@]}; do
             [[ " ${_array_codes[*]} " == *" $_code "* ]] || {

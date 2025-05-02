@@ -90,7 +90,7 @@ _io_history_manager() {
                     ELSE
                         CASE
                         WHEN attributes IS JSON OBJECT THEN
-                            (jsonb_merge(attributes::JSONB, '${_opts[INFOS]}'::JSONB))::VARCHAR
+                            (jsonb_merge(attributes::JSONB, '${_opts[INFOS]:-{}}'::JSONB))::VARCHAR
                         ELSE '${_opts[INFOS]}'
                         END
                     END

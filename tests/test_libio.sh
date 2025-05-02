@@ -528,6 +528,8 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
         _rc=0
         ;;
 
+    # tests:
+    # tests/test_libio.sh --test HISTORY_BEGIN HISTORY_END_OK HISTORY_UPDATE HISTORY_BEGIN HISTORY_END_KO
     HISTORY_BEGIN)
         io_history_begin \
             --io "${env_lib[IO_NAME]}" \
@@ -589,8 +591,7 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
             --query "
                 SELECT (get_last_io('${env_lib[IO_NAME]}')).id
             " \
-            --return _id &&
-        env_lib[IO_ID]=$_id &&
+            --return env_lib[IO_ID] &&
         [ -n "${env_lib[IO_ID]}" ] &&
         io_history_update \
             --nrows_processed 5 \

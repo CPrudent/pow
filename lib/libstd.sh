@@ -450,18 +450,28 @@ pow_argv() {
 
     # DEBUG steps
     local -A _debug_steps _debug_bps
-    get_env_debug pow_argv _debug_steps _debug_bps 'cmdl args_p def check reset case'
+    get_env_debug \
+        pow_argv \
+        _debug_steps \
+        _debug_bps \
+        'cmdl cmdl2 cmdl3 cmdl4 cmdl5 args_p def check reset case'
+
+    # https://unix.stackexchange.com/questions/693760/how-do-i-print-the-nth-argument-of-a-script-when-n-isnt-known-until-runtime
+    #     for ((_i=1; _i<=$#; _i++)); do
+    #         echo ${@:_i:1}
+    #     done
+    #     read
 
     # read from command line
     while :; do
-        [[ ${_debug_steps[cmdl]:-1} -eq 0 ]] && {
-            echo "step=($_step) key=($_key) \$1=$1"
-            [[ ${_debug_bps[cmdl]} -eq 0 ]] && read
+        [[ ${_debug_steps[cmdl1]:-1} -eq 0 ]] && {
+            echo "step=($_step) key=($_key) \$1=$1 \$#=$#"
+            [[ ${_debug_bps[cmdl1]} -eq 0 ]] && read
         }
         case $_step in
         # name of argument
         1)
-            ([ $1 = -- ] || [ -z "$1" ]) && _step=90 || {
+            ([ $1 = -- ] || ([ -z "$1" ] && [[ $# -eq 0 ]])) && _step=90 || {
                 [[ $1 =~ ^--(.*)$ ]] && {
                     _key=${BASH_REMATCH[1]}
                     _value=
@@ -479,7 +489,7 @@ pow_argv() {
         10)
             if [[ $1 =~ ^-- ]]; then
                 _step=11
-            elif [ -z "$1" ]; then
+            elif ([ -z "$1" ] && [[ $# -eq 0 ]]); then
                 _step=90
             else
                 # deal w/ protected '\--option' as value (and not as option!), stripping anti-slash
@@ -507,9 +517,9 @@ pow_argv() {
             fi
             ;;
         11)
-            [[ ${_debug_steps[cmdl]:-1} -eq 0 ]] && {
+            [[ ${_debug_steps[cmdl2]:-1} -eq 0 ]] && {
                 echo "$_key=$_value"
-                [[ ${_debug_bps[cmdl]} -eq 0 ]] && read
+                [[ ${_debug_bps[cmdl2]} -eq 0 ]] && read
             }
             case "${_args_n_t[$_key]}" in
             BOOL)
@@ -592,9 +602,9 @@ pow_argv() {
 
         # check argument (among allowed ones)
         20)
-            [[ ${_debug_steps[cmdl]:-1} -eq 0 ]] && {
+            [[ ${_debug_steps[cmdl3]:-1} -eq 0 ]] && {
                 declare -p _args_n_kv
-                [[ ${_debug_bps[cmdl]} -eq 0 ]] && read
+                [[ ${_debug_bps[cmdl3]} -eq 0 ]] && read
             }
             [[ -v "_args_n_kv[$_key]" ]] && _step=$(( _end == 1 ? 91 : 1 )) || {
                 _error="L'argument $_key ne fait pas partie des arguments possibles"
@@ -617,14 +627,14 @@ pow_argv() {
             ;;
         esac
 
-        [[ ${_debug_steps[cmdl]:-1} -eq 0 ]] && {
+        [[ ${_debug_steps[cmdl4]:-1} -eq 0 ]] && {
             printf 'step=%d\n' $_step ; declare -p _argv
-            [[ ${_debug_bps[cmdl]} -eq 0 ]] && read
+            [[ ${_debug_bps[cmdl4]} -eq 0 ]] && read
         }
     done
-    [[ ${_debug_steps[cmdl]:-1} -eq 0 ]] && {
+    [[ ${_debug_steps[cmdl5]:-1} -eq 0 ]] && {
         declare -p _argv _args_n_t _args_n_kv
-        [[ ${_debug_bps[cmdl]} -eq 0 ]] && read
+        [[ ${_debug_bps[cmdl5]} -eq 0 ]] && read
     }
 
     # return options (values and count) eventually w/ overload of default POW_ARGV|POW_ARGC
