@@ -1074,7 +1074,7 @@ bal_load() {
             --id bal_vars[IO_ID] &&
         {
             {
-                if ([ "${_opts[LEVEL]}" = SUMMARY ] || (is_yes --var bal_vars[LEVEL_MUNICIPALITY])); then
+                if (([ "${_opts[LEVEL]}" = SUMMARY ] && [[ ${bal_vars[SUMMARY_NDAYS]} -gt 0 ]]) || (is_yes --var bal_vars[LEVEL_MUNICIPALITY])); then
                     io_download_file \
                         --url "${bal_vars[URL]}/${_context[URL_DATA]}" \
                         --overwrite_mode NEWER \
@@ -1308,6 +1308,7 @@ declare -A bal_vars=(
 pow_argv \
     --args_n '
         municipality:Code Commune INSEE à traiter (ou ALL pour télécharger la liste complète);
+        summary_ndays:Délai (jour) accepté avant de retélécharger la dernière version (0 pour exclure);
         select_criteria:Sélection des Communes;
         select_order:Ordre de sélection des Communes;
         limit:Limiter à n communes (0 sans limite);
@@ -1339,6 +1340,7 @@ pow_argv \
         verbose:yes|no
     ' \
     --args_d '
+        summary_ndays:3;
         select_criteria:REVISION;
         select_order:DESC;
         force:no;
@@ -1354,7 +1356,7 @@ pow_argv \
     ' \
     --args_p '
         reset:no;
-        tag:select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,force_load@bool,dry_run@bool,progress@bool,parallel@bool,clean@bool,verbose@bool
+        tag:summary_ndays@int,select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,force_load@bool,dry_run@bool,progress@bool,parallel@bool,clean@bool,verbose@bool
     ' \
     --pow_argv bal_vars "$@" || exit $?
 
