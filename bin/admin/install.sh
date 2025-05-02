@@ -18,6 +18,9 @@ pow_argv \
     --args_d '
         check:yes
     ' \
+    --args_p '
+        tag:check@bool
+    ' \
     "$@" || exit $?
 
     # check installation
