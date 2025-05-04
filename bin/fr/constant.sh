@@ -5,9 +5,6 @@
     #--
     # build FR's constants
     #
-    # TODO FR-CONSTANT-ADDRESS could be splitted as
-    #       FR-CONSTANT-ADDRESS-INIT
-    #       FR-CONSTANT-ADDRESS-FAULT
 
 on_integration_error() {
     local -A _opts &&
@@ -28,30 +25,56 @@ on_integration_error() {
 
 declare -A io_vars=(
     [NAME]=FR-CONSTANT
-    [INFO]='Mise à jour des constantes (FR)'
     [DATE]=$(date '+%F')
-    [ID_MAIN]=
-    [ID_STEP]=
+    [TODO]=no
+    [ID_IO_MAIN]=
+    [ID_IO_STEP]=
 ) &&
 pow_argv \
     --args_n '
-        force:Forcer le traitement même si celui-ci a déjà été fait
+        force:Forcer le traitement même si celui-ci a déjà été fait;
+        do_constant:Indicateur de génération des Constantes;
+        do_vacuum:Indicateur de réorganisation des Données
     ' \
     --args_v '
-        force:yes|no
+        force:yes|no;
+        do_constant:yes|no;
+        do_vacuum:yes|no
     ' \
     --args_d '
-        force:no
+        force:no;
+        do_constant:yes;
+        do_vacuum:yes
     ' \
     --args_p '
         reset:no;
-        tag:force@bool
+        tag:force@bool,do_constant@bool,do_vacuum@bool
     ' \
     --pow_argv io_vars "$@" || exit $?
 
+# DEBUG steps
+declare -A _debug_steps _debug_bps
+get_env_debug \
+    "$(basename $0 .sh)" \
+    _debug_steps \
+    _debug_bps \
+    'argv todo steps io_begin ids'
+
+[[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
+    declare -p io_vars
+    [[ ${_debug_bps[argv]} -eq 0 ]] && read
+}
+
 declare -A io_hash &&
 set_env --schema_name fr &&
-io_get_info_integration --io ${io_vars[NAME]} --to_hash io_hash || exit $ERROR_CODE
+log_info 'Mise à jour des constantes (FR)' &&
+io_get_info_integration \
+    --io ${io_vars[NAME]} \
+    --to_hash io_hash \
+    --to_string io_string || {
+    log_error "IO '${io_vars[NAME]}' en erreur!"
+    exit $ERROR_CODE
+}
 
 ([ "${io_vars[FORCE]}" = no ] && (! is_yes --var io_hash[TODO])) && {
     log_info "IO '${io_vars[NAME]}' déjà à jour!"
@@ -63,97 +86,157 @@ io_get_info_integration --io ${io_vars[NAME]} --to_hash io_hash || exit $ERROR_C
         --io ${io_vars[NAME]} \
         --date_end "${io_vars[DATE]}"
     case $? in
+    $POW_IO_TODO)
+        io_vars[TODO]=yes
+        ;;
     $POW_IO_SUCCESSFUL)
-        exit $SUCCESS_CODE
+        log_info "IO '${io_vars[NAME]}' déjà à jour!"
         ;;
     $POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
+        log_error "IO '${io_vars[NAME]}' en erreur!"
         exit $ERROR_CODE
         ;;
     esac
 }
 
-log_info "${io_vars[INFO]}" &&
-io_history_begin \
-    --io ${io_vars[NAME]} \
-    --date_begin "${io_vars[DATE]}" \
-    --date_end "${io_vars[DATE]}" \
-    --id io_vars[ID_MAIN] && {
+[ "${io_vars[TODO]}" = yes ] && {
+    log_info "IO '${io_vars[NAME]}' mise à jour (dépendances)"
+    [[ ${_debug_steps[todo]:-1} -eq 0 ]] && {
+        declare -p io_hash ; echo $io_string | tr ',' '\n'
+        [[ ${_debug_bps[todo]} -eq 0 ]] && read
+    }
 
-    io_steps=(${io_hash[DEPENDS]//:/ })
-    io_ids=()
-    # default counts
-    io_counts=()
-    io_error=0
-
-    for (( io_step=0; io_step<${#io_steps[@]}; io_step++ )); do
-        # last id
-        io_ids[$io_step]=${io_hash[${io_steps[$io_step]}_i]}
-        # step todo or force it ?
-        ([ "${io_vars[FORCE]}" = no ] && (! is_yes --var io_hash[${_step}_t])) || {
-            #breakpoint "${io_steps[$io_step]}: io begin"
-            io_history_begin \
-                --io ${io_steps[$io_step]} \
-                --date_begin "${io_vars[DATE]}" \
-                --date_end "${io_vars[DATE]}" \
-                --nrows_todo ${io_counts[$io_step]:-1} \
-                --id io_vars[ID_STEP] && {
-                case ${io_steps[$io_step]} in
-                FR-CONSTANT-ADDRESS)
-                    io_count="
-                        (SELECT COUNT(1) FROM fr.laposte_address_street_uniq)
-                        " &&
-                    #breakpoint "${io_steps[$io_step]}: query" &&
-                    import_file \
-                        --file_path "$POW_DIR_BATCH/db.objects.d/data/address_faults_manual_correction.csv" \
-                        --schema_name fr \
-                        --table_name laposte_address_fault_correction \
-                        --rowid no \
-                        --load_mode OVERWRITE_TABLE &&
-                    execute_query \
-                        --name FR_CONSTANT_ADDRESS \
-                        --query "
-                            CALL fr.set_constant_address();
-                        "
-                    ;;
-                esac
-            } &&
-            #breakpoint "${io_steps[$io_step]}: ids" &&
-            io_get_ids_integration \
-                --from HASH \
-                --group ${io_steps[$io_step]} \
-                --hash io_hash \
-                --ids _ids &&
-            #breakpoint "${io_steps[$io_step]}: io end" &&
-            io_history_end_ok \
-                --nrows_processed "($io_count)" \
-                --infos "$_ids" \
-                --id ${io_vars[ID_STEP]} &&
-            io_ids[$io_step]=${io_vars[ID_STEP]} || {
-                on_integration_error --id ${io_vars[ID_STEP]}
-                io_error=1
-                break
-            }
+    io_history_begin \
+        --io ${io_vars[NAME]} \
+        --date_begin "${io_vars[DATE]}" \
+        --date_end "${io_vars[DATE]}" \
+        --id io_vars[ID_IO_MAIN] &&
+    {
+        [[ ${_debug_steps[io_begin]:-1} -ne 0 ]] || {
+            echo "id_main=(${io_vars[ID_IO_MAIN]})"
+            [[ ${_debug_bps[io_begin]} -ne 0 ]] || read
         }
-    done
-} &&
-[ $io_error -eq 0 ] && {
-    io_get_ids_integration \
-        --from ARRAY \
-        --hash io_hash \
-        --array io_ids \
-        --ids _ids &&
-    io_history_end_ok \
-        --nrows_processed 1 \
-        --infos "$_ids" \
-        --id ${io_vars[ID_MAIN]}
-} &&
-vacuum \
-    --schema_name fr \
-    --table_name constant,laposte_address_street_uniq,laposte_address_street_word_descriptor,laposte_address_keyword,laposte_address_street_kw_exception,laposte_address_fault_street \
-    --mode ANALYZE || {
-    on_integration_error --id ${io_vars[ID_MAIN]}
-    exit $ERROR_CODE
+    } &&
+    {
+        io_steps=(${io_hash[DEPENDS]//:/ })
+        [[ ${_debug_steps[steps]:-1} -eq 0 ]] && {
+            declare -p io_steps
+            [[ ${_debug_bps[steps]} -eq 0 ]] && read
+        }
+
+        io_ids=()
+        # default counts
+        io_counts=()
+        io_error=0
+
+        for (( io_step=0; io_step<${#io_steps[@]}; io_step++ )); do
+            # last id
+            io_ids[$io_step]=${io_hash[${io_steps[$io_step]}_i]}
+            [[ ${_debug_steps[ids]:-1} -eq 0 ]] && {
+                declare -p io_ids ; echo "step=($io_step)"
+                [[ ${_debug_bps[ids]} -eq 0 ]] && read
+            }
+
+            # step todo or force it ?
+            ([ "${io_vars[FORCE]}" = no ] && (! is_yes --var io_hash[${io_steps[$io_step]}_t])) || {
+                io_history_begin \
+                    --io ${io_steps[$io_step]} \
+                    --date_begin "${io_vars[DATE]}" \
+                    --date_end "${io_vars[DATE]}" \
+                    --nrows_todo ${io_counts[$io_step]:-1} \
+                    --id io_vars[ID_IO_STEP] &&
+                {
+                    [[ ${_debug_steps[io_begin]:-1} -ne 0 ]] || {
+                        echo "id_step=(${io_vars[ID_IO_STEP]})"
+                        [[ ${_debug_bps[io_begin]} -ne 0 ]] || read
+                    }
+                } &&
+                {
+                    case ${io_steps[$io_step]} in
+                    FR-CONSTANT-ADDRESS-FAULT)
+                        io_count="
+                            (SELECT COUNT(1) FROM fr.laposte_address_fault_correction)
+                            " &&
+                        import_file \
+                            --file_path "$POW_DIR_BATCH/db.objects.d/data/address_faults_manual_correction.csv" \
+                            --schema_name fr \
+                            --table_name laposte_address_fault_correction \
+                            --rowid no \
+                            --load_mode OVERWRITE_TABLE
+                        ;;
+                    FR-CONSTANT-ADDRESS-INIT)
+                        io_count="
+                            (SELECT COUNT(1) FROM fr.laposte_address_street_uniq)
+                            " &&
+                        execute_query \
+                            --name FR_CONSTANT_ADDRESS \
+                            --query "
+                                DO \$CONST\$
+                                BEGIN
+                                    IF '${io_vars[DO_CONSTANT]}' = 'yes' THEN
+                                        CALL fr.set_constant_address();
+                                    END IF;
+                                END \$CONST\$;
+                            "
+                        ;;
+                    esac
+                } &&
+                {
+                    # retrieve each ID of depends (of group), or none (no depend)
+                    io_get_ids_integration \
+                        --from HASH \
+                        --group ${io_steps[$io_step]} \
+                        --hash io_hash \
+                        --ids _ids ||
+                    _ids=
+                } &&
+                {
+                    [[ ${_debug_steps[ids]:-1} -ne 0 ]] || {
+                        echo "${io_steps[$io_step]}=($_ids)"
+                        [[ ${_debug_bps[ids]} -ne 0 ]] || read
+                    }
+                } &&
+                io_history_end_ok \
+                    --nrows_processed "($io_count)" \
+                    --infos "$_ids" \
+                    --id ${io_vars[ID_IO_STEP]} &&
+                io_ids[$io_step]=${io_vars[ID_IO_STEP]} || {
+                    on_integration_error --id ${io_vars[ID_IO_STEP]}
+                    io_error=1
+                    break
+                }
+            }
+        done
+    } &&
+    [ $io_error -eq 0 ] && {
+        io_get_ids_integration \
+            --from ARRAY \
+            --hash io_hash \
+            --array io_ids \
+            --ids _ids &&
+        {
+            [[ ${_debug_steps[ids]:-1} -ne 0 ]] || {
+                echo "${io_vars[NAME]}=($_ids)" ; declare -p io_ids
+                [[ ${_debug_bps[ids]} -ne 0 ]] || read
+            }
+        } &&
+        io_history_end_ok \
+            --nrows_processed 1 \
+            --infos "$_ids" \
+            --id ${io_vars[ID_IO_MAIN]}
+    } &&
+    {
+        [ "${io_vars[DO_VACUUM]}" = no ] || {
+            vacuum \
+                --schema_name fr \
+                --table_name constant,laposte_address_keyword,laposte_address_street_uniq,laposte_address_street_membership,laposte_address_street_word_descriptor,laposte_address_street_word_level,laposte_address_street_kw_exception,laposte_address_housenumber_uniq,laposte_address_complement_uniq,laposte_address_complement_membership,laposte_address_complement_word_descriptor,laposte_address_complement_word_level,laposte_address_fault \
+                --mode ANALYZE
+        }
+    } || {
+        on_integration_error --id ${io_vars[ID_IO_MAIN]}
+        exit $ERROR_CODE
+    }
 }
 
-log_info "${io_vars[INFO]} avec succès"
+log_info "IO ${io_vars[NAME]} avec succès"
 exit $SUCCESS_CODE

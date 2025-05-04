@@ -537,11 +537,30 @@ io_get_ids_integration() {
 
     local -n _hash_ref=${_opts[HASH]}
     local -n _ids_ref=${_opts[IDS]}
-    local _group _steps _step _array_ptr _i _key _value
+    local _group _step _array_ptr _i _key _value
+    local -a _steps
 
-    [ -n "${_opts[GROUP]}}" ] && _group=${_opts[GROUP]} || _group=DEPENDS
+    # DEBUG steps
+    local -A _debug_steps _debug_bps
+    get_env_debug \
+        ${FUNCNAME[0]} \
+        _debug_steps \
+        _debug_bps \
+        'argv context ref value return'
+
+    [[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
+        declare -p _opts
+        [[ ${_debug_bps[argv]} -eq 0 ]] && read
+    }
+
+    [ -n "${_opts[GROUP]}" ] && _group=${_opts[GROUP]} || _group=DEPENDS
     [[ $_group =~ DEPENDS|RESSOURCES ]] || _group+=_d
     _steps=(${_hash_ref[$_group]//:/ })
+
+    [[ ${_debug_steps[context]:-1} -eq 0 ]] && {
+        echo "group=($_group)" ; declare -p _steps
+        [[ ${_debug_bps[context]} -eq 0 ]] && read
+    }
 
     case "${_opts[FROM]}" in
     HASH)
@@ -563,6 +582,10 @@ io_get_ids_integration() {
 
     _ids_ref=''
     _i=0
+    [[ ${_debug_steps[ref]:-1} -eq 0 ]] && {
+        echo "ref=${!_array_ptr}"
+        [[ ${_debug_bps[ref]} -eq 0 ]] && read
+    }
     for _step in "${!_array_ptr}"; do
         case "${_opts[FROM]}" in
         HASH)
@@ -579,6 +602,11 @@ io_get_ids_integration() {
             ;;
         esac
 
+        [[ ${_debug_steps[value]:-1} -eq 0 ]] && {
+            echo "i=${_i} step=($_step) k=($_key) v=($_value)"
+            [[ ${_debug_bps[value]} -eq 0 ]] && read
+        }
+
         _i=$((_i +1))
         # IO condition ?
         [ $_value -eq 0 ] && continue
@@ -587,6 +615,11 @@ io_get_ids_integration() {
         _ids_ref+=$(printf '"%s":%d' $_key $_value)
     done
     [ -n "$_ids_ref" ] && _ids_ref="{${_ids_ref}}"
+
+    [[ ${_debug_steps[return]:-1} -eq 0 ]] && {
+        echo "ids=${_ids_ref}"
+        [[ ${_debug_bps[return]} -eq 0 ]] && read
+    }
 
     return $SUCCESS_CODE
 }

@@ -76,7 +76,8 @@ BEGIN
 
     CALL public.io_add_if_not_exists(name => 'FR-CONSTANT');
     -- ADDRESS
-    CALL public.io_add_if_not_exists(name => 'FR-CONSTANT-ADDRESS');
+    CALL public.io_add_if_not_exists(name => 'FR-CONSTANT-ADDRESS-FAULT');
+    CALL public.io_add_if_not_exists(name => 'FR-CONSTANT-ADDRESS-INIT');
 
     -- get all IOs in memory
     _io_list := ARRAY(SELECT io_list FROM public.io_list);
@@ -415,7 +416,8 @@ BEGIN
 
     /*
        FR-CONSTANT
-            |-> FR-CONSTANT-ADDRESS
+            |-> FR-CONSTANT-ADDRESS-FAULT
+            |-> FR-CONSTANT-ADDRESS-INIT
      */
 
     _id := public.io_get_id_from_array_by_name(
@@ -426,23 +428,14 @@ BEGIN
         id1 => _id,
         id2 => public.io_get_id_from_array_by_name(
                     from_array => _io_list,
-                    name => 'FR-CONSTANT-LAPOSTE'
+                    name => 'FR-CONSTANT-ADDRESS-FAULT'
                 )
-    );
-
-    /*
-       FR-CONSTANT-ADDRESS
-            |-> FR-ADDRESS-LAPOSTE
-     */
-    _id := public.io_get_id_from_array_by_name(
-        from_array => _io_list,
-        name => 'FR-CONSTANT-ADDRESS'
     );
     CALL public.io_add_relation_if_not_exists(
         id1 => _id,
         id2 => public.io_get_id_from_array_by_name(
                     from_array => _io_list,
-                    name => 'FR-ADDRESS-LAPOSTE'
+                    name => 'FR-CONSTANT-ADDRESS-INIT'
                 )
     );
 END

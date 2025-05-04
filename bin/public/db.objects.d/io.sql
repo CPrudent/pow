@@ -56,7 +56,7 @@ CREATE OR REPLACE PROCEDURE public.io_add_relation_if_not_exists(
 AS
 $proc$
 BEGIN
-    IF NOT EXISTS(SELECT 1 FROM public.io_relation WHERE id = id1 AND id_child = id2 LIMIT 1) THEN
+    IF NOT EXISTS(SELECT 1 FROM public.io_relation WHERE id = id1 AND id_child = id2 AND relation = type LIMIT 1) THEN
         INSERT INTO public.io_relation(id, id_child, relation) VALUES (id1, id2, type);
     END IF;
 END

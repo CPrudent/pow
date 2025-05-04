@@ -676,7 +676,6 @@ Query returned successfully in 6 secs 219 msec.
  */
 
 -- undo fix element-faults
-SELECT drop_all_functions_if_exists('fr', 'undo_laposte_address_fault_street');
 SELECT drop_all_functions_if_exists('fr', 'undo_laposte_address_fault');
 CREATE OR REPLACE PROCEDURE fr.undo_laposte_address_fault(
     element IN VARCHAR,
