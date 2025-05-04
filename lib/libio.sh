@@ -562,12 +562,11 @@ io_get_ids_integration() {
         [[ ${_debug_bps[context]} -eq 0 ]] && read
     }
 
+    _ids_ref=''
     case "${_opts[FROM]}" in
     HASH)
-        [[ -v "_hash_ref[$_group]" ]] || {
-            log_error "manque dépendances IO=($_group)"
-            return $ERROR_CODE
-        }
+        # no depends?
+        [[ ! -v "_hash_ref[$_group]" ]] && return $SUCCESS_CODE
         _array_ptr="_steps[@]"
         ;;
     ARRAY)
@@ -580,7 +579,7 @@ io_get_ids_integration() {
         ;;
     esac
 
-    _ids_ref=''
+    # retrieve key/value for each depended item (of group), as JSON syntax
     _i=0
     [[ ${_debug_steps[ref]:-1} -eq 0 ]] && {
         echo "ref=${!_array_ptr}"

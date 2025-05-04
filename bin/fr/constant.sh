@@ -181,15 +181,12 @@ io_get_info_integration \
                         ;;
                     esac
                 } &&
-                {
-                    # retrieve each ID of depends (of group), or none (no depend)
-                    io_get_ids_integration \
-                        --from HASH \
-                        --group ${io_steps[$io_step]} \
-                        --hash io_hash \
-                        --ids _ids ||
-                    _ids=
-                } &&
+                # retrieve each ID of depends (of group), or none (if any)
+                io_get_ids_integration \
+                    --from HASH \
+                    --group ${io_steps[$io_step]} \
+                    --hash io_hash \
+                    --ids _ids &&
                 {
                     [[ ${_debug_steps[ids]:-1} -ne 0 ]] || {
                         echo "${io_steps[$io_step]}=($_ids)"
