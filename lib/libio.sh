@@ -659,6 +659,12 @@ io_get_property_online_available() {
         _re1='href="(http|ftp)[^" ]+CONTOURS-IRIS[^" ]*(FXX|FRA)[^" ]*\.7z[^" ]*"'
         _re2='[0-9]{4}-01-01'
         ;;
+    FR-TERRITORY-IGN-IRIS-GE)
+        _url_base='https://geoservices.ign.fr'
+        _url_data=${_url_base}'/irisge#telechargement'
+        _re1='href="(http|ftp)[^" ]+IRIS-GE[^" ]*_(FXX|GLP|MTQ|GUF|REU|SPM|MYT|BLM|MAF)_[^" ]*\.7z[^" ]*"'
+        _re2='[0-9]{4}-01-01'
+        ;;
     FR-TERRITORY-GOUV-EPCI)
         _url_base='https://www.collectivites-locales.gouv.fr'
         _url_data=${_url_base}'/institutions/liste-et-composition-des-epci-fiscalite-propre'
