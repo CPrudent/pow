@@ -34,7 +34,7 @@ pow_argv \
         dry_run:no
     ' \
     --args_p '
-        tag:schema_name@1N,sources:1N,dry_run@bool
+        tag:schema_name@XN,sources:XN,dry_run@bool
     ' \
     "$@" || exit $?
 

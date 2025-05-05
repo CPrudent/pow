@@ -821,7 +821,6 @@ DECLARE
     _result VARCHAR;
     _result2 VARCHAR;
     _error_message VARCHAR := CONCAT('IO ', io_is_todo.name, ' non valide');
-    --_io_history public.io_history;
     _io_currents public.io_history[];
     _io_lasts public.io_history[];
     _io_depends VARCHAR[];
@@ -832,7 +831,7 @@ BEGIN
     END IF;
 
     /*
-     IO_EXIST: IO already done
+     IO_EXISTS: IO already done
      IO_MORE_RECENT: at least one depended IO more recent
      IO_WITH_DIFFERENCE: with difference compared with previous result
         IO condition allows comparison (not depended IO to process)

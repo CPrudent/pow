@@ -66,6 +66,12 @@ BEGIN
     CALL public.io_add_if_not_exists(name => 'FR-ADDRESS');
     -- RAN
     CALL public.io_add_if_not_exists(name => 'FR-ADDRESS-LAPOSTE');
+    CALL public.io_add_if_not_exists(name => 'FR-ADDRESS-LAPOSTE-AREA');
+    CALL public.io_add_if_not_exists(name => 'FR-ADDRESS-LAPOSTE-STREET');
+    CALL public.io_add_if_not_exists(name => 'FR-ADDRESS-LAPOSTE-HOUSENUMBER');
+    CALL public.io_add_if_not_exists(name => 'FR-ADDRESS-LAPOSTE-COMPLEMENT');
+    CALL public.io_add_if_not_exists(name => 'FR-ADDRESS-LAPOSTE-SUSTAINABILITY');
+
     -- GEOPAD
     CALL public.io_add_if_not_exists(name => 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT');
     CALL public.io_add_if_not_exists(name => 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT-GEOMETRY');
@@ -76,8 +82,9 @@ BEGIN
 
     CALL public.io_add_if_not_exists(name => 'FR-CONSTANT');
     -- ADDRESS
-    CALL public.io_add_if_not_exists(name => 'FR-CONSTANT-ADDRESS-FAULT');
-    CALL public.io_add_if_not_exists(name => 'FR-CONSTANT-ADDRESS-INIT');
+    CALL public.io_add_if_not_exists(name => 'FR-CONSTANT-ADDRESS');
+    CALL public.io_add_if_not_exists(name => 'FR-CONSTANT-ADDRESS-LAPOSTE');
+    CALL public.io_add_if_not_exists(name => 'FR-CONSTANT-ADDRESS-LAPOSTE-CORRECTION');
 
     -- get all IOs in memory
     _io_list := ARRAY(SELECT io_list FROM public.io_list);
@@ -416,8 +423,7 @@ BEGIN
 
     /*
        FR-CONSTANT
-            |-> FR-CONSTANT-ADDRESS-FAULT
-            |-> FR-CONSTANT-ADDRESS-INIT
+            |-> FR-CONSTANT-ADDRESS
      */
 
     _id := public.io_get_id_from_array_by_name(
@@ -428,15 +434,51 @@ BEGIN
         id1 => _id,
         id2 => public.io_get_id_from_array_by_name(
                     from_array => _io_list,
-                    name => 'FR-CONSTANT-ADDRESS-FAULT'
+                    name => 'FR-CONSTANT-ADDRESS'
+                )
+    );
+
+    /*
+       FR-CONSTANT-ADDRESS
+            |-> FR-ADDRESS-LAPOSTE
+            |-> FR-CONSTANT-ADDRESS-LAPOSTE
+     */
+
+    _id := public.io_get_id_from_array_by_name(
+        from_array => _io_list,
+        name => 'FR-CONSTANT-ADDRESS'
+    );
+    CALL public.io_add_relation_if_not_exists(
+        id1 => _id,
+        id2 => public.io_get_id_from_array_by_name(
+                    from_array => _io_list,
+                    name => 'FR-ADDRESS-LAPOSTE'
                 )
     );
     CALL public.io_add_relation_if_not_exists(
         id1 => _id,
         id2 => public.io_get_id_from_array_by_name(
                     from_array => _io_list,
-                    name => 'FR-CONSTANT-ADDRESS-INIT'
+                    name => 'FR-CONSTANT-ADDRESS-LAPOSTE'
                 )
     );
+
+    /*
+       FR-CONSTANT-ADDRESS-LAPOSTE
+            |-> FR-CONSTANT-ADDRESS-LAPOSTE-CORRECTION
+     */
+
+    _id := public.io_get_id_from_array_by_name(
+        from_array => _io_list,
+        name => 'FR-CONSTANT-ADDRESS-LAPOSTE'
+    );
+    CALL public.io_add_relation_if_not_exists(
+        id1 => _id,
+        id2 => public.io_get_id_from_array_by_name(
+                    from_array => _io_list,
+                    name => 'FR-CONSTANT-ADDRESS-LAPOSTE-CORRECTION'
+                )
+    );
+
 END
 $proc$ LANGUAGE plpgsql;

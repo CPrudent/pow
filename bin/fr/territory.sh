@@ -69,7 +69,8 @@ get_env_debug \
 
 declare -A io_hash &&
 set_env --schema_name fr &&
-log_info 'Calcul des territoires français' && {
+log_info 'Calcul des territoires français' &&
+{
     [ "${io_vars[DEPENDS]}" = no ] || {
         $POW_DIR_BATCH/territory_insee.sh --force ${io_vars[FORCE]} &&
         $POW_DIR_BATCH/territory_ign.sh --force ${io_vars[FORCE]} &&
