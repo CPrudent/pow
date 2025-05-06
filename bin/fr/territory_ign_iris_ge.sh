@@ -170,10 +170,13 @@ io_history_begin \
                 [[ ${_debug_bps[url]} -ne 0 ]] || read
             }
         } &&
-        io_download_file \
-            --url "${url_data_one}" \
-            --output_directory "${POW_DIR_IMPORT}" \
-            --overwrite_mode no &&
+        {
+            io_download_file \
+                --url "${url_data_one}" \
+                --output_directory "${POW_DIR_IMPORT}" \
+                --overwrite_mode no
+            [[ $? -lt $POW_DOWNLOAD_ERROR ]]
+        } &&
         mkdir --parent "$POW_DIR_TMP/IRIS-GE-$year" &&
         extract_archive \
             --archive_path "$POW_DIR_IMPORT/$year_data" \
@@ -256,9 +259,15 @@ vacuum \
     --table_name ${io_vars[TABLE_NAME]} \
     --mode ANALYZE &&
 _query_count="(SELECT COUNT(*) FROM fr.${io_vars[TABLE_NAME]})" &&
-rm --force "$years_list_path" &&
-rm --force --recursive "$POW_DIR_TMP/IRIS-GE-$year" &&
-#set -o noglob &&
+{
+    rm --force "$years_list_path" &&
+    rm --force --recursive "$POW_DIR_TMP/IRIS-GE-$year" &&
+    execute_query \
+        --name DROP_TMP_TABLE \
+        --query "
+            DROP TABLE fr.tmp_${io_vars[TABLE_NAME]};
+        "
+} &&
 io_history_end_ok \
     --nrows_processed "($_query_count)" \
     --id ${io_vars[ID]} || on_import_error --id ${io_vars[ID]}
