@@ -957,11 +957,16 @@ $func$
 DECLARE
     _return GEOMETRY;
 BEGIN
-    SELECT ST_Union(ST_Intersection(ST_Boundary(geom_a.geom), ST_Boundary(geom_b.geom)))
-    INTO _return
-    FROM ST_Dump(geom) AS geom_a
-    CROSS JOIN ST_Dump(geom) AS geom_b
-    WHERE geom_a.path != geom_b.path;
+    SELECT
+        ST_Union(ST_Intersection(ST_Boundary(geom_a.geom), ST_Boundary(geom_b.geom)))
+    INTO
+        _return
+    FROM
+        ST_Dump(ST_InternalBoundary.geom) AS geom_a
+            CROSS JOIN ST_Dump(ST_InternalBoundary.geom) AS geom_b
+    WHERE
+        geom_a.path != geom_b.path
+    ;
 
     RETURN _return;
 END
