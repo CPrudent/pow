@@ -93,7 +93,7 @@ for _schema in ${_schemas[@]}; do
             --name PURGE_AFTER_RELOCATE \
             --query "$POW_DIR_BATCH/../${_schema}/db.objects.d/actions/purge_after_relocate.sql"
     } || {
-        _error "Echec mise à jour de la structure de $_schema"
+        _error="Echec mise à jour de la structure de $_schema"
         break
     }
 done &&

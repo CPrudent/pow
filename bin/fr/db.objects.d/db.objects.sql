@@ -67,3 +67,5 @@
 \include_relative ./functions/similarity.sql
 \include_relative ./functions/address_normalize.sql
 \include_relative ./functions/address_match.sql
+\include_relative ./functions/polygons_contain_point.sql
+
