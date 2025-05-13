@@ -52,6 +52,8 @@
 \include_relative laposte_address_complement_word_level.sql
 \include_relative laposte_address_fault.sql
 \include_relative laposte_address_keyword.sql
+\include_relative laposte_municipality_vs_iris_ge.sql
+\include_relative laposte_address_match_iris_ge.sql
 \include_relative constant.sql
 \include_relative territory_level.sql
 \include_relative territory_laposte.sql
