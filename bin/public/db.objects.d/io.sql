@@ -151,6 +151,8 @@ BEGIN
         _last_io := (public.get_last_io(name => 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT')).date_data_end;
     ELSIF name = 'FR-TERRITORY-IGN-EVENT' THEN
         _last_io := (public.get_last_io(name => 'FR-TERRITORY-IGN')).date_data_end;
+    ELSIF name = 'FR-TERRITORY-IGN-IRIS-GE-EVENT' THEN
+        _last_io := (public.get_last_io(name => 'FR-TERRITORY-IGN-IRIS-GE')).date_data_end;
     ELSIF name = 'FR-TERRITORY-INSEE-EVENT' THEN
         _last_io := (public.get_last_io(name => 'FR-TERRITORY-INSEE')).date_data_end;
     ELSIF name = 'FR-TERRITORY-LAPOSTE-EVENT' THEN
@@ -316,6 +318,30 @@ BEGIN
                         insee_arm
                     FROM
                         fr.ign_municipal_district
+                ) ign
+                    CROSS JOIN fr.get_municipality_to_date(
+                        code => ign.insee_com,
+                        code_previous => ign.insee_com,
+                        date_geography_from => ''',
+            _last_io,
+            '''::DATE,
+                        with_deleted => TRUE,
+                        check_exists => FALSE
+                    ) to_now
+            WHERE
+                to_now.date_geography != ''',
+            _last_io,
+            '''::DATE
+            '
+            )
+        WHEN 'FR-TERRITORY-IGN-IRIS-GE-EVENT' THEN
+            CONCAT(
+            '
+                (
+                    SELECT
+                        insee_com
+                    FROM
+                        fr.ign_iris_ge
                 ) ign
                     CROSS JOIN fr.get_municipality_to_date(
                         code => ign.insee_com,

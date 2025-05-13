@@ -36,6 +36,8 @@ BEGIN
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE-EVENT');
     -- SOURCE ORGA
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE-ORGANIZATION');
+    -- correlation w/ other references
+    CALL public.io_add_if_not_exists(name => 'FR-LAPOSTE-MUNICIPALITY-VS-IRIS-GE');
     -- INSEE
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-INSEE');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-INSEE-MUNICIPALITY');
@@ -47,6 +49,8 @@ BEGIN
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN-MUNICIPALITY-POPULATION');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN-GEOMETRY');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN-EVENT');
+    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN-IRIS-GE');
+    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN-IRIS-GE-EVENT');
     -- GOUV (EPCI)
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-GOUV-EPCI');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-GOUV-EPCI-LIST');
@@ -55,10 +59,9 @@ BEGIN
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-GEOMETRY');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-NEXT');
 
-    -- municipality events
+    -- municipality events, properties
     CALL public.io_add_if_not_exists(name => 'FR-MUNICIPALITY-EVENT-INSEE');
     CALL public.io_add_if_not_exists(name => 'FR-MUNICIPALITY-EVENT-WIKIPEDIA');
-
     CALL public.io_add_if_not_exists(name => 'FR-MUNICIPALITY-ALTITUDE');
 
     -- FR-ADDRESS
@@ -220,6 +223,39 @@ BEGIN
         id2 => public.io_get_id_from_array_by_name(
                     from_array => _io_list,
                     name => 'FR-TERRITORY-LAPOSTE-AREA-UPD'
+                )
+    );
+
+    /*
+       FR-LAPOSTE-MUNICIPALITY-VS-IRIS-GE
+            |-> FR-TERRITORY-LAPOSTE
+            |-> FR-TERRITORY-IGN-IRIS-GE
+            |-> FR-TERRITORY-IGN-IRIS-GE-EVENT
+     */
+
+    _id := public.io_get_id_from_array_by_name(
+        from_array => _io_list,
+        name => 'FR-LAPOSTE-MUNICIPALITY-VS-IRIS-GE'
+    );
+    CALL public.io_add_relation_if_not_exists(
+        id1 => _id,
+        id2 => public.io_get_id_from_array_by_name(
+                    from_array => _io_list,
+                    name => 'FR-TERRITORY-LAPOSTE'
+                )
+    );
+    CALL public.io_add_relation_if_not_exists(
+        id1 => _id,
+        id2 => public.io_get_id_from_array_by_name(
+                    from_array => _io_list,
+                    name => 'FR-TERRITORY-IGN-IRIS-GE'
+                )
+    );
+    CALL public.io_add_relation_if_not_exists(
+        id1 => _id,
+        id2 => public.io_get_id_from_array_by_name(
+                    from_array => _io_list,
+                    name => 'FR-TERRITORY-IGN-IRIS-GE-EVENT'
                 )
     );
 

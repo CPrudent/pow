@@ -157,7 +157,7 @@ BEGIN
                 NULL::INTEGER,          -- AS polygon
                 NULL::NUMERIC,          -- AS percent
                 NULL::NUMERIC,          -- AS percent_next
-                NULL::NUMERIC,          -- AS rank
+                NULL::INTEGER,          -- AS rank
                 'NO_POLYGON_FOUND'::VARCHAR,  -- AS method
                 FALSE                   -- AS is_best
             );
