@@ -5,6 +5,44 @@
     #--
     # match LAPOSTE addresses w/ IRIS-GE
 
+# print progress as (ratio, percent)
+# $1= begin
+    # $2= label
+    # $3= size of (number of digits)
+    # $4= subscript
+    # $5= total
+    # $6= end of line
+# $1= end
+    # $2= elapsed time
+    # $3= more information
+iris_print_progress() {
+    case "${1^^}" in
+    BEGIN)
+        # if main display (municipality level) and only one then reduce informations
+        ([[ "${2:0:5}" =~ INSEE|Commu|Temps ]] && [[ $5 -eq 1 ]]) && {
+            printf '%-15s%b' "$2" $6
+        } || {
+            printf '%-15s\t%*d/%*d (%3d%%)%b' "$2" $3 $4 $3 $5 $((($4*100)/$5)) $6
+        }
+        ;;
+    END)
+        printf "\t\t\t\t\t%s\t\t%s\n" "$2" "$3"
+        ;;
+    esac
+
+    return $SUCCESS_CODE
+}
+
+iris_set_progress() {
+    local _elapsed
+
+    get_elapsed_time --start ${global_vars[PROGRESS_START]} --result _elapsed &&
+    iris_print_progress END "${_elapsed}" &&
+    global_vars[PROGRESS_START]=$(date '+%s')
+
+    return $SUCCESS_CODE
+}
+
 iris_context_init() {
     local _error
 
@@ -365,7 +403,7 @@ if [ "${global_vars[PARALLEL]}" = no ]; then
                 --nrows_todo $laposte_nrows \
                 --id ${laposte_id} || exit $ERROR_CODE
 
-            [ "${global_vars[PROGRESS]}" = no ] || bal_set_progress
+            [ "${global_vars[PROGRESS]}" = no ] || iris_set_progress
         }
     done
 else
@@ -421,7 +459,7 @@ else
                     --temporary UNIQ \
                 ::: "${laposte_codes2[@]}"
         }
-        [ "${global_vars[PROGRESS]}" = no ] || bal_set_progress
+        [ "${global_vars[PROGRESS]}" = no ] || iris_set_progress
     done
 
     [ "${global_vars[DRY_RUN]}" = yes ] || {
