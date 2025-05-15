@@ -173,11 +173,10 @@ iris_municipality_history() {
     local -n _date_end_ref=${_opts[DATE_END]}
     local _date_begin _date_end _error
 
-    _name_ref=LAPOSTE_${_opts[CODE]}_IRIS_GE
+    _name_ref=LAPOSTE_${_opts[CODE]}_IRIS_GE &&
     case ${global_vars[IRIS_MODE]} in
     INIT)
         _date_begin_ref=1970-01-01
-        _date_end_ref=${global_vars[IRIS_DATE]}
         ;;
     DELTA)
         execute_query \
@@ -192,27 +191,27 @@ iris_municipality_history() {
                 false
             }
         } &&
-        execute_query \
-            --name "END_MUNICIPALITY_${_opts[CODE]}" \
-            --query "
-                SELECT MAX(dt_reference)
-                FROM fr.laposte_address_xy
-                WHERE co_insee = '${_opts[CODE]}'
-            " \
-            --return _date_end &&
-        {
-            [ -n "$_date_end" ] || {
-                _error="Fin historique '${_opts[CODE]}' vide!"
-                false
-            }
-        } || {
-            [ -n "$_error" ] && log_error "$_error"
-            return $ERROR_CODE
-        }
         _date_begin_ref=$_date_begin
-        _date_end_ref=$_date_end
         ;;
-    esac
+    esac &&
+    execute_query \
+        --name "END_MUNICIPALITY_${_opts[CODE]}" \
+        --query "
+            SELECT MAX(dt_reference)
+            FROM fr.laposte_address_xy
+            WHERE co_insee = '${_opts[CODE]}'
+        " \
+        --return _date_end &&
+    {
+        [ -n "$_date_end" ] || {
+            _error="Fin historique '${_opts[CODE]}' vide!"
+            false
+        }
+    } &&
+    _date_end_ref=$_date_end || {
+        [ -n "$_error" ] && log_error "$_error"
+        return $ERROR_CODE
+    }
 
     return $SUCCESS_CODE
 }
