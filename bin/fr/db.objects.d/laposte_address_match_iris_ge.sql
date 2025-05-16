@@ -91,6 +91,23 @@ BEGIN
             END IF;
         END IF;
     END IF;
+
+    /*
+    -- needed condition, but time-consumer !
+    IF mode = 'INIT' THEN
+        IF NOT EXISTS(
+            SELECT 1
+            FROM fr.address_view
+            WHERE
+                co_insee_insee = municipality
+                AND
+                gm_coord IS NOT NULL
+        ) THEN
+            -- no address to match !
+            mode := NULL::VARCHAR;
+        END IF;
+    END IF;
+     */
 END
 $func$ LANGUAGE plpgsql;
 
