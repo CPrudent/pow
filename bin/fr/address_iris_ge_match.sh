@@ -522,12 +522,6 @@ else
                     --iris_id ${global_vars[IRIS_ID]} \
                 ::: "${laposte_codes2[@]}"
 
-#                     {} \
-#                     ${global_vars[IRIS_MODE]} \
-#                     "$laposte_tmpdir" \
-#                     "${global_vars[IRIS_MATCH_VERSION]}" \
-#                     ${global_vars[IRIS_ID]} \
-
             [[ ${_debug_steps[match]:-1} -eq 0 ]] && {
                 echo "match"
                 [[ ${_debug_bps[match]} -eq 0 ]] && read
