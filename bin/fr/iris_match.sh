@@ -40,25 +40,4 @@ execute_query \
     --output "${global_vars[TMPDIR]}/IRIS_${global_vars[MUNICIPALITY]}.dat" \
     --temporary UNIQ
 
-# key= create ???
-# 2025-05-16T15:59:25Z|error|85348|christophe|/data/devel/pow/bin/fr/iris_match.sh|create: Valeur unique attendue
-# rc      command
-# 3       /data/devel/pow/bin/fr/iris_match.sh 98812 INIT /data/app/pow/tmp/fr/82514 1.0 49822
-
-# try w/o pow_argv, but same error!
-# execute_query \
-#     --name "IRIS_MATCH_$1" \
-#     --temporary UNIQ \
-#     --output "$3/IRIS_$1.dat" \
-#     --query "
-#         SELECT nrows FROM fr.set_laposte_address_match_iris_ge(
-#             municipality => '$1',
-#             mode => '$2',
-#             version => '$4',
-#             iris_id => $5
-#         )
-#     "
-
-# error comes from get_tmp_file() w/o --args_p definition (create@bool) !
-
 exit $?
