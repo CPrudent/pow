@@ -279,25 +279,6 @@ iris_history_municipality() {
     return $SUCCESS_CODE
 }
 
-# function to match municipality
-# NOTE error if execute_query directly called by parallel
-iris_match_municipality() {
-    execute_query \
-        --name "IRIS_MATCH_$1" \
-        --query "
-            SELECT nrows FROM fr.set_laposte_address_match_iris_ge(
-                municipality => '$1',
-                force_init => ('${global_vars[FORCE_INIT]}'='yes'),
-                version => '${global_vars[IRIS_MATCH_VERSION]}',
-                iris_id => ${global_vars[IRIS_ID]}
-            )
-        " \
-        --output "$laposte_tmpdir/IRIS_$1.dat" \
-        --temporary UNIQ
-
-    return $?
-}
-
 declare -A global_vars=(
     [STOP_TIME]=
     [PROGRESS_START]=
@@ -402,11 +383,16 @@ set_env --schema_name fr &&
             }
             # first run all municipalities as INIT, then as DELTA if needed
             [ ${#laposte_codes[@]} -gt 0 ] && break
+            [ "${global_vars[FORCE_INIT]}" = yes ] && break
         done
         # finally nothing todo ?
         [ ${#laposte_codes[@]} -gt 0 ] || {
             [ "${global_vars[PROGRESS]}" = no ] || set_log_echo yes
-            log_info 'IRISation déjà à jour!'
+            case ${global_vars[FORCE_INIT]} in
+            yes)    _info='IRISation en mode INIT est déjà complète!'   ;;
+            no)     _info='IRISation déjà à jour!'                      ;;
+            esac
+            log_info "$_info"
             exit $SUCCESS_CODE
         }
         ;;
@@ -461,7 +447,6 @@ if [ "${global_vars[PARALLEL]}" = no ]; then
                     SELECT fr.set_laposte_address_match_iris_ge(
                         municipality => '${global_vars[MUNICIPALITY_CODE]}',
                         mode => '${global_vars[IRIS_MODE]}',
-                        force_init => ('${global_vars[FORCE_INIT]}'='yes'),
                         version => '${global_vars[IRIS_MATCH_VERSION]}',
                         iris_id => ${global_vars[IRIS_ID]}
                     )
@@ -479,8 +464,6 @@ if [ "${global_vars[PARALLEL]}" = no ]; then
         }
     done
 else
-    # for parallel (calling a function)
-    export -f iris_match_municipality
     laposte_tmpdir="$POW_DIR_TMP/$$"
     [ ! -d "$laposte_tmpdir" ] && mkdir "$laposte_tmpdir"
     laposte_limit=$(( ${#laposte_codes[@]} / global_vars[PARALLEL_CHUNK] ))
@@ -531,8 +514,19 @@ else
             parallel \
                 --jobs ${global_vars[PARALLEL_JOBS]} \
                 --joblog $POW_DIR_ARCHIVE/parallel_${laposte_serie}_iris.log \
-                iris_match_municipality --code {} \
+                $POW_DIR_BATCH/iris_match.sh \
+                    --municipality {} \
+                    --mode ${global_vars[IRIS_MODE]} \
+                    --tmpdir "$laposte_tmpdir" \
+                    --version "${global_vars[IRIS_MATCH_VERSION]}" \
+                    --iris_id ${global_vars[IRIS_ID]} \
                 ::: "${laposte_codes2[@]}"
+
+#                     {} \
+#                     ${global_vars[IRIS_MODE]} \
+#                     "$laposte_tmpdir" \
+#                     "${global_vars[IRIS_MATCH_VERSION]}" \
+#                     ${global_vars[IRIS_ID]} \
 
             [[ ${_debug_steps[match]:-1} -eq 0 ]] && {
                 echo "match"

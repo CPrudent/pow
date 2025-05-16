@@ -1444,6 +1444,9 @@ get_tmp_file() {
             tool:MKTEMP;
             chmod:666;
             create:no' \
+        --args_p '
+            tag:tool@1N,create@bool
+        ' \
         --pow_argv _opts "$@" || return $?
 
     local _tmp_file _tmp_create=0
