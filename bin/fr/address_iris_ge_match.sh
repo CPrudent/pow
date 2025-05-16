@@ -130,7 +130,9 @@ iris_list_municipalities() {
                 m.mode
             FROM
                 criteria c
-                    CROSS JOIN fr.get_match_iris_ge_mode(municipality => c.municipality) m
+                    CROSS JOIN fr.get_match_iris_ge_mode(
+                        municipality => c.municipality
+                    ) m
         )
         SELECT ARRAY(
             SELECT
@@ -224,7 +226,7 @@ iris_check_municipality() {
 }
 
 # prepare history context (IO name, begin/end dates)
-iris_municipality_history() {
+iris_history_municipality() {
     local -A _opts &&
     pow_argv \
         --args_n '
@@ -245,9 +247,6 @@ iris_municipality_history() {
 
     _name_ref=LAPOSTE_${_opts[CODE]}_IRIS_GE &&
     case ${global_vars[IRIS_MODE]} in
-    INIT)
-        _date_begin_ref=1970-01-01
-        ;;
     DELTA)
         execute_query \
             --name "BEGIN_MUNICIPALITY_${_opts[CODE]}" \
@@ -260,10 +259,10 @@ iris_municipality_history() {
                 _error="Début historique '${_opts[CODE]}' vide!"
                 false
             }
-        } &&
-        _date_begin_ref=$_date_begin
+        }
         ;;
     esac &&
+    _date_begin_ref=${_date_begin:-1970-01-01} &&
     execute_query \
         --name "END_MUNICIPALITY_${_opts[CODE]}" \
         --query "
@@ -272,18 +271,31 @@ iris_municipality_history() {
             WHERE co_insee = '${_opts[CODE]}'
         " \
         --return _date_end &&
-    {
-        [ -n "$_date_end" ] || {
-            _error="Fin historique '${_opts[CODE]}' vide!"
-            false
-        }
-    } &&
-    _date_end_ref=$_date_end || {
+    _date_end_ref=${_date_end:-${global_vars[IRIS_DATE]}} || {
         [ -n "$_error" ] && log_error "$_error"
         return $ERROR_CODE
     }
 
     return $SUCCESS_CODE
+}
+
+# function to match municipality
+# NOTE error if execute_query directly called by parallel
+iris_match_municipality() {
+    execute_query \
+        --name "IRIS_MATCH_$1" \
+        --query "
+            SELECT nrows FROM fr.set_laposte_address_match_iris_ge(
+                municipality => '$1',
+                force_init => ('${global_vars[FORCE_INIT]}'='yes'),
+                version => '${global_vars[IRIS_MATCH_VERSION]}',
+                iris_id => ${global_vars[IRIS_ID]}
+            )
+        " \
+        --output "$laposte_tmpdir/IRIS_$1.dat" \
+        --temporary UNIQ
+
+    return $?
 }
 
 declare -A global_vars=(
@@ -352,7 +364,7 @@ get_env_debug \
     "$(basename $0 .sh)" \
     _debug_steps \
     _debug_bps \
-    'argv count io_begin match error nrows io_end'
+    'argv count history limit io_begin match error nrows io_end'
 
 [[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
     declare -p global_vars
@@ -392,7 +404,7 @@ set_env --schema_name fr &&
             [ ${#laposte_codes[@]} -gt 0 ] && break
         done
         # finally nothing todo ?
-        [ ${#laposte_codes} -eq 0 ] && {
+        [ ${#laposte_codes[@]} -gt 0 ] || {
             [ "${global_vars[PROGRESS]}" = no ] || set_log_echo yes
             log_info 'IRISation déjà à jour!'
             exit $SUCCESS_CODE
@@ -424,11 +436,19 @@ if [ "${global_vars[PARALLEL]}" = no ]; then
         global_vars[MUNICIPALITY_CODE]=${laposte_codes[$laposte_i]}
 
         [ "${global_vars[DRY_RUN]}" = yes ] || {
-            iris_municipality_history \
+            iris_history_municipality \
                 --code ${global_vars[MUNICIPALITY_CODE]} \
                 --name laposte_io_name \
                 --date_begin laposte_date_begin \
                 --date_end laposte_date_end &&
+            {
+                [[ ${_debug_steps[history]:-1} -ne 0 ]] || {
+                    echo "name=($laposte_io_name)"
+                    echo "begin=($laposte_date_begin)"
+                    echo "end=($laposte_date_end)"
+                    [[ ${_debug_bps[history]} -ne 0 ]] || read
+                }
+            } &&
             io_history_begin \
                 --io "$laposte_io_name" \
                 --date_begin "$laposte_date_begin" \
@@ -440,6 +460,7 @@ if [ "${global_vars[PARALLEL]}" = no ]; then
                 --query "
                     SELECT fr.set_laposte_address_match_iris_ge(
                         municipality => '${global_vars[MUNICIPALITY_CODE]}',
+                        mode => '${global_vars[IRIS_MODE]}',
                         force_init => ('${global_vars[FORCE_INIT]}'='yes'),
                         version => '${global_vars[IRIS_MATCH_VERSION]}',
                         iris_id => ${global_vars[IRIS_ID]}
@@ -458,11 +479,17 @@ if [ "${global_vars[PARALLEL]}" = no ]; then
         }
     done
 else
+    # for parallel (calling a function)
+    export -f iris_match_municipality
     laposte_tmpdir="$POW_DIR_TMP/$$"
     [ ! -d "$laposte_tmpdir" ] && mkdir "$laposte_tmpdir"
     laposte_limit=$(( ${#laposte_codes[@]} / global_vars[PARALLEL_CHUNK] ))
     [[ $(( ${#laposte_codes[@]} % global_vars[PARALLEL_CHUNK] )) -eq 0 ]] || ((laposte_limit++))
     laposte_serie=0
+    [[ ${_debug_steps[limit]:-1} -eq 0 ]] && {
+        echo "limit=($laposte_limit)"
+        [[ ${_debug_bps[limit]} -eq 0 ]] && read
+    }
     for ((laposte_j=0; laposte_j<$laposte_limit; laposte_j++)); do
         [ "${global_vars[STOP_TIME]}" != 0 ] && {
             # stop loop if allowed time is expired
@@ -477,7 +504,7 @@ else
 
         [ "${global_vars[DRY_RUN]}" = yes ] || {
             for laposte_code in ${laposte_codes2[@]}; do
-                iris_municipality_history \
+                iris_history_municipality \
                     --code $laposte_code \
                     --name laposte_io_name \
                     --date_begin laposte_date_begin \
@@ -504,18 +531,7 @@ else
             parallel \
                 --jobs ${global_vars[PARALLEL_JOBS]} \
                 --joblog $POW_DIR_ARCHIVE/parallel_${laposte_serie}_iris.log \
-                execute_query \
-                    --name "IRIS_MATCH_${..}" \
-                    --query "
-                        SELECT fr.set_laposte_address_match_iris_ge(
-                            municipality => '${..}',
-                            force_init => ('${global_vars[FORCE_INIT]}'='yes'),
-                            version => '${global_vars[IRIS_MATCH_VERSION]}',
-                            iris_id => ${global_vars[IRIS_ID]}
-                        )
-                    " \
-                    --output "$laposte_tmpdir/IRIS_${..}.dat" \
-                    --temporary UNIQ \
+                iris_match_municipality --code {} \
                 ::: "${laposte_codes2[@]}"
 
             [[ ${_debug_steps[match]:-1} -eq 0 ]] && {

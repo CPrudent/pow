@@ -115,6 +115,7 @@ $func$ LANGUAGE plpgsql;
 SELECT drop_all_functions_if_exists('fr', 'set_laposte_address_match_iris_ge');
 CREATE OR REPLACE FUNCTION fr.set_laposte_address_match_iris_ge(
     municipality IN VARCHAR,
+    mode IN VARCHAR DEFAULT NULL,               -- INIT | DELTA
     force_init IN BOOLEAN DEFAULT FALSE,        -- force INIT mode
     version IN VARCHAR DEFAULT NULL,            -- match version
     iris_id IN INTEGER DEFAULT NULL,            -- last IRIS-GE id (io_history)
@@ -122,21 +123,21 @@ CREATE OR REPLACE FUNCTION fr.set_laposte_address_match_iris_ge(
 )
 AS $$
 DECLARE
-    _mode VARCHAR;
     _date_data_end DATE;
 BEGIN
-    _mode := fr.get_match_iris_ge_mode(
-        municipality => municipality,
-        force_init => force_init,
-        version => version,
-        iris_id => iris_id
-    );
+    IF mode IS NULL THEN
+        mode := fr.get_match_iris_ge_mode(
+            municipality => municipality,
+            force_init => force_init,
+            version => version,
+            iris_id => iris_id
+        );
+    END IF;
 
-    IF _mode = 'INIT' THEN
+    IF mode = 'INIT' THEN
         INSERT INTO fr.laposte_address_match_iris_ge (
             code_address,
             code_iris,
-            match_polygon,
             match_percent,
             match_percent_next,
             match_rank,
@@ -209,13 +210,12 @@ BEGIN
         GET DIAGNOSTICS nrows = ROW_COUNT;
 
     -- DELTA mode (after INIT) for address w/ newer XY update (for last)
-    ELSIF _mode = 'DELTA' THEN
+    ELSIF mode = 'DELTA' THEN
         _date_data_end := (get_last_io(CONCAT('LAPOSTE-', municipality, '-IRIS-GE'))).date_data_end;
 
         INSERT INTO fr.laposte_address_match_iris_ge (
             code_address,
             code_iris,
-            match_polygon,
             match_percent,
             match_percent_next,
             match_rank,
