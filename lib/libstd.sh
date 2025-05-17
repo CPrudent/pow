@@ -61,6 +61,59 @@ log_error() {
     return $?
 }
 
+# print progress as (ratio, percent)
+# $1= begin
+    # $2= label
+    # $3= group(s)
+    # $4= size of (number of digits), replace '*' below in printf format
+    # $5= subscript
+    # $6= total
+    # $7= end of line
+# $1= end
+    # $2= elapsed time
+    # $3= more information
+print_progress() {
+    case "${1^^}" in
+    BEGIN)
+        # if label (among groups) and only one (total) then reduce informations
+        ([[ "${2:0:5}" =~ $3 ]] && [[ $6 -eq 1 ]]) && {
+            printf '%-15s%b' "$2" $7
+        } || {
+            printf '%-15s\t%*d/%*d (%3d%%)%b' "$2" $4 $5 $4 $6 $((($5*100)/$6)) $7
+        }
+        ;;
+    END)
+        printf "\t\t\t\t\t%s\t\t%s\n" "$2" "$3"
+        ;;
+    esac
+
+    return $SUCCESS_CODE
+}
+
+# display elapsed time (and reinit next start)
+set_progress() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            start:Variable début de traitement
+        ' \
+        --args_m '
+            start
+        ' \
+        --pow_argv _opts "$@" || return $?
+
+    local -n _start_ref=${_opts[START]}
+    local _elapsed
+
+    get_elapsed_time \
+        --start $_start_ref \
+        --result _elapsed &&
+    print_progress END "${_elapsed}" &&
+    _start_ref=$(date '+%s')
+
+    return $SUCCESS_CODE
+}
+
     #
     # general
     #

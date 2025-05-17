@@ -30,7 +30,7 @@ CREATE OR REPLACE FUNCTION fr.polygons_contain_point(
     point IN GEOMETRY(POINT),
     n IN INTEGER,
     polygons IN GEOMETRY[],
-    point_precision IN INTEGER DEFAULT 1,
+    point_precision IN INTEGER DEFAULT 1,   -- worse precision (centroïd)
     best_only IN BOOLEAN DEFAULT TRUE,      -- only first (if successful match)
     best_multiplier IN NUMERIC DEFAULT 2    -- how many times greater has to be the first match percent (with followning one) to achieve best value
 )
@@ -49,7 +49,7 @@ BEGIN
             NULL::NUMERIC,          -- AS percent
             NULL::NUMERIC,          -- AS percent_next
             NULL::INTEGER,          -- AS rank
-            'NO_POLYGON'::VARCHAR,  -- AS method
+            '0'::VARCHAR,           -- AS method
             FALSE                   -- AS is_best
         );
         RETURN;
@@ -59,7 +59,7 @@ BEGIN
             1::NUMERIC,             -- AS percent
             NULL::NUMERIC,          -- AS percent_next
             NULL::INTEGER,          -- AS rank
-            'SINGLE_POLYGON'::VARCHAR,  -- AS method
+            '1'::VARCHAR,           -- AS method
             TRUE                    -- AS is_best
         );
         RETURN;
@@ -69,7 +69,7 @@ BEGIN
             NULL::NUMERIC,          -- AS percent
             NULL::NUMERIC,          -- AS percent_next
             NULL::INTEGER,          -- AS rank
-            'TOO_LOW_POINT_PRECISION_AND_MULTIPLE_POLYGONS'::VARCHAR,  -- AS method
+            '2'::VARCHAR,           -- AS method
             FALSE                   -- AS is_best
         );
         RETURN;
@@ -119,7 +119,7 @@ BEGIN
                 polygon_percent,
                 LEAD(polygon_percent) OVER(distribution_rank) polygon_percent_next,
                 (RANK() OVER (distribution_rank))::INT polygon_rank,
-                'NEAR_POLYGON'::VARCHAR polygon_method,
+                '3'::VARCHAR polygon_method,
                 FALSE
             FROM
                 distribution
@@ -140,11 +140,9 @@ BEGIN
             END IF;
 
             IF best_only THEN
-                IF _polygons_contain_point.is_best THEN
-                    -- 100% to this IRIS
-                    _polygons_contain_point.percent := 1;
-                ELSE
-                    _polygons_contain_point.method := 'TOO_MANY_NEAR_POLYGONS'::VARCHAR;
+                IF NOT _polygons_contain_point.is_best THEN
+                    -- too many near polygons
+                    _polygons_contain_point.method := '4'::VARCHAR;
                 END IF;
                 RETURN NEXT _polygons_contain_point;
                 EXIT;
@@ -158,7 +156,7 @@ BEGIN
                 NULL::NUMERIC,          -- AS percent
                 NULL::NUMERIC,          -- AS percent_next
                 NULL::INTEGER,          -- AS rank
-                'NO_POLYGON_FOUND'::VARCHAR,  -- AS method
+                '5'::VARCHAR,           -- AS method
                 FALSE                   -- AS is_best
             );
         END IF;

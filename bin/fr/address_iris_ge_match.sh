@@ -8,44 +8,6 @@
     # DEBUG session
     # export POW_DEBUG_JSON='{"codes":[{"name":"iris_list_municipalities","steps":["func","sql@break","list@break"]},{"name":"address_iris_ge_match","steps":["count@break","io_begin@break","match@break","error@break","io_end@break"]}]}'
 
-# print progress as (ratio, percent)
-# $1= begin
-    # $2= label
-    # $3= size of (number of digits)
-    # $4= subscript
-    # $5= total
-    # $6= end of line
-# $1= end
-    # $2= elapsed time
-    # $3= more information
-iris_print_progress() {
-    case "${1^^}" in
-    BEGIN)
-        # if main display (municipality level) and only one then reduce informations
-        ([[ "${2:0:5}" =~ INSEE|Commu|Temps ]] && [[ $5 -eq 1 ]]) && {
-            printf '%-15s%b' "$2" $6
-        } || {
-            printf '%-15s\t%*d/%*d (%3d%%)%b' "$2" $3 $4 $3 $5 $((($4*100)/$5)) $6
-        }
-        ;;
-    END)
-        printf "\t\t\t\t\t%s\t\t%s\n" "$2" "$3"
-        ;;
-    esac
-
-    return $SUCCESS_CODE
-}
-
-iris_set_progress() {
-    local _elapsed
-
-    get_elapsed_time --start ${global_vars[PROGRESS_START]} --result _elapsed &&
-    iris_print_progress END "${_elapsed}" &&
-    global_vars[PROGRESS_START]=$(date '+%s')
-
-    return $SUCCESS_CODE
-}
-
 iris_context_init() {
     local _error
 
@@ -65,7 +27,7 @@ iris_context_init() {
     } &&
     execute_query \
         --name IRIS_DATE \
-        --query "SELECT (get_last_io('FR-TERRITORY-IGN-IRIS-GE')).date_data_end" \
+        --query "SELECT ((get_last_io('FR-TERRITORY-IGN-IRIS-GE')).date_data_end)::DATE" \
         --return global_vars[IRIS_DATE] || {
         [ -n "$_error" ] && log_error "$_error"
         return $ERROR_CODE
@@ -225,62 +187,9 @@ iris_check_municipality() {
     return $SUCCESS_CODE
 }
 
-# prepare history context (IO name, begin/end dates)
-iris_history_municipality() {
-    local -A _opts &&
-    pow_argv \
-        --args_n '
-            code:Code Commune;
-            name:Nom IO historique;
-            date_begin:Date Début historique;
-            date_end:Date Fin historique
-        ' \
-        --args_m '
-            code;name;date_begin;date_end
-        ' \
-        --pow_argv _opts "$@" || return $?
-
-    local -n _name_ref=${_opts[NAME]}
-    local -n _date_begin_ref=${_opts[DATE_BEGIN]}
-    local -n _date_end_ref=${_opts[DATE_END]}
-    local _date_begin _date_end _error
-
-    _name_ref=LAPOSTE_${_opts[CODE]}_IRIS_GE &&
-    case ${global_vars[IRIS_MODE]} in
-    DELTA)
-        execute_query \
-            --name "BEGIN_MUNICIPALITY_${_opts[CODE]}" \
-            --query "
-                SELECT (get_last_io('$_name_ref')).date_data_end
-            " \
-            --return _date_begin &&
-        {
-            [ -n "$_date_begin" ] || {
-                _error="Début historique '${_opts[CODE]}' vide!"
-                false
-            }
-        }
-        ;;
-    esac &&
-    _date_begin_ref=${_date_begin:-1970-01-01} &&
-    execute_query \
-        --name "END_MUNICIPALITY_${_opts[CODE]}" \
-        --query "
-            SELECT MAX(dt_reference)
-            FROM fr.laposte_address_xy
-            WHERE co_insee = '${_opts[CODE]}'
-        " \
-        --return _date_end &&
-    _date_end_ref=${_date_end:-${global_vars[IRIS_DATE]}} || {
-        [ -n "$_error" ] && log_error "$_error"
-        return $ERROR_CODE
-    }
-
-    return $SUCCESS_CODE
-}
-
 declare -A global_vars=(
     [STOP_TIME]=
+    [PROGRESS_GROUPS]=INSEE
     [PROGRESS_START]=
     [PROGRESS_CURRENT]=1
     [PROGRESS_TOTAL]=1
@@ -321,7 +230,7 @@ pow_argv \
     ' \
     --args_d '
         select_criteria:POPULATION;
-        select_order:DESC;
+        select_order:ASC;
         force_init:no;
         dry_run:no;
         limit:3;
@@ -345,7 +254,7 @@ get_env_debug \
     "$(basename $0 .sh)" \
     _debug_steps \
     _debug_bps \
-    'argv count history limit io_begin match error nrows io_end'
+    'argv count limit error'
 
 [[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
     declare -p global_vars
@@ -405,67 +314,52 @@ set_env --schema_name fr &&
 
 laposte_error=0
 global_vars[PROGRESS_TOTAL]=${#laposte_codes[@]}
+global_vars[PROGRESS_SIZE]=${#global_vars[PROGRESS_TOTAL]}
 
 if [ "${global_vars[PARALLEL]}" = no ]; then
+    [ "${global_vars[FORCE_INIT]}" = yes ] && global_vars[IRIS_MODE]=INIT
     for ((laposte_i=0; laposte_i<${#laposte_codes[@]}; laposte_i++)); do
         [ "${global_vars[STOP_TIME]}" != 0 ] && {
             # stop loop if allowed time is expired
             [[ "$(date +'%m-%d-%T')" > "${global_vars[STOP_TIME]}" ]] && break
         }
 
-        [ "${global_vars[PROGRESS]}" = no ] || {
-            global_vars[PROGRESS_START]=$(date '+%s') &&
-            echo "INSEE ${laposte_codes[$laposte_i]}"
-        }
-
         global_vars[PROGRESS_CURRENT]=$((laposte_i +1))
         global_vars[MUNICIPALITY_CODE]=${laposte_codes[$laposte_i]}
 
-        [ "${global_vars[DRY_RUN]}" = yes ] || {
-            iris_history_municipality \
-                --code ${global_vars[MUNICIPALITY_CODE]} \
-                --name laposte_io_name \
-                --date_begin laposte_date_begin \
-                --date_end laposte_date_end &&
-            {
-                [[ ${_debug_steps[history]:-1} -ne 0 ]] || {
-                    echo "name=($laposte_io_name)"
-                    echo "begin=($laposte_date_begin)"
-                    echo "end=($laposte_date_end)"
-                    [[ ${_debug_bps[history]} -ne 0 ]] || read
-                }
-            } &&
-            io_history_begin \
-                --io "$laposte_io_name" \
-                --date_begin "$laposte_date_begin" \
-                --date_end "$laposte_date_end" \
-                --nrows_todo 1 \
-                --id laposte_id &&
-            execute_query \
-                --name "IRIS_MATCH_${global_vars[MUNICIPALITY_CODE]}" \
-                --query "
-                    SELECT fr.set_laposte_address_match_iris_ge(
-                        municipality => '${global_vars[MUNICIPALITY_CODE]}',
-                        mode => '${global_vars[IRIS_MODE]}',
-                        version => '${global_vars[IRIS_MATCH_VERSION]}',
-                        iris_id => ${global_vars[IRIS_ID]}
-                    )
-                " \
-                --return laposte_nrows &&
-            io_history_end_ok \
-                --nrows_processed $laposte_nrows \
-                --infos '{"version":"'${global_vars[IRIS_MATCH_VERSION]}'","iris_id":'${global_vars[IRIS_ID]}'}' \
-                --id ${laposte_id} &&
-            io_history_update \
-                --nrows_todo $laposte_nrows \
-                --id ${laposte_id} || exit $ERROR_CODE
+        [ "${global_vars[PROGRESS]}" = no ] || {
+            global_vars[PROGRESS_START]=$(date '+%s') &&
+            print_progress \
+                BEGIN \
+                "INSEE ${global_vars[MUNICIPALITY_CODE]}" \
+                ${global_vars[PROGRESS_GROUPS]} \
+                ${global_vars[PROGRESS_SIZE]} \
+                ${global_vars[PROGRESS_CURRENT]} \
+                ${global_vars[PROGRESS_TOTAL]} \
+                '\r'
+        }
 
-            [ "${global_vars[PROGRESS]}" = no ] || iris_set_progress
+        [ "${global_vars[DRY_RUN]}" = yes ] || {
+            $POW_DIR_BATCH/iris_match.sh \
+                --municipality ${global_vars[MUNICIPALITY_CODE]} \
+                --version "${global_vars[IRIS_MATCH_VERSION]}" \
+                --iris_mode ${global_vars[IRIS_MODE]} \
+                --iris_id ${global_vars[IRIS_ID]} \
+                --iris_date ${global_vars[IRIS_DATE]} \
+                --parallel ${global_vars[PARALLEL]}
+            [ $? -gt 0 ] && {
+                laposte_error=1
+                [[ ${_debug_steps[error]:-1} -eq 0 ]] && {
+                    [ -s $POW_DIR_ARCHIVE/IRIS_MATCH_${global_vars[MUNICIPALITY_CODE]}-error.log ] &&
+                    cat $POW_DIR_ARCHIVE/IRIS_MATCH_${global_vars[MUNICIPALITY_CODE]}-error.log
+                    [[ ${_debug_bps[error]} -eq 0 ]] && read
+                }
+            }
+            [ "${global_vars[PROGRESS]}" = no ] ||
+                set_progress --start global_vars[PROGRESS_START]
         }
     done
 else
-    laposte_tmpdir="$POW_DIR_TMP/$$"
-    [ ! -d "$laposte_tmpdir" ] && mkdir "$laposte_tmpdir"
     laposte_limit=$(( ${#laposte_codes[@]} / global_vars[PARALLEL_CHUNK] ))
     [[ $(( ${#laposte_codes[@]} % global_vars[PARALLEL_CHUNK] )) -eq 0 ]] || ((laposte_limit++))
     laposte_serie=0
@@ -486,48 +380,20 @@ else
         }
 
         [ "${global_vars[DRY_RUN]}" = yes ] || {
-            for laposte_code in ${laposte_codes2[@]}; do
-                iris_history_municipality \
-                    --code $laposte_code \
-                    --name laposte_io_name \
-                    --date_begin laposte_date_begin \
-                    --date_end laposte_date_end &&
-                io_history_begin \
-                    --io "$laposte_io_name" \
-                    --date_begin "$laposte_date_begin" \
-                    --date_end "$laposte_date_end" \
-                    --nrows_todo 1 \
-                    --id laposte_histories[$laposte_code] || {
-                        laposte_error=1
-                        log_error "Début Historique ($laposte_code)"
-                        # exit if start of process (max 1 municipality done)
-                        [ ${#laposte_histories[@]} -lt 2 ] && exit $ERROR_CODE
-                    }
-            done
-
-            [[ ${_debug_steps[io_begin]:-1} -eq 0 ]] && {
-                echo "io_begin"
-                [[ ${_debug_bps[io_begin]} -eq 0 ]] && read
-            }
-
             laposte_serie=$((laposte_serie +1))
             parallel \
                 --jobs ${global_vars[PARALLEL_JOBS]} \
                 --joblog $POW_DIR_ARCHIVE/parallel_${laposte_serie}_iris.log \
                 $POW_DIR_BATCH/iris_match.sh \
                     --municipality {} \
-                    --mode ${global_vars[IRIS_MODE]} \
-                    --tmpdir "$laposte_tmpdir" \
                     --version "${global_vars[IRIS_MATCH_VERSION]}" \
+                    --iris_mode ${global_vars[IRIS_MODE]} \
                     --iris_id ${global_vars[IRIS_ID]} \
+                    --iris_date ${global_vars[IRIS_DATE]} \
+                    --parallel ${global_vars[PARALLEL]} \
                 ::: "${laposte_codes2[@]}"
 
-            [[ ${_debug_steps[match]:-1} -eq 0 ]] && {
-                echo "match"
-                [[ ${_debug_bps[match]} -eq 0 ]] && read
-            }
-
-            # search for error (7: exit status)
+            # search for error (column 7: exit status)
             tail --lines +2 $POW_DIR_ARCHIVE/parallel_${laposte_serie}_iris.log | cut --fields 7 | grep --silent ^[^0]
             [ $? -eq 0 ] && {
                 laposte_error=1
@@ -537,56 +403,23 @@ else
                 }
             }
         }
-        [ "${global_vars[PROGRESS]}" = no ] || iris_set_progress
+        [ "${global_vars[PROGRESS]}" = no ] ||
+            set_progress --start global_vars[PROGRESS_START]
     done
-
-    [ "${global_vars[DRY_RUN]}" = yes ] || {
-        for ((laposte_i=0; laposte_i<${#laposte_codes[@]}; laposte_i++)); do
-            # equiv: [ ${laposte_histories[${laposte_codes[$laposte_i]}]+_} ]
-            [[ -v laposte_histories[${laposte_codes[$laposte_i]}] ]] && {
-                laposte_file="$laposte_tmpdir/IRIS_${laposte_codes[$laposte_i]}.dat"
-                if [ -f "$laposte_file" ]; then
-                    laposte_nrows=$(sed --silent --expression '1p' < "$laposte_file") &&
-                    {
-                        [[ ${_debug_steps[nrows]:-1} -ne 0 ]] || {
-                            echo "nrows=($laposte_nrows)"
-                            [[ ${_debug_bps[nrows]} -ne 0 ]] || read
-                        }
-                    } &&
-                    io_history_end_ok \
-                        --nrows_processed $laposte_nrows \
-                        --infos '{"version":"'${global_vars[IRIS_MATCH_VERSION]}'","iris_id":'${global_vars[IRIS_ID]}'}' \
-                        --id ${laposte_histories[${laposte_codes[$laposte_i]}]} &&
-                    {
-                        [[ ${_debug_steps[io_end]:-1} -ne 0 ]] || {
-                            echo "io_end"
-                            [[ ${_debug_bps[io_end]} -ne 0 ]] || read
-                        }
-                    } &&
-                    io_history_update \
-                        --nrows_todo $laposte_nrows \
-                        --id ${laposte_histories[${laposte_codes[$laposte_i]}]} &&
-                    {
-                        [[ ${_debug_steps[io_end]:-1} -ne 0 ]] || {
-                            echo "io_update"
-                            [[ ${_debug_bps[io_end]} -ne 0 ]] || read
-                        }
-                    } || laposte_error=1
-                else
-                    io_history_end_ko \
-                        --id ${laposte_histories[${laposte_codes[$laposte_i]}]}
-                fi
-            }
-        done
-        [ "${global_vars[CLEAN]}" = no ] || rm -rf "$laposte_tmpdir"
-    }
 fi
 
 [ "${global_vars[DRY_RUN]}" = no ] &&
 [ "${global_vars[PROGRESS_CURRENT]}" -gt 10 ] && {
+    echo 'VACUUM IRISation'
     vacuum \
         --schema_name fr \
         --table_name laposte_address_match_iris_ge \
+        --mode ANALYZE &&
+    set_env --schema_name public &&
+    echo 'VACUUM Historique'
+    vacuum \
+        --schema_name public \
+        --table_name io_history \
         --mode ANALYZE || laposte_error=1
 }
 

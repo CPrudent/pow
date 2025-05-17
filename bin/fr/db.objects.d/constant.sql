@@ -1233,6 +1233,23 @@ BEGIN
 END;
 $proc$ LANGUAGE plpgsql;
 
+SELECT public.drop_all_functions_if_exists('fr', 'set_match_iris_usecase');
+CREATE OR REPLACE PROCEDURE fr.set_match_iris_usecase()
+AS
+$proc$
+BEGIN
+    DELETE FROM fr.constant WHERE usecase = 'FR_MATCH_IRIS';
+    INSERT INTO fr.constant (usecase, key, value) VALUES
+        ('FR_MATCH_IRIS', 'NO_POLYGON', '0'),
+        ('FR_MATCH_IRIS', 'SINGLE_POLYGON', '1'),
+        ('FR_MATCH_IRIS', 'TOO_LOW_POINT_PRECISION_AND_MULTIPLE_POLYGONS', '2'),
+        ('FR_MATCH_IRIS', 'NEAR_POLYGON', '3'),
+        ('FR_MATCH_IRIS', 'TOO_MANY_NEAR_POLYGONS', '4'),
+        ('FR_MATCH_IRIS', 'NO_POLYGON_FOUND', '5')
+    ;
+END;
+$proc$ LANGUAGE plpgsql;
+
 SELECT public.drop_all_functions_if_exists('fr', 'set_global_variables');
 CREATE OR REPLACE PROCEDURE fr.set_global_variables()
 AS
@@ -1447,6 +1464,7 @@ BEGIN
     CALL fr.set_territory_overseas();
 
     CALL fr.set_address_constant();
+    CALL fr.set_match_iris_usecase();
     CALL fr.set_global_variables();
     CALL fr.set_constant_index();
 END;

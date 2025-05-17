@@ -5,11 +5,11 @@
 CREATE TABLE IF NOT EXISTS fr.laposte_address_match_iris_ge (
     code_address CHAR(10) NOT NULL,
     code_iris VARCHAR,
+    code_match VARCHAR,
     match_polygon INTEGER,
     match_percent NUMERIC(3, 2),
     match_percent_next NUMERIC(3, 2),
     match_rank INTEGER,
-    match_method VARCHAR,
     match_is_best BOOLEAN
 );
 
@@ -17,16 +17,30 @@ ALTER TABLE fr.laposte_address_match_iris_ge SET (
 	autovacuum_enabled = FALSE
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS iux_laposte_address_match_iris_ge_code_address ON fr.laposte_address_match_iris_ge (code_address);
+DO $$
+BEGIN
+    IF column_exists('fr', 'laposte_address_match_iris_ge', 'match_method') THEN
+        ALTER TABLE fr.laposte_address_match_iris_ge RENAME COLUMN match_method TO code_match;
+    END IF;
+END $$;
 
--- version
+DROP INDEX IF EXISTS ix_laposte_address_match_iris_ge_code_address;
+CREATE INDEX IF NOT EXISTS ix_laposte_address_match_iris_ge_code_address ON fr.laposte_address_match_iris_ge (code_address);
+
+/* version
+ CHANGELOG
+ v1.1
+    . not overload percent if best_only (w/ 100%)
+    . laposte_address_match_iris_ge.code_match
+      link w/ fr.constant FR_MATCH_IRIS
+ */
 SELECT drop_all_functions_if_exists('fr', 'get_match_iris_ge_version');
 CREATE OR REPLACE FUNCTION fr.get_match_iris_ge_version(
     version OUT VARCHAR
 )
 AS $func$
 DECLARE
-    _match_version VARCHAR := '1.0';
+    _match_version VARCHAR := '1.1';
 BEGIN
     version := _match_version;
 END
@@ -138,10 +152,10 @@ BEGIN
         INSERT INTO fr.laposte_address_match_iris_ge (
             code_address,
             code_iris,
+            code_match,
             match_percent,
             match_percent_next,
             match_rank,
-            match_method,
             match_is_best
         )
         WITH
@@ -172,10 +186,10 @@ BEGIN
                 ELSE
                     NULL::VARCHAR
             END code_iris,
+            mi.method,
             mi.percent,
             mi.percent_next,
             mi.rank,
-            mi.method,
             mi.is_best
         FROM
             fr.address_view a
@@ -199,11 +213,11 @@ BEGIN
         ON CONFLICT(code_address) DO UPDATE
             SET
                 code_iris = EXCLUDED.code_iris,
+                code_match = EXCLUDED.code_match,
                 match_polygon = EXCLUDED.match_polygon,
                 match_percent = EXCLUDED.match_percent,
                 match_percent_next = EXCLUDED.match_percent_next,
                 match_rank = EXCLUDED.match_rank,
-                match_method = EXCLUDED.match_method,
                 match_is_best = EXCLUDED.match_is_best
         ;
         -- number of addresses
@@ -216,10 +230,10 @@ BEGIN
         INSERT INTO fr.laposte_address_match_iris_ge (
             code_address,
             code_iris,
+            code_match,
             match_percent,
             match_percent_next,
             match_rank,
-            match_method,
             match_is_best
         )
         WITH
@@ -250,10 +264,10 @@ BEGIN
                 ELSE
                     NULL::VARCHAR
             END code_iris,
+            mi.method,
             mi.percent,
             mi.percent_next,
             mi.rank,
-            mi.method,
             mi.is_best
         FROM
             fr.address_view a
@@ -280,11 +294,11 @@ BEGIN
         ON CONFLICT(code_address) DO UPDATE
             SET
                 code_iris = EXCLUDED.code_iris,
+                code_match = EXCLUDED.code_match,
                 match_polygon = EXCLUDED.match_polygon,
                 match_percent = EXCLUDED.match_percent,
                 match_percent_next = EXCLUDED.match_percent_next,
                 match_rank = EXCLUDED.match_rank,
-                match_method = EXCLUDED.match_method,
                 match_is_best = EXCLUDED.match_is_best
         ;
         -- number of addresses
