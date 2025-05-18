@@ -76,10 +76,10 @@ BEGIN
             _attributes,
             _date_data_end
         FROM
-            get_last_io(CONCAT('LAPOSTE-', municipality, '-IRIS_GE'))
+            get_last_io(CONCAT('FR-LAPOSTE-', municipality, '-IRIS_GE'))
         ;
         -- match already done ?
-        IF _attributes IS NOT NULL THEN
+        IF _attributes IS NOT NULL AND _date_data_end IS NOT NULL THEN
             _attributes_json := _attributes::JSON;
             -- w/ current (version, data IRIS_GE), not oldest ?
             IF COALESCE(
@@ -225,7 +225,7 @@ BEGIN
 
     -- DELTA mode (after INIT) for address w/ newer XY update (for last)
     ELSIF mode = 'DELTA' THEN
-        _date_data_end := (get_last_io(CONCAT('LAPOSTE-', municipality, '-IRIS_GE'))).date_data_end;
+        _date_data_end := (get_last_io(CONCAT('FR-LAPOSTE-', municipality, '-IRIS_GE'))).date_data_end;
 
         INSERT INTO fr.laposte_address_match_iris_ge (
             code_address,
