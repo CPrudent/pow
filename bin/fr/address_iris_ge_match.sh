@@ -403,6 +403,7 @@ else
                 }
             }
         }
+        global_vars[PROGRESS_CURRENT]=$((global_vars[PROGRESS_CURRENT] + ${#laposte_codes2[@]}))
         [ "${global_vars[PROGRESS]}" = no ] ||
             set_progress --start global_vars[PROGRESS_START]
     done
