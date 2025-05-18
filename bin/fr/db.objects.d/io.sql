@@ -37,7 +37,7 @@ BEGIN
     -- SOURCE ORGA
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-LAPOSTE-ORGANIZATION');
     -- correlation w/ other references
-    CALL public.io_add_if_not_exists(name => 'FR-LAPOSTE-MUNICIPALITY-VS-IRIS-GE');
+    CALL public.io_add_if_not_exists(name => 'FR-LAPOSTE-MUNICIPALITY-VS-IRIS_GE');
     -- INSEE
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-INSEE');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-INSEE-MUNICIPALITY');
@@ -49,8 +49,8 @@ BEGIN
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN-MUNICIPALITY-POPULATION');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN-GEOMETRY');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN-EVENT');
-    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN-IRIS-GE');
-    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN-IRIS-GE-EVENT');
+    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN-IRIS_GE');
+    CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-IGN-IRIS_GE-EVENT');
     -- GOUV (EPCI)
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-GOUV-EPCI');
     CALL public.io_add_if_not_exists(name => 'FR-TERRITORY-GOUV-EPCI-LIST');
@@ -227,15 +227,15 @@ BEGIN
     );
 
     /*
-       FR-LAPOSTE-MUNICIPALITY-VS-IRIS-GE
+       FR-LAPOSTE-MUNICIPALITY-VS-IRIS_GE
             |-> FR-TERRITORY-LAPOSTE
-            |-> FR-TERRITORY-IGN-IRIS-GE
-            |-> FR-TERRITORY-IGN-IRIS-GE-EVENT
+            |-> FR-TERRITORY-IGN-IRIS_GE
+            |-> FR-TERRITORY-IGN-IRIS_GE-EVENT
      */
 
     _id := public.io_get_id_from_array_by_name(
         from_array => _io_list,
-        name => 'FR-LAPOSTE-MUNICIPALITY-VS-IRIS-GE'
+        name => 'FR-LAPOSTE-MUNICIPALITY-VS-IRIS_GE'
     );
     CALL public.io_add_relation_if_not_exists(
         id1 => _id,
@@ -248,14 +248,14 @@ BEGIN
         id1 => _id,
         id2 => public.io_get_id_from_array_by_name(
                     from_array => _io_list,
-                    name => 'FR-TERRITORY-IGN-IRIS-GE'
+                    name => 'FR-TERRITORY-IGN-IRIS_GE'
                 )
     );
     CALL public.io_add_relation_if_not_exists(
         id1 => _id,
         id2 => public.io_get_id_from_array_by_name(
                     from_array => _io_list,
-                    name => 'FR-TERRITORY-IGN-IRIS-GE-EVENT'
+                    name => 'FR-TERRITORY-IGN-IRIS_GE-EVENT'
                 )
     );
 

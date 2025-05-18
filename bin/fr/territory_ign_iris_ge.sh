@@ -5,7 +5,7 @@
     #--
     # import IGN geometry of IRIS Grande Echelle (GE), into FR schema
 
-# CHANGELOG (IRIS-GE)
+# CHANGELOG (IRIS_GE)
 # 3.0
 #  many archives:
 #   - FXX (FR métropolitaine)
@@ -41,7 +41,7 @@ on_import_error() {
 }
 
 declare -A io_vars=(
-    [NAME]=FR-TERRITORY-IGN-IRIS-GE
+    [NAME]=FR-TERRITORY-IGN-IRIS_GE
     [TODO]=no
     [ID]=
     [PASSWD]=
@@ -156,7 +156,7 @@ esac
             --name ${io_vars[NAME]}         \
             --key REGEXP1                   \
             --value _regexp1                &&
-        # search for IRIS-GE (of year)
+        # search for IRIS_GE (of year)
         url_data_all=($(grep --only-matching --perl-regexp "$_regexp1" "$years_list_path" \
             | grep --only-matching --perl-regexp "(http|ftp)[^\"]*$year[^\"]*"
         )) &&
@@ -184,16 +184,16 @@ esac
                     --overwrite_mode no
                 [[ $? -lt $POW_DOWNLOAD_ERROR ]]
             } &&
-            mkdir --parent "$POW_DIR_TMP/IRIS-GE-$year" &&
+            mkdir --parent "$POW_DIR_TMP/IRIS_GE-$year" &&
             extract_archive \
                 --archive_path "$POW_DIR_IMPORT/$year_data" \
-                --extract_path "$POW_DIR_TMP/IRIS-GE-$year" || {
-                log_error "abandon téléchargement IRIS-GE-$year"
+                --extract_path "$POW_DIR_TMP/IRIS_GE-$year" || {
+                log_error "abandon téléchargement IRIS_GE-$year"
                 on_import_error --id ${io_vars[ID]}
             }
         done &&
         first_file=yes &&
-        for _shapefile_full_path in $(find $POW_DIR_TMP/IRIS-GE-$year -type f -iname IRIS*.shp); do
+        for _shapefile_full_path in $(find $POW_DIR_TMP/IRIS_GE-$year -type f -iname IRIS*.shp); do
             _shp_file=$(basename $_shapefile_full_path) &&
             # NOTE on ne crée pas d'index géographique pour éviter de ralentir les imports successifs
             #      de plus non exploité
@@ -244,7 +244,7 @@ esac
                     [[ ${_debug_bps[copy]} -ne 0 ]] || read
                 }
             } || {
-                log_error "abandon chargement IRIS-GE-$year ($_shp_file)"
+                log_error "abandon chargement IRIS_GE-$year ($_shp_file)"
                 on_import_error --id ${io_vars[ID]}
             }
         done &&
@@ -268,7 +268,7 @@ esac
     _query_count="(SELECT COUNT(*) FROM fr.${io_vars[TABLE_NAME]})" &&
     {
         rm --force "$years_list_path" &&
-        rm --force --recursive "$POW_DIR_TMP/IRIS-GE-$year" &&
+        rm --force --recursive "$POW_DIR_TMP/IRIS_GE-$year" &&
         execute_query \
             --name DROP_TMP_TABLE \
             --query "

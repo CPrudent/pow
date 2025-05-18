@@ -32,7 +32,8 @@ on_break() {
 }
 
 on_import_error() {
-    local _info=$( [ -n "${bal_vars[FIX]}" ] && echo ${bal_vars[FIX]} || echo ${bal_vars[IO_NAME]#*_} )
+    # get INSEE (last 5 chars) if no fix
+    local _info=$( [ -n "${bal_vars[FIX]}" ] && echo ${bal_vars[FIX]} || echo ${bal_vars[IO_NAME]: -5} )
 
     # IO created?
     [ "${bal_vars[DRY_RUN]}" = no ] &&
@@ -166,7 +167,7 @@ bal_average_time() {
                     io_history h1
                         JOIN get_last_io(h1.name) h2 ON h1.id = h2.id
                 WHERE
-                    h1.name ~ '^BAL_[0-9]'
+                    h1.name ~ '^FR-BAL-[0-9]'
                     AND
                     h2.nb_rows_processed > 0
             )
@@ -200,11 +201,11 @@ bal_import_table() {
     } &&
     case "${_opts[COMMAND]}" in
     CREATE)
-        [ "${bal_vars[IO_NAME]}" = BAL_SUMMARY ] && _ddl=0
+        [ "${bal_vars[IO_NAME]}" = FR-BAL-SUMMARY ] && _ddl=0
         _query="CREATE TABLE IF NOT EXISTS fr.${bal_vars[TABLE_NAME]} (data JSON)"
         ;;
     DROP)
-        _query="DROP TABLE IF EXISTS fr.${bal_vars[TABLE_NAME]}"
+        _query="DROP TABLE IF EXISTS fr.${bal_vars[TABLE_NAME]//-/_}"
         ;;
     esac &&
     {
@@ -1002,7 +1003,7 @@ bal_load() {
     SUMMARY)
         # don't need to load again
         _force=no
-        bal_vars[IO_NAME]=BAL_SUMMARY
+        bal_vars[IO_NAME]=FR-BAL-SUMMARY
         [ "${bal_vars[STOP_TIME]}" = 0 ] || {
             log_info "Durée de traitement allouée jusqu'à ${bal_vars[STOP_TIME]}"
         }
@@ -1021,7 +1022,7 @@ bal_load() {
         }
         ;;
     MUNICIPALITY)
-        bal_vars[IO_NAME]=BAL_${bal_vars[MUNICIPALITY_CODE]}
+        bal_vars[IO_NAME]=FR-BAL-${bal_vars[MUNICIPALITY_CODE]}
         ;;
     esac
     # initialize context
@@ -1262,7 +1263,7 @@ bal_fix_apply() {
                 ;;
             OBSOLESCENCE_STREET)
                 # NOTE reload municipality to redo obsolescence
-                bal_vars[IO_NAME]=BAL_${bal_vars[MUNICIPALITY_CODE]} &&
+                bal_vars[IO_NAME]=FR-BAL-${bal_vars[MUNICIPALITY_CODE]} &&
                 bal_vars[FILE_NAME]=${bal_vars[MUNICIPALITY_CODE]}.json &&
                 bal_import_table --command CREATE &&
                 bal_import_file \
@@ -1511,6 +1512,7 @@ done
 
 [ "${bal_vars[STOP_TIME]}" != 0 ] && {
     [[ ${bal_vars[PROGRESS_CURRENT]} -eq ${bal_vars[PROGRESS_TOTAL]} ]] || {
+        echo 'VACUUM BAL adresses'
         vacuum \
             --schema_name fr \
             --table_name 'bal_street,bal_housenumber' \
@@ -1520,6 +1522,7 @@ done
 
 [ "${bal_vars[PROGRESS_CURRENT]}" -gt 100 ] && {
     set_env --schema_name public &&
+    echo 'VACUUM Historique'
     vacuum \
         --schema_name public \
         --table_name io_history \

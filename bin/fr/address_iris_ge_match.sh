@@ -17,7 +17,7 @@ iris_context_init() {
         --return global_vars[IRIS_MATCH_VERSION] &&
     execute_query \
         --name IRIS_ID \
-        --query "SELECT (get_last_io('FR-TERRITORY-IGN-IRIS-GE')).id" \
+        --query "SELECT (get_last_io('FR-TERRITORY-IGN-IRIS_GE')).id" \
         --return global_vars[IRIS_ID] &&
     {
         [ -n "${global_vars[IRIS_ID]}" ] || {
@@ -27,7 +27,7 @@ iris_context_init() {
     } &&
     execute_query \
         --name IRIS_DATE \
-        --query "SELECT ((get_last_io('FR-TERRITORY-IGN-IRIS-GE')).date_data_end)::DATE" \
+        --query "SELECT ((get_last_io('FR-TERRITORY-IGN-IRIS_GE')).date_data_end)::DATE" \
         --return global_vars[IRIS_DATE] || {
         [ -n "$_error" ] && log_error "$_error"
         return $ERROR_CODE

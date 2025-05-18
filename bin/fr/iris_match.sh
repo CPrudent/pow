@@ -27,7 +27,7 @@ iris_history_municipality() {
     local -n _date_end_ref=${_opts[DATE_END]}
     local _date_begin _date_end _error
 
-    _name_ref=LAPOSTE_${_opts[CODE]}_IRIS_GE &&
+    _name_ref=LAPOSTE-${_opts[CODE]}-IRIS_GE &&
     case ${global_vars[IRIS_MODE]} in
     DELTA)
         execute_query \

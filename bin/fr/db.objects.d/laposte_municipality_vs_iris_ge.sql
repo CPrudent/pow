@@ -1,5 +1,5 @@
 /***
- * FR-LAPOSTE-MUNICIPALITY-VS-IRIS-GE management
+ * FR-LAPOSTE-MUNICIPALITY-VS-IRIS_GE management
  */
 
 CREATE TABLE IF NOT EXISTS fr.laposte_municipality_vs_iris_ge (
@@ -27,7 +27,7 @@ BEGIN
     )
     WITH
     last_iris (date) AS (
-        SELECT (get_last_io('FR-TERRITORY-IGN-IRIS-GE')).date_data_end
+        SELECT (get_last_io('FR-TERRITORY-IGN-IRIS_GE')).date_data_end
     ),
 
     laposte_municipalities AS (

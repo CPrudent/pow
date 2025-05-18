@@ -318,7 +318,7 @@ bal_list_municipalities() {
                 io_history io
                     JOIN get_last_io(io.name) l ON io.id = l.id
             WHERE
-                io.name ~ '^BAL_[0-9]'
+                io.name ~ '^FR-BAL-[0-9]'
                 AND
                 l.attributes ~ '"'"'"STREETS"'"'" => [0-9]*, "'"'"HOUSENUMBERS_AUTH"'"'" => [0-9]*'
         "
@@ -333,7 +333,7 @@ bal_list_municipalities() {
                 io_history io
                     JOIN get_last_io(io.name) l ON io.id = l.id
             WHERE
-                io.name ~ '^BAL_[0-9]'
+                io.name ~ '^FR-BAL-[0-9]'
                 AND
                 io.attributes IS JSON OBJECT
                 AND
@@ -375,7 +375,7 @@ bal_list_municipalities() {
                 io_history io
                     JOIN get_last_io(io.name) l ON io.id = l.id
             WHERE
-                io.name ~ '^BAL_[0-9]'
+                io.name ~ '^FR-BAL-[0-9]'
         )
         , criteria AS (
             $_query

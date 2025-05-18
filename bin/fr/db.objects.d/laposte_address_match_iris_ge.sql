@@ -1,5 +1,5 @@
 /***
- * match LAPOSTE addresses w/ IRIS-GE
+ * match LAPOSTE addresses w/ IRIS_GE
  */
 
 CREATE TABLE IF NOT EXISTS fr.laposte_address_match_iris_ge (
@@ -52,7 +52,7 @@ CREATE OR REPLACE FUNCTION fr.get_match_iris_ge_mode(
     municipality IN VARCHAR,
     force_init IN BOOLEAN DEFAULT FALSE,        -- force INIT mode
     version IN VARCHAR DEFAULT NULL,            -- match version
-    iris_id IN INTEGER DEFAULT NULL,            -- last IRIS-GE id (io_history)
+    iris_id IN INTEGER DEFAULT NULL,            -- last IRIS_GE id (io_history)
     mode OUT VARCHAR
 )
 AS $func$
@@ -66,7 +66,7 @@ BEGIN
         version := COALESCE(version, fr.get_match_iris_ge_version());
         -- can't use function inside COALESCE
         IF iris_id IS NULL THEN
-            iris_id := (get_last_io(name => 'FR-TERRITORY-IGN-IRIS-GE')).id;
+            iris_id := (get_last_io(name => 'FR-TERRITORY-IGN-IRIS_GE')).id;
         END IF;
 
         SELECT
@@ -76,12 +76,12 @@ BEGIN
             _attributes,
             _date_data_end
         FROM
-            get_last_io(CONCAT('LAPOSTE-', municipality, '-IRIS-GE'))
+            get_last_io(CONCAT('LAPOSTE-', municipality, '-IRIS_GE'))
         ;
         -- match already done ?
         IF _attributes IS NOT NULL THEN
             _attributes_json := _attributes::JSON;
-            -- w/ current (version, data IRIS-GE), not oldest ?
+            -- w/ current (version, data IRIS_GE), not oldest ?
             IF COALESCE(
                 (NULLIF(_attributes_json->>'version', '') = version)
                 AND
@@ -132,7 +132,7 @@ CREATE OR REPLACE FUNCTION fr.set_laposte_address_match_iris_ge(
     mode IN VARCHAR DEFAULT NULL,               -- INIT | DELTA
     force_init IN BOOLEAN DEFAULT FALSE,        -- force INIT mode
     version IN VARCHAR DEFAULT NULL,            -- match version
-    iris_id IN INTEGER DEFAULT NULL,            -- last IRIS-GE id (io_history)
+    iris_id IN INTEGER DEFAULT NULL,            -- last IRIS_GE id (io_history)
     nrows OUT INTEGER
 )
 AS $$
@@ -225,7 +225,7 @@ BEGIN
 
     -- DELTA mode (after INIT) for address w/ newer XY update (for last)
     ELSIF mode = 'DELTA' THEN
-        _date_data_end := (get_last_io(CONCAT('LAPOSTE-', municipality, '-IRIS-GE'))).date_data_end;
+        _date_data_end := (get_last_io(CONCAT('LAPOSTE-', municipality, '-IRIS_GE'))).date_data_end;
 
         INSERT INTO fr.laposte_address_match_iris_ge (
             code_address,
