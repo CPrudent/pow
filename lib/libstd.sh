@@ -211,7 +211,7 @@ in_array() {
     pow_argv \
         --args_n '
             array:Tableau;
-            item:Elèment recherché;
+            item:Elément recherché;
             search:Recherche Clé/Valeur;
             position:Position de l élément trouvé
         ' \
@@ -233,7 +233,8 @@ in_array() {
     [ ${#_array_ref[@]} -eq 0 ] && return 1
     case "${_opts[SEARCH]}" in
     VALUE)
-        _pos=$(printf '%s\n' "${_array_ref[@]}" | grep --fixed-strings --line-number --line-regexp -- "${_opts[ITEM]}")
+        # only 1st occurence
+        _pos=$(printf '%s\n' "${_array_ref[@]}" | grep --fixed-strings --line-number --line-regexp -- "${_opts[ITEM]}" | head --lines 1)
         ;;
     KEY)
         _pos=$(printf '%s\n' "${!_array_ref[@]}" | grep --fixed-strings --line-number --line-regexp -- "${_opts[ITEM]}")
