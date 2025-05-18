@@ -192,20 +192,21 @@ bal_import_table() {
         ' \
         --pow_argv _opts "$@" || return $?
 
-    local _query _ddl=1
+    local _table_name _query _ddl=1
 
     {
         [ -n "${bal_vars[IO_NAME]}" ] \
-            && bal_vars[TABLE_NAME]=tmp_${bal_vars[IO_NAME],,} \
-            || bal_vars[TABLE_NAME]=tmp_bal_${bal_vars[MUNICIPALITY_CODE]}
+            && _table_name=tmp_${bal_vars[IO_NAME],,} \
+            || _table_name=tmp_bal_${bal_vars[MUNICIPALITY_CODE]}
     } &&
+    bal_vars[TABLE_NAME]=${_table_name//-/_} &&
     case "${_opts[COMMAND]}" in
     CREATE)
         [ "${bal_vars[IO_NAME]}" = FR-BAL-SUMMARY ] && _ddl=0
         _query="CREATE TABLE IF NOT EXISTS fr.${bal_vars[TABLE_NAME]} (data JSON)"
         ;;
     DROP)
-        _query="DROP TABLE IF EXISTS fr.${bal_vars[TABLE_NAME]//-/_}"
+        _query="DROP TABLE IF EXISTS fr.${bal_vars[TABLE_NAME]}"
         ;;
     esac &&
     {
@@ -401,9 +402,25 @@ bal_load_addresses() {
         --pow_argv _opts "$@" || return $?
 
     local _name _query _info _mask _j _rc _field=${_opts[LEVEL]}S _code _len _url _file
-    local _dir_common _i _count_del
+    local _dir_common _i _count_del _addr_del
     local -a _addresses _deletes
 
+    # DEBUG steps
+    declare -A _debug_steps _debug_bps
+    get_env_debug \
+        ${FUNCNAME[0]} \
+        _debug_steps \
+        _debug_bps \
+        'func argv query wget del code check'
+
+    [[ ${_debug_steps[func]:-1} -eq 0 ]] && {
+        echo ${FUNCNAME[0]}
+        [[ ${_debug_bps[func]} -eq 0 ]] && read
+    }
+    [[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
+        declare -p _opts
+        [[ ${_debug_bps[argv]} -eq 0 ]] && read
+    }
     _name="BAL_SELECT_${bal_vars[MUNICIPALITY_CODE]}_${_field}" &&
     case "${_opts[LEVEL]}" in
     STREET)
@@ -451,6 +468,12 @@ bal_load_addresses() {
                 "
                 ;;
             esac
+        }
+    } &&
+    {
+        [[ ${_debug_steps[query]:-1} -ne 0 ]] || {
+            echo "query=[$_query]"
+            [[ ${_debug_bps[query]} -ne 0 ]] || read
         }
     } &&
     # select streets|housenumbers w/ count (to check conversion)
@@ -517,19 +540,23 @@ bal_load_addresses() {
                     #+ need to (1) eventually unquote code, and (2) replace space by %20
                     #+ so 2 linked inputs
                     #
-                    #+ exitval=8 Server issued an error response (when unknown code!)
-                    #+ no && block
-                    #+ 79066 has 2 obsolete streets (B216, nuj9dt) in its JSON (whereas lookup doesn't known these!)
+                    # due to obsolescence, some code(s) locally alive
+                    #+ but unknown on BAL server, so when request obsolete address (unknown code, HTTP404), wget output empty file
+                    #+ and exitval=8 (Server issued an error response)
                     parallel \
-                        --jobs 5 \
+                        --jobs ${bal_vars[PARALLEL_JOBS]} \
                         --joblog $POW_DIR_ARCHIVE/parallel_${bal_vars[MUNICIPALITY_CODE]}_wget.log \
                         wget --quiet --limit-rate=100k \
                         --output-document="${_dir_common}/{=1 uq() =}.json" \
                         ${bal_vars[URL]}/lookup/'{=2 uq() ; s/ /%20/g =}' \
                         ::: "${_addresses[@]}" :::+ "${_addresses[@]}"
 
-                    # due to bug in obsolescence function (INSEE code)?
-                    #+ need to delete address w/ empty file (error on 2nd parallel else!)
+                    [[ ${_debug_steps[wget]:-1} -eq 0 ]] && {
+                        echo wget
+                        [[ ${_debug_bps[wget]} -eq 0 ]] && read
+                    }
+
+                    # need to delete address w/ empty file (error on 2nd parallel else!)
                     #+ https://stackoverflow.com/questions/16860877/remove-an-element-from-a-bash-array
                     #+ https://stackoverflow.com/questions/35589179/when-to-use-xargs-when-piping
                     #+ https://stackoverflow.com/questions/8296710/how-to-ignore-xargs-commands-if-stdin-input-is-empty
@@ -539,50 +566,72 @@ bal_load_addresses() {
                         -exec basename --suffix .json {} \;)) &&
                     {
                         [[ ${#_deletes[@]} -eq 0 ]] || {
-#                             declare -p _addresses _deletes
-#                             echo ${#_addresses[@]}
-#                             read
+                            [[ ${_debug_steps[del]:-1} -eq 0 ]] && {
+                                echo "addresses=${#_addresses[@]}"
+                                echo "deletes=${#_deletes[@]}"
+                                declare -p _addresses _deletes
+                                [[ ${_debug_bps[del]} -eq 0 ]] && read
+                            }
 
-                            _count_del=0
-                            log_info "Liste Adresse(s) avec fichier vide (${_deletes[@]})" &&
+                            _count_del=0 &&
                             for _code in "${_deletes[@]}"; do
+                                {
+                                    [[ ${_debug_steps[code]:-1} -ne 0 ]] || {
+                                        echo "code=($_code)"
+                                        [[ ${_debug_bps[code]} -ne 0 ]] || read
+                                    }
+                                } &&
                                 # delete item (if exists, not remaining as previous error)
-                                _i=-1
+                                _i=-1 &&
                                 in_array \
                                     --array _addresses \
                                     --item "$_code" \
                                     --position _i &&
+                                {
+                                    [[ ${_debug_steps[code]:-1} -ne 0 ]] || {
+                                        echo "i=($_i)"
+                                        [[ ${_debug_bps[code]} -ne 0 ]] || read
+                                    }
+                                } &&
                                 # hard: delete subscript
                                 unset '_addresses['$_i']' &&
+                                _addr_del+=" $_code" &&
                                 ((_count_del++))
                                 # soft: always present as subscript!
                                 #_addresses=("${_addresses[@]/$_code}")
 
                                 rm --force "${_dir_common}/$_code".json
                             done &&
+                            log_info "Liste Adresse(s) obsolètes ($_addr_del)" &&
+                            # update manually total (see note below)
+                            bal_vars[$_field]=$((bal_vars[$_field] - _count_del)) &&
                             {
-                                # check
-                                [[ ${#_addresses[@]} -eq $((${bal_vars[$_field]} - _count_del)) ]] || {
-                                    log_error "purge: ${bal_vars[$_field]}-${_count_del}!=${#_addresses[@]}"
-                                    return $ERROR_CODE
+                                [[ ${_debug_steps[check]:-1} -ne 0 ]] || {
+                                    echo "total=(${bal_vars[$_field]})"
+                                    echo "del=($_count_del)"
+                                    echo "addresses=${#_addresses[@]}"
+                                    declare -p _addresses
+                                    [[ ${_debug_bps[check]} -ne 0 ]] || read
                                 }
-                            } &&
-                            bal_vars[$_field]=${#_addresses[@]}
+                            }
+# NOTE NO, because _addresses array count isn't right!
+# w/ 2 successive codes to delete, array count decrements only one
+#                             {
+#                                 # check
+#                                 [[ ${#_addresses[@]} -eq $((${bal_vars[$_field]} - _count_del)) ]] || {
+#                                     log_error "purge: ${bal_vars[$_field]}-${_count_del}!=${#_addresses[@]}"
+#                                     return $ERROR_CODE
+#                                 }
+#                             } &&
+#                             bal_vars[$_field]=${#_addresses[@]}
                         }
                     } &&
-#                     {
-#                         [[ ${#_deletes[@]} -eq 0 ]] || {
-#                             declare -p _addresses _deletes
-#                             echo ${#_addresses[@]}
-#                             read
-#                         }
-#                     } &&
                     # load into db
                     #+ here unquote code only is needed
                     #+ need to protect w/ double quote into values
                     #+ https://stackoverflow.com/questions/15637429/how-to-escape-double-quotes-in-json
                     parallel \
-                        --jobs 5 \
+                        --jobs ${bal_vars[PARALLEL_JOBS]} \
                         --joblog $POW_DIR_ARCHIVE/parallel_${bal_vars[MUNICIPALITY_CODE]}_load.log \
                         jq --raw-output --compact-output '.' \
                         "${_dir_common}/{=1 uq() =}.json" ::: "${_addresses[@]}" |
@@ -699,7 +748,12 @@ bal_deal_obsolescence() {
                     )
                 " \
                 --return _counters &&
-            log_info "Effacement {${bal_vars[MUNICIPALITY_CODE]},Voie,Numéro}: ${_counters}"
+            {
+                _info='Effacement'
+                [ "${_opts[LEVEL]}" = MUNICIPALITY ] || _info+=" ${bal_vars[MUNICIPALITY_CODE]}"
+                _info+=" {Commune,Voie,Numéro}: ${_counters}"
+                log_info "$_info"
+            }
         }
     } || return $ERROR_CODE
 
@@ -1321,6 +1375,7 @@ pow_argv \
         dry_run:Simuler le traitement;
         progress:Afficher le ratio de progression;
         parallel:Obtenir les addresses en parallèle;
+        parallel_jobs:Nombre de traitements en parallèle;
         clean:Effectuer la purge des fichiers temporaires;
         verbose:Ajouter des détails sur les traitements
     ' \
@@ -1357,9 +1412,22 @@ pow_argv \
     ' \
     --args_p '
         reset:no;
-        tag:summary_ndays@int,select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,force_load@bool,dry_run@bool,progress@bool,parallel@bool,clean@bool,verbose@bool
+        tag:summary_ndays@int,select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,force_load@bool,dry_run@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,parallel_jobs@int
     ' \
     --pow_argv bal_vars "$@" || exit $?
+
+# DEBUG steps
+declare -A _debug_steps _debug_bps
+get_env_debug \
+    "$(basename $0 .sh)" \
+    _debug_steps \
+    _debug_bps \
+    'argv'
+
+[[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
+    declare -p bal_vars
+    [[ ${_debug_bps[argv]} -eq 0 ]] && read
+}
 
 bal_vars[MUNICIPALITY_CODE]="${bal_vars[MUNICIPALITY]^^}"
 declare -a bal_codes=()

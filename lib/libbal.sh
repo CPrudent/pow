@@ -169,7 +169,7 @@ bal_set_municipality() {
                 --name "BAL_MUNICIPALITY_${_opts[CODE]}_LAST_IO" \
                 --query "
                     SELECT id, date_data_end, attributes
-                    FROM get_last_io('BAL_${_opts[CODE]}')
+                    FROM get_last_io('FR-BAL-${_opts[CODE]}')
                 " \
                 --return _tmp &&
             {
@@ -363,11 +363,12 @@ bal_list_municipalities() {
         "
         ;;
     esac &&
+    # be careful at municipality (extracted from IO name)
     _query="
         WITH
         history AS (
             SELECT
-                SUBSTR(l.name, 5) municipality,
+                SUBSTR(l.name, 8, 5) municipality,
                 l.date_data_end,
                 l.attributes,
                 l.id
