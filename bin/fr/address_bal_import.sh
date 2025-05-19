@@ -404,7 +404,7 @@ bal_load_addresses() {
 
     local _name _query _info _mask _j _rc _field=${_opts[LEVEL]}S _code _len _url _file
     local _dir_common _i _count_del _addr_del
-    local -a _addresses _deletes
+    local -a _addresses _deletes _positions
 
     # DEBUG steps
     declare -A _debug_steps _debug_bps
@@ -573,8 +573,8 @@ bal_load_addresses() {
                                 declare -p _addresses _deletes
                                 [[ ${_debug_bps[del]} -eq 0 ]] && read
                             }
-
-                            _count_del=0 &&
+                            log_info "Liste Adresse(s) obsolètes (${_deletes[@]})" &&
+                            # NOTE choice is to memorize all positions first...
                             for _code in "${_deletes[@]}"; do
                                 {
                                     [[ ${_debug_steps[code]:-1} -ne 0 ]] || {
@@ -582,8 +582,6 @@ bal_load_addresses() {
                                         [[ ${_debug_bps[code]} -ne 0 ]] || read
                                     }
                                 } &&
-                                # delete item (if exists, not remaining as previous error)
-                                _i=-1 &&
                                 in_array \
                                     --array _addresses \
                                     --item "$_code" \
@@ -594,37 +592,38 @@ bal_load_addresses() {
                                         [[ ${_debug_bps[code]} -ne 0 ]] || read
                                     }
                                 } &&
-                                # hard: delete subscript
-                                unset '_addresses['$_i']' &&
-                                _addr_del+=" $_code" &&
-                                ((_count_del++))
-                                # soft: always present as subscript!
-                                #_addresses=("${_addresses[@]/$_code}")
-
+                                {
+                                    if [[ $_i -eq -1 ]]; then
+                                        log_error "position Obsolète '$_code' non trouvée!"
+                                    else
+                                        _positions+=($_i)
+                                    fi
+                                } &&
                                 rm --force "${_dir_common}/$_code".json
                             done &&
-                            log_info "Liste Adresse(s) obsolètes ($_addr_del)" &&
-                            # update manually total (see note below)
-                            bal_vars[$_field]=$((bal_vars[$_field] - _count_del)) &&
+                            # NOTE ... then, delete them !
+                            for _position in "${_positions[@]}"; do
+                                # hard: delete subscript (but create gap in subscripts)
+                                unset '_addresses[$_position]'
+                                # soft: always present as subscript!
+                                #_addresses=("${_addresses[@]/${_addresses[$_position]}}")
+                            done &&
                             {
                                 [[ ${_debug_steps[check]:-1} -ne 0 ]] || {
                                     echo "total=(${bal_vars[$_field]})"
-                                    echo "del=($_count_del)"
                                     echo "addresses=${#_addresses[@]}"
-                                    declare -p _addresses
+                                    declare -p _deletes _positions _addresses
                                     [[ ${_debug_bps[check]} -ne 0 ]] || read
                                 }
-                            }
-# NOTE NO, because _addresses array count isn't right!
-# w/ 2 successive codes to delete, array count decrements only one
-#                             {
-#                                 # check
-#                                 [[ ${#_addresses[@]} -eq $((${bal_vars[$_field]} - _count_del)) ]] || {
-#                                     log_error "purge: ${bal_vars[$_field]}-${_count_del}!=${#_addresses[@]}"
-#                                     return $ERROR_CODE
-#                                 }
-#                             } &&
-#                             bal_vars[$_field]=${#_addresses[@]}
+                            } &&
+                            {
+                                # check
+                                [[ ${#_addresses[@]} -eq $((${bal_vars[$_field]} - ${#_positions[@]})) ]] || {
+                                    log_error "purge: ${bal_vars[$_field]}-${#_positions[@]}!=${#_addresses[@]}"
+                                    return $ERROR_CODE
+                                }
+                            } &&
+                            bal_vars[$_field]=${#_addresses[@]}
                         }
                     } &&
                     # load into db

@@ -118,12 +118,6 @@ set_progress() {
     # general
     #
 
-# print expression and wait ENTER
-breakpoint() {
-    echo "###BREAK($1)"
-    read
-}
-
 # expect expression
 # in: $1=(argc, isnum, env, file) as (#args, is numeric, variable is defined, file exists)
 expect() {
@@ -225,10 +219,13 @@ in_array() {
         --args_d '
             search:VALUE
         ' \
+        --args_p '
+            tag:search@1N
+        ' \
         --pow_argv _opts "$@" || return $?
 
     local -n _array_ref=${_opts[ARRAY]}
-    local _pos _rc
+    local _pos _rc _subscript
 
     [ ${#_array_ref[@]} -eq 0 ] && return 1
     case "${_opts[SEARCH]}" in
@@ -241,17 +238,27 @@ in_array() {
         ;;
     esac
     _rc=$?
-    # returning position (useful for array, but not for hash)
-    [ -n "${_opts[POSITION]}" ] && {
-        local -n _pos_ref=${_opts[POSITION]}
-        # exists item ?
-        [ $_rc -eq 0 ] && {
-            _pos_ref=${_pos%:*}
-            # decrement because grep is 1-base
-            ((--_pos_ref))
-            return 0
-        } || {
+    # returning position (useful for array, not for hash)
+    [ "${_opts[SEARCH]}" = VALUE ] && {
+        [ -n "${_opts[POSITION]}" ] && {
+            local -n _pos_ref=${_opts[POSITION]}
+            # exists item ?
+            [ $_rc -eq 0 ] && {
+                _pos_ref=${_pos%:*}
+                # decrement because grep is 1-base
+                ((--_pos_ref))
+                # NOTE be careful w/ unset operation on array (gap exists between subscripts)
+                #+ subscript can be equal to nof elements (<=)
+                for ((_subscript=$_pos_ref; _subscript<=${#_array_ref[@]}; _subscript++)); do
+                    # go through array until to find searched item
+                    [ "${_array_ref[$_subscript]}" = "${_opts[ITEM]}" ] && {
+                        _pos_ref=$_subscript
+                        return 0
+                    }
+                done
+            }
             _pos_ref=-1
+            return 1
         }
     }
 
@@ -260,7 +267,6 @@ in_array() {
     # not found
     return 1
 }
-
 
 clone_array() {
     local -A _opts &&
@@ -311,6 +317,9 @@ get_elapsed_time() {
         ' \
         --args_d '
             format:POW
+        ' \
+        --args_p '
+            tag:format@1N
         ' \
         --pow_argv _opts "$@" || return $?
 
@@ -1216,13 +1225,16 @@ is_different() {
             dir_a:Dossier à comparer;
             dir_b:Autre dossier à comparer à dir_a;
             file_name:Nom ou masque optionnel de sélection des fichiers ou dossiers à comparer;
-            verbose:Mode verbeux (Y/N)' \
+            verbose:Mode verbeux' \
         --args_m 'dir_a;dir_b' \
         --args_v '
             verbose:yes|no
         ' \
         --args_d '
             verbose:no
+        ' \
+        --args_p '
+            tag:verbose@bool
         ' \
         --pow_argv _opts "$@" || return $?
 
@@ -1310,6 +1322,9 @@ get_file_name() {
             with_extension:no;
             stdout:yes
         ' \
+        --args_p '
+            tag:with_extension@bool,stdout@bool
+        ' \
         --pow_argv _opts "$@" || return $?
 
     local _file_name _result
@@ -1346,6 +1361,9 @@ get_file_extension() {
         --args_d '
             lazy:yes;
             stdout:yes
+        ' \
+        --args_p '
+            tag:lazy@bool,stdout@bool
         ' \
         --pow_argv _opts "$@" || return $?
 
@@ -1389,6 +1407,9 @@ get_file_mimetype() {
         --args_d '
             stdout:yes
         ' \
+        --args_p '
+            tag:stdout@bool
+        ' \
         --pow_argv _opts "$@" || return $?
 
     local _mime_type=$(file --mime-type "${_opts[FILE_PATH]}" | sed 's/.*: //')
@@ -1417,6 +1438,9 @@ get_file_nrows() {
         ' \
         --args_d '
             stdout:yes
+        ' \
+        --args_p '
+            tag:stdout@bool
         ' \
         --pow_argv _opts "$@" || return $?
 
@@ -1822,6 +1846,9 @@ send_mail() {
             tool:base64;
             debug:no;
             verbose:no' \
+        --args_p '
+            tag:encoding@1N,format@1N,compress@bool,tool@1N,debug@bool,verbose@bool
+        ' \
         --pow_argv _opts "$@" || return $?
 
     # message
