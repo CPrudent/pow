@@ -33,7 +33,7 @@ on_break() {
 
 on_import_error() {
     # get INSEE (last 5 chars) if no fix
-    local _info=$( [ -n "${bal_vars[FIX]}" ] && echo ${bal_vars[FIX]} || echo ${bal_vars[IO_NAME]: -5} )
+    local _info=$( [ -n "${bal_vars[FIX]}" ] && echo ${bal_vars[FIX]} || echo ${bal_vars[IO_NAME]:7} )
 
     # IO created?
     [ "${bal_vars[DRY_RUN]}" = no ] &&
@@ -376,6 +376,7 @@ bal_import_file() {
 
         import_file \
             --file_path "$_file" \
+            --schema_name fr \
             --table_name ${bal_vars[TABLE_NAME]} \
             ${_opts[OPTION]} \
             --load_mode ${_opts[MODE]}
@@ -1407,6 +1408,7 @@ pow_argv \
         stop_time:0;
         progress:no;
         parallel:yes;
+        parallel_jobs:5;
         clean:yes;
         verbose:no
     ' \

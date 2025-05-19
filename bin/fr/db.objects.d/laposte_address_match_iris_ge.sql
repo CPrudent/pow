@@ -60,6 +60,7 @@ DECLARE
     _attributes VARCHAR;
     _attributes_json JSON;
     _date_data_end DATE;
+    _io_name VARCHAR;
 BEGIN
     mode := 'INIT';
     IF NOT force_init THEN
@@ -69,38 +70,48 @@ BEGIN
             iris_id := (get_last_io(name => 'FR-TERRITORY-IGN-IRIS_GE')).id;
         END IF;
 
-        SELECT
-            attributes,
-            date_data_end
-        INTO
-            _attributes,
-            _date_data_end
-        FROM
-            get_last_io(CONCAT('FR-LAPOSTE-', municipality, '-IRIS_GE'))
-        ;
-        -- match already done ?
-        IF _attributes IS NOT NULL AND _date_data_end IS NOT NULL THEN
-            _attributes_json := _attributes::JSON;
-            -- w/ current (version, data IRIS_GE), not oldest ?
-            IF COALESCE(
-                (NULLIF(_attributes_json->>'version', '') = version)
+        _io_name := CONCAT('FR-LAPOSTE-', municipality, '-IRIS_GE');
+        IF EXISTS(
+            SELECT 1
+            FROM io_history
+            WHERE
+                name = _io_name
                 AND
-                (NULLIF((_attributes_json->>'iris_id')::INT, 0) = iris_id),
-                FALSE
-            ) THEN
-                -- w/ newer address to match ?
-                IF EXISTS(
-                    SELECT 1
-                    FROM fr.laposte_address_xy
-                    WHERE
-                        co_insee = municipality
-                        AND
-                        dt_reference > _date_data_end
+                status = 'SUCCES'
+        ) THEN
+            SELECT
+                attributes,
+                date_data_end
+            INTO
+                _attributes,
+                _date_data_end
+            FROM
+                get_last_io(_io_name)
+            ;
+            -- match already done ?
+            IF _attributes IS NOT NULL AND _date_data_end IS NOT NULL THEN
+                _attributes_json := _attributes::JSON;
+                -- w/ current (version, data IRIS_GE), not oldest ?
+                IF COALESCE(
+                    (NULLIF(_attributes_json->>'version', '') = version)
+                    AND
+                    (NULLIF((_attributes_json->>'iris_id')::INT, 0) = iris_id),
+                    FALSE
                 ) THEN
-                    mode := 'DELTA';
-                ELSE
-                    -- up to date !
-                    mode := NULL::VARCHAR;
+                    -- w/ newer address to match ?
+                    IF EXISTS(
+                        SELECT 1
+                        FROM fr.laposte_address_xy
+                        WHERE
+                            co_insee = municipality
+                            AND
+                            dt_reference > _date_data_end
+                    ) THEN
+                        mode := 'DELTA';
+                    ELSE
+                        -- up to date !
+                        mode := NULL::VARCHAR;
+                    END IF;
                 END IF;
             END IF;
         END IF;

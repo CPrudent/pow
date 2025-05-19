@@ -81,6 +81,7 @@ iris_list_municipalities() {
         "
         ;;
     esac &&
+    # NOTE add optional arguments (version, iris_id), else query very very slow!
     _query="
         WITH
         criteria AS (
@@ -93,7 +94,9 @@ iris_list_municipalities() {
             FROM
                 criteria c
                     CROSS JOIN fr.get_match_iris_ge_mode(
-                        municipality => c.municipality
+                        municipality => c.municipality,
+                        version => '${global_vars[IRIS_MATCH_VERSION]}',
+                        iris_id => ${global_vars[IRIS_ID]}
                     ) m
         )
         SELECT ARRAY(
