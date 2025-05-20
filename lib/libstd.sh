@@ -225,7 +225,7 @@ in_array() {
         --pow_argv _opts "$@" || return $?
 
     local -n _array_ref=${_opts[ARRAY]}
-    local _pos _rc _subscript
+    local _pos _rc _subscript _subscript_prev _subscript_max _gaps _begin
 
     [ ${#_array_ref[@]} -eq 0 ] && return 1
     case "${_opts[SEARCH]}" in
@@ -247,9 +247,27 @@ in_array() {
                 _pos_ref=${_pos%:*}
                 # decrement because grep is 1-base
                 ((--_pos_ref))
-                # NOTE be careful w/ unset operation on array (gap exists between subscripts)
-                #+ subscript can be equal to nof elements (<=)
-                for ((_subscript=$_pos_ref; _subscript<=${#_array_ref[@]}; _subscript++)); do
+                [ "${_array_ref[$_pos_ref]}" = "${_opts[ITEM]}" ] && return 0
+
+                # NOTE be careful w/ gap existing between subscripts (not contigous items, unset)
+                _subscript_prev=0
+                _begin=1
+                for _subscript in ${!_array_ref[@]}; do
+                    #echo $_subscript
+                    [[ $_begin -eq 1 ]] && {
+                        _gaps=$((_subscript - _subscript_prev))
+                        _begin=0
+                        _subscript_prev=$_subscript
+                        #echo "i=$_subscript i-1=$_subscript_prev gaps=$_gaps"
+                        continue
+                    }
+                    _gaps=$((_gaps + _subscript - _subscript_prev -1))
+                    #echo "i=$_subscript i-1=$_subscript_prev gaps=$_gaps"
+                    _subscript_prev=$_subscript
+                done
+                _subscript_max=$((${#_array_ref[@]} + _gaps))
+                #echo $_subscript_max
+                for ((_subscript=$((_pos_ref +1)); _subscript<${_subscript_max}; _subscript++)); do
                     # go through array until to find searched item
                     [ "${_array_ref[$_subscript]}" = "${_opts[ITEM]}" ] && {
                         _pos_ref=$_subscript
