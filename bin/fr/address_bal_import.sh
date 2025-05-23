@@ -1086,13 +1086,12 @@ bal_load() {
         ' \
         --pow_argv _opts "$@" || return $?
 
-    local _file _rc _option _force="${bal_vars[FORCE_LOAD]}"
+    local _file _rc _option _force
     local -A _context
 
     case "${_opts[LEVEL]}" in
     SUMMARY)
-        # don't need to load again
-        _force=no
+        _force=${_opts[FORCE_SUMMARY]}
         bal_vars[IO_NAME]=FR-BAL-SUMMARY
         [ "${bal_vars[STOP_TIME]}" = 0 ] || {
             log_info "Durée de traitement allouée jusqu'à ${bal_vars[STOP_TIME]}"
@@ -1112,6 +1111,7 @@ bal_load() {
         }
         ;;
     MUNICIPALITY)
+        _force=${_opts[FORCE]}
         bal_vars[IO_NAME]=FR-BAL-${bal_vars[MUNICIPALITY_CODE]}
         ;;
     esac
@@ -1121,7 +1121,7 @@ bal_load() {
     case "${_opts[LEVEL]}" in
     SUMMARY|MUNICIPALITY)
         io_todo_import \
-            --force ${bal_vars[FORCE]} \
+            --force $_force \
             --io ${bal_vars[IO_NAME]} \
             --date_end "${bal_vars[IO_END]}"
         case $? in
@@ -1177,7 +1177,7 @@ bal_load() {
                     _rc=$?
                     [[ $_rc -lt $POW_DOWNLOAD_ERROR ]] && {
                         # same data has to be loaded again ?
-                        ([ "$_force" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
+                        ([ "${_opts[FORCE_LOAD]}" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
                             [ -n "${_context[IMPORT_OPTIONS]}" ] && _option="--option ${_context[IMPORT_OPTIONS]}"
                             bal_import_file \
                                 --mode OVERWRITE_DATA \
@@ -1374,7 +1374,7 @@ bal_fix_apply() {
 }
 
 # NOTE allow runing 3 hours
-# --stop_time "$(date -d 'today + 3 hours' +'%m-%d-%T')"
+# --stop_time "$(date --date 'today + 3 hours' +'%m-%d-%T')"
 
 # NOTE same data (POW_DOWNLOAD_ALREADY_AVAILABLE)
 # nothing todo (already downloaded and so imported) ? but problem !
@@ -1404,7 +1404,8 @@ pow_argv \
         select_order:Ordre de sélection des Communes;
         limit:Limiter à n communes (0 sans limite);
         stop_time:Temps d arrêt du traitement (format: MM-jj-hh:mm:ss);
-        force:Forcer le traitement même si celui-ci a déjà été fait;
+        force:Forcer le traitement (MUNICIPALITY, FIX) même si celui-ci a déjà été fait;
+        force_summary:Forcer le traitement (SUMMARY) même si celui-ci a déjà été fait;
         force_load:Forcer le chargement même si celui-ci a déjà été fait;
         fix:Corriger une erreur;
         levels:Ensemble des niveaux Adresse à traiter;
@@ -1422,6 +1423,7 @@ pow_argv \
         select_criteria:REVISION|POPULATION|STREETS;
         select_order:ASC|DESC;
         force:yes|no;
+        force_summary:yes|no;
         force_load:yes|no;
         fix:SPACE_IN_CODE|CONVERT_ATTRIBUTES|MORE_ATTRIBUTES|OBSOLESCENCE_STREET;
         levels:MSN|MS|N;
@@ -1436,6 +1438,7 @@ pow_argv \
         select_criteria:REVISION;
         select_order:DESC;
         force:no;
+        force_summary:no;
         force_load:yes;
         levels:MS;
         dry_run:no;
