@@ -106,6 +106,9 @@ bal_get_counters() {
         --args_v '
             usage:NROWS|ATTRIBUTES|PROGRESS
         ' \
+        --args_p '
+            tag:usage@1N
+        ' \
         --pow_argv _opts "$@" || return $?
 
     local -n _value_ref=${_opts[VALUE]}
@@ -189,6 +192,9 @@ bal_import_table() {
         ' \
         --args_v '
             command:CREATE|DROP
+        ' \
+        --args_p '
+            tag:command@1N
         ' \
         --pow_argv _opts "$@" || return $?
 
@@ -399,6 +405,9 @@ bal_load_addresses() {
         ' \
         --args_v '
             level:STREET|HOUSENUMBER
+        ' \
+        --args_p '
+            tag:level@1N
         ' \
         --pow_argv _opts "$@" || return $?
 
@@ -662,6 +671,9 @@ bal_deal_obsolescence() {
         --args_v '
             level:MUNICIPALITY|STREET|HOUSENUMBER
         ' \
+        --args_p '
+            tag:level@1N
+        ' \
         --pow_argv _opts "$@" || return $?
 
     local _label1=SELECT _label2 _query _info _obsolete _counters
@@ -774,6 +786,9 @@ bal_context() {
         --args_v '
             level:SUMMARY|MUNICIPALITY|STREET|HOUSENUMBER
         ' \
+        --args_p '
+            tag:level@1N
+        ' \
         --pow_argv _opts "$@" || return $?
 
     local -n _vars_ref=${_opts[VARS]}
@@ -827,6 +842,9 @@ bal_integration() {
         ' \
         --args_v '
             level:MUNICIPALITY|STREET|HOUSENUMBER|AREA
+        ' \
+        --args_p '
+            tag:level@1N
         ' \
         --pow_argv _opts "$@" || return $?
 
@@ -1047,6 +1065,9 @@ bal_load() {
         ' \
         --args_v '
             level:SUMMARY|MUNICIPALITY|STREET|HOUSENUMBER
+        ' \
+        --args_p '
+            tag:level@1N
         ' \
         --pow_argv _opts "$@" || return $?
 
