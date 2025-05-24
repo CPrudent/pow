@@ -553,6 +553,12 @@ bal_load_addresses() {
                     # due to obsolescence, some code(s) locally alive
                     #+ but unknown on BAL server, so when request obsolete address (unknown code, HTTP404), wget output empty file
                     #+ and exitval=8 (Server issued an error response)
+                    #
+                    # EXIT STATUS
+                    # 1 Generic error code.
+                    # 3 File I/O error.
+                    # 4 Network failure.
+                    # 7 Protocol errors.
                     parallel \
                         --jobs ${bal_vars[PARALLEL_JOBS]} \
                         --joblog $POW_DIR_ARCHIVE/parallel_${bal_vars[MUNICIPALITY_CODE]}_wget.log \
@@ -564,7 +570,7 @@ bal_load_addresses() {
                     _retry=0
                     while [[ $_retry -lt $_retries ]]; do
                         # search for error
-                        _wget_error=$(tail --lines +2 $POW_DIR_ARCHIVE/parallel_${bal_vars[MUNICIPALITY_CODE]}_wget.log | cut --field 7 | grep ^[^0])
+                        _wget_error=$(tail --lines +2 $POW_DIR_ARCHIVE/parallel_${bal_vars[MUNICIPALITY_CODE]}_wget.log | cut --field 7 | grep ^[1347])
                         # debug
                         [[ ${_debug_steps[wget]:-1} -eq 0 ]] && {
                             echo "wget (retry=#$_retry/$_retries)"
@@ -1452,7 +1458,7 @@ pow_argv \
     ' \
     --args_p '
         reset:no;
-        tag:summary_ndays@int,select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,force_load@bool,dry_run@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,parallel_jobs@int
+        tag:summary_ndays@int,select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,force_summary@bool,force_load@bool,dry_run@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,parallel_jobs@int
     ' \
     --pow_argv bal_vars "$@" || exit $?
 
