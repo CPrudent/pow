@@ -5,6 +5,16 @@
     #--
     # match FR addresses
 
+    # DEBUG session
+    # export POW_DEBUG_JSON='{"codes":[{"name":"address_match","steps":["argv","request@break"]}]}'
+
+    # retry match (only realized beginning parts)
+    # address_match.sh \
+    #   --request_id ID \
+    #   --request_import BAL_<INSEE> \
+    #   --request_kind QUERY \
+    #   --steps MATCH_ELEMENT
+
 # log info about matching step
 match_info() {
     local -A _opts &&
@@ -84,7 +94,7 @@ export_get_columns() {
     local -n _user_ref=${_opts[COLUMNS_USER]}
     local -n _todo_ref=${_opts[COLUMNS_TODO]}
     local _item _1st _tmp _pos _i
-    local -a _array_clone
+    local -A _array_clone
 
     # clone default list
     _tmp=$(declare -p ${_opts[COLUMNS_DEFAULT]}) &&
@@ -483,6 +493,19 @@ MATCH_RESULT_KO=$((_k++))
 MATCH_RESULT_PERCENT_KO=$((_k++))
 declare -a match_result
 
+# DEBUG steps
+declare -A _debug_steps _debug_bps
+get_env_debug \
+    "$(basename $0 .sh)" \
+    _debug_steps \
+    _debug_bps \
+    'argv step request standardize export archive'
+
+[[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
+    declare -p match_vars
+    [[ ${_debug_bps[argv]} -eq 0 ]] && read
+}
+
 set_env --schema_name fr &&
 
 {
@@ -498,6 +521,13 @@ set_env --schema_name fr &&
 {
     if in_array --array match_steps --item REQUEST; then
         {
+            [[ ${_debug_steps[step]:-1} -ne 0 ]] || {
+                echo "step=(REQUEST)" ; declare -p match_steps
+                [[ ${_debug_bps[step]} -ne 0 ]] || read
+            }
+        } &&
+
+        {
             # determine kind of source
             [ -f "${match_vars[SOURCE_NAME]}" ] && {
                 match_vars[SOURCE_KIND]=FILE
@@ -512,10 +542,20 @@ set_env --schema_name fr &&
         } &&
 
         {
-            [ "${match_vars[VERBOSE]}" = no ] || log_info "type source: ${match_vars[SOURCE_KIND]}"
+            [[ ${_debug_steps[request]:-1} -ne 0 ]] || {
+                echo "type source=(${match_vars[SOURCE_KIND]})"
+                [[ ${_debug_bps[request]} -ne 0 ]] || read
+            }
         } &&
 
         get_definition --property parameters --vars match_vars &&
+
+        {
+            [[ ${_debug_steps[request]:-1} -ne 0 ]] || {
+                echo parameters ; declare -p match_vars
+                [[ ${_debug_bps[request]} -ne 0 ]] || read
+            }
+        } &&
 
         # create or get request informations (ID, import_name)
         execute_query \
@@ -532,6 +572,14 @@ set_env --schema_name fr &&
             " \
             --temporary ${match_vars[TEMPORARY]} \
             --return _request &&
+
+        {
+            [[ ${_debug_steps[request]:-1} -ne 0 ]] || {
+                echo "request=($_request)"
+                [[ ${_debug_bps[request]} -ne 0 ]] || read
+            }
+        } &&
+
         match_request=($_request) &&
         {
             # output request informations
@@ -566,6 +614,13 @@ set_env --schema_name fr &&
 {
     ([ "${match_vars[SOURCE_KIND]}" != FILE ] || \
     (! in_array --array match_steps --item IMPORT)) || {
+        {
+            [[ ${_debug_steps[step]:-1} -ne 0 ]] || {
+                echo "step=(IMPORT)" ; declare -p match_steps
+                [[ ${_debug_bps[step]} -ne 0 ]] || read
+            }
+        }
+
         ([ ${match_vars[FORCE]} = no ] && table_exists --schema_name fr --table_name ${match_request[MATCH_REQUEST_IMPORT]}) || {
             match_info --steps_info match_steps_info --step IMPORT &&
             import_file \
@@ -581,11 +636,23 @@ set_env --schema_name fr &&
 
 {
     (! in_array --array match_steps --item STANDARDIZE) || {
+        {
+            [[ ${_debug_steps[step]:-1} -ne 0 ]] || {
+                echo "step=(STANDARDIZE)" ; declare -p match_steps
+                [[ ${_debug_bps[step]} -ne 0 ]] || read
+            }
+        } &&
         get_definition --property format --vars match_vars &&
         {
             [ -n "${match_vars[FORMAT_SQL]}" ] || {
                 log_error 'manque définition du format (option --format)'
                 false
+            }
+        } &&
+        {
+            [[ ${_debug_steps[standardize]:-1} -ne 0 ]] || {
+                echo format ; declare -p match_vars
+                [[ ${_debug_bps[standardize]} -ne 0 ]] || read
             }
         } &&
         match_info --steps_info match_steps_info --step STANDARDIZE &&
@@ -603,6 +670,12 @@ set_env --schema_name fr &&
 
 {
     (! in_array --array match_steps --item MATCH_CODE) || {
+        {
+            [[ ${_debug_steps[step]:-1} -ne 0 ]] || {
+                echo "step=(MATCH_CODE)" ; declare -p match_steps
+                [[ ${_debug_bps[step]} -ne 0 ]] || read
+            }
+        } &&
         match_info --steps_info match_steps_info --step MATCH_CODE &&
         execute_query \
             --name MATCH_CODE_REQUEST \
@@ -616,6 +689,12 @@ set_env --schema_name fr &&
 
 {
     (! in_array --array match_steps --item MATCH_ELEMENT) || {
+        {
+            [[ ${_debug_steps[step]:-1} -ne 0 ]] || {
+                echo "step=(MATCH_ELEMENT)" ; declare -p match_steps
+                [[ ${_debug_bps[step]} -ne 0 ]] || read
+            }
+        } &&
         match_info --steps_info match_steps_info --step MATCH_ELEMENT &&
         execute_query \
             --name MATCH_ELEMENT_REQUEST \
@@ -630,26 +709,48 @@ set_env --schema_name fr &&
 
 {
     (! in_array --array match_steps --item EXPORT) || {
+        {
+            [[ ${_debug_steps[step]:-1} -ne 0 ]] || {
+                echo "step=(EXPORT)" ; declare -p match_steps
+                [[ ${_debug_bps[step]} -ne 0 ]] || read
+            }
+        } &&
         match_info --steps_info match_steps_info --step EXPORT &&
         declare -a _list_in _list_more &&
         declare -a match_columns_in=( ${match_vars[COLUMNS_IN]//,/ } ) &&
-        #echo "IN: (${match_vars[EXPORT_IN_COLUMNS]}) $(declare -p match_columns_in)" &&
         export_get_columns \
             --columns_set IN \
             --columns_user match_columns_in \
             --columns_default match_in_columns \
             --columns_todo _list_in &&
+        {
+            [[ ${_debug_steps[export]:-1} -ne 0 ]] || {
+                echo IN ; declare -p match_vars match_columns_in _list_in
+                [[ ${_debug_bps[export]} -ne 0 ]] || read
+            }
+        } &&
         declare -a match_columns_more=( ${match_vars[COLUMNS_MORE]//,/ } ) &&
-        #echo "MORE: (${match_vars[EXPORT_MORE_COLUMNS]}) $(declare -p match_columns_more)" &&
         export_get_columns \
             --columns_set MORE \
             --columns_user match_columns_more \
             --columns_default match_more_columns \
             --columns_todo _list_more &&
+        {
+            [[ ${_debug_steps[export]:-1} -ne 0 ]] || {
+                echo MORE ; declare -p match_columns_more _list_more
+                [[ ${_debug_bps[export]} -ne 0 ]] || read
+            }
+        } &&
         export_get_entry \
             --request match_request \
             --vars match_vars \
             --entry _entry &&
+        {
+            [[ ${_debug_steps[export]:-1} -ne 0 ]] || {
+                echo "entry=($_entry)"
+                [[ ${_debug_bps[export]} -ne 0 ]] || read
+            }
+        } &&
         export_build \
             --columns_in _list_in \
             --columns_more _list_more \
@@ -664,6 +765,12 @@ set_env --schema_name fr &&
 
 {
     (! in_array --array match_steps --item REPORT) || {
+        {
+            [[ ${_debug_steps[step]:-1} -ne 0 ]] || {
+                echo "step=(REPORT)" ; declare -p match_steps
+                [[ ${_debug_bps[step]} -ne 0 ]] || read
+            }
+        } &&
         match_info --steps_info match_steps_info --step REPORT &&
         report_get_result \
             --request match_request \
@@ -680,7 +787,12 @@ set_env --schema_name fr &&
 } &&
 
 {
-    [ "${match_vars[VERBOSE]}" = no ] || log_info "archive: ${POW_DIR_ARCHIVE}"
+    {
+        [[ ${_debug_steps[archive]:-1} -ne 0 ]] || {
+            echo "archive=(${POW_DIR_ARCHIVE})"
+            [[ ${_debug_bps[archive]} -ne 0 ]] || read
+        }
+    }
 } || exit $ERROR_CODE
 
 exit $SUCCESS_CODE

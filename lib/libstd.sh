@@ -230,8 +230,8 @@ in_array() {
     [ ${#_array_ref[@]} -eq 0 ] && return 1
     case "${_opts[SEARCH]}" in
     VALUE)
-        # only 1st occurence
-        _pos=$(printf '%s\n' "${_array_ref[@]}" | grep --fixed-strings --line-number --line-regexp -- "${_opts[ITEM]}" | head --lines 1)
+        # only 1st occurence (max-count)
+        _pos=$(printf '%s\n' "${_array_ref[@]}" | grep --fixed-strings --line-number --line-regexp --max-count 1 -- "${_opts[ITEM]}")
         ;;
     KEY)
         _pos=$(printf '%s\n' "${!_array_ref[@]}" | grep --fixed-strings --line-number --line-regexp -- "${_opts[ITEM]}")
