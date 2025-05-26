@@ -59,6 +59,7 @@ declare -A bal_vars=(
     [AREAS_OLD_MUNICIPALITY]=0
     [STREETS]=-1
     [HOUSENUMBERS]=-1
+    [PROGRESS_GROUPS]=INSEE
     [PROGRESS_START]=
     [PROGRESS_CURRENT]=1
     [PROGRESS_TOTAL]=1
@@ -77,6 +78,7 @@ pow_argv \
         progress:Afficher le ratio de progression;
         parallel:Effectuer les traitements en parallèle;
         parallel_chunk:Quantité de partage des données à traiter;
+        parallel_jobs:Nombre de traitements en parallèle;
         clean:Effectuer la purge des fichiers temporaires;
         verbose:Ajouter des détails sur les traitements
     ' \
@@ -103,12 +105,13 @@ pow_argv \
         progress:no;
         parallel:no;
         parallel_chunk:5;
+        parallel_jobs:5;
         clean:yes;
         verbose:no
     ' \
     --args_p '
         reset:no;
-        tag:select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,dry_run@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,limit@int,parallel_chunk@int
+        tag:select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,dry_run@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,limit@int,parallel_chunk@int,parallel_jobs@int
     ' \
     --pow_argv bal_vars "$@" || exit $?
 
@@ -165,7 +168,7 @@ if [ "${bal_vars[PARALLEL]}" = no ]; then
                 --code ${bal_vars[MUNICIPALITY_CODE]} \
                 --io_id ${bal_vars[IO_LAST_ID]} || ((bal_error++))
 
-            [ "${bal_vars[PROGRESS]}" = no ] || bal_set_progress
+            [ "${bal_vars[PROGRESS]}" = no ] || set_progress --start bal_vars[PROGRESS_START]
         }
     done
 else
@@ -196,7 +199,9 @@ else
         [ "${bal_vars[DRY_RUN]}" = yes ] || {
             # item composed as INSEE:IO_ID (INSEE only wanted here)
             #+ can use --tag to print each item
-            parallel --jobs 3 --rpl '{..} s/:[^:]*$//;' \
+            parallel \
+                --jobs ${bal_vars[PARALLEL_JOBS]} \
+                --rpl '{..} s/:[^:]*$//;' \
                 $POW_DIR_BATCH/address_match.sh \
                     --source_name "BAL_{..}" \
                     --source_query "$bal_tmpdir/BAL_{..}.sql" \
@@ -207,7 +212,7 @@ else
                     --force ${bal_vars[FORCE]} \
                 ::: "${bal_codes2[@]}"
         }
-        [ "${bal_vars[PROGRESS]}" = no ] || bal_set_progress
+        [ "${bal_vars[PROGRESS]}" = no ] || set_progress --start bal_vars[PROGRESS_START]
     done
     [ "${bal_vars[DRY_RUN]}" = yes ] || {
         for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do

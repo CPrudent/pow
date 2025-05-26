@@ -374,7 +374,8 @@ pow_argv \
         verbose:no
     ' \
     --args_p '
-        RESET:no
+        reset:no;
+        tag:parallel@bool,argv_exit@bool,force@bool,verbose@bool
     ' \
     --pow_argv match_vars "$@" || exit $?
 
@@ -590,7 +591,7 @@ set_env --schema_name fr &&
         match_info --steps_info match_steps_info --step STANDARDIZE &&
         execute_query \
             --name STANDARDIZE_REQUEST \
-            --query "CALL set_match_standardize(
+            --query "CALL fr.set_match_standardize(
                 id => ${match_request[MATCH_REQUEST_ID]},
                 mapping => '${match_vars[FORMAT_SQL]}'::HSTORE,
                 force => ('${match_vars[FORCE]}' = 'yes'),

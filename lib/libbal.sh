@@ -3,45 +3,6 @@
     #--
     # BAL library
 
-# print progress as (ratio, percent)
-# $1= begin
-    # $2= label
-    # $3= size of (number of digits)
-    # $4= subscript
-    # $5= total
-    # $6= end of line
-# $1= end
-    # $2= elapsed time
-    # $3= more information
-bal_print_progress() {
-    case "${1^^}" in
-    BEGIN)
-        #expect argc bal_print_progress $# 6 || return $ERROR_CODE
-        # if main display (municipality level) and only one then reduce informations
-        ([[ "${2:0:5}" =~ INSEE|Commu|Temps ]] && [[ $5 -eq 1 ]]) && {
-            printf '%-15s%b' "$2" $6
-        } || {
-            printf '%-15s\t%*d/%*d (%3d%%)%b' "$2" $3 $4 $3 $5 $((($4*100)/$5)) $6
-        }
-        ;;
-    END)
-        printf "\t\t\t\t\t%s\t\t%s\n" "$2" "$3"
-        ;;
-    esac
-
-    return $SUCCESS_CODE
-}
-
-bal_set_progress() {
-    local _elapsed
-
-    get_elapsed_time --start ${bal_vars[PROGRESS_START]} --result _elapsed &&
-    bal_print_progress END "${_elapsed}" &&
-    bal_vars[PROGRESS_START]=$(date '+%s')
-
-    return $SUCCESS_CODE
-}
-
 bal_check_municipality() {
     local -A _opts &&
     pow_argv \
@@ -121,9 +82,10 @@ bal_set_municipality() {
         {
             [ "${bal_vars[PROGRESS]}" = no ] || {
                 bal_vars[PROGRESS_START]=$(date '+%s') &&
-                bal_print_progress \
+                print_progress \
                     BEGIN \
                     "INSEE ${_opts[CODE]}" \
+                    ${bal_vars[PROGRESS_GROUPS]} \
                     ${bal_vars[PROGRESS_SIZE]} \
                     ${bal_vars[PROGRESS_CURRENT]} \
                     ${bal_vars[PROGRESS_TOTAL]} \
@@ -219,7 +181,7 @@ bal_set_municipality() {
         }
     }
     {
-        [ "${bal_vars[PROGRESS]}" = no ] || bal_set_progress
+        [ "${bal_vars[PROGRESS]}" = no ] || set_progress --start bal_vars[PROGRESS_START]
     } || return $ERROR_CODE
 
 #     [ "${bal_vars[VERBOSE]}" = yes ] && {

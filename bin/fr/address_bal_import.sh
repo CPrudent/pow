@@ -503,9 +503,10 @@ bal_load_addresses() {
                     for ((_j=0; _j<${#_addresses[@]}; _j++)); do
                         {
                             [ "${bal_vars[PROGRESS]}" = no ] || {
-                                bal_print_progress \
+                                print_progress \
                                     BEGIN \
                                     "${_info}" \
+                                    ${bal_vars[PROGRESS_GROUPS]} \
                                     ${bal_vars[PROGRESS_SIZE]} \
                                     $((_j +1)) \
                                     ${bal_vars[$_field]} \
@@ -951,7 +952,7 @@ bal_integration() {
             [ -z "${bal_vars[IO_LAST_ID]}" ] || bal_deal_obsolescence --level STREET
         } &&
         {
-            [ "${bal_vars[PROGRESS]}" = no ] || bal_set_progress
+            [ "${bal_vars[PROGRESS]}" = no ] || set_progress --start bal_vars[PROGRESS_START]
         } &&
         bal_load --level STREET
         ;;
@@ -1033,7 +1034,7 @@ bal_integration() {
             [ -z "${bal_vars[IO_LAST_ID]}" ] || bal_deal_obsolescence --level HOUSENUMBER
         } &&
         {
-            [ "${bal_vars[PROGRESS]}" = no ] || bal_set_progress
+            [ "${bal_vars[PROGRESS]}" = no ] || set_progress --start bal_vars[PROGRESS_START]
         } &&
         # need to request API on each housenumber, if many areas! to obtain old municipality
         {
@@ -1066,7 +1067,7 @@ bal_integration() {
                         om.old_municipality IS NOT NULL
             " &&
         {
-            [ "${bal_vars[PROGRESS]}" = no ] || bal_set_progress
+            [ "${bal_vars[PROGRESS]}" = no ] || set_progress --start bal_vars[PROGRESS_START]
         }
         ;;
     esac || return $ERROR_CODE
@@ -1106,9 +1107,10 @@ bal_load() {
         {
             [ "${bal_vars[PROGRESS]}" = no ] || {
                 bal_vars[PROGRESS_START]=$(date '+%s') &&
-                bal_print_progress \
+                print_progress \
                     BEGIN \
                     "INSEE ${_opts[LEVEL]}" \
+                    ${bal_vars[PROGRESS_GROUPS]} \
                     ${bal_vars[PROGRESS_SIZE]} \
                     ${bal_vars[PROGRESS_CURRENT]} \
                     ${bal_vars[PROGRESS_TOTAL]} \
@@ -1200,7 +1202,7 @@ bal_load() {
             case "${_opts[LEVEL]}" in
             SUMMARY)
                 {
-                    [ "${bal_vars[PROGRESS]}" = no ] || bal_set_progress
+                    [ "${bal_vars[PROGRESS]}" = no ] || set_progress --start bal_vars[PROGRESS_START]
                 } &&
                 io_history_end_ok \
                     --nrows_processed '(SELECT COUNT(*) FROM fr.bal_municipality)' \
@@ -1395,6 +1397,7 @@ declare -A bal_vars=(
     [AREAS_OLD_MUNICIPALITY]=0
     [STREETS]=-1
     [HOUSENUMBERS]=-1
+    [PROGRESS_GROUPS]='INSEE|Commu|Temps'
     [PROGRESS_CURRENT]=1
     [PROGRESS_TOTAL]=1
     [PROGRESS_SIZE]=5
@@ -1516,8 +1519,8 @@ bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
 [[ ${bal_vars[PROGRESS_TOTAL]} -gt 0 ]] &&
 [ "${bal_vars[DRY_RUN]}" = yes ] && {
     bal_average_time --avg bal_average &&
-    bal_print_progress BEGIN Communes 0 0 1 '\r' &&
-    bal_print_progress END Estimation Adresses
+    print_progress BEGIN Communes "${bal_vars[PROGRESS_GROUPS]}" 0 0 1 '\r' &&
+    print_progress END Estimation Adresses
 }
 for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
     bal_vars[PROGRESS_CURRENT]=$((bal_i +1))
@@ -1530,7 +1533,11 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
     # do it ?
     [ "${bal_vars[DRY_RUN]}" = yes ] && {
         {
-            bal_print_progress BEGIN "INSEE ${bal_vars[MUNICIPALITY_CODE]}" 0 0 1 '\r' &&
+            print_progress \
+                BEGIN \
+                "INSEE ${bal_vars[MUNICIPALITY_CODE]}" \
+                "${bal_vars[PROGRESS_GROUPS]}" \
+                0 0 1 '\r' &&
             ([ -n "$bal_average" ] && [[ $bal_average > 0 ]]) && {
                 case "${bal_vars[FIX]}" in
                 SPACE_IN_CODE)
@@ -1580,10 +1587,10 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
                         ;;
                     esac
                 } &&
-                bal_print_progress END "${_elapsed}" "#${bal_rows} (ANC=#${bal_vars[AREAS_OLD_MUNICIPALITY]})"
+                print_progress END "${_elapsed}" "#${bal_rows} (ANC=#${bal_vars[AREAS_OLD_MUNICIPALITY]})"
 
             } || {
-                bal_print_progress END 'Non disponible'
+                print_progress END 'Non disponible'
             }
         } || true
     } || {
@@ -1645,9 +1652,9 @@ done
 
 [ "${bal_vars[PROGRESS]}" = no ] || {
     # trick to print global timex
-    bal_print_progress BEGIN "Temps Traitement" 0 0 1 '\r' &&
+    print_progress BEGIN "Temps Traitement" "${bal_vars[PROGRESS_GROUPS]}" 0 0 1 '\r' &&
     get_elapsed_time --start ${bal_start} --result _elapsed &&
-    bal_print_progress END "${_elapsed}"
+    print_progress END "${_elapsed}"
 }
 
 _rc=$(( bal_error == 1 ? ERROR_CODE : SUCCESS_CODE ))

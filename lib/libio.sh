@@ -90,7 +90,7 @@ _io_history_manager() {
                     ELSE
                         CASE
                         WHEN attributes IS JSON OBJECT THEN
-                            (jsonb_merge(attributes::JSONB, '${_opts[INFOS]:-{}}'::JSONB))::VARCHAR
+                            (jsonb_merge(attributes::JSONB, '${_opts[INFOS]:-\{\}}'::JSONB))::VARCHAR
                         ELSE '${_opts[INFOS]}'
                         END
                     END
@@ -339,14 +339,15 @@ io_history_update() {
         ' \
         --pow_argv _opts "$@" || return $?
 
-    local _todo _processed
+    local _todo _processed _infos
     [ -n "${_opts[NROWS_TODO]}" ] && _todo="--nrows_todo ${_opts[NROWS_TODO]}"
     [ -n "${_opts[NROWS_PROCESSED]}" ] && _processed="--nrows_processed ${_opts[NROWS_PROCESSED]}"
+    [ -n "${_opts[INFOS]}" ] && _infos="--infos ${_opts[INFOS]}"
 
     _io_history_manager \
         --method UPDATE \
         --id ${_opts[ID]} \
-        --infos "${_opts[INFOS]}" \
+        $_infos \
         $_todo \
         $_processed || return $ERROR_CODE
 
