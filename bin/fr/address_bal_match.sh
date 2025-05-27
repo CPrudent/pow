@@ -5,6 +5,9 @@
     #--
     # match BAL addresses w/ LAPOSTE ones
 
+    # DEBUG session
+    # export POW_DEBUG_JSON='{"codes":[{"name":"address_bal_match","steps":["argv","chunk","query@break","before@break"]}]}'
+
 source $POW_DIR_ROOT/lib/libbal.sh || exit $ERROR_CODE
 
 bal_match_municipality() {
@@ -21,6 +24,17 @@ bal_match_municipality() {
 
     local _query=${bal_vars[QUERY_ADDRESSES]//XXXXX/${_opts[CODE]}} _request_id
 
+    # update request (query), if fix MATCH_AGAIN
+    {
+        [ "${bal_vars[FIX]}" != MATCH_AGAIN ] || {
+            execute_query \
+                --name REQUEST_UPDATE_${_opts[CODE]} \
+                --query "UPDATE fr.address_match_request SET
+                    source_query = '$_query'
+                    WHERE source_name = CONCAT('BAL_', '${_opts[CODE]}')
+                "
+        }
+    } &&
     # match addresses
     $POW_DIR_BATCH/address_match.sh \
         --source_name BAL_${_opts[CODE]} \
@@ -74,6 +88,7 @@ pow_argv \
         limit:Limiter à n communes (0 sans limite);
         stop_time:Temps d arrêt du traitement (format: MM-jj-hh:mm:ss);
         force:Forcer le traitement même si celui-ci a déjà été fait;
+        fix:Corriger une erreur;
         dry_run:Simuler le traitement;
         progress:Afficher le ratio de progression;
         parallel:Effectuer les traitements en parallèle;
@@ -89,6 +104,7 @@ pow_argv \
         select_criteria:REVISION|POPULATION|STREETS;
         select_order:ASC|DESC;
         force:yes|no;
+        fix:MATCH_AGAIN;
         dry_run:yes|no;
         progress:yes|no;
         parallel:yes|no;
@@ -111,9 +127,22 @@ pow_argv \
     ' \
     --args_p '
         reset:no;
-        tag:select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,dry_run@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,limit@int,parallel_chunk@int,parallel_jobs@int
+        tag:select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,dry_run@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,limit@int,parallel_chunk@int,parallel_jobs@int,fix@0N
     ' \
     --pow_argv bal_vars "$@" || exit $?
+
+# DEBUG steps
+declare -A _debug_steps _debug_bps
+get_env_debug \
+    "$(basename $0 .sh)" \
+    _debug_steps \
+    _debug_bps \
+    'argv init chunk query before'
+
+[[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
+    declare -p bal_vars
+    [[ ${_debug_bps[argv]} -eq 0 ]] && read
+}
 
 bal_vars[MUNICIPALITY_CODE]=${bal_vars[MUNICIPALITY]^^}
 declare -a bal_codes=()
@@ -148,6 +177,12 @@ set_env --schema_name fr &&
 
 bal_error=0
 bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
+[ "${bal_vars[FIX]}" = MATCH_AGAIN ] && bal_vars[FORCE]=yes
+
+[[ ${_debug_steps[init]:-1} -eq 0 ]] && {
+    declare -p bal_vars bal_codes
+    [[ ${_debug_bps[init]} -eq 0 ]] && read
+}
 
 if [ "${bal_vars[PARALLEL]}" = no ]; then
     for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
@@ -183,20 +218,50 @@ else
         }
 
         bal_codes2=( $(printf '%s ' ${bal_codes[@]:((bal_j*bal_vars[PARALLEL_CHUNK])):${bal_vars[PARALLEL_CHUNK]}}) )
+
+        [[ ${_debug_steps[chunk]:-1} -eq 0 ]] && {
+            declare -p bal_codes2
+            [[ ${_debug_bps[chunk]} -eq 0 ]] && read
+        }
+
         [ "${bal_vars[PROGRESS]}" = no ] || {
             bal_vars[PROGRESS_START]=$(date '+%s') &&
             echo "INSEE ${bal_codes2[@]}"
         }
 
-        set -o noglob
-        for bal_item in ${bal_codes2[@]}; do
-            bal_insee=${bal_item%%:*}
-            echo "${bal_vars[QUERY_ADDRESSES]//XXXXX/${bal_insee}}" > "$bal_tmpdir/BAL_${bal_insee}.sql"
-        done
-        set +o noglob
-        #echo $bal_tmpdir ; read
-
         [ "${bal_vars[DRY_RUN]}" = yes ] || {
+            set -o noglob
+            for bal_item in ${bal_codes2[@]}; do
+                bal_insee=${bal_item%%:*}
+                bal_query=${bal_vars[QUERY_ADDRESSES]//XXXXX/${bal_insee}}
+
+                {
+                    [[ ${_debug_steps[query]:-1} -ne 0 ]] || {
+                        echo "tmpdir=($bal_tmpdir)"
+                        echo "query=[$bal_query]"
+                        [[ ${_debug_bps[query]} -ne 0 ]] || read
+                    }
+                } &&
+                echo "$bal_query" > "$bal_tmpdir/BAL_${bal_insee}.sql" &&
+                # update request (query), if force
+                {
+                    [ "${bal_vars[FIX]}" != MATCH_AGAIN ] || {
+                        execute_query \
+                            --name REQUEST_UPDATE_$bal_insee \
+                            --query "UPDATE fr.address_match_request SET
+                                source_query = \$\$$bal_query\$\$
+                                WHERE source_name = CONCAT('BAL_', '$bal_insee')
+                            "
+                    }
+                } || exit $ERROR_CODE
+            done
+            set +o noglob
+
+            [[ ${_debug_steps[before]:-1} -eq 0 ]] && {
+                echo 'before parallel...'
+                [[ ${_debug_bps[before]} -eq 0 ]] && read
+            }
+
             # item composed as INSEE:IO_ID (INSEE only wanted here)
             #+ can use --tag to print each item
             parallel \

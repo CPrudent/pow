@@ -86,6 +86,7 @@ declare -a TESTS=(
     POW_DEBUG
     POW_DEBUG_2
     IN_ARRAY
+    IN_ARRAY_2
     NOT_IN_ARRAY
     IN_HASH
     NOT_IN_HASH
@@ -274,6 +275,12 @@ for ((_test=0; _test<${#test_lib[@]}; _test++)); do
         declare -a _array=([0]=ZERO [1]=ONE [2]=TWO)
         in_array --array _array --item ONE --position _position &&
         [[ $_position -eq 1 ]] &&
+        _rc=0
+        ;;
+    IN_ARRAY_2)
+        declare -a _array=([0]=ZERO [1]=ONE [10]=TEN)
+        in_array --array _array --item TEN --position _position &&
+        [[ $_position -eq 10 ]] &&
         _rc=0
         ;;
     NOT_IN_ARRAY)

@@ -306,8 +306,8 @@ bal_list_municipalities() {
         _date_before_fix='2025-04-18'
         _query="
             SELECT
-                m.code municipality,
-                m.code criteria
+                code municipality,
+                code criteria
             FROM
                 fr.bal_municipality m
             WHERE
@@ -321,6 +321,26 @@ bal_list_municipalities() {
                         s.housenumbers_auth > 0
                         AND
                         s.code !~ ('^(' || LOWER(m.code) || '|' || m.code || ')_')
+                )
+        "
+        ;;
+    MATCH_AGAIN)
+        _date_before_fix='2025-05-27'
+        _query="
+            SELECT
+                code municipality,
+                last_update criteria
+            FROM
+                fr.bal_municipality m
+            WHERE
+                NOT EXISTS(
+                    SELECT 1
+                    FROM
+                        fr.address_match_request mr
+                    WHERE
+                        mr.source_name = CONCAT('BAL_', m.code)
+                        AND
+                        POSITION('ORDER BY t.code' IN mr.source_query) > 0
                 )
         "
         ;;
@@ -353,40 +373,41 @@ bal_list_municipalities() {
             WHERE
     " &&
     {
-        [ -n "${bal_vars[FIX]}" ] && {
-            _query+="
-                    h.date_data_end IS NOT NULL
-                    AND
-                    h.date_data_end < '$_date_before_fix'::DATE
-                    AND
-                    POSITION('${bal_vars[FIX]}' IN h.attributes) = 0
-            "
-        } || {
-            case "${bal_vars[USECASE]}" in
-            # only not already downloaded or newer import available
-            IMPORT)
-                _query+="
-                        h.date_data_end IS NULL
-                        OR
-                        m.last_update > h.date_data_end
-                "
-                ;;
-            # only already downloaded, but not matched yet (w/ at least 1 street)
-            MATCH)
+        case "${bal_vars[USECASE]}" in
+        IMPORT)
+            [ -n "${bal_vars[FIX]}" ] && {
                 _query+="
                         h.date_data_end IS NOT NULL
                         AND
-                        h.attributes IS JSON OBJECT
+                        h.date_data_end < '$_date_before_fix'::DATE
                         AND
-                        'match' NOT IN (
-                            SELECT (JSON_ARRAY_ELEMENTS((h.attributes::JSON)->'usecases'))->>'name'
-                        )
-                        AND
-                        ((h.attributes::JSON)->'integration'->>'streets')::INT > 0
+                        POSITION('${bal_vars[FIX]}' IN h.attributes) = 0
                 "
-                ;;
-            esac
-        }
+            } || {
+            # only not already downloaded or newer import available
+            _query+="
+                    h.date_data_end IS NULL
+                    OR
+                    m.last_update > h.date_data_end
+            "
+            }
+            ;;
+        # only already downloaded, but not matched yet (w/ at least 1 street)
+        #+ if fix (already matched) do it again
+        MATCH)
+            _query+="
+                    h.date_data_end IS NOT NULL
+                    AND
+                    h.attributes IS JSON OBJECT
+                    AND
+                    'match' $([ "${bal_vars[FIX]}" = MATCH_AGAIN ] || echo NOT) IN (
+                        SELECT (JSON_ARRAY_ELEMENTS((h.attributes::JSON)->'usecases'))->>'name'
+                    )
+                    AND
+                    ((h.attributes::JSON)->'integration'->>'streets')::INT > 0
+            "
+            ;;
+        esac
     } &&
     _query+="
             ORDER BY

@@ -176,7 +176,7 @@ BEGIN
 
     q := CONCAT(
         'SELECT
-            ROW_NUMBER() OVER () rowid,
+            ROW_NUMBER() OVER (ORDER BY t.code) rowid,
             t.*
         FROM (
             SELECT
