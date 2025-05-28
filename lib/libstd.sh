@@ -1726,7 +1726,7 @@ extract_archive() {
     local _archive_name=$(basename "${_opts[ARCHIVE_PATH]}")
     local _log_tmp_path="$POW_DIR_TMP/extract_$_archive_name.log"
     local _log_archive_path="$POW_DIR_ARCHIVE/extract_$_archive_name.log"
-    local _archive_type
+    local _archive_type _rc
 
     is_archive --archive_path "${_opts[ARCHIVE_PATH]}" --archive_type _archive_type || {
         log_error "${FUNCNAME[0]}: le fichier ${_opts[ARCHIVE_PATH]} n'est pas une archive"
@@ -1770,10 +1770,11 @@ extract_archive() {
         return $ERROR_CODE
         ;;
     esac
+    _rc=$?
 
+    archive_file "$_log_tmp_path"
     # https://stackoverflow.com/questions/19120263/why-exit-code-141-with-grep-q
-    [[ ! $? =~ 0|141 ]] && {
-        archive_file "$_log_tmp_path"
+    [[ ! $_rc =~ 0|141 ]] && {
         log_error "${FUNCNAME[0]}: erreur lors de l'extraction de l'archive $_archive_name, veuillez consulter $_log_archive_path"
         return $ERROR_CODE
     } || {
