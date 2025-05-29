@@ -462,6 +462,10 @@ set_delimiter() {
 #    ' \
 #    --pow_argv _opts "$@" || return $?
 
+# NOTE
+# DEBUG session
+# export POW_DEBUG_JSON='{"codes":[{"name":"pow_argv","steps":["cmdl5@break","check@break"]}]}'
+
 pow_argv() {
     local _step=1 _error _end=0 _key _value _i _info _valid _property _as_opt _k _tmp
     local _trick=", astuce : utilisez l'option --help pour l'aide ou --interactive pour une utilisation intéractive"

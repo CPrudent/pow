@@ -24,9 +24,9 @@ bal_match_municipality() {
 
     local _query=${bal_vars[QUERY_ADDRESSES]//XXXXX/${_opts[CODE]}} _request_id
 
-    # update request (query), if fix MATCH_AGAIN
+    # update request (query), if fix MATCH_AGAIN_ROWID
     {
-        [ "${bal_vars[FIX]}" != MATCH_AGAIN ] || {
+        [ "${bal_vars[FIX]}" != MATCH_AGAIN_ROWID ] || {
             execute_query \
                 --name REQUEST_UPDATE_${_opts[CODE]} \
                 --query "UPDATE fr.address_match_request SET
@@ -104,7 +104,7 @@ pow_argv \
         select_criteria:REVISION|POPULATION|STREETS;
         select_order:ASC|DESC;
         force:yes|no;
-        fix:MATCH_AGAIN;
+        fix:MATCH_AGAIN_ROWID;
         dry_run:yes|no;
         progress:yes|no;
         parallel:yes|no;
@@ -137,7 +137,7 @@ get_env_debug \
     "$(basename $0 .sh)" \
     _debug_steps \
     _debug_bps \
-    'argv init chunk query before'
+    'argv init chunk query before error'
 
 [[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
     declare -p bal_vars
@@ -177,7 +177,7 @@ set_env --schema_name fr &&
 
 bal_error=0
 bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
-[ "${bal_vars[FIX]}" = MATCH_AGAIN ] && bal_vars[FORCE]=yes
+[ "${bal_vars[FIX]}" = MATCH_AGAIN_ROWID ] && bal_vars[FORCE]=yes
 
 [[ ${_debug_steps[init]:-1} -eq 0 ]] && {
     declare -p bal_vars bal_codes
@@ -211,6 +211,7 @@ else
     [ ! -d "$bal_tmpdir" ] && mkdir "$bal_tmpdir"
     bal_limit=$(( ${#bal_codes[@]} / bal_vars[PARALLEL_CHUNK] ))
     [[ $(( ${#bal_codes[@]} % bal_vars[PARALLEL_CHUNK] )) -eq 0 ]] || ((bal_limit++))
+    bal_serie=0
     for ((bal_j=0; bal_j<$bal_limit; bal_j++)); do
         [ "${bal_vars[STOP_TIME]}" != 0 ] && {
             # stop loop if allowed time is expired
@@ -245,7 +246,7 @@ else
                 echo "$bal_query" > "$bal_tmpdir/BAL_${bal_insee}.sql" &&
                 # update request (query), if force
                 {
-                    [ "${bal_vars[FIX]}" != MATCH_AGAIN ] || {
+                    [ "${bal_vars[FIX]}" != MATCH_AGAIN_ROWID ] || {
                         execute_query \
                             --name REQUEST_UPDATE_$bal_insee \
                             --query "UPDATE fr.address_match_request SET
@@ -262,10 +263,12 @@ else
                 [[ ${_debug_bps[before]} -eq 0 ]] && read
             }
 
+            bal_serie=$((bal_serie +1))
             # item composed as INSEE:IO_ID (INSEE only wanted here)
             #+ can use --tag to print each item
             parallel \
                 --jobs ${bal_vars[PARALLEL_JOBS]} \
+                --joblog $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log \
                 --rpl '{..} s/:[^:]*$//;' \
                 $POW_DIR_BATCH/address_match.sh \
                     --source_name "BAL_{..}" \
@@ -276,23 +279,38 @@ else
                     --parallel \
                     --force ${bal_vars[FORCE]} \
                 ::: "${bal_codes2[@]}"
+
+            # search for error (column 7: exit status)
+            tail --lines +2 $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log | cut --fields 7 | grep --silent ^[^0]
+            [ $? -eq 0 ] && {
+                bal_error=1
+                [[ ${_debug_steps[error]:-1} -eq 0 ]] && {
+                    tail --lines +2 $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log | cut --fields 7,9
+                    [[ ${_debug_bps[error]} -eq 0 ]] && read
+                }
+            }
+
         }
-        [ "${bal_vars[PROGRESS]}" = no ] || set_progress --start bal_vars[PROGRESS_START]
+        bal_vars[PROGRESS_CURRENT]=$((bal_vars[PROGRESS_CURRENT] + ${#bal_codes2[@]}))
+        [ "${bal_vars[PROGRESS]}" = no ] ||
+            set_progress --start bal_vars[PROGRESS_START]
     done
     [ "${bal_vars[DRY_RUN]}" = yes ] || {
-        for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
-            bal_insee=${bal_codes[$bal_i]%%:*}
-            bal_io_id=${bal_codes[$bal_i]#*:}
-            bal_file="$bal_tmpdir/BAL_${bal_insee}.dat"
+        [[ $bal_error -ne 0 ]] || {
+            for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
+                bal_insee=${bal_codes[$bal_i]%%:*}
+                bal_io_id=${bal_codes[$bal_i]#*:}
+                bal_file="$bal_tmpdir/BAL_${bal_insee}.dat"
 
-            [ -f "$bal_file" ] && {
-                bal_req_id=$(sed --silent --expression '1p' < "$bal_file") &&
-                io_history_update \
-                    --infos '{"usecases":[{"name":"match","id":'${bal_req_id}'}]}' \
-                    --id ${bal_io_id}
-            }
-        done
-        [ "${bal_vars[CLEAN]}" = no ] || rm -rf "$bal_tmpdir"
+                [ -f "$bal_file" ] && {
+                    bal_req_id=$(sed --silent --expression '1p' < "$bal_file") &&
+                    io_history_update \
+                        --infos '{"usecases":[{"name":"match","id":'${bal_req_id}'}]}' \
+                        --id ${bal_io_id}
+                }
+            done
+            [ "${bal_vars[CLEAN]}" = no ] || rm -rf "$bal_tmpdir"
+        }
     }
 fi
 

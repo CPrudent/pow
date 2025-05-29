@@ -308,3 +308,114 @@ BEGIN
     counters[7] := _count7;
 END
 $func$ LANGUAGE plpgsql;
+
+-- build cross reference between SOURCE and LAPOSTE
+SELECT drop_all_functions_if_exists('fr', 'set_match_cross_reference');
+CREATE OR REPLACE FUNCTION fr.set_match_cross_reference(
+    id IN INTEGER,                          -- match request ID
+    municipality_code IN VARCHAR,
+    table_name INOUT VARCHAR DEFAULT NULL   -- result table
+)
+AS
+$func$
+DECLARE
+    _import VARCHAR;
+    _source_name VARCHAR;
+    _source_kind VARCHAR;
+    _source_query VARCHAR;
+    _is_match_element BOOLEAN;
+    _query TEXT;
+    _nrows INTEGER;
+BEGIN
+    SELECT import_name, source_name, source_kind, source_query, is_match_element
+    INTO _import, _source_name, _source_kind, _source_query, _is_match_element
+    FROM fr.address_match_request mr
+    WHERE mr.id = set_match_cross_reference.id
+    ;
+    IF NOT FOUND THEN
+        RAISE 'aucune demande de Rapprochement trouvée pour ID ''%''', id;
+    END IF;
+    IF NOT _is_match_element THEN
+        RAISE 'demande de Rapprochement ID ''%'' non terminée (MATCH_ELEMENT manquant)', id;
+    END IF;
+
+    _query :=
+        CASE _source_kind
+        WHEN 'FILE' THEN CONCAT('SELECT * FROM fr.', _import)
+        WHEN 'TABLE' THEN CONCAT('SELECT * FROM fr.', _source_name)
+        WHEN 'QUERY' THEN _source_query
+        END
+    ;
+    table_name := COALESCE(table_name,
+        CASE _source_kind
+        WHEN 'FILE' THEN CONCAT(_import, '_crossref')
+        ELSE CONCAT(LOWER(_source_name), '_crossref')
+        END
+    );
+
+    IF NOT table_exists(schema_name => 'fr', table_name => table_name) THEN
+        _query := CONCAT(
+            'CREATE TABLE fr.', table_name,' AS
+            WITH
+            source_data AS (', _query, '),
+            laposte_data AS (
+                SELECT
+                    a.co_adr ref_code_address,
+                    COALESCE(a.lb_ligne3_normalise, a.lb_ligne3) ref_complement,
+                    a.no_numero ref_number,
+                    a.lb_extension_numero ref_extension,
+                    COALESCE(a.lb_voie_normalise, a.lb_voie) ref_street,
+                    a.lb_ligne5 ref_area,
+                    a.co_postal ref_postcode,
+                    a.lb_acheminement ref_municipality,
+                    a.no_type_localisation_coord ref_location,
+                    ST_Transform(a.gm_coord, 4326) ref_geom
+                FROM
+                    fr.address_view a
+                WHERE
+                    a.co_insee_commune = $2
+                    AND
+                    a.co_niveau != ''ZA''
+            ),
+            match_data AS (
+                SELECT
+                    mr.id_address code_source,
+                    (me.matched_element).codes_address[1] code_laposte
+                FROM
+                    fr.address_match_result mr
+                        JOIN fr.address_match_element me
+                        ON (
+                            ((mr.standardized_address).level = me.level)
+                            AND (
+                                ((mr.standardized_address).match_code_street = me.match_code)
+                                OR
+                                ((mr.standardized_address).match_code_housenumber = me.match_code)
+                                OR
+                                ((mr.standardized_address).match_code_complement = me.match_code)
+                            )
+                        )
+                WHERE
+                    mr.id_request = $1
+            )
+            SELECT
+                s.*,
+                p.*
+            FROM
+                source_data s
+                    LEFT OUTER JOIN match_data m ON s.rowid = m.code_source
+                    FULL OUTER JOIN laposte_data p ON p.ref_code_address = m.code_laposte
+            '
+        );
+        EXECUTE _query
+            USING set_match_cross_reference.id, set_match_cross_reference.municipality_code
+            ;
+        GET DIAGNOSTICS _nrows = ROW_COUNT;
+        CALL public.log_info(
+            FORMAT('CROSS REFERENCE (MATCH-REQUEST-ID=%s): NROWS=%s',
+                set_match_cross_reference.id,
+                _nrows
+            )
+        );
+    END IF;
+END
+$func$ LANGUAGE plpgsql;
