@@ -290,6 +290,19 @@ else
                 }
             }
 
+            # update BAL history w/ match request
+            for ((bal_i=0; bal_i<${#bal_codes2[@]}; bal_i++)); do
+                bal_insee=${bal_codes2[$bal_i]%%:*}
+                bal_io_id=${bal_codes2[$bal_i]#*:}
+                bal_file="$bal_tmpdir/BAL_${bal_insee}.dat"
+
+                [ -s "$bal_file" ] && {
+                    bal_req_id=$(sed --silent --expression '1p' < "$bal_file") &&
+                    io_history_update \
+                        --infos '{"usecases":[{"name":"match","id":'${bal_req_id}'}]}' \
+                        --id ${bal_io_id}
+                }
+            done
         }
         bal_vars[PROGRESS_CURRENT]=$((bal_vars[PROGRESS_CURRENT] + ${#bal_codes2[@]}))
         [ "${bal_vars[PROGRESS]}" = no ] ||
@@ -297,18 +310,6 @@ else
     done
     [ "${bal_vars[DRY_RUN]}" = yes ] || {
         [[ $bal_error -ne 0 ]] || {
-            for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
-                bal_insee=${bal_codes[$bal_i]%%:*}
-                bal_io_id=${bal_codes[$bal_i]#*:}
-                bal_file="$bal_tmpdir/BAL_${bal_insee}.dat"
-
-                [ -f "$bal_file" ] && {
-                    bal_req_id=$(sed --silent --expression '1p' < "$bal_file") &&
-                    io_history_update \
-                        --infos '{"usecases":[{"name":"match","id":'${bal_req_id}'}]}' \
-                        --id ${bal_io_id}
-                }
-            done
             [ "${bal_vars[CLEAN]}" = no ] || rm -rf "$bal_tmpdir"
         }
     }
