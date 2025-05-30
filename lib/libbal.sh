@@ -36,8 +36,10 @@ bal_check_municipality() {
                 --return _valid &&
             {
                 case "$_valid" in
-                f)  _error="code Commune '${_opts[CODE]}' non valide!"                          ;;
-                t)  _error="Import préalable de l'ensemble des Communes (--municipality ALL)"   ;;
+                f)  _error="code Commune '${_opts[CODE]}' non valide!"
+                    ;;
+                t)  _error="Import préalable de l'ensemble des Communes (--municipality ALL)"
+                    ;;
                 esac
                 log_error "$_error"
                 false
@@ -184,12 +186,6 @@ bal_set_municipality() {
         [ "${bal_vars[PROGRESS]}" = no ] || set_progress --start bal_vars[PROGRESS_START]
     } || return $ERROR_CODE
 
-#     [ "${bal_vars[VERBOSE]}" = yes ] && {
-#         echo '###Contexte'
-#         declare -p bal_vars
-#         echo
-#     }
-
     return $SUCCESS_CODE
 }
 
@@ -324,7 +320,7 @@ bal_list_municipalities() {
                 )
         "
         ;;
-    MATCH_AGAIN)
+    MATCH_AGAIN_ROWID)
         _date_before_fix='2025-05-27'
         _query="
             SELECT
@@ -377,18 +373,18 @@ bal_list_municipalities() {
         IMPORT)
             [ -n "${bal_vars[FIX]}" ] && {
                 _query+="
-                        h.date_data_end IS NOT NULL
-                        AND
-                        h.date_data_end < '$_date_before_fix'::DATE
-                        AND
-                        POSITION('${bal_vars[FIX]}' IN h.attributes) = 0
+                    h.date_data_end IS NOT NULL
+                    AND
+                    h.date_data_end < '$_date_before_fix'::DATE
+                    AND
+                    POSITION('${bal_vars[FIX]}' IN h.attributes) = 0
                 "
             } || {
             # only not already downloaded or newer import available
             _query+="
-                    h.date_data_end IS NULL
-                    OR
-                    m.last_update > h.date_data_end
+                h.date_data_end IS NULL
+                OR
+                m.last_update > h.date_data_end
             "
             }
             ;;
@@ -396,22 +392,22 @@ bal_list_municipalities() {
         #+ if fix (already matched) do it again
         MATCH)
             _query+="
-                    h.date_data_end IS NOT NULL
-                    AND
-                    h.attributes IS JSON OBJECT
-                    AND
-                    'match' $([ "${bal_vars[FIX]}" = MATCH_AGAIN ] || echo NOT) IN (
-                        SELECT (JSON_ARRAY_ELEMENTS((h.attributes::JSON)->'usecases'))->>'name'
-                    )
-                    AND
-                    ((h.attributes::JSON)->'integration'->>'streets')::INT > 0
+                h.date_data_end IS NOT NULL
+                AND
+                h.attributes IS JSON OBJECT
+                AND
+                'match' $([ "${bal_vars[FIX]}" = MATCH_AGAIN_ROWID ] || echo NOT) IN (
+                    SELECT (JSON_ARRAY_ELEMENTS((h.attributes::JSON)->'usecases'))->>'name'
+                )
+                AND
+                ((h.attributes::JSON)->'integration'->>'streets')::INT > 0
             "
             ;;
         esac
     } &&
     _query+="
-            ORDER BY
-                c.criteria ${bal_vars[SELECT_ORDER]}
+        ORDER BY
+            c.criteria ${bal_vars[SELECT_ORDER]}
     " &&
     {
         [[ ${bal_vars[LIMIT]} -eq 0 ]] || {

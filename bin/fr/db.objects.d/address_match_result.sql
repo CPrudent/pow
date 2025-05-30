@@ -396,6 +396,8 @@ BEGIN
                         )
                 WHERE
                     mr.id_request = $1
+                    AND
+                    fr.is_match_element_ok(me.matched_element)
             )
             SELECT
                 s.*,

@@ -245,7 +245,7 @@ else
                     }
                 } &&
                 echo "$bal_query" > "$bal_tmpdir/BAL_${bal_insee}.sql" &&
-                # update request (query), if force
+                # update request (query), if fix
                 {
                     [ "${bal_vars[FIX]}" != MATCH_AGAIN_ROWID ] || {
                         execute_query \
