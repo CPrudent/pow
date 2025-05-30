@@ -145,9 +145,9 @@ get_env_debug \
 }
 
 bal_vars[MUNICIPALITY_CODE]=${bal_vars[MUNICIPALITY]^^}
-declare -a bal_codes=()
-declare -a bal_codes2=()
-bal_start=$(date '+%s')
+declare -a bal_codes
+declare -a bal_codes2
+declare -a bal_errors
 # reset LIMIT if STOP_TIME
 [ "${bal_vars[STOP_TIME]}" != 0 ] && [ ${bal_vars[LIMIT]} -gt 0 ] && bal_vars[LIMIT]=0
 set_env --schema_name fr &&
@@ -203,7 +203,8 @@ if [ "${bal_vars[PARALLEL]}" = no ]; then
                 --code ${bal_vars[MUNICIPALITY_CODE]} \
                 --io_id ${bal_vars[IO_LAST_ID]} || ((bal_error++))
 
-            [ "${bal_vars[PROGRESS]}" = no ] || set_progress --start bal_vars[PROGRESS_START]
+            [ "${bal_vars[PROGRESS]}" = no ] ||
+                set_progress --start bal_vars[PROGRESS_START]
         }
     done
 else
@@ -283,7 +284,7 @@ else
             # search for error (column 7: exit status)
             tail --lines +2 $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log | cut --fields 7 | grep --silent ^[^0]
             [ $? -eq 0 ] && {
-                bal_error=1
+                bal_errors+=($POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log)
                 [[ ${_debug_steps[error]:-1} -eq 0 ]] && {
                     tail --lines +2 $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log | cut --fields 7,9
                     [[ ${_debug_bps[error]} -eq 0 ]] && read
@@ -317,10 +318,18 @@ fi
 
 [ "${bal_vars[DRY_RUN]}" = no ] &&
 [ "${bal_vars[PROGRESS_CURRENT]}" -gt 3 ] && {
+    echo 'VACUUM Match'
     vacuum \
         --schema_name fr \
         --table_name address_match_request,address_match_code,address_match_element,address_match_result \
         --mode ANALYZE || bal_error=1
+}
+
+[ "${bal_vars[PARALLEL]}" = yes ] &&
+[[ ${#bal_errors[@]} -gt 0 ]] && {
+    bal_error=1
+    echo "Série(s) en erreur: "
+    echo ${bal_errors[@]} | tr ' ' '\n'
 }
 
 _rc=$(( bal_error != 0 ? ERROR_CODE : SUCCESS_CODE ))
