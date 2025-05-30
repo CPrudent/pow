@@ -314,6 +314,7 @@ SELECT drop_all_functions_if_exists('fr', 'set_match_cross_reference');
 CREATE OR REPLACE FUNCTION fr.set_match_cross_reference(
     id IN INTEGER,                          -- match request ID
     municipality_code IN VARCHAR,
+    rebuild IN BOOLEAN DEFAULT FALSE,       -- rebuild if already exists
     table_name INOUT VARCHAR DEFAULT NULL   -- result table
 )
 AS
@@ -353,9 +354,13 @@ BEGIN
         END
     );
 
-    IF NOT table_exists(schema_name => 'fr', table_name => table_name) THEN
-        _query := CONCAT(
-            'CREATE TABLE fr.', table_name,' AS
+    IF rebuild OR NOT table_exists(schema_name => 'fr', table_name => table_name) THEN
+        IF rebuild THEN
+            _query := CONCAT('DROP TABLE IF EXISTS fr.', table_name, ';');
+        END IF;
+        _query := CONCAT(_query,
+            '
+            CREATE TABLE fr.', table_name,' AS
             WITH
             source_data AS (', _query, '),
             laposte_data AS (
@@ -406,6 +411,7 @@ BEGIN
                 source_data s
                     LEFT OUTER JOIN match_data m ON s.rowid = m.code_source
                     FULL OUTER JOIN laposte_data p ON p.ref_code_address = m.code_laposte
+            ;
             '
         );
         EXECUTE _query

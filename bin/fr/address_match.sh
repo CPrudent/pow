@@ -521,6 +521,7 @@ pow_argv \
         import_limit:Limiter à n enregistrements;
         export_set:Ensemble des données à exporter;
         export_table:Table des données à exporter;
+        export_rebuild:Reconstituer la table des données (même si elle existe déjà);
         export_municipality:Code INSEE commune;
         export_in_columns:Liste des données entrantes à inclure dans la sortie;
         export_more_columns:Liste des données supplémentaires à inclure dans la sortie;
@@ -537,6 +538,7 @@ pow_argv \
     --args_v '
         source_kind:FILE|TABLE|QUERY;
         export_set:SOURCE|ONLY_SOURCE|COMMON|ONLY_LAPOSTE;
+        export_rebuild:yes|no;
         force:yes|no;
         parallel:yes|no;
         argv_exit:yes|no;
@@ -545,6 +547,7 @@ pow_argv \
     --args_d '
         steps:ALL;
         export_set:SOURCE;
+        export_rebuild:no;
         force:no;
         request_import:NOT_DEFINED;
         request_kind:NOT_DEFINED;
@@ -555,7 +558,7 @@ pow_argv \
     ' \
     --args_p '
         reset:no;
-        tag:source_kind@0N,export_set@XN,parallel@bool,argv_exit@bool,force@bool,verbose@bool
+        tag:source_kind@0N,export_set@XN,export_rebuild@bool,parallel@bool,argv_exit@bool,force@bool,verbose@bool
     ' \
     --pow_argv match_vars "$@" || exit $?
 
