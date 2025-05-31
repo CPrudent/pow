@@ -910,6 +910,7 @@ bal_integration() {
         ;;
     STREET)
         # insert/update streets, and delete old ones (obsolete)
+        #+ street name empty (municipality 77131)!
         execute_query \
             --name "BAL_INTEGRATION_${bal_vars[MUNICIPALITY_CODE]}_STREETS" \
             --query "
@@ -939,6 +940,8 @@ bal_integration() {
                     fr.${bal_vars[TABLE_NAME]}
                         CROSS JOIN JSON_ARRAY_ELEMENTS(data->'voies') v
                         JOIN fr.bal_municipality m ON m.code = data->>'codeCommune'
+                WHERE
+                    v->>'nomVoie' IS NOT NULL
                 ON CONFLICT(code) DO UPDATE SET
                     id_municipality = EXCLUDED.id_municipality,
                     name = EXCLUDED.name,
@@ -1516,6 +1519,7 @@ set_env --schema_name fr &&
 
 bal_error=0
 bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
+bal_vars[PROGRESS_SIZE]=${#bal_vars[PROGRESS_TOTAL]}
 [[ ${bal_vars[PROGRESS_TOTAL]} -gt 0 ]] &&
 [ "${bal_vars[DRY_RUN]}" = yes ] && {
     bal_average_time --avg bal_average &&
