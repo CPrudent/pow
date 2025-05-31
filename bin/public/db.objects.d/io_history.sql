@@ -114,6 +114,27 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+-- get municipality from IO name
+SELECT public.drop_all_functions_if_exists('public', 'get_municipality_from_io_name');
+CREATE OR REPLACE FUNCTION public.get_municipality_from_io_name(
+    name IN TEXT,
+    municipality OUT VARCHAR
+)
+AS
+$func$
+BEGIN
+    municipality := CASE
+        WHEN name ~ '^FR-BAL-[0-9]' THEN SUBSTR(name, 8, 5)
+        WHEN name ~ '^FR-LAPOSTE-.{5}-IRIS_GE' THEN SUBSTR(name, 12, 5)
+        END
+    ;
+
+    IF municipality IS NULL THEN
+        RAISE 'extraction code Commune non prévue pour IO(%)', name;
+    END IF;
+END
+$func$ LANGUAGE plpgsql;
+
 -- add IO history for LAPOSTE restored data, if not exists
 DO $$
 DECLARE

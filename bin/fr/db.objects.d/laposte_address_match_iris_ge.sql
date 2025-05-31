@@ -27,22 +27,19 @@ END $$;
 DROP INDEX IF EXISTS ix_laposte_address_match_iris_ge_code_address;
 CREATE INDEX IF NOT EXISTS ix_laposte_address_match_iris_ge_code_address ON fr.laposte_address_match_iris_ge (code_address);
 
-/* version
+/* version (major as YYYY-MM, minor as sequence)
  CHANGELOG
- v1.1
+ 2025-05.2
     . not overload percent if best_only (w/ 100%)
-    . laposte_address_match_iris_ge.code_match
-      link w/ fr.constant FR_MATCH_IRIS
+    . laposte_address_match_iris_ge.code_match : link w/ fr.constant FR_MATCH_IRIS
  */
 SELECT drop_all_functions_if_exists('fr', 'get_match_iris_ge_version');
 CREATE OR REPLACE FUNCTION fr.get_match_iris_ge_version(
     version OUT VARCHAR
 )
 AS $func$
-DECLARE
-    _match_version VARCHAR := '1.1';
 BEGIN
-    version := _match_version;
+    version := '2025-05.2';
 END
 $func$ LANGUAGE plpgsql;
 
@@ -65,7 +62,7 @@ BEGIN
     mode := 'INIT';
     IF NOT force_init THEN
         version := COALESCE(version, fr.get_match_iris_ge_version());
-        -- can't use function inside COALESCE
+        -- can't use function (returning multiple rows) inside COALESCE
         IF iris_id IS NULL THEN
             iris_id := (get_last_io(name => 'FR-TERRITORY-IGN-IRIS_GE')).id;
         END IF;

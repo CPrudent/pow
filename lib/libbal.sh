@@ -346,7 +346,7 @@ bal_list_municipalities() {
         WITH
         history AS (
             SELECT
-                SUBSTR(l.name, 8, 5) municipality,
+                get_municipality_from_io_name(name => l.name) municipality,
                 l.date_data_end,
                 l.attributes,
                 l.id

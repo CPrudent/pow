@@ -8,6 +8,8 @@
     # DEBUG session
     # export POW_DEBUG_JSON='{"codes":[{"name":"iris_list_municipalities","steps":["func","sql@break","list@break"]},{"name":"address_iris_ge_match","steps":["count@break","io_begin@break","match@break","error@break","io_end@break"]}]}'
 
+    # export POW_DEBUG_JSON='{"codes":[{"name":"address_iris_ge_match","steps":["count","init@break"]}]}'
+
 iris_context_init() {
     local _error
 
@@ -81,23 +83,60 @@ iris_list_municipalities() {
         "
         ;;
     esac &&
-    # NOTE add optional arguments (version, iris_id), else query very very slow!
+    # NOTE newly very very slow! abort use of get_match_iris_ge_mode() in massive selection
     _query="
         WITH
+        history AS (
+            SELECT
+                get_municipality_from_io_name(name => l.name) municipality,
+                l.date_data_end,
+                l.attributes
+            FROM
+                io_history io
+                    JOIN get_last_io(io.name) l ON io.id = l.id
+            WHERE
+                io.name ~ '^FR-LAPOSTE-.{5}-IRIS_GE'
+                AND
+                io.attributes IS JSON OBJECT
+        ),
         criteria AS (
             $_query
         ),
         todo AS (
             SELECT
-                c.municipality,
-                m.mode
+                c.municipality
             FROM
                 criteria c
-                    CROSS JOIN fr.get_match_iris_ge_mode(
-                        municipality => c.municipality,
-                        version => '${global_vars[IRIS_MATCH_VERSION]}',
-                        iris_id => ${global_vars[IRIS_ID]}
-                    ) m
+                    LEFT OUTER JOIN history h ON h.municipality = c.municipality
+            WHERE
+                (
+                    '${global_vars[IRIS_MODE]}' = 'INIT'
+                    AND
+                    (
+                        h.date_data_end IS NULL
+                        OR
+                        (
+                            h.attributes::JSON->>'version' != '${global_vars[IRIS_MATCH_VERSION]}'
+                            OR
+                            (h.attributes::JSON->>'iris_id')::INT != ${global_vars[IRIS_ID]}
+                        )
+                    )
+                )
+                OR
+                (
+                    '${global_vars[IRIS_MODE]}' = 'DELTA'
+                    AND
+                    h.date_data_end IS NOT NULL
+                    AND
+                    EXISTS(
+                        SELECT 1
+                        FROM fr.laposte_address_xy
+                        WHERE
+                            co_insee = c.municipality
+                            AND
+                            dt_reference > h.date_data_end
+                    )
+                )
         )
         SELECT ARRAY(
             SELECT
@@ -105,12 +144,10 @@ iris_list_municipalities() {
             FROM
                 criteria c
                     JOIN todo d ON c.municipality = d.municipality
-            WHERE
-                d.mode = '${global_vars[IRIS_MODE]}'
     " &&
     _query+="
-            ORDER BY
-                c.criteria ${global_vars[SELECT_ORDER]}
+        ORDER BY
+            c.criteria ${global_vars[SELECT_ORDER]}
     " &&
     {
         [[ ${global_vars[LIMIT]} -eq 0 ]] || {
@@ -257,7 +294,7 @@ get_env_debug \
     "$(basename $0 .sh)" \
     _debug_steps \
     _debug_bps \
-    'argv count limit error'
+    'argv count init limit error'
 
 [[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
     declare -p global_vars
@@ -318,6 +355,11 @@ set_env --schema_name fr &&
 laposte_error=0
 global_vars[PROGRESS_TOTAL]=${#laposte_codes[@]}
 global_vars[PROGRESS_SIZE]=${#global_vars[PROGRESS_TOTAL]}
+
+[[ ${_debug_steps[init]:-1} -eq 0 ]] && {
+    declare -p global_vars laposte_codes
+    [[ ${_debug_bps[init]} -eq 0 ]] && read
+}
 
 if [ "${global_vars[PARALLEL]}" = no ]; then
     [ "${global_vars[FORCE_INIT]}" = yes ] && global_vars[IRIS_MODE]=INIT

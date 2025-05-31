@@ -82,6 +82,7 @@ _io_history_manager() {
         "
         ;;
     UPDATE)
+        local _empty_json='{}'
         _query="
             UPDATE public.io_history SET
                 attributes =
@@ -90,7 +91,7 @@ _io_history_manager() {
                     ELSE
                         CASE
                         WHEN attributes IS JSON OBJECT THEN
-                            (jsonb_merge(attributes::JSONB, '${_opts[INFOS]:-\{\}}'::JSONB))::VARCHAR
+                            (jsonb_merge(attributes::JSONB, '${_opts[INFOS]:-$_empty_json}'::JSONB))::VARCHAR
                         ELSE '${_opts[INFOS]}'
                         END
                     END
