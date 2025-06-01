@@ -234,7 +234,8 @@ bal_get_list() {
             name:Nommage de la sélection;
             query:Requête de sélection;
             as_string:Retour en tant que chaîne;
-            as_array:Retour en tant que tableau
+            as_array:Retour en tant que tableau;
+            count:Nombre Elèment(s) de la sélection
         ' \
         --args_m '
             name;
@@ -279,8 +280,14 @@ bal_get_list() {
         }
     } &&
     {
+        [ -z "${_opts[COUNT]}" ] || {
+            local -n _count_ref=${_opts[COUNT]}
+            _count_ref=${_results[1]}
+        }
+    } &&
+    {
         [[ $_return -gt 0 ]] || {
-            log_error 'pas de retour demandé?'
+            log_error 'BIGRE: pas de retour demandé?'
         }
     } || return $ERROR_CODE
 
@@ -698,7 +705,27 @@ bal_deal_obsolescence() {
         ' \
         --pow_argv _opts "$@" || return $?
 
-    local _label1=SELECT _label2 _query _info _obsolete _counters
+    local _label1=SELECT _label2 _query _info _obsolete _count _counters _i _error
+    local -ir _MAX_ITEMS=512
+    local _chunk _chunks
+    local -a _codes _codes2 _counters_chunk _counters_all=(0 0 0)
+
+    # DEBUG steps
+    declare -A _debug_steps _debug_bps
+    get_env_debug \
+        ${FUNCNAME[0]} \
+        _debug_steps \
+        _debug_bps \
+        'func argv query wget del code check'
+
+    [[ ${_debug_steps[func]:-1} -eq 0 ]] && {
+        echo ${FUNCNAME[0]}
+        [[ ${_debug_bps[func]} -eq 0 ]] && read
+    }
+    [[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
+        declare -p _opts
+        [[ ${_debug_bps[argv]} -eq 0 ]] && read
+    }
 
     case "${_opts[LEVEL]}" in
     MUNICIPALITY)
@@ -768,20 +795,59 @@ bal_deal_obsolescence() {
     bal_get_list \
         --name "BAL_${_label1}_OBSOLETE_${_label2}" \
         --query "$_query" \
-        --as_string _obsolete &&
+        --as_string _obsolete \
+        --count _count &&
     {
         [ -z "$_obsolete" ] || {
             _label1=DELETE
-            log_info "Liste ${_info} obsolètes: ${_obsolete}" &&
-            execute_query \
-                --name "BAL_${_label1}_OBSOLETE_${_label2}" \
-                --query "
-                    SELECT counters FROM fr.bal_delete_obsolete_addresses(
-                        municipality => '${bal_vars[MUNICIPALITY_CODE]}',
-                        list => '$_obsolete'
-                    )
-                " \
-                --return _counters &&
+            {
+                if [[ $_count -le $_MAX_ITEMS ]]; then
+                    log_info "Liste ${_info} obsolètes: ${_obsolete}" &&
+                    execute_query \
+                        --name "BAL_${_label1}_OBSOLETE_${_label2}" \
+                        --query "
+                            SELECT counters FROM fr.bal_delete_obsolete_addresses(
+                                municipality => '${bal_vars[MUNICIPALITY_CODE]}',
+                                list => '$_obsolete'
+                            )
+                        " \
+                        --return _counters
+                else
+                    array_sql_to_bash \
+                        --array_sql "$_obsolete" \
+                        --count ${_count} \
+                        --array_bash _codes &&
+                    _chunks=$((${#_codes[@]} / _MAX_ITEMS)) &&
+                    {
+                        [[ $((${#_codes[@]} % _MAX_ITEMS)) -eq 0 ]] || {
+                            _chunks=$((_chunks +1))
+                        }
+                    } &&
+                    for ((_chunk=0; _chunk<$_chunks; _chunk++)); do
+                        log_info "Liste ${_info} obsolètes ${bal_vars[MUNICIPALITY_CODE]} ${_chunk}/${_chunks}" &&
+                        _codes2=( $(printf '%s ' ${_codes[@]:((_chunk*_MAX_ITEMS)):${_MAX_ITEMS}}) ) &&
+                        execute_query \
+                            --name "BAL_${_label1}_OBSOLETE_${_label2}_${_chunk}" \
+                            --query "
+                                SELECT counters FROM fr.bal_delete_obsolete_addresses(
+                                    municipality => '${bal_vars[MUNICIPALITY_CODE]}',
+                                    list => '{$(IFS=, ; echo ${_codes2[*]})}'
+                                )
+                            " \
+                            --return _counters &&
+                        array_sql_to_bash \
+                            --array_sql "$_counters" \
+                            --array_bash _counters_chunk &&
+                        for ((_i=0; _i<3; _i++)); do
+                            _counter_all[$_i]=$((_counter_all[$_i] + _counters_chunk[$_i]))
+                        done
+                    done &&
+                    _counters="{$(IFS=, ; echo ${_counter_all[*]})}" || {
+                        log_error "Effacement ${_info} obsolètes ${bal_vars[MUNICIPALITY_CODE]} ${_chunk}/${_chunks}"
+                        return $ERROR_CODE
+                    }
+                fi
+            } &&
             {
                 _info='Effacement'
                 [ "${_opts[LEVEL]}" = MUNICIPALITY ] || _info+=" ${bal_vars[MUNICIPALITY_CODE]}"
