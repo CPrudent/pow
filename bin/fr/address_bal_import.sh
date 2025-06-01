@@ -817,6 +817,9 @@ bal_deal_obsolescence() {
             } &&
             _label1=DELETE &&
             {
+                # sample municipality 92063 w/ 7827 housenumbers to delete (16 chunks) !
+                #+ cause a shell error (/usr/bin/env: Argument list too long)
+                #+ need to part set in smaller chunks
                 if [[ $_count -le $_MAX_ITEMS ]]; then
                     log_info "Liste ${_info} obsolètes: ${_obsolete}" &&
                     execute_query \
@@ -842,6 +845,7 @@ bal_deal_obsolescence() {
                     for ((_chunk=0; _chunk<$_chunks; _chunk++)); do
                         log_info "Liste ${_info} obsolètes ${bal_vars[MUNICIPALITY_CODE]} ${_chunk}/${_chunks}" &&
                         _codes2=( $(printf '%s ' ${_codes[@]:((_chunk*_MAX_ITEMS)):${_MAX_ITEMS}}) ) &&
+                        # https://stackoverflow.com/questions/52590446/bash-array-using-vs-difference-between-the-two
                         _obsolete="{$(IFS=, ; echo "${_codes2[*]}")}" &&
                         {
                             [[ ${_debug_steps[chunk]:-1} -ne 0 ]] || {
