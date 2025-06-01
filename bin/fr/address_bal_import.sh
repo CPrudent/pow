@@ -710,13 +710,16 @@ bal_deal_obsolescence() {
     local _chunk _chunks
     local -a _codes _codes2 _counters_chunk _counters_all=(0 0 0)
 
+    # DEBUG session
+    # export POW_DEBUG_JSON='{"codes":[{"name":"bal_deal_obsolescence","steps":["argv","query@break","count@break","chunk@break","counters@break"]}]}'
+
     # DEBUG steps
     declare -A _debug_steps _debug_bps
     get_env_debug \
         ${FUNCNAME[0]} \
         _debug_steps \
         _debug_bps \
-        'func argv query wget del code check'
+        'func argv query count chunks counters'
 
     [[ ${_debug_steps[func]:-1} -eq 0 ]] && {
         echo ${FUNCNAME[0]}
@@ -792,6 +795,12 @@ bal_deal_obsolescence() {
         "
         ;;
     esac &&
+    {
+        [[ ${_debug_steps[query]:-1} -ne 0 ]] || {
+            echo "query=[$_query]"
+            [[ ${_debug_bps[query]} -ne 0 ]] || read
+        }
+    } &&
     bal_get_list \
         --name "BAL_${_label1}_OBSOLETE_${_label2}" \
         --query "$_query" \
@@ -799,7 +808,14 @@ bal_deal_obsolescence() {
         --count _count &&
     {
         [ -z "$_obsolete" ] || {
-            _label1=DELETE
+            {
+                [[ ${_debug_steps[count]:-1} -ne 0 ]] || {
+                    echo "count=($_count)"
+                    echo "obsolete=($_obsolete)"
+                    [[ ${_debug_bps[count]} -ne 0 ]] || read
+                }
+            } &&
+            _label1=DELETE &&
             {
                 if [[ $_count -le $_MAX_ITEMS ]]; then
                     log_info "Liste ${_info} obsolètes: ${_obsolete}" &&
@@ -826,12 +842,21 @@ bal_deal_obsolescence() {
                     for ((_chunk=0; _chunk<$_chunks; _chunk++)); do
                         log_info "Liste ${_info} obsolètes ${bal_vars[MUNICIPALITY_CODE]} ${_chunk}/${_chunks}" &&
                         _codes2=( $(printf '%s ' ${_codes[@]:((_chunk*_MAX_ITEMS)):${_MAX_ITEMS}}) ) &&
+                        _obsolete="{$(IFS=, ; echo "${_codes2[*]}")}" &&
+                        {
+                            [[ ${_debug_steps[chunk]:-1} -ne 0 ]] || {
+                                echo "chunk=($_chunk/$_chunks)"
+                                declare -p _codes2
+                                echo "obsolete=($_obsolete)"
+                                [[ ${_debug_bps[chunk]} -ne 0 ]] || read
+                            }
+                        } &&
                         execute_query \
                             --name "BAL_${_label1}_OBSOLETE_${_label2}_${_chunk}" \
                             --query "
                                 SELECT counters FROM fr.bal_delete_obsolete_addresses(
                                     municipality => '${bal_vars[MUNICIPALITY_CODE]}',
-                                    list => '{$(IFS=, ; echo ${_codes2[*]})}'
+                                    list => '$_obsolete'
                                 )
                             " \
                             --return _counters &&
@@ -839,10 +864,17 @@ bal_deal_obsolescence() {
                             --array_sql "$_counters" \
                             --array_bash _counters_chunk &&
                         for ((_i=0; _i<3; _i++)); do
-                            _counter_all[$_i]=$((_counter_all[$_i] + _counters_chunk[$_i]))
-                        done
+                            _counters_all[$_i]=$((_counters_all[$_i] + _counters_chunk[$_i]))
+                        done &&
+                        {
+                            [[ ${_debug_steps[counters]:-1} -ne 0 ]] || {
+                                echo "counters=($_counters)"
+                                declare -p _counters_chunk _counters_all
+                                [[ ${_debug_bps[counters]} -ne 0 ]] || read
+                            }
+                        }
                     done &&
-                    _counters="{$(IFS=, ; echo ${_counter_all[*]})}" || {
+                    _counters="{$(IFS=, ; echo "${_counters_all[*]}")}" || {
                         log_error "Effacement ${_info} obsolètes ${bal_vars[MUNICIPALITY_CODE]} ${_chunk}/${_chunks}"
                         return $ERROR_CODE
                     }
