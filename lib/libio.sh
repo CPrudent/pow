@@ -48,7 +48,7 @@ _io_history_manager() {
         local -n _io_id_manager=${_opts[ID]}
         _return='--return _io_id_manager'
         _query="
-            SELECT id FROM get_io(
+            SELECT ARRAY_AGG(id) FROM get_io(
                 name => '${_opts[IO]}',
                 status => '${_opts[STATUS]}',
                 date_end => '${_opts[DATE_END]}'::TIMESTAMP
@@ -225,7 +225,16 @@ io_history_exists() {
         --io ${_opts[IO]} \
         --date_end "${_opts[DATE_END]}" \
         --id _io_id &&
-    [ -n "$_io_id" ] || return $ERROR_CODE
+    [ -n "$_io_id" ] &&
+    {
+        [ -z "${_opts[ID]}" ] ||
+            # only last IO (w/ given date_end)
+            local -a _array
+            array_sql_to_bash \
+                --array_sql "$_io_id" \
+                --array_bash _array &&
+            _io_id=${_array[0]}
+    } || return $ERROR_CODE
 
     return $SUCCESS_CODE
 }

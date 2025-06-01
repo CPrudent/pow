@@ -74,7 +74,6 @@ SELECT set_column_comment('public', 'io_history', 'nb_rows_processed', 'Nb enreg
 SELECT set_column_comment('public', 'io_history', 'attributes', 'Informations supplémentaires');
 
 -- get IO
-SELECT public.drop_all_functions_if_exists('public', 'get_all_io');
 SELECT public.drop_all_functions_if_exists('public', 'get_io');
 CREATE OR REPLACE FUNCTION public.get_io(
     name TEXT,
@@ -87,9 +86,9 @@ BEGIN
     RETURN QUERY SELECT *
         FROM public.io_history h
         WHERE h.name = get_io.name
-        AND date_data_end = get_io.date_end
-        AND h.status = get_io.status
-        --ORDER BY h.date_data_begin ?
+            AND date_data_end = get_io.date_end
+            AND h.status = get_io.status
+        ORDER BY h.id DESC
     ;
 END
 $func$ LANGUAGE plpgsql;

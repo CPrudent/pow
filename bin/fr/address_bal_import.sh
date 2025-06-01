@@ -819,9 +819,9 @@ bal_context() {
     SUMMARY)
         _vars_ref[URL_DATA]='api/communes-summary.csv' &&
         _vars_ref[NEXT_LEVEL]=MUNICIPALITY &&
-        # no download if present summary is max 3 days old
+        # no download if present summary is max n days old
         _vars_ref[OVERWRITE_KEY]=TIME &&
-        _vars_ref[OVERWRITE_VALUE]=$((3*24*60*60)) &&
+        _vars_ref[OVERWRITE_VALUE]=$((${bal_vars[SUMMARY_NDAYS]}*24*60*60)) &&
         # no option for CSV summary
         _vars_ref[IMPORT_OPTIONS]= &&
         # vacuum list
@@ -1176,7 +1176,8 @@ bal_load() {
             --id bal_vars[IO_ID] &&
         {
             {
-                if (([ "${_opts[LEVEL]}" = SUMMARY ] && [[ ${bal_vars[SUMMARY_NDAYS]} -gt 0 ]]) || (is_yes --var bal_vars[LEVEL_MUNICIPALITY])); then
+                # ndays -1 avoid to try download summary (useful when server is down!)
+                if (([ "${_opts[LEVEL]}" = SUMMARY ] && [[ ${bal_vars[SUMMARY_NDAYS]} -gt -1 ]]) || (is_yes --var bal_vars[LEVEL_MUNICIPALITY])); then
                     io_download_file \
                         --url "${bal_vars[URL]}/${_context[URL_DATA]}" \
                         --overwrite_mode NEWER \
@@ -1411,7 +1412,7 @@ declare -A bal_vars=(
 pow_argv \
     --args_n '
         municipality:Code Commune INSEE à traiter (ou ALL pour télécharger la liste complète);
-        summary_ndays:Délai (jour) accepté avant de retélécharger la dernière version (0 pour exclure);
+        summary_ndays:Délai (jour) accepté avant de retélécharger la dernière version (-1 pour exclure);
         select_criteria:Sélection des Communes;
         select_order:Ordre de sélection des Communes;
         limit:Limiter à n communes (0 sans limite);
