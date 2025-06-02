@@ -55,6 +55,7 @@
 \include_relative laposte_municipality_vs_iris_ge.sql
 \include_relative laposte_address_match_iris_ge.sql
 \include_relative constant.sql
+\include_relative datamart.sql
 \include_relative territory_level.sql
 \include_relative territory_laposte.sql
 \include_relative territory_to_date.sql

@@ -89,6 +89,11 @@ BEGIN
     CALL public.io_add_if_not_exists(name => 'FR-CONSTANT-ADDRESS-LAPOSTE');
     CALL public.io_add_if_not_exists(name => 'FR-CONSTANT-ADDRESS-LAPOSTE-CORRECTION');
 
+    -- FR-DATAMART
+
+    CALL public.io_add_if_not_exists(name => 'FR-DATAMART');
+    CALL public.io_add_if_not_exists(name => 'FR-DATAMART-LAPOSTE');
+
     -- get all IOs in memory
     _io_list := ARRAY(SELECT io_list FROM public.io_list);
 
@@ -513,6 +518,48 @@ BEGIN
         id2 => public.io_get_id_from_array_by_name(
                     from_array => _io_list,
                     name => 'FR-CONSTANT-ADDRESS-LAPOSTE-CORRECTION'
+                )
+    );
+
+    /*
+       FR-DATAMART
+            |-> FR-DATAMART-LAPOSTE
+     */
+
+    _id := public.io_get_id_from_array_by_name(
+        from_array => _io_list,
+        name => 'FR-DATAMART'
+    );
+    CALL public.io_add_relation_if_not_exists(
+        id1 => _id,
+        id2 => public.io_get_id_from_array_by_name(
+                    from_array => _io_list,
+                    name => 'FR-DATAMART-LAPOSTE'
+                )
+    );
+
+    /*
+       FR-DATAMART-LAPOSTE
+            |-> FR-CONSTANT
+            |-> FR-ADDRESS-LAPOSTE-DELIVERY-POINT
+     */
+
+    _id := public.io_get_id_from_array_by_name(
+        from_array => _io_list,
+        name => 'FR-DATAMART-LAPOSTE'
+    );
+    CALL public.io_add_relation_if_not_exists(
+        id1 => _id,
+        id2 => public.io_get_id_from_array_by_name(
+                    from_array => _io_list,
+                    name => 'FR-CONSTANT'
+                )
+    );
+    CALL public.io_add_relation_if_not_exists(
+        id1 => _id,
+        id2 => public.io_get_id_from_array_by_name(
+                    from_array => _io_list,
+                    name => 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT'
                 )
     );
 
