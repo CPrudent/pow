@@ -24,7 +24,7 @@ on_integration_error() {
 }
 
 declare -A io_vars=(
-    [NAME]=FR-CONSTANT
+    [NAME]=FR-DATAMART
     [DATE]=$(date '+%F')
     [TODO]=no
     [ID_IO_MAIN]=
@@ -34,24 +34,24 @@ pow_argv \
     --args_n '
         force:Forcer le traitement même si celui-ci a déjà été fait;
         depends:Mettre à jour les dépendances (si nécessaire);
-        do_constant:Indicateur de génération des Constantes;
+        do_datamart:Indicateur de génération des Données;
         do_vacuum:Indicateur de réorganisation des Données
     ' \
     --args_v '
         force:yes|no;
         depends:yes|no;
-        do_constant:yes|no;
+        do_datamart:yes|no;
         do_vacuum:yes|no
     ' \
     --args_d '
         force:no;
         depends:yes;
-        do_constant:yes;
+        do_datamart:yes;
         do_vacuum:yes
     ' \
     --args_p '
         reset:no;
-        tag:force@bool,depends@bool,do_constant@bool,do_vacuum@bool
+        tag:force@bool,depends@bool,do_datamart@bool,do_vacuum@bool
     ' \
     --pow_argv io_vars "$@" || exit $?
 
@@ -70,12 +70,7 @@ get_env_debug \
 
 declare -A io_hash &&
 set_env --schema_name fr &&
-log_info 'Mise à jour des constantes (FR)' &&
-{
-    [ "${io_vars[DEPENDS]}" = no ] || {
-        $POW_DIR_BATCH/constant_laposte.sh --force ${io_vars[FORCE]}
-    }
-} &&
+log_info 'Mise à jour des Métriques (FR)' &&
 io_get_info_integration \
     --io ${io_vars[NAME]} \
     --to_hash io_hash \
@@ -161,19 +156,19 @@ io_get_info_integration \
                 } &&
                 {
                     case ${io_steps[$io_step]} in
-                    FR-CONSTANT-ADDRESS)
+                    FR-DATAMART-ADDRESS)
                         io_count="
                             (SELECT COUNT(1) FROM fr.laposte_address_street_uniq)
                             " &&
                         execute_query \
-                            --name FR_CONSTANT_ADDRESS \
+                            --name FR_DATAMART_ADDRESS \
                             --query "
-                                DO \$CONST\$
+                                DO \$DATAMART\$
                                 BEGIN
-                                    IF '${io_vars[DO_CONSTANT]}' = 'yes' THEN
-                                        CALL fr.set_constant_address();
+                                    IF '${io_vars[DO_DATAMART]}' = 'yes' THEN
+                                        CALL fr.set_datamart_address();
                                     END IF;
-                                END \$CONST\$;
+                                END \$DATAMART\$;
                             "
                         ;;
                     esac
@@ -223,7 +218,7 @@ io_get_info_integration \
         [ "${io_vars[DO_VACUUM]}" = no ] || {
             vacuum \
                 --schema_name fr \
-                --table_name constant \
+                --table_name laposte_address_keyword,laposte_address_street_uniq,laposte_address_street_membership,laposte_address_street_word_descriptor,laposte_address_street_word_level,laposte_address_street_kw_exception,laposte_address_housenumber_uniq,laposte_address_complement_uniq,laposte_address_complement_membership,laposte_address_complement_word_descriptor,laposte_address_complement_word_level,laposte_address_fault \
                 --mode ANALYZE
         }
     } || {

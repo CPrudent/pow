@@ -939,25 +939,26 @@ $proc$ LANGUAGE plpgsql;
 Query returned successfully in 801 msec.
  */
 
-
+-- prepare DATAMART data (from LAPOSTE addresses)
 SELECT public.drop_all_functions_if_exists('fr', 'set_datamart_address');
 CREATE OR REPLACE PROCEDURE fr.set_datamart_address()
 AS
 $proc$
 DECLARE
-    _id INT;
     _listof INT[];
 BEGIN
-    _id := (get_last_io(name => 'FR-CONSTANT')).id;
-    IF _id IS NULL THEN
-        RAISE 'Définition préalable des constantes (lancer constant.sh)';
-    END IF;
+    /* NOTE
+     evaluate infra by municipality (but not only address domain)
+     set_datamart_distribution() ?
 
-    -- MUNICIPALITY/AREA ------------------------------------------------------
+     perhaps good idea would be to correct DISTRIBUTION/DELIVERY faults
+     as 24364 municipality w/ all points inactive!
+     */
+    CALL fr.set_laposte_municipality_infra();
+
+    -- MUNICIPALITY -----------------------------------------------------------
 
     CALL fr.set_laposte_municipality_normalized_label_exception();
-    -- evaluate infra by municipality
-    CALL fr.set_laposte_municipality_infra();
 
     -- STREET -----------------------------------------------------------------
 
