@@ -152,7 +152,7 @@ BEGIN
        FR-TERRITORY-LAPOSTE
             |-> FR-TERRITORY-LAPOSTE-EVENT
             |-> FR-TERRITORY-LAPOSTE-SUPRA
-            |-> FR-DATAMART-LAPOSTE
+            |-> FR-DATAMART-ADDRESS
      */
 
     _id := public.io_get_id_from_array_by_name(
@@ -177,7 +177,7 @@ BEGIN
         id1 => _id,
         id2 => public.io_get_id_from_array_by_name(
                     from_array => _io_list,
-                    name => 'FR-DATAMART-LAPOSTE'
+                    name => 'FR-DATAMART-ADDRESS'
                 )
     );
 
