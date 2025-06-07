@@ -16,6 +16,9 @@ bal_check_municipality() {
 
     local _valid _error
 
+    # no check !
+    [ "${bal_vars[FIX]}" = OBSOLESCENCE_MUNICIPALITY ] && return $SUCCESS_CODE
+
     execute_query \
         --name "BAL_MUNICIPALITY_${_opts[CODE]}" \
         --query "

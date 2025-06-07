@@ -1423,6 +1423,26 @@ bal_fix_done() {
 bal_fix_apply() {
     local _done _force
 
+    # DEBUG session
+    # export POW_DEBUG_JSON='{"codes":[{"name":"bal_fix_apply","steps":["func","array@break","street_before@break","street_after@break","housenumber_before@break","housenumber_after@break"]}]}'
+
+    # DEBUG steps
+    declare -A _debug_steps _debug_bps
+    get_env_debug \
+        ${FUNCNAME[0]} \
+        _debug_steps \
+        _debug_bps \
+        'func argv array street_before street_after housenumber_before housenumber_after'
+
+    [[ ${_debug_steps[func]:-1} -eq 0 ]] && {
+        echo ${FUNCNAME[0]}
+        [[ ${_debug_bps[func]} -eq 0 ]] && read
+    }
+    [[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
+        declare -p _opts
+        [[ ${_debug_bps[argv]} -eq 0 ]] && read
+    }
+
     bal_fix_done --state _done &&
     {
         ([ "${bal_vars[FORCE]}" = no ] && is_yes --var _done) || {
@@ -1488,6 +1508,83 @@ bal_fix_apply() {
                     --id ${bal_vars[IO_LAST_ID]} \
                     --infos '{"integration":{"fixes":[{"name":"OBSOLESCENCE_STREET"}]}}'
                 ;;
+            OBSOLESCENCE_MUNICIPALITY)
+                local _dir_common="$POW_DIR_COMMON_GLOBAL_SCHEMA/bal"
+                local _joblog=$POW_DIR_ARCHIVE/parallel_${bal_vars[MUNICIPALITY_CODE]}_load.log
+                local _error
+                local -a _streets
+
+                bal_check_municipality --code ${bal_vars[MUNICIPALITY_NEW]} &&
+                _streets=(
+                    $(find $_dir_common -name ${bal_vars[MUNICIPALITY_CODE]}'_[^_]*.json' -exec basename --suffix .json {} \;)) &&
+                {
+                    [[ ${_debug_steps[array]:-1} -ne 0 ]] || {
+                        declare -p _streets
+                        [[ ${_debug_bps[array]} -ne 0 ]] || read
+                    }
+                } &&
+                bal_import_table --command CREATE &&
+                # load municipality
+                jq \
+                    --raw-output --compact-output '.' \
+                    "${_dir_common}/${bal_vars[MUNICIPALITY_CODE]}.json" |
+                    sed --expression 's/\\"/\\\\\\"/g' |
+                    execute_query --name LOAD_JSON --query 'COPY fr.'${bal_vars[TABLE_NAME]}'(data) FROM STDIN' &&
+                # change to new code
+                execute_query \
+                    --name BAL_${bal_vars[MUNICIPALITY_CODE]}_TO_${bal_vars[MUNICIPALITY_NEW]} \
+                    --query "
+                        UPDATE ${bal_vars[TABLE_NAME]} SET
+                            data = data::jsonb - 'codeCommune' || '{"'"'"codeCommune"'"'":"'"'"${bal_vars[MUNICIPALITY_NEW]}"'"'"}'
+                    " &&
+                {
+                    [[ ${_debug_steps[street_before]:-1} -ne 0 ]] || {
+                        echo 'before inserting streets...'
+                        [[ ${_debug_bps[street_before]} -ne 0 ]] || read
+                    }
+                } &&
+                # insert streets
+                bal_integration --level STREET &&
+                {
+                    [[ ${_debug_steps[street_after]:-1} -ne 0 ]] || {
+                        echo 'after inserting streets...'
+                        [[ ${_debug_bps[street_after]} -ne 0 ]] || read
+                    }
+                } &&
+                execute_query \
+                    --name BAL_TRUNCATE \
+                    --query "TRUNCATE TABLE fr.${bal_vars[TABLE_NAME]}" &&
+                # load housenumbers (for each street)
+                parallel \
+                    --jobs ${bal_vars[PARALLEL_JOBS]} \
+                    --joblog $_joblog \
+                    jq --raw-output --compact-output '.' \
+                    "${_dir_common}/{}.json" ::: "${_streets[@]}" |
+                    sed --expression 's/\\"/\\\\\\"/g' |
+                    execute_query --name LOAD_JSON --query 'COPY fr.'${bal_vars[TABLE_NAME]}'(data) FROM STDIN' &&
+                {
+                    _error=$(tail --lines +2 $_joblog | cut --field 7 | grep ^[^0])
+                    [ -z "$_error" ] || {
+                        log_error "rechargement des Voies de ${bal_vars[MUNICIPALITY_CODE]} en erreur, veuillez consulter $_joblog"
+                        false
+                    }
+                } &&
+                {
+                    [[ ${_debug_steps[housenumber_before]:-1} -ne 0 ]] || {
+                        echo 'before inserting housenumbers...'
+                        [[ ${_debug_bps[housenumber_before]} -ne 0 ]] || read
+                    }
+                } &&
+                # insert housenumbers
+                bal_integration --level HOUSENUMBER &&
+                {
+                    [[ ${_debug_steps[housenumber_after]:-1} -ne 0 ]] || {
+                        echo 'after inserting housenumbers...'
+                        [[ ${_debug_bps[housenumber_after]} -ne 0 ]] || read
+                    }
+                } &&
+                bal_import_table --command DROP
+                ;;
             esac
         }
     } || return $ERROR_CODE
@@ -1532,6 +1629,7 @@ pow_argv \
         force_summary:Forcer le traitement (SUMMARY) même si celui-ci a déjà été fait;
         force_load:Forcer le chargement même si celui-ci a déjà été fait;
         obsolete_municipality:Gestion active obsolescence des municipalités;
+        municipality_new:Nouveau code Commune INSEE (avec fix OBSOLESCENCE_MUNICIPALITY);
         fix:Corriger une erreur;
         levels:Ensemble des niveaux Adresse à traiter;
         dry_run:Simuler le traitement;
@@ -1551,7 +1649,7 @@ pow_argv \
         force_summary:yes|no;
         force_load:yes|no;
         obsolete_municipality:yes|no;
-        fix:SPACE_IN_CODE|CONVERT_ATTRIBUTES|MORE_ATTRIBUTES|OBSOLESCENCE_STREET;
+        fix:SPACE_IN_CODE|CONVERT_ATTRIBUTES|MORE_ATTRIBUTES|OBSOLESCENCE_STREET|OBSOLESCENCE_MUNICIPALITY;
         levels:MSN|MS|N;
         dry_run:yes|no;
         progress:yes|no;
@@ -1603,7 +1701,7 @@ bal_start=$(date '+%s')
 [ "${bal_vars[STOP_TIME]}" != 0 ] && [ ${bal_vars[LIMIT]} -gt 0 ] && bal_vars[LIMIT]=0
 # with level(s)
 case "${bal_vars[FIX]}" in
-OBSOLESCENCE_STREET)
+OBSOLESCENCE_STREET|OBSOLESCENCE_MUNICIPALITY)
     bal_vars[LEVELS]=M
     ;;
 esac
@@ -1615,6 +1713,10 @@ set_env --schema_name fr &&
 {
     case "${bal_vars[MUNICIPALITY_CODE]}" in
     ALL)
+        [ "${bal_vars[FIX]}" = OBSOLESCENCE_MUNICIPALITY ] && {
+            log_error 'correctif pour 1 Commune précise!'
+            exit $ERROR_CODE
+        }
         bal_load --level SUMMARY &&
         bal_list_municipalities --list bal_codes &&
         {
