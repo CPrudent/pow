@@ -808,6 +808,14 @@ bal_deal_obsolescence() {
         --count _count &&
     {
         [ -z "$_obsolete" ] || {
+            # active unmerge/merge municipalities ?
+            [ "${_opts[LEVEL]}" = MUNICIPALITY ] &&
+            [ "${bal_vars[OBSOLETE_MUNICIPALITY]}" = no ] && {
+                # no, only return list of codes
+                bal_vars[OBSOLETE_MUNICIPALITIES]=$_obsolete
+                return $SUCCESS_CODE
+            }
+
             {
                 [[ ${_debug_steps[count]:-1} -ne 0 ]] || {
                     echo "count=($_count)"
@@ -1501,6 +1509,7 @@ declare -A bal_vars=(
     [IO_END]="$(date +%F)"
     [IO_ROWS]=0
     [AREAS_OLD_MUNICIPALITY]=0
+    [OBSOLETE_MUNICIPALITIES]=
     [STREETS]=-1
     [HOUSENUMBERS]=-1
     [PROGRESS_GROUPS]='INSEE|Commu|Temps'
@@ -1522,6 +1531,7 @@ pow_argv \
         force:Forcer le traitement (MUNICIPALITY, FIX) même si celui-ci a déjà été fait;
         force_summary:Forcer le traitement (SUMMARY) même si celui-ci a déjà été fait;
         force_load:Forcer le chargement même si celui-ci a déjà été fait;
+        obsolete_municipality:Gestion active obsolescence des municipalités;
         fix:Corriger une erreur;
         levels:Ensemble des niveaux Adresse à traiter;
         dry_run:Simuler le traitement;
@@ -1540,6 +1550,7 @@ pow_argv \
         force:yes|no;
         force_summary:yes|no;
         force_load:yes|no;
+        obsolete_municipality:yes|no;
         fix:SPACE_IN_CODE|CONVERT_ATTRIBUTES|MORE_ATTRIBUTES|OBSOLESCENCE_STREET;
         levels:MSN|MS|N;
         dry_run:yes|no;
@@ -1555,6 +1566,7 @@ pow_argv \
         force:no;
         force_summary:no;
         force_load:yes;
+        obsolete_municipality:no;
         levels:MS;
         dry_run:no;
         limit:3;
@@ -1762,6 +1774,12 @@ done
     print_progress BEGIN "Temps Traitement" "${bal_vars[PROGRESS_GROUPS]}" 0 0 1 '\r' &&
     get_elapsed_time --start ${bal_start} --result _elapsed &&
     print_progress END "${_elapsed}"
+}
+
+[ "${bal_vars[OBSOLETE_MUNICIPALITY]}" = no ] &&
+[ -n "${bal_vars[OBSOLETE_MUNICIPALITIES]}" ] && {
+    [ "${bal_vars[PROGRESS]}" = no ] || set_log_echo yes
+    log_info "liste des Communes obsolètes ${bal_vars[OBSOLETE_MUNICIPALITIES]} à traiter!"
 }
 
 _rc=$(( bal_error == 1 ? ERROR_CODE : SUCCESS_CODE ))
