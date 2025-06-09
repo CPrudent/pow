@@ -6,10 +6,10 @@
     # import IGN geometry of territories (into FR schema)
 
 # CHANGELOG (ADMIN-EXPRESS)
-# 2.5 :
+# 2.5
 #   ENTITE_RATTACHEE existe toujours mais n'inclut plus les arrondissements municipaux (entite_rattachee.type = 'ARM')
 #	qui sont dans un nouveau fichier ARRONDISSEMENT_MUNICIPAL(colonnes indentiques à entite_rattachee)
-# 3.0 :
+# 3.0
 #   ENTITE_RATTACHEE est remplacée par COMMUNE_ASSOCIEE_OU_DELEGUEE
 #   les colonnes suivantes sont renommées :
 #       commune.nom_com/nom_com_m -> nom/nom_m
@@ -23,9 +23,18 @@
 #       arrondissement_municipal.insee_ratt -> insee_com
 #       arrondissement_municipal.nom_com/nom_m -> nom/nom_m
 #   une archive contenant tous les territoires, mais avec 6 fichiers pour chaque élément (COMMUNE, ...)
-# 3.1 :
+# 3.1
 #   archive du millésime est décomposée en plusieurs : FR métropolitaine, GLP, MTQ, GUF, REU et MYT
 #   chacune des 6 archives contient un fichier par élément
+# 3.2
+#
+# 4.0
+#   https://geoservices.ign.fr/sites/default/files/2025-06/SE_ADMIN_EXPRESS_depuis_v4-0.pdf
+#   no SHP but GPKG !
+#   https://gis.stackexchange.com/questions/290582/uploading-geopackage-contents-to-postgresql
+#   ajout (et renommage) classes d'objets
+#   ajout (et renommage) attributs (noms des colonnes)
+
 
 # NOTE: les types d'élements correspondent aux différents fichiers shapefile existants dans l'archive ADMIN EXPRESS
 declare -a _AVAILABLE_ITEMS=(

@@ -685,8 +685,8 @@ io_get_property_online_available() {
     FR-TERRITORY-INSEE)
         _url_base='https://www.insee.fr'
         _url_data=${_url_base}'/fr/information/7671844'
-        _re1='table-appartenance-geo-communes-[0-9]{2}[^.]*\.zip'
-        _re2='[0-9]{2}'
+        _re1='table-appartenance-geo-communes-[0-9]{4}[^.]*\.zip'
+        _re2='[0-9]{4}'
         ;;
     FR-MUNICIPALITY-EVENT-INSEE)
         _url_base='https://www.insee.fr'
@@ -1718,6 +1718,7 @@ import_geo_file() {
             file_path:Chemin absolu vers le fichier à traiter;
             schema_name:Nom du schema cible;
             table_name:Nom de la table cible;
+            layers:Nom de(s) couche(s) GPKG à créer (liste séparée avec espace si multiple) ;
             password:Mot de passe;
             load_mode:Mode de chargement des données;
             encoding:Encodage de caractères;
@@ -1824,9 +1825,9 @@ import_geo_file() {
     _step+=1 &&
     {
         # FIXME: try to run each word (shp, ...) as command!
-        #[[ ! ${_opts[FILE_EXTENSION]} =~ shp|mif|dbf|json ]] && {
-        echo ${_opts[FILE_EXTENSION]} | grep --perl-regexp --silent 'shp|mif|dbf|json' || {
-            log_error "Le Fichier ${_opts[FILE_PATH]} n'a pas une extension shp, mif, dbf ou json"
+        #[[ ! ${_opts[FILE_EXTENSION]} =~ shp|mif|dbf|json|gpkg ]] && {
+        echo ${_opts[FILE_EXTENSION]} | grep --perl-regexp --silent 'shp|mif|dbf|json|gpkg' || {
+            log_error "Le Fichier ${_opts[FILE_PATH]} n'a pas une extension gérée (shp,mif,dbf,json,gpkg)"
             false
         }
     } &&
@@ -1838,12 +1839,20 @@ import_geo_file() {
     # -t_srs srs_def : Reproject/transform to this SRS on output
     # -s_srs srs_def : Override source SRS
     {
-        [ -z "${_opts[TO_SRID]}" ] || _ogr_args="$_ogr_args -t_srs ${_opts[TO_SRID]}"
-        [ -z "${_opts[FROM_SRID]}" ] || _ogr_args="$_ogr_args -s_srs ${_opts[FROM_SRID]}"
-        [ -z "${_opts[LIMIT]}" ] || _ogr_args="$_ogr_args -limit ${_opts[LIMIT]}"
+        [ -z "${_opts[TO_SRID]}" ] || _ogr_args+=" -t_srs ${_opts[TO_SRID]}"
+        [ -z "${_opts[FROM_SRID]}" ] || _ogr_args+=" -s_srs ${_opts[FROM_SRID]}"
+        [ -z "${_opts[LIMIT]}" ] || _ogr_args+=" -limit ${_opts[LIMIT]}"
 
-        _layer_creation_options='-lco FID=rowid -lco GEOMETRY_NAME=geom'
+        _layer_creation_options='-lco GEOMETRY_NAME=geom'
         [ "$spatial_index" = yes ] || _layer_creation_options+=' -lco SPATIAL_INDEX=no'
+        if [ "${_opts[FILE_EXTENSION]}" = gpkg ]; then
+            # no table name! many layers to load together
+            _layer_creation_options+=' -preserve_fid'
+            [ -z "${_opts[LAYERS]}" ] || _layer_creation_options+=" ${_opts[LAYERS]}"
+        else
+            _ogr_args+=" -nln ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]}"
+            _layer_creation_options+=' -lco FID=rowid'
+        fi
     }
     _step+=1 &&
     {
@@ -1881,8 +1890,10 @@ import_geo_file() {
     } &&
     _step+=1 &&
     {
-        [ -n "$passwd" ] || {
-            get_pg_passwd --user_name $POW_PG_USERNAME --password passwd || {
+        [ -n "${_opts[PASSWORD]}" ] || {
+            local _passwd
+            get_pg_passwd --user_name $POW_PG_USERNAME --password _passwd &&
+            _opts[PASSWORD]=$_passwd || {
                 log_error "Erreur de récupération du mot de passe (user=$POW_PG_USERNAME)"
                 false
             }
@@ -1892,10 +1903,9 @@ import_geo_file() {
     {
         ogr2ogr \
             -f "PostgreSQL" \
-            PG:"host=$POW_PG_HOST user=$POW_PG_USERNAME dbname=$POW_PG_DBNAME password=$passwd" \
+            PG:"host=$POW_PG_HOST user=$POW_PG_USERNAME dbname=$POW_PG_DBNAME password=${_opts[PASSWORD]}" \
             "${_opts[FILE_PATH]}" \
             -$_load_mode_ogr2ogr \
-            -nln "${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]}" \
             -nlt ${_opts[GEOMETRY_TYPE]} \
             $_ogr_args \
             $_layer_creation_options 2> "$_logfile"
@@ -1916,10 +1926,12 @@ import_geo_file() {
     } &&
     _step+=1 &&
     {
-        [ "${_opts[ROWID]}" = yes ] || {
-            execute_query \
-                --name DROP_COLUMN_ROWID \
-                --query "ALTER TABLE ${_opts[TABLE_NAME]} DROP COLUMN IF EXISTS rowid"
+        [ "${_opts[FILE_EXTENSION]}" = gpkg ] || {
+            [ "${_opts[ROWID]}" = yes ] || {
+                execute_query \
+                    --name DROP_COLUMN_ROWID \
+                    --query "ALTER TABLE ${_opts[TABLE_NAME]} DROP COLUMN IF EXISTS rowid"
+            }
         }
     } &&
     _step+=1 &&
@@ -1928,7 +1940,7 @@ import_geo_file() {
         return $ERROR_CODE
     }
 
-    log_info "Import avec succès de ${_opts[FILE_NAME]} dans ${_opts[TABLE_NAME]}"
+    log_info "Import avec succès de ${_opts[FILE_NAME]}"
     return $SUCCESS_CODE
 }
 
