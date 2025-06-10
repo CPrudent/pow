@@ -654,7 +654,7 @@ io_get_property_online_available() {
         ' \
         --pow_argv _opts "$@" || return $?
 
-    local _url_base _url_data _re1 _re2
+    local _url_base _url_data _re1 _re2 _re_search _re_file
     local -n _value_ref=${_opts[VALUE]}
 
     case "${_opts[NAME]}" in
@@ -663,6 +663,9 @@ io_get_property_online_available() {
         _url_data=${_url_base}'/adminexpress'
         _re1='href="(http|ftp)[^"]+ADMIN-EXPRESS_(?(?!WM)[^"])+[0-9-]{10}\.7z[^"]*'
         _re2='[0-9-]{10}'
+        _re_search='href="(http|ftp)[^"]+ADMIN-EXPRESS_(?(?!WM)[^"])+#DATE\.7z[^"]*'
+        # RE plus _REGION_DATE.7z
+        _re_file='ADMIN-EXPRESS_4-0__GPKG_[^_]+'
         ;;
     FR-TERRITORY-IGN-IRIS)
         _url_base='https://geoservices.ign.fr'
@@ -705,6 +708,9 @@ io_get_property_online_available() {
     URL_DATA)       _value_ref=$_url_data       ;;
     REGEXP1)        _value_ref=$_re1            ;;
     REGEXP2)        _value_ref=$_re2            ;;
+    REGEXP_SEARCH)  _value_ref=$_re_search      ;;
+    REGEXP_DATE)    _value_ref=$_re2            ;;
+    REGEXP_FILE)    _value_ref=$_re_file        ;;
     *)
         log_error "KEY ${_opts[KEY]} non pris en charge!"
         return $ERROR_CODE
@@ -1814,12 +1820,15 @@ import_geo_file() {
     esac &&
     _step+=1 &&
     {
-        [ -n "${_opts[TABLE_NAME]}" ] || {
-            execute_query \
-                --name LABEL_TO_CODE \
-                --query "SELECT public.label_to_code('${_opts[FILE_NAME]}')" \
-                --with_log no \
-                --return _opts[TABLE_NAME]
+        # eventually no table name! w/ GPKG, many layers can be loaded together
+        [ "${_opts[FILE_EXTENSION]}" = gpkg ] || {
+            [ -n "${_opts[TABLE_NAME]}" ] || {
+                execute_query \
+                    --name LABEL_TO_CODE \
+                    --query "SELECT public.label_to_code('${_opts[FILE_NAME]}')" \
+                    --with_log no \
+                    --return _opts[TABLE_NAME]
+            }
         }
     } &&
     _step+=1 &&
@@ -1834,7 +1843,7 @@ import_geo_file() {
     _step+=1 &&
     get_tmp_file --tmpfile _logfile --create yes --tmpext log &&
     _step+=1 &&
-    # OGR2OGR arguments
+    # ogr2ogr arguments
     # http://www.bostongis.com/PrinterFriendly.aspx?content_name=ogr_cheatsheet
     # -t_srs srs_def : Reproject/transform to this SRS on output
     # -s_srs srs_def : Override source SRS
@@ -1842,15 +1851,14 @@ import_geo_file() {
         [ -z "${_opts[TO_SRID]}" ] || _ogr_args+=" -t_srs ${_opts[TO_SRID]}"
         [ -z "${_opts[FROM_SRID]}" ] || _ogr_args+=" -s_srs ${_opts[FROM_SRID]}"
         [ -z "${_opts[LIMIT]}" ] || _ogr_args+=" -limit ${_opts[LIMIT]}"
+        [ -z "${_opts[TABLE_NAME]}" ] || _ogr_args+=" -nln ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]}"
 
         _layer_creation_options='-lco GEOMETRY_NAME=geom'
         [ "$spatial_index" = yes ] || _layer_creation_options+=' -lco SPATIAL_INDEX=no'
         if [ "${_opts[FILE_EXTENSION]}" = gpkg ]; then
-            # no table name! many layers to load together
-            _layer_creation_options+=' -preserve_fid'
+            #_layer_creation_options+=' -lco FID=fid'
             [ -z "${_opts[LAYERS]}" ] || _layer_creation_options+=" ${_opts[LAYERS]}"
         else
-            _ogr_args+=" -nln ${_opts[SCHEMA_NAME]}.${_opts[TABLE_NAME]}"
             _layer_creation_options+=' -lco FID=rowid'
         fi
     }

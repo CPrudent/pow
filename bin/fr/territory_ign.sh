@@ -21,7 +21,7 @@ pow_argv \
     "$@" || exit $?
 
 set_env --schema_name fr &&
-$POW_DIR_BATCH/territory_ign_admin.sh --force ${POW_ARGV[FORCE]} &&
-$POW_DIR_BATCH/territory_ign_iris_ge.sh --force ${POW_ARGV[FORCE]} || exit $ERROR_CODE
+$POW_DIR_BATCH/territory_ign_admin-express.sh --force ${POW_ARGV[FORCE]} &&
+$POW_DIR_BATCH/territory_ign_iris-ge.sh --force ${POW_ARGV[FORCE]} || exit $ERROR_CODE
 
 exit $SUCCESS_CODE
