@@ -23,7 +23,7 @@ on_integration_error() {
 }
 
 declare -A io_vars=(
-    [NAME]=FR-LAPOSTE-MUNICIPALITY-VS-IRIS-GE
+    [NAME]=FR-LAPOSTE-MUNICIPALITY-VS-IRIS_GE
     [DATE]=$(date '+%F')
     [TODO]=no
     [ID_IO_MAIN]=

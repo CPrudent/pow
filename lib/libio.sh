@@ -654,47 +654,69 @@ io_get_property_online_available() {
         ' \
         --pow_argv _opts "$@" || return $?
 
-    local _url_base _url_data _re1 _re2 _re_search _re_file
+    local _product _extension _backup=2 _url_base _url_data _list_region
+    local _re1 _re2 _re_search _re_file
     local -n _value_ref=${_opts[VALUE]}
 
     case "${_opts[NAME]}" in
     FR-TERRITORY-IGN)
+        _product=ADMIN-EXPRESS
+        _backup=3
+        _extension=7z
         _url_base='https://geoservices.ign.fr'
         _url_data=${_url_base}'/adminexpress'
-        _re1='href="(http|ftp)[^"]+ADMIN-EXPRESS_(?(?!WM)[^"])+[0-9-]{10}\.7z[^"]*'
+        _list_region='FXX|GLP|MTQ|GUF|REU|MYT'
+        _re1='href="(http|ftp)[^"]+'${_product}'_(?(?!WM)[^"])+[0-9-]{10}\.'${_extension}'[^"]*'
         _re2='[0-9-]{10}'
-        _re_search='href="(http|ftp)[^"]+ADMIN-EXPRESS_(?(?!WM)[^"])+#DATE\.7z[^"]*'
-        # RE plus _REGION_DATE.7z
-        _re_file='ADMIN-EXPRESS_4-0__GPKG_[^_]+'
+        _re_search='href="(http|ftp)[^"]+'${_product}'_(?(?!WM)[^"])+#DATE\.'${_extension}'[^"]*'
+        # file: <product>_<version>__<format>_<projection>_<region>_<date>.<extension>
+        #+ only up to <projection> to search for specific region (FXX|GLP|MTQ|GUF|REU|MYT)
+        _re_file=${_product}'_[0-9]-[0-9]__(SHP|GPKG)_[^_]+'
         ;;
+    # obsolete now, IRIS-GE better
     FR-TERRITORY-IGN-IRIS)
+        _product=CONTOURS-IRIS
+        _extension=7z
         _url_base='https://geoservices.ign.fr'
         _url_data=${_url_base}'/contoursiris#telechargement'
-        _re1='href="(http|ftp)[^" ]+CONTOURS-IRIS[^" ]*(FXX|FRA)[^" ]*\.7z[^" ]*"'
+        _list_region='FXX|FRA'
+        _re1='href="(http|ftp)[^" ]+CONTOURS-IRIS[^" ]*('${_list_region}')[^" ]*\.'${_extension}'[^" ]*"'
         _re2='[0-9]{4}-01-01'
         ;;
-    FR-TERRITORY-IGN-IRIS-GE)
+    FR-TERRITORY-IGN-IRIS_GE)
+        _product=IRIS-GE
+        _extension=7z
         _url_base='https://geoservices.ign.fr'
         _url_data=${_url_base}'/irisge#telechargement'
-        _re1='href="(http|ftp)[^" ]+IRIS-GE[^" ]*_(FXX|GLP|MTQ|GUF|REU|SPM|MYT|BLM|MAF)_[^" ]*\.7z[^" ]*"'
+        _list_region='FXX|GLP|MTQ|GUF|REU|SPM|MYT|BLM|MAF'
+        _re1='href="(http|ftp)[^" ]+'${_product}'[^" ]*_('${_list_region}')_[^" ]*\.'${_extension}'[^" ]*"'
         _re2='[0-9]{4}-01-01'
+        _re_search='href="(http|ftp)[^" ]+'${_product}'[^" ]*_('${_list_region}')_#DATE\.'${_extension}'[^"]*'
+        # file: <product>_<version>__<format>_<projection>_<region>_<date>.<extension>
+        # sample: IRIS-GE_3-0__SHP_RGAF09UTM20_BLM_2024-01-01.7z
+        _re_file=${_product}'_[0-9]-[0-9]__SHP_[^_]+'
         ;;
     FR-TERRITORY-GOUV-EPCI)
+        _extension=xlsx
         _url_base='https://www.collectivites-locales.gouv.fr'
         _url_data=${_url_base}'/institutions/liste-et-composition-des-epci-fiscalite-propre'
         _re1='^[ ]+[0-9]{4}[ ]*'
         _re2='[0-9]{4}'
         ;;
     FR-TERRITORY-INSEE)
+        _product=table-appartenance-geo-communes
+        _extension=zip
         _url_base='https://www.insee.fr'
         _url_data=${_url_base}'/fr/information/7671844'
-        _re1='table-appartenance-geo-communes-[0-9]{4}[^.]*\.zip'
+        _re1='-[0-9]{4}[^.]*\.zip'
         _re2='[0-9]{4}'
         ;;
     FR-MUNICIPALITY-EVENT-INSEE)
+        _product=cog_ensemble
+        _extension=zip
         _url_base='https://www.insee.fr'
         _url_data=${_url_base}'/fr/information/8377162'
-        _re1='cog_ensemble_[0-9]{4}_csv.zip'
+        _re1='_[0-9]{4}_csv.zip'
         _re2='[0-9]{4}'
         ;;
     *)
@@ -704,13 +726,19 @@ io_get_property_online_available() {
     esac
 
     case ${_opts[KEY]^^} in
-    URL_BASE)       _value_ref=$_url_base       ;;
-    URL_DATA)       _value_ref=$_url_data       ;;
-    REGEXP1)        _value_ref=$_re1            ;;
-    REGEXP2)        _value_ref=$_re2            ;;
-    REGEXP_SEARCH)  _value_ref=$_re_search      ;;
-    REGEXP_DATE)    _value_ref=$_re2            ;;
-    REGEXP_FILE)    _value_ref=$_re_file        ;;
+    PRODUCT)                _value_ref=$_product                ;;
+    BACKUP)                 _value_ref=$_backup                 ;;
+    EXTENSION)              _value_ref=$_extension              ;;
+    URL_BASE)               _value_ref=$_url_base               ;;
+    URL_DATA)               _value_ref=$_url_data               ;;
+    REGEXP_SEARCH)          _value_ref=$_re_search              ;;
+    REGEXP1)                _value_ref=$_re1                    ;;
+    REGEXP_DATE)            _value_ref=$_re2                    ;;
+    REGEXP2)                _value_ref=$_re2                    ;;
+    REGEXP_FILE)            _value_ref=$_re_file                ;;
+    REGEXP_FILE_REGION)
+                            _value_ref=${_re_file}_#REGION      ;;
+    LIST_REGION)            _value_ref=$_list_region            ;;
     *)
         log_error "KEY ${_opts[KEY]} non pris en charge!"
         return $ERROR_CODE
@@ -795,6 +823,138 @@ io_get_list_online_available() {
     done
 
     return $SUCCESS_CODE
+}
+
+# purge common (old files)
+io_purge_common() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            name:nom IO à rechercher (sur dépôt);
+            interactive:confirmer la suppression des fichiers obsolètes
+        ' \
+        --args_m '
+            name
+        ' \
+        --args_v '
+            interactive:no|yes
+        ' \
+        --args_d '
+            interactive:no
+        ' \
+        --args_p '
+            tag:interactive@bool
+        ' \
+        --pow_argv _opts "$@" || return $?
+
+    local _regexp _ref_subscript _error=0 _rc
+    local -a _files _regions _deletes
+    local -A _io
+
+    # DEBUG steps
+    declare -A _debug_steps _debug_bps
+    get_env_debug \
+        ${FUNCNAME[0]} \
+        _debug_steps \
+        _debug_bps \
+        'func argv io region files'
+
+    # NOTE to debug:
+    # export POW_DEBUG_JSON='{"codes":[{"name":"io_purge_common","steps":["io@break","region@break"]}]}'
+
+    [[ ${_debug_steps[func]:-1} -eq 0 ]] && {
+        echo ${FUNCNAME[0]}
+        [[ ${_debug_bps[func]} -eq 0 ]] && read
+    }
+    [[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
+        declare -p _opts
+        [[ ${_debug_bps[argv]} -eq 0 ]] && read
+    }
+
+    io_get_property_online_available    \
+        --name ${_opts[NAME]}           \
+        --key PRODUCT                   \
+        --value _io[PRODUCT]            &&
+    io_get_property_online_available    \
+        --name ${_opts[NAME]}           \
+        --key BACKUP                    \
+        --value _io[BACKUP]             &&
+    io_get_property_online_available    \
+        --name ${_opts[NAME]}           \
+        --key REGEXP_FILE_REGION        \
+        --value _io[REGEXP_REGION]      &&
+    io_get_property_online_available    \
+        --name ${_opts[NAME]}           \
+        --key LIST_REGION               \
+        --value _io[LIST_REGION]        &&
+    {
+        [[ ${_debug_steps[io]:-1} -ne 0 ]] || {
+            declare -p _io
+            [[ ${_debug_bps[io]} -ne 0 ]] || read
+        }
+    } &&
+    {
+        _ref_subscript=${_io[BACKUP]}
+        [[ $_ref_subscript -eq 0 ]] || {
+            # array is 0-based
+            _ref_subscript=$((_ref_subscript -1))
+        }
+    } &&
+    {
+        if [ -n "${_io[LIST_REGION]}" ]; then
+            # convert as array
+            _regions=(${_io[LIST_REGION]//\|/ })
+            for _region in "${_regions[@]}"; do
+                _regexp=${_io[REGEXP_REGION]/\#REGION/$_region} &&
+                {
+                    [[ ${_debug_steps[region]:-1} -ne 0 ]] || {
+                        declare -p _regions
+                        echo "region=($_region)"
+                        echo "regexp=$_regexp"
+                        [[ ${_debug_bps[region]} -ne 0 ]] || read
+                    }
+                } &&
+                _files=($(ls -1 $POW_DIR_COMMON_GLOBAL_SCHEMA/${_io[PRODUCT]}* | \
+                    grep --perl-regexp "${_regexp}" | \
+                    xargs --max-args 1 basename | \
+                    sort -r)) &&
+                {
+                    [[ ${_debug_steps[files]:-1} -ne 0 ]] || {
+                        declare -p _files
+                        echo "ref=(${_files[${_ref_subscript}]})"
+                        [[ ${_debug_bps[files]} -ne 0 ]] || read
+                    }
+                } &&
+                {
+                    # exists obsolete file(s) ?
+                    [[ ${#_files[@]} -le ${_io[BACKUP]} ]] || {
+                        # reference is backup-th file, older can be deleted
+                        # https://unix.stackexchange.com/questions/98877/trouble-getting-regex-to-work-with-find
+                        _deletes=($(find \
+                            $POW_DIR_COMMON_GLOBAL_SCHEMA \
+                            -regextype posix-egrep \
+                            -regex '.*'"${_regexp}"'.*' \
+                            ! -newer "$POW_DIR_COMMON_GLOBAL_SCHEMA/${_files[${_ref_subscript}]}")) &&
+                        {
+                            [ "${_opts[INTERACTIVE]}" = no ] || {
+                                declare -p _deletes
+                                echo -n "Effacer ces fichiers (O/N) : "
+                                read
+                                is_yes --var REPLY || continue
+                            }
+                        } &&
+                        rm "${_deletes[*]}"
+                    }
+                } || {
+                    _error=1
+                    log_error "effacement fichiers obsolètes (${_opts[NAME]}/$_region)"
+                }
+            done
+        fi
+    }
+
+    _rc=$(( _error == 1 ? ERROR_CODE : SUCCESS_CODE ))
+    return $_rc
 }
 
 # download ressource (wget)

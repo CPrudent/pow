@@ -8,6 +8,9 @@
     # NOTE to debug,
     # export POW_DEBUG_JSON='{"codes":[{"name":"territory_ign_admin-express","steps":["argv","items","years","year@break","url_all","url@break","region","table@break"]}]}'
 
+    # TODO
+    # add function purge_common --name <IO>
+
 # CHANGELOG (ADMIN-EXPRESS)
 # 2.5
 #   ENTITE_RATTACHEE existe toujours mais n'inclut plus les arrondissements municipaux (entite_rattachee.type = 'ARM')
@@ -37,7 +40,6 @@
 #   https://gis.stackexchange.com/questions/290582/uploading-geopackage-contents-to-postgresql
 #   ajout (et renommage) classes d'objets
 #   ajout (et renommage) attributs (noms des colonnes)
-
 
 # NOTE: les types d'élements correspondent aux différentes couches existantes
 declare -a _AVAILABLE_ITEMS=(
@@ -107,7 +109,6 @@ declare -A io_vars=(
     [ID]=
     [PASSWD]=
     [RE_SEARCH]=
-    [RE_DATE]=
     [RE_FILE]=
     [LOAD_MODE]=OVERWRITE_DATA
 ) &&
@@ -140,37 +141,38 @@ get_env_debug \
     _debug_bps \
     'argv items io_last years year io_begin url_all url region table'
 
-io_get_property_online_available    \
-    --name ${io_vars[NAME]}         \
-    --key REGEXP_SEARCH             \
-    --value io_vars[RE_SEARCH]      &&
-io_get_property_online_available    \
-    --name ${io_vars[NAME]}         \
-    --key REGEXP_DATE               \
-    --value io_vars[RE_DATE]        &&
-io_get_property_online_available    \
-    --name ${io_vars[NAME]}         \
-    --key REGEXP_FILE               \
-    --value io_vars[RE_FILE]
-
-[[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
-    declare -p io_vars
-    [[ ${_debug_bps[argv]} -eq 0 ]] && read
-}
-
-# according command line
-if [ -z "${io_vars[ITEM]}" ]; then
-    # NOTE: some items seem not useful
-    declare -a ITEMS=(commune arrondissement_municipal departement epci region)
-else
-    io_name=FR-TERRITORY-IGN-${io_vars[ITEM]}
-    declare -a ITEMS=(${io_vars[ITEM]})
-fi
-[[ ${_debug_steps[items]:-1} -eq 0 ]] && {
-    declare -p ITEMS
-    [[ ${_debug_bps[items]} -eq 0 ]] && read
-}
-
+{
+    io_get_property_online_available    \
+        --name ${io_vars[NAME]}         \
+        --key REGEXP_SEARCH             \
+        --value io_vars[RE_SEARCH]      &&
+    io_get_property_online_available    \
+        --name ${io_vars[NAME]}         \
+        --key REGEXP_FILE               \
+        --value io_vars[RE_FILE]
+} &&
+{
+    [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
+        declare -p io_vars
+        [[ ${_debug_bps[argv]} -ne 0 ]] || read
+    }
+} &&
+{
+    # according command line
+    if [ -z "${io_vars[ITEM]}" ]; then
+        # NOTE: some items seem not useful
+        declare -a ITEMS=(commune arrondissement_municipal departement epci region)
+    else
+        io_name=FR-TERRITORY-IGN-${io_vars[ITEM]}
+        declare -a ITEMS=(${io_vars[ITEM]})
+    fi
+} &&
+{
+    [[ ${_debug_steps[items]:-1} -ne 0 ]] || {
+        declare -p ITEMS
+        [[ ${_debug_bps[items]} -ne 0 ]] || read
+    }
+} &&
 set_env --schema_name fr &&
 # no error if already downloaded (w/ last IO)
 execute_query \
@@ -416,5 +418,7 @@ io_history_end_ok \
     on_import_error --id ${io_vars[ID]}
 }
 
+io_purge_common --name ${io_vars[NAME]}
 log_info "Import du millésime $year de ${io_vars[NAME]} avec succès"
+
 exit $SUCCESS_CODE

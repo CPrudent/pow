@@ -3,7 +3,7 @@
     #--------------------------------------------------------------------------
     # synopsis
     #--
-    # import BANATIC setof municipalities, as EPCI (into FR schema)
+    # import GOUV setof municipalities, as EPCI (into FR schema)
 
 on_import_error() {
     local -A _opts &&

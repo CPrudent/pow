@@ -579,21 +579,20 @@ bal_load_addresses() {
                     while [[ $_retry -lt $_retries ]]; do
                         # search for error
                         _wget_error=$(tail --lines +2 $POW_DIR_ARCHIVE/parallel_${bal_vars[MUNICIPALITY_CODE]}_wget.log | cut --field 7 | grep ^[1347])
-                        # debug
-                        [[ ${_debug_steps[wget]:-1} -eq 0 ]] && {
-                            echo "wget (retry=#$_retry/$_retries)"
-                            [[ ${_debug_bps[wget]} -eq 0 ]] && read
-                        }
                         # error detected ?
                         [ -z "$_wget_error" ] && break
                         # retry download (if enable)
                         _retry=$((_retry +1))
+                        log_info "wget ${bal_vars[MUNICIPALITY_CODE]} (retry=#$_retry/$_retries)"
                         parallel \
                             --retry-failed \
                             --joblog $POW_DIR_ARCHIVE/parallel_${bal_vars[MUNICIPALITY_CODE]}_wget.log
                     done
 
-                    [[ $_retry -lt $_retries ]] || return $ERROR_CODE
+                    [[ $_retry -lt $_retries ]] || {
+                        log_error "wget ${bal_vars[MUNICIPALITY_CODE]}, veuillez consulter $POW_DIR_ARCHIVE/parallel_${bal_vars[MUNICIPALITY_CODE]}_wget.log"
+                        return $ERROR_CODE
+                    }
 
                     # need to delete address w/ empty file (error on 2nd parallel else!)
                     #+ https://stackoverflow.com/questions/16860877/remove-an-element-from-a-bash-array

@@ -74,7 +74,7 @@ log_info 'Calcul des territoires français' &&
     [ "${io_vars[DEPENDS]}" = no ] || {
         $POW_DIR_BATCH/territory_insee.sh --force ${io_vars[FORCE]} &&
         $POW_DIR_BATCH/territory_ign.sh --force ${io_vars[FORCE]} &&
-        $POW_DIR_BATCH/territory_banatic.sh --force ${io_vars[FORCE]} &&
+        $POW_DIR_BATCH/territory_gouv_epci.sh --force ${io_vars[FORCE]} &&
         $POW_DIR_BATCH/territory_laposte.sh --force ${io_vars[FORCE]}
     }
 } &&

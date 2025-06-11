@@ -45,6 +45,8 @@ declare -A io_vars=(
     [TODO]=no
     [ID]=
     [PASSWD]=
+    [RE_SEARCH]=
+    [RE_FILE]=
     [TABLE_NAME]=ign_iris_ge
 ) &&
 pow_argv \
@@ -75,11 +77,22 @@ get_env_debug \
     _debug_bps \
     'argv years year io_begin url shp create copy'
 
-[[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
-    declare -p io_vars
-    [[ ${_debug_bps[argv]} -eq 0 ]] && read
-}
-
+{
+    io_get_property_online_available    \
+        --name ${io_vars[NAME]}         \
+        --key REGEXP_SEARCH             \
+        --value io_vars[RE_SEARCH]      &&
+    io_get_property_online_available    \
+        --name ${io_vars[NAME]}         \
+        --key REGEXP_FILE               \
+        --value io_vars[RE_FILE]
+} &&
+{
+    [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
+        declare -p io_vars
+        [[ ${_debug_bps[argv]} -ne 0 ]] || read
+    }
+} &&
 set_env --schema_name fr &&
 # get years
 io_get_list_online_available \
@@ -132,7 +145,8 @@ $POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
 esac
 
 [ "${io_vars[TODO]}" = yes ] && {
-    log_info "Import du millésime $year de ${io_vars[NAME]}" && {
+    log_info "Import du millésime $year de ${io_vars[NAME]}" &&
+    {
         get_pg_passwd --user_name $POW_PG_USERNAME --password io_vars[PASSWD] || {
             log_error "Erreur de récupération du mot de passe (user=$POW_PG_USERNAME)"
             false
@@ -157,9 +171,7 @@ esac
             --key REGEXP1                   \
             --value _regexp1                &&
         # search for IRIS_GE (of year)
-        url_data_all=($(grep --only-matching --perl-regexp "$_regexp1" "$years_list_path" \
-            | grep --only-matching --perl-regexp "(http|ftp)[^\"]*$year[^\"]*"
-        )) &&
+        url_data_all=($(grep --only-matching --perl-regexp "${io_vars[RE_SEARCH]/\#DATE/$year}" "$years_list_path" | grep --only-matching --perl-regexp '(http|ftp).*')) &&
         {
             [[ ${_debug_steps[url]:-1} -ne 0 ]] || {
                 declare -p url_data_all
@@ -169,8 +181,6 @@ esac
         for ((_i=0; _i<${#url_data_all[*]}; _i++)); do
             url_data_one=${url_data_all[$_i]} &&
             year_data=$(basename $url_data_one) &&
-            # remove optionnal .001
-            year_data=${year_data/.001/} &&
             {
                 [[ ${_debug_steps[url]:-1} -ne 0 ]] || {
                     echo "year_data=${year_data}"
@@ -192,9 +202,9 @@ esac
                 on_import_error --id ${io_vars[ID]}
             }
         done &&
-        first_file=yes &&
-        for _shapefile_full_path in $(find $POW_DIR_TMP/IRIS_GE-$year -type f -iname IRIS*.shp); do
-            _shp_file=$(basename $_shapefile_full_path) &&
+        _first_file=yes &&
+        for _shp_full_path in $(find $POW_DIR_TMP/IRIS_GE-$year -type f -iname IRIS*.shp); do
+            _shp_file=$(basename $_shp_full_path) &&
             # NOTE on ne crée pas d'index géographique pour éviter de ralentir les imports successifs
             #      de plus non exploité
             # NOTE on importe dans un table temporaire, qu'on recopie dans la table commune, afin de
@@ -207,23 +217,23 @@ esac
                 }
             } &&
             import_geo_file \
-                --file_path "$_shapefile_full_path" \
+                --file_path "$_shp_full_path" \
                 --table_name "tmp_${io_vars[TABLE_NAME]}" \
                 --password "${io_vars[PASSWD]}" \
                 --geometry_type PROMOTE_TO_MULTI \
                 --load_mode OVERWRITE_DATA \
                 --spatial_index no &&
             {
-                [ "$first_file" = no ] || {
+                [ "$_first_file" = no ] || {
                     execute_query \
-                        --name REINIT_TABLE \
+                        --name CREATE_TABLE \
                         --query "
                             CREATE TABLE IF NOT EXISTS fr.${io_vars[TABLE_NAME]} AS TABLE fr.tmp_${io_vars[TABLE_NAME]};
                             TRUNCATE TABLE fr.${io_vars[TABLE_NAME]};
                             SELECT public.drop_table_indexes('fr', '${io_vars[TABLE_NAME]}');
                             ALTER TABLE fr.${io_vars[TABLE_NAME]} ALTER COLUMN geom TYPE GEOMETRY;
                         "  &&
-                    first_file=no &&
+                    _first_file=no &&
                     {
                         [[ ${_debug_steps[create]:-1} -ne 0 ]] || {
                             echo "CREATE fr.${io_vars[TABLE_NAME]}"
@@ -279,9 +289,10 @@ esac
         --nrows_processed "($_query_count)" \
         --id ${io_vars[ID]} || on_import_error --id ${io_vars[ID]}
 
+    io_purge_common --name ${io_vars[NAME]}
     log_info "Import du millésime $year de ${io_vars[NAME]} avec succès"
 }
 
-$POW_DIR_BATCH/municipality_laposte_vs_iris_ge.sh --force ${io_vars[FORCE]}
+$POW_DIR_BATCH/municipality_laposte_vs_iris-ge.sh --force ${io_vars[FORCE]}
 
 exit $SUCCESS_CODE
