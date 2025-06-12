@@ -41,8 +41,15 @@
 #   ajout (et renommage) classes d'objets
 #   ajout (et renommage) attributs (noms des colonnes)
 
+# deal w/ interrupt signal (CTRL-C, kill)
+on_break() {
+    log_error 'arrêt utilisateur' &&
+    on_import_error --id ${io_vars[ID]}
+}
+trap on_break SIGINT
+
 # NOTE: les types d'élements correspondent aux différentes couches existantes
-declare -a _AVAILABLE_ITEMS=(
+declare -a _AVAILABLE_LAYERS=(
     arrondissement
     arrondissement_municipal
     canton
@@ -62,8 +69,8 @@ declare -a _AVAILABLE_ITEMS=(
     epci
     region
 )
-_AVAILABLE_ITEMS_JOIN_PIPE=${_AVAILABLE_ITEMS[@]}
-_AVAILABLE_ITEMS_JOIN_PIPE=${_AVAILABLE_ITEMS_JOIN_PIPE// /|}
+_AVAILABLE_LAYERS_JOIN_PIPE=${_AVAILABLE_LAYERS[@]}
+_AVAILABLE_LAYERS_JOIN_PIPE=${_AVAILABLE_LAYERS_JOIN_PIPE// /|}
 
 declare -A _TABLES=(
     [arrondissement]=district
@@ -115,21 +122,21 @@ declare -A io_vars=(
 pow_argv \
     --args_n '
         force:Forcer le traitement même si celui-ci a déjà été fait;
-        item:Type d élément à importer;
+        layer:Elément à importer (couche de données);
         year:Importer un millésime spécifique (au format YYYY-MM-DD) au lieu du dernier millésime disponible;
         clean:Effacer les résultats intermédiaires
     ' \
     --args_v '
         force:yes|no;
         clean:yes|no;
-        item:'$_AVAILABLE_ITEMS_JOIN_PIPE \
+        layer:'$_AVAILABLE_LAYERS_JOIN_PIPE \
     --args_d '
         force:no;
         clean:yes
     ' \
     --args_p '
         reset:no;
-        tag:force@bool,clean@bool,item@0N
+        tag:force@bool,clean@bool,layer@0N
     ' \
     --pow_argv io_vars "$@" || exit $?
 
@@ -158,17 +165,17 @@ get_env_debug \
 } &&
 {
     # according command line
-    if [ -z "${io_vars[ITEM]}" ]; then
+    if [ -z "${io_vars[LAYER]}" ]; then
         # NOTE: some items seem not useful
-        declare -a ITEMS=(commune arrondissement_municipal departement epci region)
+        declare -a LAYERS=(commune arrondissement_municipal departement epci region)
     else
-        io_name=FR-TERRITORY-IGN-${io_vars[ITEM]}
-        declare -a ITEMS=(${io_vars[ITEM]})
+        io_name=FR-TERRITORY-IGN-${io_vars[LAYER]}
+        declare -a LAYERS=(${io_vars[LAYER]})
     fi
 } &&
 {
     [[ ${_debug_steps[items]:-1} -ne 0 ]] || {
-        declare -p ITEMS
+        declare -p LAYERS
         [[ ${_debug_bps[items]} -ne 0 ]] || read
     }
 } &&
@@ -296,30 +303,32 @@ for ((_url_i=0; _url_i<${#url_data_all[*]}; _url_i++)); do
         }
     } &&
     {
-        # catch item
+        # match item
         [[ $year_data =~ ${io_vars[RE_FILE]}_(...) ]] && {
-            _item=${BASH_REMATCH[1]}
+            # don't forget REMATCH[1] points to format(SHP|GPKG)
+            _item=${BASH_REMATCH[2]}
         }
     } &&
     {
         [[ ${_debug_steps[item]:-1} -ne 0 ]] || {
             echo "item=${_item}"
+            echo "match=${io_vars[RE_FILE]}_(...)"
             [[ ${_debug_bps[item]} -ne 0 ]] || read
         }
     } &&
-    for _item in ${ITEMS[@]}; do
+    for _layer in ${LAYERS[@]}; do
         {
-            [ "$_item" != arrondissement_municipal ] || {
+            [ "$_layer" != arrondissement_municipal ] || {
                 # no municipal district ?
                 [ "$_item" = FXX ] || continue
             }
         } &&
-        _table_name=tmp_ign_${_item} &&
+        _table_name=tmp_ign_${_layer} &&
         {
             [[ ${_debug_steps[table]:-1} -ne 0 ]] || {
                 echo "table=(${_table_name})"
                 echo "mode=(${io_vars[LOAD_MODE]})"
-                [[ ${_debug_bps[table]} -en 0 ]] || read
+                [[ ${_debug_bps[table]} -ne 0 ]] || read
             }
         } &&
         _gpkg_full_path=$(find "$POW_DIR_TMP/$year_data" -type f -iname '*.gpkg') &&
@@ -328,7 +337,7 @@ for ((_url_i=0; _url_i<${#url_data_all[*]}; _url_i++)); do
         import_geo_file \
             --file_path "$_gpkg_full_path" \
             --table_name ${_table_name} \
-            --layer ${_item} \
+            --layers ${_layer} \
             --password "${io_vars[PASSWD]}" \
             --geometry_type PROMOTE_TO_MULTI \
             --load_mode ${io_vars[LOAD_MODE]} \
@@ -340,14 +349,14 @@ for ((_url_i=0; _url_i<${#url_data_all[*]}; _url_i++)); do
     rm --recursive "$POW_DIR_TMP/$year_data" &&
     rm "$POW_DIR_IMPORT/$year_data"
 done &&
-for _item in ${ITEMS[@]}; do
-    _tmp_table_name=fr.tmp_ign_${_item} &&
-    _ign_table_name=fr.ign_${_TABLES[${_item}]} &&
+for _layer in ${LAYERS[@]}; do
+    _tmp_table_name=tmp_ign_${_layer} &&
+    _ign_table_name=ign_${_TABLES[${_layer}]} &&
     {
         [[ ${_debug_steps[table]:-1} -ne 0 ]] || {
             echo "tmp=(${_tmp_table_name})"
             echo "ign=(${_ign_table_name})"
-            [[ ${_debug_bps[table]} -en 0 ]] || read
+            [[ ${_debug_bps[table]} -ne 0 ]] || read
         }
     } &&
     # NOTE: some geometry are invalid, correct them
@@ -355,14 +364,14 @@ for _item in ${ITEMS[@]}; do
     execute_query \
         --name UPDATE_INVALID_GEOM \
         --query "
-            UPDATE ${_tmp_table_name} SET geom = ST_MakeValid2(geom)
+            UPDATE fr.${_tmp_table_name} SET geom = ST_MakeValid2(geom)
             WHERE NOT ST_IsValid(geom)
         " &&
     # TODO: label updates, always useful?
     execute_query \
         --name UPDATE_LABEL \
         --query "
-            UPDATE ${_tmp_table_name}
+            UPDATE fr.${_tmp_table_name}
             SET nom_officiel =
                 REGEXP_REPLACE(REGEXP_REPLACE(nom_officiel, '^(¼|½)', 'Oe'), '(¼|½)', 'oe'),
                 nom_officiel_en_majuscules =
@@ -375,8 +384,8 @@ for _item in ${ITEMS[@]}; do
     execute_query \
         --name UPDATE_DATA \
         --query "
-            DROP TABLE IF EXISTS ${_ign_table_name};
-            ALTER TABLE ${_tmp_table_name} RENAME TO ${_ign_table_name};
+            DROP TABLE IF EXISTS fr.${_ign_table_name};
+            ALTER TABLE fr.${_tmp_table_name} RENAME TO ${_ign_table_name};
         " &&
     {
         _key_idx=
@@ -389,8 +398,8 @@ for _item in ${ITEMS[@]}; do
 #                         UPDATE fr.${_table_name}
 #                         SET siren_epci = '200054781'
 #                         WHERE POSITION('200054781/' IN siren_epci) > 0" || on_import_error --id ${io_vars[ID]}
-        case "$_item" in
-        EPCI)
+        case "$_layer" in
+        epci)
             _key_idx=code_siren
             ;;
         *)
@@ -402,7 +411,7 @@ for _item in ${ITEMS[@]}; do
             execute_query \
                 --name CREATE_UNIQUE_INDEX \
                 --query "
-                    CREATE UNIQUE INDEX ON ${_ign_table_name}($_key_idx)
+                    CREATE UNIQUE INDEX ON fr.${_ign_table_name}($_key_idx)
                 "
         fi
     } &&
@@ -412,9 +421,9 @@ for _item in ${ITEMS[@]}; do
         --mode ANALYZE &&
     {
         [ -n "$_query_count" ] && _query_count+='+'
-        _query_count+="(SELECT COUNT(*) FROM ${_ign_table_name})"
+        _query_count+="(SELECT COUNT(*) FROM fr.${_ign_table_name})"
     } || {
-        log_error "mise à jour '$_item' en erreur!"
+        log_error "mise à jour '$_layer' en erreur!"
         on_import_error --id ${io_vars[ID]}
     }
 done &&

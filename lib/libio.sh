@@ -964,7 +964,7 @@ io_purge_common() {
                                 is_yes --var REPLY || continue
                             }
                         } &&
-                        rm "${_deletes[*]}"
+                        rm ${_deletes[*]}
                     }
                 } || {
                     _error=1
