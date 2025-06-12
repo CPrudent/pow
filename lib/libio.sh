@@ -654,8 +654,8 @@ io_get_property_online_available() {
         ' \
         --pow_argv _opts "$@" || return $?
 
-    local _product _extension _backup=2 _url_base _url_data _list_region
-    local _re1 _re2 _re_search _re_file
+    local _product _extension _backup=2 _url_base _url_data _items
+    local _re1 _re2 _re_search _re_file _re_item
     local -n _value_ref=${_opts[VALUE]}
 
     case "${_opts[NAME]}" in
@@ -665,13 +665,14 @@ io_get_property_online_available() {
         _extension=7z
         _url_base='https://geoservices.ign.fr'
         _url_data=${_url_base}'/adminexpress'
-        _list_region='FXX|GLP|MTQ|GUF|REU|MYT'
+        _items='FXX|GLP|MTQ|GUF|REU|MYT'
         _re1='href="(http|ftp)[^"]+'${_product}'_(?(?!WM)[^"])+[0-9-]{10}\.'${_extension}'[^"]*'
         _re2='[0-9-]{10}'
         _re_search='href="(http|ftp)[^"]+'${_product}'_(?(?!WM)[^"])+#DATE\.'${_extension}'[^"]*'
-        # file: <product>_<version>__<format>_<projection>_<region>_<date>.<extension>
-        #+ only up to <projection> to search for specific region (FXX|GLP|MTQ|GUF|REU|MYT)
+        # file: <product>_<version>__<format>_<projection>_<item>_<date>.<extension>
+        #+ only up to <projection> to search for specific item
         _re_file=${_product}'_[0-9]-[0-9]__(SHP|GPKG)_[^_]+'
+        _re_item=${_re_file}_#ITEM
         ;;
     # obsolete now, IRIS-GE better
     FR-TERRITORY-IGN-IRIS)
@@ -679,8 +680,8 @@ io_get_property_online_available() {
         _extension=7z
         _url_base='https://geoservices.ign.fr'
         _url_data=${_url_base}'/contoursiris#telechargement'
-        _list_region='FXX|FRA'
-        _re1='href="(http|ftp)[^" ]+CONTOURS-IRIS[^" ]*('${_list_region}')[^" ]*\.'${_extension}'[^" ]*"'
+        _items='FXX|FRA'
+        _re1='href="(http|ftp)[^" ]+CONTOURS-IRIS[^" ]*('${_items}')[^" ]*\.'${_extension}'[^" ]*"'
         _re2='[0-9]{4}-01-01'
         ;;
     FR-TERRITORY-IGN-IRIS_GE)
@@ -688,20 +689,27 @@ io_get_property_online_available() {
         _extension=7z
         _url_base='https://geoservices.ign.fr'
         _url_data=${_url_base}'/irisge#telechargement'
-        _list_region='FXX|GLP|MTQ|GUF|REU|SPM|MYT|BLM|MAF'
-        _re1='href="(http|ftp)[^" ]+'${_product}'[^" ]*_('${_list_region}')_[^" ]*\.'${_extension}'[^" ]*"'
+        _items='FXX|GLP|MTQ|GUF|REU|SPM|MYT|BLM|MAF'
+        _re1='href="(http|ftp)[^" ]+'${_product}'[^" ]*_('${_items}')_[^" ]*\.'${_extension}'[^" ]*"'
         _re2='[0-9]{4}-01-01'
-        _re_search='href="(http|ftp)[^" ]+'${_product}'[^" ]*_('${_list_region}')_#DATE\.'${_extension}'[^"]*'
+        _re_search='href="(http|ftp)[^" ]+'${_product}'[^" ]*_('${_items}')_#DATE\.'${_extension}'[^"]*'
         # file: <product>_<version>__<format>_<projection>_<region>_<date>.<extension>
         # sample: IRIS-GE_3-0__SHP_RGAF09UTM20_BLM_2024-01-01.7z
         _re_file=${_product}'_[0-9]-[0-9]__SHP_[^_]+'
+        _re_item=${_re_file}_#ITEM
         ;;
     FR-TERRITORY-GOUV-EPCI)
+        _product=epci
         _extension=xlsx
         _url_base='https://www.collectivites-locales.gouv.fr'
         _url_data=${_url_base}'/institutions/liste-et-composition-des-epci-fiscalite-propre'
         _re1='^[ ]+[0-9]{4}[ ]*'
         _re2='[0-9]{4}'
+        _items='epcicom|epcisanscom'
+        # NOTE /files/Accueil/DESL/2025/epcicom2025-2.xlsx (2nd version ?)
+        _re_search='/files/Accueil/DESL/#DATE/('$_items')#DATE[^.]*\.'${_extension}
+        _re_file='^('${_items}')[0-9]{4}[^.]*\.'${_extension}
+        _re_item='^'#ITEM
         ;;
     FR-TERRITORY-INSEE)
         _product=table-appartenance-geo-communes
@@ -736,9 +744,8 @@ io_get_property_online_available() {
     REGEXP_DATE)            _value_ref=$_re2                    ;;
     REGEXP2)                _value_ref=$_re2                    ;;
     REGEXP_FILE)            _value_ref=$_re_file                ;;
-    REGEXP_FILE_REGION)
-                            _value_ref=${_re_file}_#REGION      ;;
-    LIST_REGION)            _value_ref=$_list_region            ;;
+    REGEXP_ITEM)            _value_ref=$_re_item                ;;
+    ITEMS)                  _value_ref=$_items                  ;;
     *)
         log_error "KEY ${_opts[KEY]} non pris en charge!"
         return $ERROR_CODE
@@ -749,7 +756,7 @@ io_get_property_online_available() {
 }
 
 # get available dates (list, details as URL)
-io_get_list_online_available() {
+io_get_years_online_available() {
     local -A _opts &&
     pow_argv \
         --args_n '
@@ -847,8 +854,8 @@ io_purge_common() {
         ' \
         --pow_argv _opts "$@" || return $?
 
-    local _regexp _ref_subscript _error=0 _rc
-    local -a _files _regions _deletes
+    local _regexp _ref_subscript _error=0 _rc _item
+    local -a _files _items _deletes
     local -A _io
 
     # DEBUG steps
@@ -857,20 +864,23 @@ io_purge_common() {
         ${FUNCNAME[0]} \
         _debug_steps \
         _debug_bps \
-        'func argv io region files'
+        'func argv io item files'
 
     # NOTE to debug:
     # export POW_DEBUG_JSON='{"codes":[{"name":"io_purge_common","steps":["io@break","region@break"]}]}'
 
-    [[ ${_debug_steps[func]:-1} -eq 0 ]] && {
-        echo ${FUNCNAME[0]}
-        [[ ${_debug_bps[func]} -eq 0 ]] && read
-    }
-    [[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
-        declare -p _opts
-        [[ ${_debug_bps[argv]} -eq 0 ]] && read
-    }
-
+    {
+        [[ ${_debug_steps[func]:-1} -ne 0 ]] || {
+            echo ${FUNCNAME[0]}
+            [[ ${_debug_bps[func]} -ne 0 ]] || read
+        }
+    } &&
+    {
+        [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
+            declare -p _opts
+            [[ ${_debug_bps[argv]} -ne 0 ]] || read
+        }
+    } &&
     io_get_property_online_available    \
         --name ${_opts[NAME]}           \
         --key PRODUCT                   \
@@ -881,12 +891,12 @@ io_purge_common() {
         --value _io[BACKUP]             &&
     io_get_property_online_available    \
         --name ${_opts[NAME]}           \
-        --key REGEXP_FILE_REGION        \
-        --value _io[REGEXP_REGION]      &&
+        --key REGEXP_ITEM               \
+        --value _io[REGEXP_ITEM]        &&
     io_get_property_online_available    \
         --name ${_opts[NAME]}           \
-        --key LIST_REGION               \
-        --value _io[LIST_REGION]        &&
+        --key ITEMS                     \
+        --value _io[ITEMS]              &&
     {
         [[ ${_debug_steps[io]:-1} -ne 0 ]] || {
             declare -p _io
@@ -901,23 +911,23 @@ io_purge_common() {
         }
     } &&
     {
-        if [ -n "${_io[LIST_REGION]}" ]; then
+        if [ -n "${_io[ITEMS]}" ]; then
             # convert as array
-            _regions=(${_io[LIST_REGION]//\|/ })
-            for _region in "${_regions[@]}"; do
-                _regexp=${_io[REGEXP_REGION]/\#REGION/$_region} &&
+            _items=(${_io[ITEMS]//\|/ })
+            for _item in "${_items[@]}"; do
+                _regexp=${_io[REGEXP_ITEM]/\#ITEM/$_item} &&
                 {
-                    [[ ${_debug_steps[region]:-1} -ne 0 ]] || {
-                        declare -p _regions
-                        echo "region=($_region)"
+                    [[ ${_debug_steps[item]:-1} -ne 0 ]] || {
+                        declare -p _items
+                        echo "item=($_item)"
                         echo "regexp=$_regexp"
-                        [[ ${_debug_bps[region]} -ne 0 ]] || read
+                        [[ ${_debug_bps[item]} -ne 0 ]] || read
                     }
                 } &&
                 _files=($(ls -1 $POW_DIR_COMMON_GLOBAL_SCHEMA/${_io[PRODUCT]}* | \
                     grep --perl-regexp "${_regexp}" | \
                     xargs --max-args 1 basename | \
-                    sort -r)) &&
+                    sort --reverse)) &&
                 {
                     [[ ${_debug_steps[files]:-1} -ne 0 ]] || {
                         declare -p _files
@@ -947,7 +957,7 @@ io_purge_common() {
                     }
                 } || {
                     _error=1
-                    log_error "effacement fichiers obsolètes (${_opts[NAME]}/$_region)"
+                    log_error "effacement fichiers obsolètes (${_opts[NAME]}/$_item)"
                 }
             done
         fi
@@ -1787,7 +1797,7 @@ import_excel_file() {
         --args_d '
             schema_name:'${POW_PG_DEFAULT_SCHEMA}';
             table_columns:HEADER;
-            delimiter:PIPE;
+            delimiter:COMMA;
             load_mode:OVERWRITE_DATA;
             rowid:yes' \
         --args_p '

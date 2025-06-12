@@ -72,7 +72,7 @@ get_env_debug \
 year=
 # get years
 set_env --schema_name fr &&
-io_get_list_online_available \
+io_get_years_online_available \
     --name ${io_vars[NAME]} \
     --details_file years_list_path \
     --dates_list years || exit $ERROR_CODE

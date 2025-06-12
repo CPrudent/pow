@@ -6,7 +6,7 @@
     # import IGN geometry of territories (into FR schema)
 
     # NOTE to debug,
-    # export POW_DEBUG_JSON='{"codes":[{"name":"territory_ign_admin-express","steps":["argv","items","years","year@break","url_all","url@break","region","table@break"]}]}'
+    # export POW_DEBUG_JSON='{"codes":[{"name":"territory_ign_admin-express","steps":["argv","items","years","year@break","url_all","url@break","item","table@break"]}]}'
 
     # TODO
     # add function purge_common --name <IO>
@@ -134,13 +134,12 @@ pow_argv \
     --pow_argv io_vars "$@" || exit $?
 
 # DEBUG steps
-declare -A _debug_steps _debug_bps
+declare -A _debug_steps _debug_bps &&
 get_env_debug \
     "$(basename $0 .sh)" \
     _debug_steps \
     _debug_bps \
-    'argv items io_last years year io_begin url_all url region table'
-
+    'argv items io_last years year io_begin url_all url item table' &&
 {
     io_get_property_online_available    \
         --name ${io_vars[NAME]}         \
@@ -189,38 +188,44 @@ execute_query \
     }
 } &&
 # get years
-io_get_list_online_available \
+io_get_years_online_available \
     --name ${io_vars[NAME]} \
     --details_file years_list_path \
     --dates_list years || {
     [ -n "$_last_io" ] && _rc=$SUCCESS_CODE || _rc=$ERROR_CODE
     exit $_rc
-}
-[[ ${_debug_steps[years]:-1} -eq 0 ]] && {
-    declare -p years years_list_path
-    [[ ${_debug_bps[years]} -eq 0 ]] && read
-}
-
-# get year (w/ format YYYY)
-if [ -z "${io_vars[ITEM]}" ]; then
-    # get more recent
-    year_id=0
-else
-    in_array --array years --item "${io_vars[ITEM]}" --position year_id || {
-        log_error "Impossible de trouver le millésime ${io_vars[ITEM]} de ${io_vars[NAME]}, les millésimes disponibles sont ${years[@]}"
-        on_import_error --id ${io_vars[ID]}
+} &&
+{
+    [[ ${_debug_steps[years]:-1} -ne 0 ]] || {
+        declare -p years years_list_path
+        [[ ${_debug_bps[years]} -ne 0 ]] || read
     }
-fi
-year=${years[$year_id]}
-[ -z "$year" ] && {
-    log_error "Impossible de trouver le millésime de ${io_vars[NAME]}"
-    on_import_error --id ${io_vars[ID]}
-}
-[[ ${_debug_steps[year]:-1} -eq 0 ]] && {
-    echo "year=$year (${years[$year_id]})"
-    [[ ${_debug_bps[year]} -eq 0 ]] && read
-}
-
+} &&
+# get year (w/ format YYYY)
+{
+    if [ -z "${io_vars[YEAR]}" ]; then
+        # get more recent
+        year_id=0
+    else
+        in_array --array years --item "${io_vars[YEAR]}" --position year_id || {
+            log_error "Impossible de trouver le millésime ${io_vars[YEAR]} de ${io_vars[NAME]}, les millésimes disponibles sont ${years[@]}"
+            false
+        }
+    fi
+} &&
+year=${years[$year_id]} &&
+{
+    [ -n "$year" ] || {
+        log_error "Impossible de trouver le millésime de ${io_vars[NAME]}"
+        false
+    }
+} &&
+{
+    [[ ${_debug_steps[year]:-1} -ne 0 ]] || {
+        echo "year=$year (${years[$year_id]})"
+        [[ ${_debug_bps[year]} -ne 0 ]] || read
+    }
+} &&
 io_todo_import \
     --force ${io_vars[FORCE]} \
     --io ${io_vars[NAME]} \
@@ -230,10 +235,9 @@ $POW_IO_SUCCESSFUL)
     exit $SUCCESS_CODE
     ;;
 $POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
-    on_import_error --id ${io_vars[ID]}
+    false
     ;;
-esac
-
+esac &&
 log_info "Import du millésime $year de ${io_vars[NAME]}" &&
 {
     get_pg_passwd --user_name $POW_PG_USERNAME --password io_vars[PASSWD] || {
@@ -254,7 +258,7 @@ io_history_begin \
         [[ ${_debug_bps[io_begin]} -ne 0 ]] || read
     }
 } &&
-# search for requested ADMIN-EXPRESS (avoiding all regions as WGS84)
+# search for requested ADMIN-EXPRESS (avoiding all items as WGS84)
 url_data_all=($(grep --only-matching --perl-regexp ${io_vars[RE_SEARCH]/\#DATE/$year} "$years_list_path" | grep --only-matching --perl-regexp '(http|ftp).*' | grep --invert-match WGS84)) &&
 {
     [[ ${_debug_steps[url_all]:-1} -ne 0 ]] || {
@@ -272,11 +276,14 @@ for ((_url_i=0; _url_i<${#url_data_all[*]}; _url_i++)); do
             [[ ${_debug_bps[url]} -ne 0 ]] || read
         }
     } &&
-    io_download_file \
-        --url "${url_data_one}" \
-        --output_directory "${POW_DIR_IMPORT}" \
-        --output_file "${year_data}" \
-        --overwrite_mode no &&
+    {
+        io_download_file \
+            --url "${url_data_one}" \
+            --output_directory "${POW_DIR_IMPORT}" \
+            --output_file "${year_data}" \
+            --overwrite_mode no
+        [ $? -lt $POW_DOWNLOAD_ERROR ] || false
+    } &&
     mkdir --parent "$POW_DIR_TMP/$year_data" &&
     extract_archive \
         --archive_path "$POW_DIR_IMPORT/$year_data" \
@@ -289,22 +296,22 @@ for ((_url_i=0; _url_i<${#url_data_all[*]}; _url_i++)); do
         }
     } &&
     {
-        # catch region
+        # catch item
         [[ $year_data =~ ${io_vars[RE_FILE]}_(...) ]] && {
-            _region=${BASH_REMATCH[1]}
+            _item=${BASH_REMATCH[1]}
         }
     } &&
     {
-        [[ ${_debug_steps[region]:-1} -ne 0 ]] || {
-            echo "region=${_region}"
-            [[ ${_debug_bps[region]} -ne 0 ]] || read
+        [[ ${_debug_steps[item]:-1} -ne 0 ]] || {
+            echo "item=${_item}"
+            [[ ${_debug_bps[item]} -ne 0 ]] || read
         }
     } &&
     for _item in ${ITEMS[@]}; do
         {
             [ "$_item" != arrondissement_municipal ] || {
                 # no municipal district ?
-                [ "$_region" = FXX ] || continue
+                [ "$_item" = FXX ] || continue
             }
         } &&
         _table_name=tmp_ign_${_item} &&
@@ -414,7 +421,8 @@ done &&
 rm --force "$years_list_path" &&
 io_history_end_ok \
     --nrows_processed "($_query_count)" \
-    --id ${io_vars[ID]} || {
+    --id ${io_vars[ID]} ||
+{
     on_import_error --id ${io_vars[ID]}
 }
 

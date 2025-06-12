@@ -57,13 +57,13 @@ get_env_debug \
     "$(basename $0 .sh)" \
     _debug_steps \
     _debug_bps \
-    'argv todo io_begin'
-
-[[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
-    declare -p io_vars
-    [[ ${_debug_bps[argv]} -eq 0 ]] && read
-}
-
+    'argv todo io_begin' &&
+{
+    [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
+        declare -p io_vars
+        [[ ${_debug_bps[argv]} -ne 0 ]] || read
+    }
+} &&
 declare -A io_hash &&
 set_env --schema_name fr &&
 log_info 'Calcul des correspondances (niveau Commune) entre LA POSTE/IRIS-GE' &&
@@ -98,11 +98,13 @@ io_get_info_integration \
 }
 
 [ "${io_vars[TODO]}" = yes ] && {
-    log_info "IO '${io_vars[NAME]}' mise à jour (dépendances)"
-    [[ ${_debug_steps[todo]:-1} -eq 0 ]] && {
-        echo $io_string | tr ',' '\n'
-        [[ ${_debug_bps[todo]} -eq 0 ]] && read
-    }
+    log_info "IO '${io_vars[NAME]}' mise à jour (dépendances)" &&
+    {
+        [[ ${_debug_steps[todo]:-1} -ne 0 ]] || {
+            echo $io_string | tr ',' '\n'
+            [[ ${_debug_bps[todo]} -ne 0 ]] || read
+        }
+    } &&
     io_history_begin \
         --io ${io_vars[NAME]} \
         --date_begin "${io_vars[DATE]}" \
