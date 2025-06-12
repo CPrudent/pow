@@ -408,12 +408,43 @@ set_delimiter() {
             delimiter_value' \
         --pow_argv _opts "$@" || return $?
 
+    local _code
     local -n _delimiter_ref=${_opts[DELIMITER_VALUE]}
-
-    # https://linuxhint.com/associative_array_bash/
-    [ ${POW_DELIMITER[${_opts[DELIMITER_CODE]}]+_} ] && {
-        _delimiter_ref=${POW_DELIMITER[${_opts[DELIMITER_CODE]}]}
-    } || {
+    # NOTE to debug
+    # export POW_DEBUG_JSON='{"codes":[{"name":"set_delimiter","steps":["func","argv","delimiter@break"]}]}'
+    local -A _debug_steps _debug_bps
+    get_env_debug \
+        ${FUNCNAME[0]} \
+        _debug_steps \
+        _debug_bps \
+        'func argv delimiter' &&
+    {
+        [[ ${_debug_steps[func]:-1} -ne 0 ]] || {
+            echo ${FUNCNAME[0]}
+            [[ ${_debug_bps[func]} -ne 0 ]] || read
+        }
+    } &&
+    {
+        [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
+            declare -p _opts
+            [[ ${_debug_bps[argv]} -ne 0 ]] || read
+        }
+    } &&
+    {
+        [[ ${_debug_steps[delimiter]:-1} -ne 0 ]] || {
+            declare -p POW_DELIMITER
+            [[ ${_debug_bps[delimiter]} -ne 0 ]] || read
+        }
+    } &&
+    {
+        # remove space
+        _code=${_opts[DELIMITER_CODE]//[[:space:]]/}
+        # https://linuxhint.com/associative_array_bash/
+        [ ${POW_DELIMITER[${_code}]+_} ] && {
+            _delimiter_ref=${POW_DELIMITER[${_code}]}
+        }
+    } ||
+    {
         return $ERROR_CODE
     }
 

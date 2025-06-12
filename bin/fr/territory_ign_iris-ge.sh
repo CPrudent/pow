@@ -46,7 +46,6 @@ declare -A io_vars=(
     [ID]=
     [PASSWD]=
     [RE_SEARCH]=
-    [RE_FILE]=
     [TABLE_NAME]=ign_iris_ge
 ) &&
 pow_argv \
@@ -76,16 +75,10 @@ get_env_debug \
     _debug_steps \
     _debug_bps \
     'argv years year io_begin url shp create copy' &&
-{
-    io_get_property_online_available    \
-        --name ${io_vars[NAME]}         \
-        --key REGEXP_SEARCH             \
-        --value io_vars[RE_SEARCH]      &&
-    io_get_property_online_available    \
-        --name ${io_vars[NAME]}         \
-        --key REGEXP_FILE               \
-        --value io_vars[RE_FILE]
-} &&
+io_get_property_online_available    \
+    --name ${io_vars[NAME]}         \
+    --key REGEXP_SEARCH             \
+    --value io_vars[RE_SEARCH]      &&
 {
     [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
         declare -p io_vars

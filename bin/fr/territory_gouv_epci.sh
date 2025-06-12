@@ -38,14 +38,17 @@ declare -A io_vars=(
 pow_argv \
     --args_n '
         force:Forcer l import même si celui-ci a déjà été fait;
+        force_years:Pallier au défaut de téléchargement des années disponibles;
         year:Importer un millésime spécifique (au format YYYY) au lieu du dernier millésime disponible' \
     --args_v '
-        force:yes|no' \
+        force:yes|no;
+        force_years:yes|no;' \
     --args_d '
-        force:no' \
+        force:no;
+        force_years:no' \
     --args_p '
         reset:no;
-        tag:force@bool,year@int
+        tag:force@bool,force_years@bool,year@int
     ' \
     --pow_argv io_vars "$@" || exit $?
 
@@ -64,10 +67,17 @@ get_env_debug \
 } &&
 # get years
 set_env --schema_name fr &&
-io_get_years_online_available \
-    --name ${io_vars[NAME]} \
-    --details_file years_list_path \
-    --dates_list years &&
+{
+    if [ "${io_vars[FORCE_YEARS]}" = no ]; then
+        io_get_years_online_available \
+            --name ${io_vars[NAME]} \
+            --details_file years_list_path \
+            --dates_list years
+    else
+        # downloaded <years_list_path> not readable (binary), assume patch!
+        years=(2025-01-01 2024-01-01 2023-01-01)
+    fi
+} &&
 {
     [[ ${_debug_steps[years]:-1} -ne 0 ]] || {
         declare -p years years_list_path
@@ -86,7 +96,7 @@ io_get_years_online_available \
         }
     fi
 } &&
-year=$(date -d "${years[$year_id]}" '+%Y') &&
+year=$(date --date "${years[$year_id]}" '+%Y') &&
 {
     [[ ${_debug_steps[year]:-1} -ne 0 ]] || {
         echo "year=$year (${years[$year_id]})"
@@ -134,7 +144,16 @@ io_get_property_online_available    \
     --name ${io_vars[NAME]}         \
     --key REGEXP_SEARCH             \
     --value io_vars[RE_SEARCH]      &&
-url_data_all=($(grep --only-matching --perl-regexp ${io_vars[RE_SEARCH]//\#DATE/$year} "$years_list_path")) &&
+{
+    if [ "${io_vars[FORCE_YEARS]}" = no ]; then
+        url_data_all=($(grep --only-matching --perl-regexp ${io_vars[RE_SEARCH]//\#DATE/$year} "$years_list_path"))
+    else
+        url_data_all=(
+            /files/Accueil/DESL/#DATE/epcisanscom${year}.xlsx
+            /files/Accueil/DESL/#DATE/epcicom${year}-2.xlsx
+        )
+    fi
+} &&
 {
     [[ ${_debug_steps[url_all]:-1} -ne 0 ]] || {
         declare -p url_data_all
@@ -177,17 +196,15 @@ for ((_url_i=0; _url_i<${#url_data_all[*]}; _url_i++)); do
         --rowid no \
         --table_name ${_TABLES[$_item]} \
         --load_mode OVERWRITE_TABLE &&
-    rm "$POW_DIR_IMPORT/${year_data}" &&
-    {
-        [ -n "$_query_count" ] && _query_count+='+'
-        _query_count+="(SELECT COUNT(*) FROM fr.${_TABLES[$_item]})"
-    } ||
+    rm "$POW_DIR_IMPORT/${year_data}" ||
     {
         log_error "chargement '$year_data' en erreur!"
         on_import_error --id ${io_vars[ID]}
     }
 done &&
-rm "$years_list_path" &&
+{
+    [ "${io_vars[FORCE_YEARS]}" = yes ] || rm "$years_list_path"
+} &&
 execute_query \
     --name EPCI_KIND \
     --query "
@@ -214,7 +231,7 @@ execute_query \
         ALTER TABLE fr.gouv_epci RENAME nb_com_${year} TO nb_communes;
         " &&
 io_history_end_ok \
-    --nrows_processed "($_query_count)" \
+    --nrows_processed "(SELECT COUNT(*) FROM fr.gouv_epci)" \
     --id ${io_vars[ID]} &&
 vacuum \
     --schema_name fr \

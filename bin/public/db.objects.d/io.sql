@@ -151,8 +151,8 @@ BEGIN
         _last_io := (public.get_last_io(name => 'FR-ADDRESS-LAPOSTE-DELIVERY-POINT')).date_data_end;
     ELSIF name = 'FR-TERRITORY-IGN-EVENT' THEN
         _last_io := (public.get_last_io(name => 'FR-TERRITORY-IGN')).date_data_end;
-    ELSIF name = 'FR-TERRITORY-IGN-IRIS-GE-EVENT' THEN
-        _last_io := (public.get_last_io(name => 'FR-TERRITORY-IGN-IRIS-GE')).date_data_end;
+    ELSIF name = 'FR-TERRITORY-IGN-IRIS_GE-EVENT' THEN
+        _last_io := (public.get_last_io(name => 'FR-TERRITORY-IGN-IRIS_GE')).date_data_end;
     ELSIF name = 'FR-TERRITORY-INSEE-EVENT' THEN
         _last_io := (public.get_last_io(name => 'FR-TERRITORY-INSEE')).date_data_end;
     ELSIF name = 'FR-TERRITORY-LAPOSTE-EVENT' THEN
@@ -334,7 +334,7 @@ BEGIN
             '''::DATE
             '
             )
-        WHEN 'FR-TERRITORY-IGN-IRIS-GE-EVENT' THEN
+        WHEN 'FR-TERRITORY-IGN-IRIS_GE-EVENT' THEN
             CONCAT(
             '
                 (

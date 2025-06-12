@@ -708,8 +708,8 @@ io_get_property_online_available() {
         _items='epcicom|epcisanscom'
         # NOTE /files/Accueil/DESL/2025/epcicom2025-2.xlsx (2nd version ?)
         _re_search='/files/Accueil/DESL/#DATE/('$_items')#DATE[^.]*\.'${_extension}
-        _re_file='^('${_items}')[0-9]{4}[^.]*\.'${_extension}
-        _re_item='^'#ITEM
+        _re_file='('${_items}')[0-9]{4}[^.]*\.'${_extension}
+        _re_item=#ITEM
         ;;
     FR-TERRITORY-INSEE)
         _product=table-appartenance-geo-communes
@@ -867,7 +867,7 @@ io_purge_common() {
         'func argv io item files'
 
     # NOTE to debug:
-    # export POW_DEBUG_JSON='{"codes":[{"name":"io_purge_common","steps":["io@break","region@break"]}]}'
+    # export POW_DEBUG_JSON='{"codes":[{"name":"io_purge_common","steps":["io@break","item@break"]}]}'
 
     {
         [[ ${_debug_steps[func]:-1} -ne 0 ]] || {
@@ -904,11 +904,13 @@ io_purge_common() {
         }
     } &&
     {
+        # 'find ! newer' takes itself, so +1 and finally BACKUP
         _ref_subscript=${_io[BACKUP]}
-        [[ $_ref_subscript -eq 0 ]] || {
-            # array is 0-based
-            _ref_subscript=$((_ref_subscript -1))
-        }
+
+#         [[ $_ref_subscript -eq 0 ]] || {
+#             # array is 0-based
+#             _ref_subscript=$((_ref_subscript -1))
+#         }
     } &&
     {
         if [ -n "${_io[ITEMS]}" ]; then
@@ -924,13 +926,20 @@ io_purge_common() {
                         [[ ${_debug_bps[item]} -ne 0 ]] || read
                     }
                 } &&
-                _files=($(ls -1 $POW_DIR_COMMON_GLOBAL_SCHEMA/${_io[PRODUCT]}* | \
-                    grep --perl-regexp "${_regexp}" | \
-                    xargs --max-args 1 basename | \
-                    sort --reverse)) &&
+                # bash sort array of files by date
+                _files=(
+                    $(find \
+                        $POW_DIR_COMMON_GLOBAL_SCHEMA \
+                        -regextype posix-egrep \
+                        -regex '.*'"${_regexp}"'.*' \
+                        -printf "%T+ %p\n" | \
+                    sort --reverse | \
+                    cut --delimiter ' ' --field 2)
+                ) &&
                 {
                     [[ ${_debug_steps[files]:-1} -ne 0 ]] || {
                         declare -p _files
+                        echo "subscript=(${_ref_subscript})"
                         echo "ref=(${_files[${_ref_subscript}]})"
                         [[ ${_debug_bps[files]} -ne 0 ]] || read
                     }
@@ -940,11 +949,13 @@ io_purge_common() {
                     [[ ${#_files[@]} -le ${_io[BACKUP]} ]] || {
                         # reference is backup-th file, older can be deleted
                         # https://unix.stackexchange.com/questions/98877/trouble-getting-regex-to-work-with-find
-                        _deletes=($(find \
-                            $POW_DIR_COMMON_GLOBAL_SCHEMA \
-                            -regextype posix-egrep \
-                            -regex '.*'"${_regexp}"'.*' \
-                            ! -newer "$POW_DIR_COMMON_GLOBAL_SCHEMA/${_files[${_ref_subscript}]}")) &&
+                        _deletes=(
+                            $(find \
+                                $POW_DIR_COMMON_GLOBAL_SCHEMA \
+                                -regextype posix-egrep \
+                                -regex '.*'"${_regexp}"'.*' \
+                                ! -newer "${_files[${_ref_subscript}]}")
+                        ) &&
                         {
                             [ "${_opts[INTERACTIVE]}" = no ] || {
                                 declare -p _deletes
