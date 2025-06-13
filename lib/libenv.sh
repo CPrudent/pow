@@ -250,7 +250,7 @@ _set_pg_passwd() {
     }
 
     # check all pgpass (adding new one)
-    declare -a _passwd_files=( $POW_DIR_ROOT/bin/admin/install.d/.pgpass* )
+    local -a _passwd_files=( $POW_DIR_ROOT/bin/admin/install.d/.pgpass* )
     for ((_i=0; _i<${#_passwd_files[*]}; _i++)); do
         _pg_login=$(cut --delimiter : --field 4 < ${_passwd_files[$_i]})
         [ -n "$_pg_login" ] && {
@@ -367,7 +367,7 @@ set_env_dirs() {
 
     # define DIRs
     local _dir
-    declare -A _dirs
+    local -A _dirs
 
     _dirs[POW_DIR_BATCH]="$POW_DIR_ROOT/bin/${_opts[SCHEMA_NAME]}"
     _dirs[POW_DIR_BATCH_ADMIN]="$POW_DIR_ROOT/bin/admin"

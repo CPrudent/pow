@@ -423,7 +423,7 @@ bal_load_addresses() {
     local -a _addresses _deletes _positions
 
     # DEBUG steps
-    declare -A _debug_steps _debug_bps
+    local -A _debug_steps _debug_bps
     get_env_debug \
         ${FUNCNAME[0]} \
         _debug_steps \
@@ -713,7 +713,7 @@ bal_deal_obsolescence() {
     # export POW_DEBUG_JSON='{"codes":[{"name":"bal_deal_obsolescence","steps":["argv","query@break","count@break","chunk@break","counters@break"]}]}'
 
     # DEBUG steps
-    declare -A _debug_steps _debug_bps
+    local -A _debug_steps _debug_bps
     get_env_debug \
         ${FUNCNAME[0]} \
         _debug_steps \
@@ -1426,7 +1426,7 @@ bal_fix_apply() {
     # export POW_DEBUG_JSON='{"codes":[{"name":"bal_fix_apply","steps":["func","array@break","street_before@break","street_after@break","housenumber_before@break","housenumber_after@break"]}]}'
 
     # DEBUG steps
-    declare -A _debug_steps _debug_bps
+    local -A _debug_steps _debug_bps
     get_env_debug \
         ${FUNCNAME[0]} \
         _debug_steps \
