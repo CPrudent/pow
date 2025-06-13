@@ -676,7 +676,7 @@ io_get_property_online_available() {
         ;;
     # obsolete now, IRIS-GE better
     FR-TERRITORY-IGN-IRIS)
-        _product=CONTOURS-IRIS
+        _product=IRIS
         _extension=7z
         _url_base='https://geoservices.ign.fr'
         _url_data=${_url_base}'/contoursiris#telechargement'
@@ -699,7 +699,7 @@ io_get_property_online_available() {
         _re_item=${_re_file}_#ITEM
         ;;
     FR-TERRITORY-GOUV-EPCI)
-        _product=epci
+        _product=EPCI
         _extension=xlsx
         _url_base='https://www.collectivites-locales.gouv.fr'
         _url_data=${_url_base}'/institutions/liste-et-composition-des-epci-fiscalite-propre'
@@ -712,15 +712,18 @@ io_get_property_online_available() {
         _re_item=#ITEM
         ;;
     FR-TERRITORY-INSEE)
-        _product=table-appartenance-geo-communes
+        _product=INSEE
         _extension=zip
         _url_base='https://www.insee.fr'
         _url_data=${_url_base}'/fr/information/7671844'
-        _re1='-[0-9]{4}[^.]*\.zip'
+        _re1='-[0-9]{4}[^.]*\.'${_extension}
         _re2='[0-9]{4}'
+        _items=communes
+        _re_search='/fr/statistiques/fichier/7671844/table-appartenance-geo-'${_items}'-#DATE[^.]*\.'${_extension}
+        _re_item=table-appartenance-geo-#ITEM
         ;;
     FR-MUNICIPALITY-EVENT-INSEE)
-        _product=cog_ensemble
+        _product=INSEE-EVENT
         _extension=zip
         _url_base='https://www.insee.fr'
         _url_data=${_url_base}'/fr/information/8377162'
@@ -775,6 +778,27 @@ io_get_years_online_available() {
     local -n _details_file_ref=${_opts[DETAILS_FILE]}
     local -n _dates_ref=${_opts[DATES_LIST]}
 
+    # DEBUG steps
+    local -A _debug_steps _debug_bps
+    get_env_debug \
+        ${FUNCNAME[0]} \
+        _debug_steps \
+        _debug_bps \
+        'func argv def dl date' &&
+    # NOTE to debug:
+    # export POW_DEBUG_JSON='{"codes":[{"name":"io_purge_common","steps":["io@break","item@break"]}]}'
+    {
+        [[ ${_debug_steps[func]:-1} -ne 0 ]] || {
+            echo ${FUNCNAME[0]}
+            [[ ${_debug_bps[func]} -ne 0 ]] || read
+        }
+    } &&
+    {
+        [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
+            declare -p _opts
+            [[ ${_debug_bps[argv]} -ne 0 ]] || read
+        }
+    } &&
     io_get_property_online_available    \
         --name ${_opts[NAME]}           \
         --key URL_DATA                  \
@@ -791,6 +815,14 @@ io_get_years_online_available() {
         return $ERROR_CODE
     }
 
+    {
+        [[ ${_debug_steps[def]:-1} -ne 0 ]] || {
+            echo "url=($_url)"
+            echo "re1=($_regexp1)"
+            echo "re2=($_regexp2)"
+            [[ ${_debug_bps[def]} -ne 0 ]] || read
+        }
+    } &&
     # temporary file (to be deleted by caller)
     get_tmp_file --tmpext html --tmpfile _details_file_ref &&
     # download available dates
@@ -800,12 +832,25 @@ io_get_years_online_available() {
         --common_save no \
         --output_directory "$POW_DIR_TMP" \
         --output_file "$(basename $_details_file_ref)" &&
+    {
+        [[ ${_debug_steps[dl]:-1} -ne 0 ]] || {
+            echo "html=($_details_file_ref)"
+            [[ ${_debug_bps[dl]} -ne 0 ]] || read
+        }
+    } &&
     # array of available dates (desc), transforming / to -
-    _dates_ref=($(grep --only-matching --perl-regexp "$_regexp1" $_details_file_ref | grep --only-matching --perl-regexp "$_regexp2" | sed --expression 's@/@-@g' | uniq | sort --reverse)) || {
+    #+ RE can start w/ - (so add --)
+    _dates_ref=($(grep --only-matching --perl-regexp -- "$_regexp1" $_details_file_ref | grep --only-matching --perl-regexp "$_regexp2" | sed --expression 's@/@-@g' | uniq | sort --reverse)) || {
         log_error "Impossible de consulter la liste des millésimes disponibles de ${_opts[NAME]}"
         return $ERROR_CODE
     }
 
+    {
+        [[ ${_debug_steps[date]:-1} -ne 0 ]] || {
+            echo "dates=(${_dates_ref[@]})"
+            [[ ${_debug_bps[date]} -ne 0 ]] || read
+        }
+    } &&
     # date need to be compatible w/ BASH date
     for ((_i=0; _i<${#_dates_ref[@]}; _i++)); do
         [[ ${_dates_ref[$_i]} =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] && continue
@@ -828,6 +873,12 @@ io_get_years_online_available() {
             continue
         }
     done
+    {
+        [[ ${_debug_steps[date]:-1} -ne 0 ]] || {
+            echo "dates=(${_dates_ref[@]})"
+            [[ ${_debug_bps[date]} -ne 0 ]] || read
+        }
+    } &&
 
     return $SUCCESS_CODE
 }
@@ -859,16 +910,14 @@ io_purge_common() {
     local -A _io
 
     # DEBUG steps
-    declare -A _debug_steps _debug_bps
+    local -A _debug_steps _debug_bps
+    # NOTE to debug:
+    # export POW_DEBUG_JSON='{"codes":[{"name":"io_purge_common","steps":["io@break","item@break"]}]}'
     get_env_debug \
         ${FUNCNAME[0]} \
         _debug_steps \
         _debug_bps \
-        'func argv io item files'
-
-    # NOTE to debug:
-    # export POW_DEBUG_JSON='{"codes":[{"name":"io_purge_common","steps":["io@break","item@break"]}]}'
-
+        'func argv io item files' &&
     {
         [[ ${_debug_steps[func]:-1} -ne 0 ]] || {
             echo ${FUNCNAME[0]}
@@ -1297,7 +1346,7 @@ import_csv_file() {
     local _delimiter_value
     if [ "${_opts[DELIMITER]}" = AUTODETECT ]; then
         # https://stackoverflow.com/questions/10806357/associative-arrays-are-local-by-default
-        declare -A _tokens
+        local -A _tokens
         local _code
         for _code in ${!POW_DELIMITER[@]}; do
             # count number of tokens for each delimiter (into first line)
@@ -1591,7 +1640,7 @@ excel_to_csv() {
         ${FUNCNAME[0]} \
         _debug_steps \
         _debug_bps \
-        'argv mime extension delimiter table columns'
+        'argv mime extension option'
 
     {
         [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
@@ -1664,6 +1713,12 @@ excel_to_csv() {
     {
         _options="separator=$_delimiter_value format=preserve"
         [ -z "${_opts[WORKSHEET_NAME]}" ] || _options="sheet=${_opts[WORKSHEET_NAME]} $_options"
+    } &&
+    {
+        [[ ${_debug_steps[option]:-1} -ne 0 ]] || {
+            echo "option=(${_options})"
+            [[ ${_debug_bps[option]} -ne 0 ]] || read
+        }
     } &&
     _step+=1 &&
     log_info "Conversion $_spreadsheet de ${_opts[FROM_FILE_PATH]} vers ${_opts[TO_FILE_PATH]}" &&
@@ -1835,8 +1890,7 @@ import_excel_file() {
         ${FUNCNAME[0]} \
         _debug_steps \
         _debug_bps \
-        'argv'
-
+        'argv context' &&
     {
         [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
             echo ${FUNCNAME[0]} ; declare -p _opts
@@ -1869,12 +1923,22 @@ import_excel_file() {
             [ -z "${_opts[TO_LINE_NUMBER]}" ] || _to="--to_line_number ${_opts[TO_LINE_NUMBER]}"
         }
     } &&
+    {
+        [[ ${_debug_steps[context]:-1} -ne 0 ]] || {
+            echo "sheet=($_sheet)"
+            echo "columns=${_list}"
+            echo "limit=${_limit}"
+            echo "from_number=${_from}"
+            echo "to_number=${_to}"
+            [[ ${_debug_bps[context]} -ne 0 ]] || read
+        }
+    } &&
     _step+=1 &&
     excel_to_csv \
         --from_file_path "${_opts[FILE_PATH]}" \
         --to_file_path "$_tmpfile" \
         --delimiter "${_opts[DELIMITER]}" \
-        "$_sheet" &&
+        $_sheet &&
     _step+=1 &&
     import_csv_file \
         --file_path "$_tmpfile" \
@@ -1884,10 +1948,10 @@ import_excel_file() {
         --load_mode "${_opts[LOAD_MODE]}" \
         --table_columns "${_opts[TABLE_COLUMNS]}" \
         --rowid "${_opts[ROWID]}" \
-        "$_list" \
-        "$_limit" \
-        "$_from" \
-        "$_to" &&
+        $_list \
+        $_limit \
+        $_from \
+        $_to &&
     _step+=1 &&
     rm "$_tmpfile" || {
         log_error "${FUNCNAME[0]}: étape #$_step (${_steps[$_step]}) en erreur"
@@ -1977,8 +2041,7 @@ import_geo_file() {
         ${FUNCNAME[0]} \
         _debug_steps \
         _debug_bps \
-        'argv'
-
+        'argv' &&
     {
         [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
             echo ${FUNCNAME[0]} ; declare -p _opts
@@ -2181,8 +2244,7 @@ import_file() {
         ${FUNCNAME[0]} \
         _debug_steps \
         _debug_bps \
-        'argv table context'
-
+        'argv table context' &&
     {
         [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
             echo ${FUNCNAME[0]} ; declare -p _opts

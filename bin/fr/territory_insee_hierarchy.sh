@@ -17,7 +17,8 @@ on_import_error() {
         --pow_argv _opts "$@" || return $?
 
     # history created?
-    #echo "id=${_opts[ID]}"    [ -n "${_opts[ID]}" ] && io_history_end_ko --id ${_opts[ID]}
+    #echo "id=${_opts[ID]}"
+    [ -n "${_opts[ID]}" ] && io_history_end_ko --id ${_opts[ID]}
 
     # ignoring error if last year already exists
     if io_history_exists --io ${io_vars[NAME]} --date_end "${years[$year_id]}"; then
@@ -36,6 +37,8 @@ on_import_error() {
 declare -A io_vars=(
     [NAME]=FR-TERRITORY-INSEE
     [ID]=
+    [URL_BASE]=
+    [RE_SEARCH]=
 ) &&
 pow_argv \
     --args_n "
@@ -63,133 +66,144 @@ get_env_debug \
     "$(basename $0 .sh)" \
     _debug_steps \
     _debug_bps \
-    'argv years year url_data context io_begin ressource'
-
-[[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
-    declare -p io_vars
-    [[ ${_debug_bps[argv]} -eq 0 ]] && read
-}
-
-# year of administrative cutting (w/ YY format)
-year=
-# get years
+    'argv years year url_data context io_begin ressource' &&
+{
+    [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
+        declare -p io_vars
+        [[ ${_debug_bps[argv]} -ne 0 ]] || read
+    }
+} &&
 set_env --schema_name fr &&
+# year of administrative cutting (w/ YY format)
 io_get_years_online_available \
     --name ${io_vars[NAME]} \
     --details_file years_list_path \
-    --dates_list years || exit $ERROR_CODE
-[[ ${_debug_steps[years]:-1} -eq 0 ]] && {
-    declare -p years years_list_path
-    [[ ${_debug_bps[years]} -eq 0 ]] && read
-}
-
-# get year (w/ format YY)
-if [ -z "${io_vars[YEAR]}" ]; then
-    # get more recent
-    year_id=0
-elif [ "${io_vars[YEAR]}" = ALL ]; then
-    # get all available
-    load_mode_all=${io_vars[LOAD_MODE]}
-    for _year in ${years[@]}; do
-        # _year w/ format YYYY-01-01
-        _yy=$(date -d $_year +%y)
-        $POW_DIR_BATCH/territory_insee_hierarchy.sh \
-            --year $_yy \
-            --load_mode $load_mode_all \
-            --force ${io_vars[FORCE]} || exit $ERROR_CODE
-        load_mode_all=APPEND
-    done
-    exit $SUCCESS_CODE
-else
-    in_array --array years --item "$(date +%C)${io_vars[YEAR]}-01-01" --position year_id || {
-        log_error "Impossible de trouver le millésime ${io_vars[YEAR]} de ${io_vars[NAME]}, les millésimes disponibles sont ${years[@]}"
-        on_import_error --id ${io_vars[ID]}
+    --dates_list years &&
+{
+    [[ ${_debug_steps[years]:-1} -ne 0 ]] || {
+        declare -p years years_list_path
+        [[ ${_debug_bps[years]} -ne 0 ]] || read
     }
-fi
-year=$(date -d ${years[$year_id]} +%y)
-[[ ${_debug_steps[year]:-1} -eq 0 ]] && {
-    echo "year=$year (${years[$year_id]})"
-    [[ ${_debug_bps[year]} -eq 0 ]] && read
-}
-[ -z "$year" ] && {
-    log_error "Impossible de trouver le millésime de ${io_vars[NAME]}"
-    on_import_error --id ${io_vars[ID]}
-}
+} &&
+# get year (w/ format YY)
+{
+    if [ -z "${io_vars[YEAR]}" ]; then
+        # get more recent
+        year_id=0
+    elif [ "${io_vars[YEAR]}" = ALL ]; then
+        # get all available
+        load_mode_all=${io_vars[LOAD_MODE]}
+        for _year in ${years[@]}; do
+            # _year w/ format YYYY-01-01
+            _yy=$(date --date $_year +%y)
+            $POW_DIR_BATCH/territory_insee_hierarchy.sh \
+                --year $_yy \
+                --load_mode $load_mode_all \
+                --force ${io_vars[FORCE]} || exit $ERROR_CODE
+            load_mode_all=APPEND
+        done
+        exit $SUCCESS_CODE
+    else
+        in_array --array years --item "$(date +%C)${io_vars[YEAR]}-01-01" --position year_id || {
+            log_error "Impossible de trouver le millésime ${io_vars[YEAR]} de ${io_vars[NAME]}, les millésimes disponibles sont ${years[@]}"
+            false
+        }
+    fi
+} &&
+year=$(date --date ${years[$year_id]} +%y) &&
+{
+    [[ ${_debug_steps[year]:-1} -ne 0 ]] || {
+        echo "year=$year (${years[$year_id]})"
+        [[ ${_debug_bps[year]} -ne 0 ]] || read
+    }
+} &&
+{
+    [ -n "$year" ] || {
+        log_error "Impossible de trouver le millésime de ${io_vars[NAME]}"
+        false
+    }
+} &&
 # up to 2024, year coded on 4 digits
-[ $year -ge 24 ] && year="$(date +%C)$year"
-[[ ${_debug_steps[year]:-1} -eq 0 ]] && {
-    echo "year=$year"
-    [[ ${_debug_bps[year]} -eq 0 ]] && read
-}
-
+{
+    [ $year -lt 24 ] || year="$(date +%C)$year"
+} &&
+{
+    [[ ${_debug_steps[year]:-1} -ne 0 ]] || {
+        echo "year=$year"
+        [[ ${_debug_bps[year]} -ne 0 ]] || read
+    }
+} &&
 io_get_property_online_available    \
     --name ${io_vars[NAME]}         \
     --key URL_BASE                  \
-    --value url_base                &&
-url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/7671844/table-appartenance-geo-communes-${year}[^.]*\.zip" "$years_list_path" | head --lines 1) &&
+    --value io_vars[URL_BASE]       &&
+io_get_property_online_available    \
+    --name ${io_vars[NAME]}         \
+    --key REGEXP_SEARCH             \
+    --value io_vars[RE_SEARCH]      &&
+url_data=$(grep --only-matching --perl-regexp ${io_vars[RE_SEARCH]//\#DATE/$year} "$years_list_path" | head --lines 1) &&
 {
     [[ ${_debug_steps[url_data]:-1} -ne 0 ]] || {
         declare -p url_data
         [[ ${_debug_bps[url_data]} -ne 0 ]] || read
     }
 } &&
-[ -n "$url_data" ] || {
-    log_error "Impossible de trouver URL de ${io_vars[NAME]}"
-    on_import_error --id ${io_vars[ID]}
-}
-
-url_data="${url_base}/${url_data}"
-year_data=$(basename "$url_data")
-rm --force "$years_list_path"
-# fix current year w/ century!
-[ ${#year} -eq 2 ] && year="$(date +%C)$year"
-
-io_todo_import \
-    --force ${io_vars[FORCE]} \
-    --io ${io_vars[NAME]} \
-    --date_end "${years[$year_id]}"
-case $? in
-$POW_IO_SUCCESSFUL)
-    exit $SUCCESS_CODE
-    ;;
-$POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
-    on_import_error --id ${io_vars[ID]}
-    ;;
-esac
-
-# from 2014 to now
-name_worksheet_municipality=COM
-name_worksheet_district=ARM
-name_worksheet_supra=Zones_supra_communales
-line_number_supra=6
-# before 2011 (included)
-if [ $year -le 2011 ]; then
-    name_worksheet_municipality=Liste_COM
-    name_worksheet_district=
-    name_worksheet_supra=Niv_supracom
-    line_number_supra=5
-# 2012 and 2013
-elif [ $year -le 2013 ]; then
-    name_worksheet_municipality='Emboîtements communaux'
-    name_worksheet_district=
-    name_worksheet_supra='Zones supra-communales'
-fi
-[[ ${_debug_steps[context]:-1} -eq 0 ]] && {
-    echo "name_worksheet_municipality=$name_worksheet_municipality"
-    echo "name_worksheet_district=$name_worksheet_district"
-    echo "name_worksheet_supra=$name_worksheet_supra"
-    echo "line_number_supra=$line_number_supra"
-    [[ ${_debug_bps[context]} -eq 0 ]] && read
-}
-
-log_info "Import du millésime $year de ${io_vars[NAME]}" &&
 {
-    execute_query \
-        --name "DELETE_IO_${io_vars[NAME]}_${year}" \
-        --query "
-            DELETE FROM io_history
-            WHERE name = '${io_vars[NAME]}' AND date_data_begin = '${years[$year_id]}'"
+    [ -n "$url_data" ] || {
+        log_error "Impossible de trouver URL de ${io_vars[NAME]}"
+        false
+    }
 } &&
+url_data="${io_vars[URL_BASE]}/${url_data}" &&
+year_data=$(basename "$url_data") &&
+rm --force "$years_list_path" &&
+# fix current year w/ century!
+{
+    [ ${#year} -eq 4 ] || year="$(date +%C)$year"
+} &&
+{
+    io_todo_import \
+        --force ${io_vars[FORCE]} \
+        --io ${io_vars[NAME]} \
+        --date_end "${years[$year_id]}"
+    case $? in
+    $POW_IO_SUCCESSFUL)
+        exit $SUCCESS_CODE
+        ;;
+    $POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
+        false
+        ;;
+    esac
+} &&
+# from 2014 to now
+name_worksheet_municipality=COM &&
+name_worksheet_district=ARM &&
+name_worksheet_supra=Zones_supra_communales &&
+line_number_supra=6 &&
+{
+    # before 2011 (included)
+    if [ $year -le 2011 ]; then
+        name_worksheet_municipality=Liste_COM
+        name_worksheet_district=
+        name_worksheet_supra=Niv_supracom
+        line_number_supra=5
+    # 2012 and 2013
+    elif [ $year -le 2013 ]; then
+        name_worksheet_municipality='Emboîtements communaux'
+        name_worksheet_district=
+        name_worksheet_supra='Zones supra-communales'
+    fi
+} &&
+{
+    [[ ${_debug_steps[context]:-1} -ne 0 ]] || {
+        echo "name_worksheet_municipality=$name_worksheet_municipality"
+        echo "name_worksheet_district=$name_worksheet_district"
+        echo "name_worksheet_supra=$name_worksheet_supra"
+        echo "line_number_supra=$line_number_supra"
+        [[ ${_debug_bps[context]} -ne 0 ]] || read
+    }
+} &&
+log_info "Import du millésime $year de ${io_vars[NAME]}" &&
 io_history_begin \
     --io ${io_vars[NAME]} \
     --date_begin "${years[$year_id]}" \
@@ -205,7 +219,8 @@ io_history_begin \
 {
     io_download_file \
         --url "$url_data" \
-        --output_directory "$POW_DIR_IMPORT"
+        --output_directory "$POW_DIR_IMPORT" \
+        --overwrite_mode no
     [ $? -lt $POW_DOWNLOAD_ERROR ] || false
 } &&
 year_ressource="$POW_DIR_IMPORT/$year_data" &&
@@ -220,16 +235,14 @@ import_file \
     --import_options "worksheet_name:${name_worksheet_municipality};from_line_number:6" \
     --table_name tmp_insee_municipality \
     --load_mode OVERWRITE_TABLE &&
-{
-    execute_query \
-        --name MUNICIPALITY_ADD_COLUMNS_EPCI \
-        --query '
-            ALTER TABLE fr.tmp_insee_municipality
-                ADD COLUMN IF NOT EXISTS "EPCI" VARCHAR;
-            ALTER TABLE fr.tmp_insee_municipality
-                ADD COLUMN IF NOT EXISTS "NATURE_EPCI" VARCHAR;
-            '
-} &&
+execute_query \
+    --name MUNICIPALITY_ADD_COLUMNS_EPCI \
+    --query '
+        ALTER TABLE fr.tmp_insee_municipality
+            ADD COLUMN IF NOT EXISTS "EPCI" VARCHAR;
+        ALTER TABLE fr.tmp_insee_municipality
+            ADD COLUMN IF NOT EXISTS "NATURE_EPCI" VARCHAR;
+            ' &&
 import_file \
     --file_path "$year_ressource" \
     --import_options "worksheet_name:${name_worksheet_supra};from_line_number:${line_number_supra}" \
@@ -328,7 +341,12 @@ vacuum \
     --schema_name fr \
     --table_name insee_municipality,insee_supra \
     --mode ANALYZE &&
-rm --force "$year_ressource" || on_import_error --id ${io_vars[ID]}
+rm --force "$year_ressource" ||
+{
+    on_import_error --id ${io_vars[ID]}
+}
 
+io_purge_common --name ${io_vars[NAME]}
 log_info "Import du millésime $year de ${io_vars[NAME]} avec succès"
+
 exit $SUCCESS_CODE
