@@ -539,16 +539,15 @@ get_env_debug() {
 
             [[ $POW_DEBUG_INIT =~ ^(${_true})$ ]] && {
                 echo "DEBUG $_code"
-                # https://stackoverflow.com/questions/5349718/how-can-i-repeat-a-character-in-bash
-                #printf ' %.0s' {1..6}
-                for ((_i=0; _i<${#_array_steps[@]}; _i++)); do
-                    _tmp=${_array_steps[$_i]:0:6}
-                    [[ ${#_array_steps[$_i]} -gt 6 ]] && _tmp+='+'
+                for _step in $_list_steps; do
+                    # print name of step (or only first chars if too long)
+                    _tmp=${_step:0:6}
+                    [[ ${#_step} -gt 6 ]] && _tmp+='+'
                     printf '%s\t' $_tmp
                 done
                 echo
-                #printf ' %.0s' {1..6}
                 for _step in $_list_steps; do
+                    # with breakoint?
                     [ "${_debug_bps_ref[$_step]}" = 0 ] && _tmp=x || _tmp=' '
                     printf '%s\t' $_tmp
                 done
