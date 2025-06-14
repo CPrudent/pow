@@ -511,12 +511,12 @@ set_env_debug() {
 
 # get DEBUG env for a given code
 get_env_debug() {
-    local _code=$1 _all_steps="$4" _list_steps _step
+    local _code=$1 _all_steps="$4" _list_steps _step _i _tmp
+    local _true='yes|YES|y|Y|oui|OUI|o|O|ok|OK|t|T|true|TRUE'
     local -a _array_steps _array_bps
     local -n _debug_steps_ref=$2 _debug_bps_ref=$3
 
-    #(! is_yes --var POW_DEBUG_ENABLE) && return $SUCCESS_CODE
-
+    [[ ! $POW_DEBUG_ENABLE =~ ^(${_true})$ ]] && return $SUCCESS_CODE
     set_env_debug
     [ ${POW_DEBUG_STEPS[${_code}]+_} ] && {
         case "${POW_DEBUG_STEPS[${_code}]}" in
@@ -537,11 +537,23 @@ get_env_debug() {
                 _debug_bps_ref[$_step]=$([[ " ${_array_bps[*]} " == *" $_step "* ]] ; echo $?)
             done
 
-            #(is_yes --var POW_DEBUG_INIT) && {
-                echo "DEBUG: $_code steps=[$_list_steps]"
-                echo "with_steps=${_debug_steps_ref[@]}"
-                echo "with_bps=${_debug_bps_ref[@]}"
-            #}
+            [[ $POW_DEBUG_INIT =~ ^(${_true})$ ]] && {
+                echo "DEBUG $_code"
+                # https://stackoverflow.com/questions/5349718/how-can-i-repeat-a-character-in-bash
+                #printf ' %.0s' {1..6}
+                for ((_i=0; _i<${#_array_steps[@]}; _i++)); do
+                    _tmp=${_array_steps[$_i]:0:6}
+                    [[ ${#_array_steps[$_i]} -gt 6 ]] && _tmp+='+'
+                    printf '%s\t' $_tmp
+                done
+                echo
+                #printf ' %.0s' {1..6}
+                for _step in $_list_steps; do
+                    [ "${_debug_bps_ref[$_step]}" = 0 ] && _tmp=x || _tmp=' '
+                    printf '%s\t' $_tmp
+                done
+                echo
+            }
         }
     }
 
