@@ -23,6 +23,14 @@ on_import_error() {
     exit $ERROR_CODE
 }
 
+# deal w/ interrupt signal (CTRL-C, kill)
+on_break() {
+    log_error 'arrêt utilisateur' &&
+    rm --force "$years_list_path" &&
+    on_import_error --id ${io_vars[ID]}
+}
+trap on_break SIGINT
+
 # corresponding DB tables
 declare -A _TABLES=(
     [epcicom]=gouv_epci_municipality

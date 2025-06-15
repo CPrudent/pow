@@ -5,6 +5,32 @@
     #--
     # import INSEE events of municipality updates (into FR schema)
 
+# CHANGELOG
+# example: https://www.insee.fr/fr/statistiques/fichier/3720946/mvtcommune-01012019-csv.zip
+# example: https://www.insee.fr/fr/statistiques/fichier/4316069/mvtcommune2020-csv.zip
+# example: https://www.insee.fr/fr/statistiques/fichier/6051727/mvtcommune_2022.csv
+# NOTE change 2023 (v_)mvtcommune_2023.csv
+# NOTE change 2024
+# href="fr/information/7766585/v_mvt_commune_2024.csv"
+# NOTE change 2025 (archive)
+# search for: Code officiel géographique au 1er janvier 2025
+# href="fr/information/8377162/cog_ensemble_2025_csv.zip"
+#+ v_arrondissement_2025.csv
+#+ v_canton_2025.csv
+#+ v_codes_extension_2025.csv
+#+ v_comer_2025.csv
+#+ v_commune_2025.csv
+#+ v_commune_comer_2025.csv
+#+ v_commune_depuis_1943.csv
+#+ v_commune_outremer_depuis_1943.csv
+#+ v_ctcd_2025.csv
+#+ v_departement_2025.csv
+#+ v_mvt_commune_2025.csv
+#+ v_pays_et_territoire_depuis_1943.csv
+#+ v_pays_territoire_2025.csv
+#+ v_region_2025.csv
+#+ v_tom_depuis_1943.csv
+
 on_import_error() {
     local -A _opts &&
     pow_argv \
@@ -34,9 +60,19 @@ on_import_error() {
     exit $ERROR_CODE
 }
 
+# deal w/ interrupt signal (CTRL-C, kill)
+on_break() {
+    log_error 'arrêt utilisateur' &&
+    rm --force "$years_list_path" &&
+    on_import_error --id ${io_vars[ID]}
+}
+trap on_break SIGINT
+
 declare -A io_vars=(
     [NAME]=FR-MUNICIPALITY-EVENT-INSEE
     [ID]=
+    [URL_BASE]=
+    [RE_SEARCH]=
 ) &&
 pow_argv \
     --args_n "
@@ -61,93 +97,78 @@ get_env_debug \
     "$(basename $0 .sh)" \
     _debug_steps \
     _debug_bps \
-    'argv years year url url_data io_begin ressource'
-
-[[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
-    declare -p io_vars
-    [[ ${_debug_bps[argv]} -eq 0 ]] && read
-}
-
-# year of municipality events (w/ YYYY format)
-year=
-# get years
+    'argv years year url url_data io_begin ressource' &&
+{
+    [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
+        declare -p io_vars
+        [[ ${_debug_bps[argv]} -ne 0 ]] || read
+    }
+} &&
 set_env --schema_name fr &&
+# year of municipality events (w/ YYYY format)
 io_get_years_online_available \
     --name ${io_vars[NAME]} \
     --details_file years_list_path \
-    --dates_list years || exit $ERROR_CODE
-[[ ${_debug_steps[years]:-1} -eq 0 ]] && {
-    declare -p years years_list_path
-    [[ ${_debug_bps[years]} -eq 0 ]] && read
-}
-
+    --dates_list years &&
+{
+    [[ ${_debug_steps[years]:-1} -ne 0 ]] || {
+        declare -p years years_list_path
+        [[ ${_debug_bps[years]} -ne 0 ]] || read
+    }
+} &&
 # fix INSEE change (only last year available)
-year=$(date +%Y)
-year_id=0
-[[ ${_debug_steps[year]:-1} -eq 0 ]] && {
-    echo "year=$year (${years[$year_id]})"
-    [[ ${_debug_bps[year]} -eq 0 ]] && read
-}
-
-# example: https://www.insee.fr/fr/statistiques/fichier/3720946/mvtcommune-01012019-csv.zip
-# example: https://www.insee.fr/fr/statistiques/fichier/4316069/mvtcommune2020-csv.zip
-# example: https://www.insee.fr/fr/statistiques/fichier/6051727/mvtcommune_2022.csv
-
-# NOTE change 2023 (v_)mvtcommune_2023.csv
-
-# NOTE change 2024
-# href="fr/information/7766585/v_mvt_commune_2024.csv"
-
-# NOTE change 2025 (archive)
-# search for: Code officiel géographique au 1er janvier 2025
-# href="fr/information/8377162/cog_ensemble_2025_csv.zip"
-#+ v_arrondissement_2025.csv
-#+ v_canton_2025.csv
-#+ v_codes_extension_2025.csv
-#+ v_comer_2025.csv
-#+ v_commune_2025.csv
-#+ v_commune_comer_2025.csv
-#+ v_commune_depuis_1943.csv
-#+ v_commune_outremer_depuis_1943.csv
-#+ v_ctcd_2025.csv
-#+ v_departement_2025.csv
-#+ v_mvt_commune_2025.csv
-#+ v_pays_et_territoire_depuis_1943.csv
-#+ v_pays_territoire_2025.csv
-#+ v_region_2025.csv
-#+ v_tom_depuis_1943.csv
-
-url_data=$(grep --only-matching --perl-regexp "/fr/statistiques/fichier/8377162/cog_ensemble_${year}_csv.zip" "$years_list_path")
-[[ ${_debug_steps[url]:-1} -eq 0 ]] && {
-    echo "url=$url_data"
-    [[ ${_debug_bps[url]} -eq 0 ]] && read
-}
-[ -z "$url_data" ] && {
-    log_error "Impossible de trouver URL de ${io_vars[NAME]}"
-    on_import_error --id ${io_vars[ID]}
-}
-
-url_data="https://www.insee.fr/${url_data}"
-year_data=$(basename "$url_data")
-[[ ${_debug_steps[url_data]:-1} -eq 0 ]] && {
-    echo "year_data=$year_data"
-    [[ ${_debug_bps[url_data]} -eq 0 ]] && read
-}
-rm --force "$years_list_path"
-
-io_todo_import \
-    --force ${io_vars[FORCE]} \
-    --io ${io_vars[NAME]} \
-    --date_end "${years[$year_id]}"
-case $? in
-$POW_IO_SUCCESSFUL)
-    exit $SUCCESS_CODE
-    ;;
-$POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
-    on_import_error --id ${io_vars[ID]}
-    ;;
-esac
-
+year_id=0 &&
+year=$(date --date ${years[$year_id]} +%Y) &&
+{
+    [[ ${_debug_steps[year]:-1} -ne 0 ]] || {
+        echo "year=$year"
+        [[ ${_debug_bps[year]} -ne 0 ]] || read
+    }
+} &&
+io_get_property_online_available    \
+    --name ${io_vars[NAME]}         \
+    --key URL_BASE                  \
+    --value io_vars[URL_BASE]       &&
+io_get_property_online_available    \
+    --name ${io_vars[NAME]}         \
+    --key REGEXP_SEARCH             \
+    --value io_vars[RE_SEARCH]      &&
+url_data=$(grep --only-matching --perl-regexp ${io_vars[RE_SEARCH]//\#DATE/$year} "$years_list_path") &&
+{
+    [[ ${_debug_steps[url]:-1} -ne 0 ]] || {
+        echo "url=$url_data"
+        [[ ${_debug_bps[url]} -ne 0 ]] || read
+    }
+} &&
+{
+    [ -n "$url_data" ] || {
+        log_error "Impossible de trouver URL de ${io_vars[NAME]}"
+        false
+    }
+} &&
+url_data="${io_vars[URL_BASE]}/${url_data}" &&
+year_data=$(basename "$url_data") &&
+{
+    [[ ${_debug_steps[url_data]:-1} -ne 0 ]] || {
+        echo "year_data=$year_data"
+        [[ ${_debug_bps[url_data]} -ne 0 ]] || read
+    }
+} &&
+rm --force "$years_list_path" &&
+{
+    io_todo_import \
+        --force ${io_vars[FORCE]} \
+        --io ${io_vars[NAME]} \
+        --date_end "${years[$year_id]}"
+    case $? in
+    $POW_IO_SUCCESSFUL)
+        exit $SUCCESS_CODE
+        ;;
+    $POW_IO_IN_PROGRESS | $POW_IO_ERROR | $ERROR_CODE)
+        false
+        ;;
+    esac
+} &&
 # estimate to ~35000 municipalities
 log_info "Import du millésime $year de ${io_vars[NAME]}" &&
 io_history_begin \
@@ -195,7 +216,12 @@ vacuum \
     --table_name insee_municipality_event \
     --mode ANALYZE &&
 rm --force "$POW_DIR_IMPORT/$year_data" &&
-rm --force --recursive "$POW_DIR_TMP/$year_data" || on_import_error --id ${io_vars[ID]}
+rm --force --recursive "$POW_DIR_TMP/$year_data" ||
+{
+    on_import_error --id ${io_vars[ID]}
+}
 
+io_purge_common --name ${io_vars[NAME]}
 log_info "Import du millésime $year de ${io_vars[NAME]} avec succès"
+
 exit $SUCCESS_CODE

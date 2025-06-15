@@ -8,10 +8,7 @@
     # NOTE to debug,
     # export POW_DEBUG_JSON='{"codes":[{"name":"territory_ign_admin-express","steps":["argv","items","years","year@break","url_all","url@break","item","table@break"]}]}'
 
-    # TODO
-    # add function purge_common --name <IO>
-
-# CHANGELOG (ADMIN-EXPRESS)
+# CHANGELOG
 # 2.5
 #   ENTITE_RATTACHEE existe toujours mais n'inclut plus les arrondissements municipaux (entite_rattachee.type = 'ARM')
 #	qui sont dans un nouveau fichier ARRONDISSEMENT_MUNICIPAL(colonnes indentiques à entite_rattachee)
@@ -44,6 +41,7 @@
 # deal w/ interrupt signal (CTRL-C, kill)
 on_break() {
     log_error 'arrêt utilisateur' &&
+    rm --force "$years_list_path" &&
     on_import_error --id ${io_vars[ID]}
 }
 trap on_break SIGINT

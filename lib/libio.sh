@@ -727,8 +727,10 @@ io_get_property_online_available() {
         _extension=zip
         _url_base='https://www.insee.fr'
         _url_data=${_url_base}'/fr/information/8377162'
-        _re1='_[0-9]{4}_csv.zip'
+        _re1='_[0-9]{4}_csv\.'${_extension}
         _re2='[0-9]{4}'
+        _items=ensemble
+        _re_search='/fr/statistiques/fichier/8377162/cog_'${_items}'_#DATE_csv\.'${_extension}
         ;;
     *)
         log_error "IO ${_opts[NAME]} non pris en charge!"
