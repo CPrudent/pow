@@ -343,8 +343,28 @@ bal_list_municipalities() {
                 )
         "
         ;;
+    DELETE_OBSOLETE_MUNICIPALITY)
+        _date_before_fix='2025-07-01'
+        _query="
+            WITH
+            insee_events AS (
+                SELECT DISTINCT com_av
+                FROM fr.insee_municipality_event
+                WHERE date_eff = '2025-01-01' AND mod = ANY('{31,32,33,34}') AND typecom_av = 'COM' AND typecom_ap = 'COM' AND com_av != com_ap
+                UNION
+                SELECT DISTINCT com_av
+                FROM fr.insee_municipality_event
+                WHERE date_eff = '2025-01-01' AND mod = ANY('{41,50}') AND typecom_av = 'COM' AND typecom_ap = 'COM'
+            )
+            SELECT
+                m.code municipality,
+                m.code criteria
+            FROM
+                fr.bal_municipality m
+                    JOIN insee_events ie ON m.code = ie.com_av
+        "
+        ;;
     esac &&
-    # be careful at municipality (extracted from IO name)
     _query="
         WITH
         history AS (

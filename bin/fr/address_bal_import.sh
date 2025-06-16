@@ -36,7 +36,6 @@ on_import_error() {
     local _info=$( [ -n "${bal_vars[FIX]}" ] && echo ${bal_vars[FIX]} || echo ${bal_vars[IO_NAME]:7} )
 
     # IO created?
-    [ "${bal_vars[DRY_RUN]}" = no ] &&
     [ -n "${bal_vars[IO_ID]}" ] &&
     io_history_end_ko --id ${bal_vars[IO_ID]}
 
@@ -1584,6 +1583,20 @@ bal_fix_apply() {
                 } &&
                 bal_import_table --command DROP
                 ;;
+            DELETE_OBSOLETE_MUNICIPALITY)
+                execute_query \
+                    --name BAL_DELETE_${bal_vars[MUNICIPALITY_CODE]} \
+                    --query "
+                        SELECT counters FROM fr.bal_delete_obsolete_addresses(
+                            municipality => '${bal_vars[MUNICIPALITY_CODE]}',
+                            list => {'${bal_vars[MUNICIPALITY_CODE]}'}
+                        )
+                    " \
+                    --return _counters &&
+                _info='Effacement '${bal_vars[MUNICIPALITY_CODE]}
+                _info+=" {Commune,Voie,Numéro}: ${_counters}"
+                log_info "$_info"
+                ;;
             esac
         }
     } || return $ERROR_CODE
@@ -1631,7 +1644,6 @@ pow_argv \
         municipality_new:Nouveau code Commune INSEE (avec fix OBSOLESCENCE_MUNICIPALITY);
         fix:Corriger une erreur;
         levels:Ensemble des niveaux Adresse à traiter;
-        dry_run:Simuler le traitement;
         progress:Afficher le ratio de progression;
         parallel:Obtenir les addresses en parallèle;
         parallel_jobs:Nombre de traitements en parallèle;
@@ -1648,9 +1660,8 @@ pow_argv \
         force_summary:yes|no;
         force_load:yes|no;
         obsolete_municipality:yes|no;
-        fix:SPACE_IN_CODE|CONVERT_ATTRIBUTES|MORE_ATTRIBUTES|OBSOLESCENCE_STREET|OBSOLESCENCE_MUNICIPALITY;
+        fix:SPACE_IN_CODE|CONVERT_ATTRIBUTES|MORE_ATTRIBUTES|OBSOLESCENCE_STREET|OBSOLESCENCE_MUNICIPALITY|DELETE_OBSOLETE_MUNICIPALITY;
         levels:MSN|MS|N;
-        dry_run:yes|no;
         progress:yes|no;
         parallel:yes|no;
         clean:yes|no;
@@ -1663,9 +1674,8 @@ pow_argv \
         force:no;
         force_summary:no;
         force_load:yes;
-        obsolete_municipality:no;
+        obsolete_municipality:yes;
         levels:MS;
-        dry_run:no;
         limit:3;
         stop_time:0;
         progress:no;
@@ -1676,7 +1686,7 @@ pow_argv \
     ' \
     --args_p '
         reset:no;
-        tag:summary_ndays@int,select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,force_summary@bool,force_load@bool,dry_run@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,parallel_jobs@int
+        tag:summary_ndays@int,select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,force_summary@bool,force_load@bool,obsolete_municipality@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,parallel_jobs@int
     ' \
     --pow_argv bal_vars "$@" || exit $?
 
@@ -1686,7 +1696,7 @@ get_env_debug \
     "$(basename $0 .sh)" \
     _debug_steps \
     _debug_bps \
-    'argv'
+    'argv codes'
 
 [[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
     declare -p bal_vars
@@ -1736,12 +1746,13 @@ set_env --schema_name fr &&
 bal_error=0
 bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
 bal_vars[PROGRESS_SIZE]=${#bal_vars[PROGRESS_TOTAL]}
-[[ ${bal_vars[PROGRESS_TOTAL]} -gt 0 ]] &&
-[ "${bal_vars[DRY_RUN]}" = yes ] && {
-    bal_average_time --avg bal_average &&
-    print_progress BEGIN Communes "${bal_vars[PROGRESS_GROUPS]}" 0 0 1 '\r' &&
-    print_progress END Estimation Adresses
-}
+
+{
+    [[ ${_debug_steps[codes]:-1} -ne 0 ]] || {
+        declare -p bal_codes
+        [[ ${_debug_bps[codes]} -ne 0 ]] || read
+    }
+} &&
 for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
     bal_vars[PROGRESS_CURRENT]=$((bal_i +1))
     # check municipality code, prepare properties
@@ -1750,80 +1761,16 @@ for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
         continue
     }
     bal_vars[MUNICIPALITY_CODE]=${bal_codes[$bal_i]}
-    # do it ?
-    [ "${bal_vars[DRY_RUN]}" = yes ] && {
-        {
-            print_progress \
-                BEGIN \
-                "INSEE ${bal_vars[MUNICIPALITY_CODE]}" \
-                "${bal_vars[PROGRESS_GROUPS]}" \
-                0 0 1 '\r' &&
-            ([ -n "$bal_average" ] && [[ $bal_average > 0 ]]) && {
-                case "${bal_vars[FIX]}" in
-                SPACE_IN_CODE)
-                    bal_query="
-                        SELECT
-                            COUNT(1)
-                        FROM
-                            fr.bal_housenumber n
-                                JOIN fr.bal_street s ON n.id_street = s.id
-                                JOIN fr.bal_municipality m ON s.id_municipality = m.id
-                        WHERE
-                            POSITION(' ' IN n.code) > 0
-                            AND
-                            m.code = '${bal_vars[MUNICIPALITY_CODE]}'
-                    "
-                    ;;
-                # no fix (next municipality todo) w/ housenumbers (if exists old municipality)
-                *)
-                    bal_query=
-                    case "${bal_vars[FIX]}" in
-                    *_ATTRIBUTES)
-                        bal_rows=1
-                        ;;
-                    *)
-                        bal_rows=${bal_vars[IO_ROWS]}
-                        ;;
-                    esac
-                    ;;
-                esac &&
-                {
-                    [ -z "$bal_query" ] || {
-                        execute_query \
-                            --name BAL_${bal_vars[MUNICIPALITY_CODE]}_ROWS \
-                            --query "$bal_query" \
-                            --return bal_rows
-                    }
-                } &&
-                {
-                    case "${bal_vars[FIX]}" in
-                    *_ATTRIBUTES)
-                        _elapsed=0h:0m:1s
-                        ;;
-                    *)
-                        _start=$(echo "$(date '+%s') - (${bal_rows}*${bal_average})" | bc -l) &&
-                        # remove decimal part
-                        get_elapsed_time --start ${_start%.*} --result _elapsed
-                        ;;
-                    esac
-                } &&
-                print_progress END "${_elapsed}" "#${bal_rows} (ANC=#${bal_vars[AREAS_OLD_MUNICIPALITY]})"
-
-            } || {
-                print_progress END 'Non disponible'
+    {
+        [ -n "${bal_vars[FIX]}" ] && {
+            # don't raise error to not loss history (specially exec time, attributes)
+            bal_fix_apply || {
+                log_error "consulter dossier $POW_DIR_ARCHIVE !"
+                true
             }
-        } || true
-    } || {
-        {
-            [ -n "${bal_vars[FIX]}" ] && {
-                # don't raise error to not loss history (specially exec time, attributes)
-                bal_fix_apply || {
-                    log_error "consulter dossier $POW_DIR_ARCHIVE !"
-                    true
-                }
-            } || bal_load --level MUNICIPALITY
-        } || on_import_error
-    }
+        } || bal_load --level MUNICIPALITY
+    } || on_import_error
+
     # purge ?
     # case insensitive! (Corse 2A|2B) but codes are (2a|2b)*
     [ "${bal_vars[CLEAN]}" = yes ] && find $POW_DIR_IMPORT -iname "${bal_vars[MUNICIPALITY_CODE]}*.json" -exec rm {} \;
