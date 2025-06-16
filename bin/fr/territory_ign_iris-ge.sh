@@ -43,7 +43,7 @@ on_import_error() {
 # deal w/ interrupt signal (CTRL-C, kill)
 on_break() {
     log_error 'arrêt utilisateur' &&
-    rm --force "$years_list_path" &&
+    rm --force "$source_page_path" &&
     on_import_error --id ${io_vars[ID]}
 }
 trap on_break SIGINT
@@ -97,11 +97,11 @@ set_env --schema_name fr &&
 # get years
 io_get_years_online_available \
     --name ${io_vars[NAME]} \
-    --details_file years_list_path \
-    --dates_list years &&
+    --source_page source_page_path \
+    --years years &&
 {
     [[ ${_debug_steps[years]:-1} -ne 0 ]] || {
-        declare -p years years_list_path
+        declare -p years source_page_path
         [[ ${_debug_bps[years]} -ne 0 ]] || read
     }
 } &&
@@ -170,8 +170,17 @@ esac &&
             }
         } &&
         {
-            # search for IRIS_GE (of year)
-            url_data_all=($(grep --only-matching --perl-regexp "${io_vars[RE_SEARCH]/\#DATE/$year}" "$years_list_path" | grep --only-matching --perl-regexp '(http|ftp).*')) &&
+            {
+                # search for requested IRIS-GE
+                url_data_all=(
+                    $(grep --only-matching --perl-regexp "${io_vars[RE_SEARCH]/\#DATE/$year}" "$source_page_path" | \
+                    grep --only-matching --perl-regexp '(http|ftp).*')
+                )
+                [[ ${#url_data_all[@]} -gt 0 ]] || {
+                    log_error "Impossible d'extraire les URL des éléments de ${io_vars[NAME]}"
+                    false
+                }
+            } &&
             {
                 [[ ${_debug_steps[url]:-1} -ne 0 ]] || {
                     declare -p url_data_all
@@ -277,7 +286,7 @@ esac &&
             --mode ANALYZE &&
         _query_count="(SELECT COUNT(*) FROM fr.${io_vars[TABLE_NAME]})" &&
         {
-            rm --force "$years_list_path" &&
+            rm --force "$source_page_path" &&
             rm --force --recursive "$POW_DIR_TMP/IRIS_GE-$year" &&
             execute_query \
                 --name DROP_TMP_TABLE \

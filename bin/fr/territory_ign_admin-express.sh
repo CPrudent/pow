@@ -41,7 +41,7 @@
 # deal w/ interrupt signal (CTRL-C, kill)
 on_break() {
     log_error 'arrêt utilisateur' &&
-    rm --force "$years_list_path" &&
+    rm --force "$source_page_path" &&
     on_import_error --id ${io_vars[ID]}
 }
 trap on_break SIGINT
@@ -195,14 +195,14 @@ execute_query \
 # get years
 io_get_years_online_available \
     --name ${io_vars[NAME]} \
-    --details_file years_list_path \
-    --dates_list years || {
+    --source_page source_page_path \
+    --years years || {
     [ -n "$_last_io" ] && _rc=$SUCCESS_CODE || _rc=$ERROR_CODE
     exit $_rc
 } &&
 {
     [[ ${_debug_steps[years]:-1} -ne 0 ]] || {
-        declare -p years years_list_path
+        declare -p years source_page_path
         [[ ${_debug_bps[years]} -ne 0 ]] || read
     }
 } &&
@@ -263,8 +263,18 @@ io_history_begin \
         [[ ${_debug_bps[io_begin]} -ne 0 ]] || read
     }
 } &&
-# search for requested ADMIN-EXPRESS (avoiding all items as WGS84)
-url_data_all=($(grep --only-matching --perl-regexp ${io_vars[RE_SEARCH]/\#DATE/$year} "$years_list_path" | grep --only-matching --perl-regexp '(http|ftp).*' | grep --invert-match WGS84)) &&
+{
+    # search for requested ADMIN-EXPRESS (avoiding all items as WGS84)
+    url_data_all=(
+        $(grep --only-matching --perl-regexp ${io_vars[RE_SEARCH]/\#DATE/$year} "$source_page_path" | \
+        grep --only-matching --perl-regexp '(http|ftp).*' | \
+        grep --invert-match WGS84)
+    )
+    [[ ${#url_data_all[@]} -gt 0 ]] || {
+        log_error "Impossible d'extraire les URL des éléments de ${io_vars[NAME]}"
+        false
+    }
+} &&
 {
     [[ ${_debug_steps[url_all]:-1} -ne 0 ]] || {
         declare -p url_data_all
@@ -425,7 +435,7 @@ for _layer in ${LAYERS[@]}; do
         on_import_error --id ${io_vars[ID]}
     }
 done &&
-rm --force "$years_list_path" &&
+rm --force "$source_page_path" &&
 io_history_end_ok \
     --nrows_processed "($_query_count)" \
     --id ${io_vars[ID]} ||

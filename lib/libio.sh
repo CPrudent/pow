@@ -760,25 +760,25 @@ io_get_property_online_available() {
     return $SUCCESS_CODE
 }
 
-# get available dates (list, details as URL)
+# get available years (list, details as URL)
 io_get_years_online_available() {
     local -A _opts &&
     pow_argv \
         --args_n '
             name:nom IO à rechercher (en ligne);
-            details_file:Détail des millésimes disponibles;
-            dates_list:Dates des millésimes disponibles
+            source_page:Détail des millésimes disponibles;
+            years:Dates des millésimes disponibles
         ' \
         --args_m '
             name;
-            details_file;
-            dates_list
+            source_page;
+            years
         ' \
         --pow_argv _opts "$@" || return $?
 
     local _url _regexp1 _regexp2 _i
-    local -n _details_file_ref=${_opts[DETAILS_FILE]}
-    local -n _dates_ref=${_opts[DATES_LIST]}
+    local -n _source_page_ref=${_opts[SOURCE_PAGE]}
+    local -n _years_ref=${_opts[YEARS]}
 
     # DEBUG steps
     local -A _debug_steps _debug_bps
@@ -786,37 +786,32 @@ io_get_years_online_available() {
         ${FUNCNAME[0]} \
         _debug_steps \
         _debug_bps \
-        'func argv def dl date' &&
+        'argv def page years' &&
     # NOTE to debug:
-    # export POW_DEBUG_JSON='{"codes":[{"name":"io_purge_common","steps":["io@break","item@break"]}]}'
-    {
-        [[ ${_debug_steps[func]:-1} -ne 0 ]] || {
-            echo ${FUNCNAME[0]}
-            [[ ${_debug_bps[func]} -ne 0 ]] || read
-        }
-    } &&
+    # export POW_DEBUG_JSON='{"codes":[{"name":"io_get_years_online_available","steps":["argv","dl@break","years@break"]}]}'
     {
         [[ ${_debug_steps[argv]:-1} -ne 0 ]] || {
-            declare -p _opts
+            echo ${FUNCNAME[0]} ; declare -p _opts
             [[ ${_debug_bps[argv]} -ne 0 ]] || read
         }
     } &&
-    io_get_property_online_available    \
-        --name ${_opts[NAME]}           \
-        --key URL_DATA                  \
-        --value _url                    &&
-    io_get_property_online_available    \
-        --name ${_opts[NAME]}           \
-        --key REGEXP1                   \
-        --value _regexp1                &&
-    io_get_property_online_available    \
-        --name ${_opts[NAME]}           \
-        --key REGEXP2                   \
-        --value _regexp2                || {
-        log_error "IO ${_opts[NAME]} récupération propriété!"
-        return $ERROR_CODE
-    }
-
+    {
+        io_get_property_online_available    \
+            --name ${_opts[NAME]}           \
+            --key URL_DATA                  \
+            --value _url                    &&
+        io_get_property_online_available    \
+            --name ${_opts[NAME]}           \
+            --key REGEXP1                   \
+            --value _regexp1                &&
+        io_get_property_online_available    \
+            --name ${_opts[NAME]}           \
+            --key REGEXP2                   \
+            --value _regexp2                || {
+            log_error "IO ${_opts[NAME]} récupération propriété!"
+            false
+        }
+    } &&
     {
         [[ ${_debug_steps[def]:-1} -ne 0 ]] || {
             echo "url=($_url)"
@@ -826,61 +821,74 @@ io_get_years_online_available() {
         }
     } &&
     # temporary file (to be deleted by caller)
-    get_tmp_file --tmpext html --tmpfile _details_file_ref &&
-    # download available dates
-    io_download_file \
-        --url "$_url" \
-        --output_name ${_opts[NAME]} \
-        --common_save no \
-        --output_directory "$POW_DIR_TMP" \
-        --output_file "$(basename $_details_file_ref)" &&
+    get_tmp_file --tmpext html --tmpfile _source_page_ref &&
+    # download available items
     {
-        [[ ${_debug_steps[dl]:-1} -ne 0 ]] || {
-            echo "html=($_details_file_ref)"
-            [[ ${_debug_bps[dl]} -ne 0 ]] || read
+        io_download_file \
+            --url "$_url" \
+            --output_name ${_opts[NAME]} \
+            --common_save no \
+            --output_directory "$POW_DIR_TMP" \
+            --output_file "$(basename $_source_page_ref)"
+        [ $? -lt $POW_DOWNLOAD_ERROR ] || false
+    } &&
+    {
+        [[ ${_debug_steps[page]:-1} -ne 0 ]] || {
+            echo "page=($_source_page_ref)"
+            [[ ${_debug_bps[page]} -ne 0 ]] || read
         }
     } &&
-    # array of available dates (desc), transforming / to -
+    # array of available years (desc), transforming / to -
     #+ RE can start w/ - (so add --)
-    _dates_ref=($(grep --only-matching --perl-regexp -- "$_regexp1" $_details_file_ref | grep --only-matching --perl-regexp "$_regexp2" | sed --expression 's@/@-@g' | uniq | sort --reverse)) || {
-        log_error "Impossible de consulter la liste des millésimes disponibles de ${_opts[NAME]}"
-        return $ERROR_CODE
-    }
-
     {
-        [[ ${_debug_steps[date]:-1} -ne 0 ]] || {
-            echo "dates=(${_dates_ref[@]})"
-            [[ ${_debug_bps[date]} -ne 0 ]] || read
+        _years_ref=(
+            $(grep --only-matching --perl-regexp -- "$_regexp1" $_source_page_ref | \
+            grep --only-matching --perl-regexp "$_regexp2" | \
+            sed --expression 's@/@-@g' | \
+            uniq | sort --reverse)
+        )
+        [[ ${#_years_ref[@]} -gt 0 ]] || {
+            log_error "Impossible de consulter la liste des millésimes disponibles de ${_opts[NAME]}"
+            false
+        }
+    } &&
+    {
+        [[ ${_debug_steps[years]:-1} -ne 0 ]] || {
+            echo "years=(${_years_ref[@]})"
+            [[ ${_debug_bps[years]} -ne 0 ]] || read
         }
     } &&
     # date need to be compatible w/ BASH date
-    for ((_i=0; _i<${#_dates_ref[@]}; _i++)); do
-        [[ ${_dates_ref[$_i]} =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] && continue
+    for ((_i=0; _i<${#_years_ref[@]}; _i++)); do
+        [[ ${_years_ref[$_i]} =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] && continue
 
         # transform DD-MM-YYYY to YYYY-MM-DD
-        [[ ${_dates_ref[$_i]} =~ ^([0-9]{2})-([0-9]{2})-([0-9]{4})$ ]] && {
-            _dates_ref[$_i]="${BASH_REMATCH[3]}-${BASH_REMATCH[2]}-${BASH_REMATCH[1]}"
+        [[ ${_years_ref[$_i]} =~ ^([0-9]{2})-([0-9]{2})-([0-9]{4})$ ]] && {
+            _years_ref[$_i]="${BASH_REMATCH[3]}-${BASH_REMATCH[2]}-${BASH_REMATCH[1]}"
             continue
         }
 
         # transform YY to CCYY-01-01
-        [[ ${_dates_ref[$_i]} =~ ^([0-9]{2})$ ]] && {
-            _dates_ref[$_i]="$(date '+%C')${BASH_REMATCH[1]}-01-01"
+        [[ ${_years_ref[$_i]} =~ ^([0-9]{2})$ ]] && {
+            _years_ref[$_i]="$(date '+%C')${BASH_REMATCH[1]}-01-01"
             continue
         }
 
         # transform YYYY to YYYY-01-01
-        [[ ${_dates_ref[$_i]} =~ ^([0-9]{4})$ ]] && {
-            _dates_ref[$_i]="${BASH_REMATCH[1]}-01-01"
+        [[ ${_years_ref[$_i]} =~ ^([0-9]{4})$ ]] && {
+            _years_ref[$_i]="${BASH_REMATCH[1]}-01-01"
             continue
         }
-    done
+    done &&
     {
-        [[ ${_debug_steps[date]:-1} -ne 0 ]] || {
-            echo "dates=(${_dates_ref[@]})"
-            [[ ${_debug_bps[date]} -ne 0 ]] || read
+        [[ ${_debug_steps[years]:-1} -ne 0 ]] || {
+            echo "years=(${_years_ref[@]}) after tr"
+            [[ ${_debug_bps[years]} -ne 0 ]] || read
         }
-    } &&
+    } ||
+    {
+        return $ERROR_CODE
+    }
 
     return $SUCCESS_CODE
 }

@@ -26,7 +26,7 @@ on_import_error() {
 # deal w/ interrupt signal (CTRL-C, kill)
 on_break() {
     log_error 'arrêt utilisateur' &&
-    rm --force "$years_list_path" &&
+    rm --force "$source_page_path" &&
     on_import_error --id ${io_vars[ID]}
 }
 trap on_break SIGINT
@@ -79,16 +79,16 @@ set_env --schema_name fr &&
     if [ "${io_vars[FORCE_YEARS]}" = no ]; then
         io_get_years_online_available \
             --name ${io_vars[NAME]} \
-            --details_file years_list_path \
-            --dates_list years
+            --source_page source_page_path \
+            --years years
     else
-        # downloaded <years_list_path> not readable (binary), assume patch!
+        # downloaded <source_page_path> not readable (binary), assume patch!
         years=(2025-01-01 2024-01-01 2023-01-01)
     fi
 } &&
 {
     [[ ${_debug_steps[years]:-1} -ne 0 ]] || {
-        declare -p years years_list_path
+        declare -p years source_page_path
         [[ ${_debug_bps[years]} -ne 0 ]] || read
     }
 } &&
@@ -154,13 +154,19 @@ io_get_property_online_available    \
     --value io_vars[RE_SEARCH]      &&
 {
     if [ "${io_vars[FORCE_YEARS]}" = no ]; then
-        url_data_all=($(grep --only-matching --perl-regexp ${io_vars[RE_SEARCH]//\#DATE/$year} "$years_list_path"))
+        url_data_all=(
+            $(grep --only-matching --perl-regexp ${io_vars[RE_SEARCH]//\#DATE/$year} "$source_page_path")
+        )
     else
         url_data_all=(
             /files/Accueil/DESL/#DATE/epcisanscom${year}.xlsx
             /files/Accueil/DESL/#DATE/epcicom${year}-2.xlsx
         )
     fi
+    [[ ${#url_data_all[@]} -gt 0 ]] || {
+        log_error "Impossible d'extraire les URL des éléments de ${io_vars[NAME]}"
+        false
+    }
 } &&
 {
     [[ ${_debug_steps[url_all]:-1} -ne 0 ]] || {
@@ -168,7 +174,6 @@ io_get_property_online_available    \
         [[ ${_debug_bps[url_all]} -ne 0 ]] || read
     }
 } &&
-[[ ${#url_data_all[@]} -gt 0 ]] &&
 for ((_url_i=0; _url_i<${#url_data_all[*]}; _url_i++)); do
     url_data_one=${url_data_all[$_url_i]} &&
     year_data=$(basename $url_data_one) &&
@@ -211,7 +216,7 @@ for ((_url_i=0; _url_i<${#url_data_all[*]}; _url_i++)); do
     }
 done &&
 {
-    [ "${io_vars[FORCE_YEARS]}" = yes ] || rm "$years_list_path"
+    [ "${io_vars[FORCE_YEARS]}" = yes ] || rm "$source_page_path"
 } &&
 execute_query \
     --name EPCI_KIND \

@@ -37,7 +37,7 @@ on_import_error() {
 # deal w/ interrupt signal (CTRL-C, kill)
 on_break() {
     log_error 'arrêt utilisateur' &&
-    rm --force "$years_list_path" &&
+    rm --force "$source_page_path" &&
     on_import_error --id ${io_vars[ID]}
 }
 trap on_break SIGINT
@@ -85,11 +85,11 @@ set_env --schema_name fr &&
 # year of administrative cutting (w/ YY format)
 io_get_years_online_available \
     --name ${io_vars[NAME]} \
-    --details_file years_list_path \
-    --dates_list years &&
+    --source_page source_page_path \
+    --years years &&
 {
     [[ ${_debug_steps[years]:-1} -ne 0 ]] || {
-        declare -p years years_list_path
+        declare -p years source_page_path
         [[ ${_debug_bps[years]} -ne 0 ]] || read
     }
 } &&
@@ -149,22 +149,23 @@ io_get_property_online_available    \
     --name ${io_vars[NAME]}         \
     --key REGEXP_SEARCH             \
     --value io_vars[RE_SEARCH]      &&
-url_data=$(grep --only-matching --perl-regexp ${io_vars[RE_SEARCH]//\#DATE/$year} "$years_list_path" | head --lines 1) &&
+{
+    url_data=$(grep --only-matching --perl-regexp ${io_vars[RE_SEARCH]//\#DATE/$year} "$source_page_path" | \
+    head --lines 1)
+    [ -n "$url_data" ] || {
+        log_error "Impossible d'extraire les URL des éléments de ${io_vars[NAME]}"
+        false
+    }
+} &&
 {
     [[ ${_debug_steps[url_data]:-1} -ne 0 ]] || {
         declare -p url_data
         [[ ${_debug_bps[url_data]} -ne 0 ]] || read
     }
 } &&
-{
-    [ -n "$url_data" ] || {
-        log_error "Impossible de trouver URL de ${io_vars[NAME]}"
-        false
-    }
-} &&
 url_data="${io_vars[URL_BASE]}/${url_data}" &&
 year_data=$(basename "$url_data") &&
-rm --force "$years_list_path" &&
+rm --force "$source_page_path" &&
 # fix current year w/ century!
 {
     [ ${#year} -eq 4 ] || year="$(date +%C)$year"
