@@ -21,15 +21,7 @@
     # https://stackoverflow.com/questions/10586153/how-to-split-a-string-into-an-array-in-bash
     # https://linuxhint.com/bash_arithmetic_operations/
 
-    # TODO
-    # assign PROGRESS_SIZE w/ max (municipalities, streets, housenumbers) of selection
-
 source $POW_DIR_ROOT/lib/libbal.sh || exit $ERROR_CODE
-
-on_break() {
-    log_error 'arrêt utilisateur' &&
-    on_import_error
-}
 
 on_import_error() {
     # get INSEE (last 5 chars) if no fix
@@ -43,6 +35,10 @@ on_import_error() {
     exit $ERROR_CODE
 }
 
+on_break() {
+    log_error 'arrêt utilisateur' &&
+    on_import_error
+}
 # deal w/ interrupt signal (CTRL-C, kill)
 trap on_break SIGINT
 
@@ -849,7 +845,7 @@ bal_deal_obsolescence() {
                         }
                     } &&
                     for ((_chunk=0; _chunk<$_chunks; _chunk++)); do
-                        log_info "Liste ${_info} obsolètes ${bal_vars[MUNICIPALITY_CODE]} ${_chunk}/${_chunks}" &&
+                        log_info "Liste ${_info} obsolètes ${bal_vars[MUNICIPALITY_CODE]} $((_chunk +1))/${_chunks}" &&
                         _codes2=( $(printf '%s ' ${_codes[@]:((_chunk*_MAX_ITEMS)):${_MAX_ITEMS}}) ) &&
                         # https://stackoverflow.com/questions/52590446/bash-array-using-vs-difference-between-the-two
                         _obsolete="{$(IFS=, ; echo "${_codes2[*]}")}" &&
@@ -1584,6 +1580,21 @@ bal_fix_apply() {
                 bal_import_table --command DROP
                 ;;
             DELETE_OBSOLETE_MUNICIPALITY)
+                local _joblog=$POW_DIR_ARCHIVE/${bal_vars[MUNICIPALITY_CODE]}.json.log
+
+                {
+                    io_download_file \
+                        --url "${bal_vars[URL]}/lookup/${bal_vars[MUNICIPALITY_CODE]}" \
+                        --common_save no \
+                        --overwrite_mode yes \
+                        --output_directory "$POW_DIR_IMPORT" \
+                        --output_file ${bal_vars[MUNICIPALITY_CODE]}.json
+                    ([ $? -eq $POW_DOWNLOAD_ERROR ] &&
+                    [ -n "$(grep 'ERROR 404' "$_joblog")" ]) || {
+                        log_info "code ${bal_vars[MUNICIPALITY_CODE]} non obsolète!"
+                        false
+                    }
+                } &&
                 execute_query \
                     --name BAL_DELETE_${bal_vars[MUNICIPALITY_CODE]} \
                     --query "
@@ -1593,9 +1604,11 @@ bal_fix_apply() {
                         )
                     " \
                     --return _counters &&
-                _info='Effacement '${bal_vars[MUNICIPALITY_CODE]}
-                _info+=" {Commune,Voie,Numéro}: ${_counters}"
-                log_info "$_info"
+                {
+                    _info='Effacement '${bal_vars[MUNICIPALITY_CODE]}
+                    _info+=" {Commune,Voie,Numéro}: ${_counters}"
+                    log_info "$_info"
+                }
                 ;;
             esac
         }
@@ -1726,7 +1739,12 @@ set_env --schema_name fr &&
             log_error 'correctif pour 1 Commune précise!'
             exit $ERROR_CODE
         }
-        bal_load --level SUMMARY &&
+        # to avoid automatic deletion (w/o calling the fix)
+        {
+            [ "${bal_vars[FIX]}" = DELETE_OBSOLETE_MUNICIPALITY ] || {
+                bal_load --level SUMMARY
+            }
+        } &&
         bal_list_municipalities --list bal_codes &&
         {
             [ "${bal_vars[CLEAN]}" = no ] || {
