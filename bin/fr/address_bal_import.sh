@@ -578,7 +578,9 @@ bal_load_addresses() {
                         [ -z "$_wget_error" ] && break
                         # retry download (if enable)
                         _retry=$((_retry +1))
-                        log_info "wget ${bal_vars[MUNICIPALITY_CODE]} (retry=#$_retry/$_retries)"
+                        # waiting
+                        sleep $((_retry * 10))
+                        log_info "wget ${bal_vars[MUNICIPALITY_CODE]} (tentative=$_retry/$_retries)"
                         parallel \
                             --retry-failed \
                             --joblog $POW_DIR_ARCHIVE/parallel_${bal_vars[MUNICIPALITY_CODE]}_wget.log
