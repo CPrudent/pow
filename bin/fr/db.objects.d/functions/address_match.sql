@@ -1093,22 +1093,34 @@ BEGIN
             minimum gap between 2 results ascending when similarity decrease
             */
             -- TODO as above w/ _1 and _2 if AREA !
-            _ratio := (previous.similarity / current.similarity);
-            IF NOT (_ratio > similarity_ratio) THEN
-                CALL fr.notice_match(
-                    level => level,
-                    search => search,
-                    standardized_address => standardized_address,
-                    usecase => '2ND_TOO_SIMILAR',
-                    current => current,
-                    ratio => _ratio
-                );
-                matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.too_similar'));
+            IF current.similarity > 0 THEN
+                _ratio := (previous.similarity / current.similarity);
+                IF NOT (_ratio > similarity_ratio) THEN
+                    CALL fr.notice_match(
+                        level => level,
+                        search => search,
+                        standardized_address => standardized_address,
+                        usecase => '2ND_TOO_SIMILAR',
+                        current => current,
+                        ratio => _ratio
+                    );
+                    matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.too_similar'));
+                ELSE
+                    -- previous match ok
+                    IF matched_element.codes_address IS NOT NULL THEN
+                        --matched_element.codes_address := current.co_adr;
+                        matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.near'));
+                    END IF;
+                END IF;
             ELSE
-                -- previous match ok
-                IF matched_element.codes_address IS NOT NULL THEN
-                    --matched_element.codes_address := current.co_adr;
-                    matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.near'));
+                IF previous.similarity >= similarity_threshold THEN
+                    -- previous match ok
+                    IF matched_element.codes_address IS NOT NULL THEN
+                        --matched_element.codes_address := current.co_adr;
+                        matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.near'));
+                    ELSE
+                        matched_element.status := (SELECT CURRENT_SETTING('fr.status.match.not_near'));
+                    END IF;
                 END IF;
             END IF;
         END IF;
@@ -1125,6 +1137,12 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
+/* CHANGELOG
+2025-01.1
+2025-06.1
+    - fix #54 (divide by zero) current.similarity
+      other idea would be to filter fr.get_query_match() : result_elements : similarity > 0
+ */
 SELECT drop_all_functions_if_exists('fr', 'match_version');
 CREATE OR REPLACE FUNCTION fr.match_version(
     version OUT VARCHAR
@@ -1133,7 +1151,7 @@ AS
 $func$
 BEGIN
     -- major as YYYY-MM, minor as sequence
-    version := '2025-01.1';
+    version := '2025-06.1';
 END
 $func$ LANGUAGE plpgsql;
 
