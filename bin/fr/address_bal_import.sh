@@ -1202,7 +1202,7 @@ bal_load() {
         ' \
         --pow_argv _opts "$@" || return $?
 
-    local _file _rc _option _force
+    local _file _rc _option _force _vacuum_info
     local -A _context
 
     case "${_opts[LEVEL]}" in
@@ -1311,6 +1311,7 @@ bal_load() {
             bal_import_table --command DROP &&
             case "${_opts[LEVEL]}" in
             SUMMARY)
+                _vacuum_info=Communes &&
                 {
                     [ "${bal_vars[PROGRESS]}" = no ] || set_progress --start bal_vars[PROGRESS_START]
                 } &&
@@ -1319,6 +1320,7 @@ bal_load() {
                     --id ${bal_vars[IO_ID]}
                 ;;
             MUNICIPALITY)
+                _vacuum_info=Adresses &&
                 {
                     # case when counters aren't initialized (specially housenumbers)
                     bal_count_addresses &&
@@ -1336,6 +1338,7 @@ bal_load() {
                 # vacuum only for last municipality (or summary)
                 ([ "${_opts[LEVEL]}" = MUNICIPALITY ] &&
                 [[ ${bal_vars[PROGRESS_CURRENT]} -lt ${bal_vars[PROGRESS_TOTAL]} ]]) || {
+                    echo 'VACUUM '$_vacuum_info
                     vacuum \
                         --schema_name fr \
                         --table_name "${_context[VACUUM]}" \
@@ -1650,6 +1653,7 @@ pow_argv \
         summary_ndays:Délai (jour) accepté avant de retélécharger la dernière version (-1 pour exclure);
         select_criteria:Sélection des Communes;
         select_order:Ordre de sélection des Communes;
+        select_ndays:Délai (jour) accepté avant mise à jour (pour chaque commune);
         limit:Limiter à n communes (0 sans limite);
         stop_time:Temps d arrêt du traitement (format: MM-jj-hh:mm:ss);
         force:Forcer le traitement (MUNICIPALITY, FIX) même si celui-ci a déjà été fait;
@@ -1686,6 +1690,7 @@ pow_argv \
         summary_ndays:3;
         select_criteria:REVISION;
         select_order:DESC;
+        select_ndays:7;
         force:no;
         force_summary:no;
         force_load:yes;
@@ -1701,7 +1706,7 @@ pow_argv \
     ' \
     --args_p '
         reset:no;
-        tag:summary_ndays@int,select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,force_summary@bool,force_load@bool,obsolete_municipality@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,parallel_jobs@int
+        tag:summary_ndays@int,select_criteria@1N,select_order:1N,select_ndays@int,fix@0N,levels@1N,force@bool,force_summary@bool,force_load@bool,obsolete_municipality@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,parallel_jobs@int
     ' \
     --pow_argv bal_vars "$@" || exit $?
 
@@ -1820,7 +1825,7 @@ done
 
 [ "${bal_vars[STOP_TIME]}" != 0 ] && {
     [[ ${bal_vars[PROGRESS_CURRENT]} -eq ${bal_vars[PROGRESS_TOTAL]} ]] || {
-        echo 'VACUUM BAL adresses'
+        echo 'VACUUM Adresses'
         vacuum \
             --schema_name fr \
             --table_name 'bal_street,bal_housenumber' \

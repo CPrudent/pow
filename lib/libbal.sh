@@ -403,11 +403,11 @@ bal_list_municipalities() {
                     POSITION('${bal_vars[FIX]}' IN h.attributes) = 0
                 "
             } || {
-            # only not already downloaded or newer import available
+            # only not already downloaded or newer import available (greater than ndays)
             _query+="
                 h.date_data_end IS NULL
                 OR
-                m.last_update > h.date_data_end
+                EXTRACT(DAY FROM m.last_update - h.date_data_end) > ${bal_vars[SELECT_NDAYS]}
             "
             }
             ;;
