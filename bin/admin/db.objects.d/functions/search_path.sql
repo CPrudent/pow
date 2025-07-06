@@ -30,18 +30,19 @@ CREATE OR REPLACE FUNCTION public.add_to_search_path(
 RETURNS BOOLEAN AS
 $func$
 DECLARE
-    _search_paths TEXT[];
+    _search_path TEXT[];
 BEGIN
-    SELECT STRING_TO_ARRAY(REPLACE(CURRENT_SETTING('search_path'), ' ', ''), ',') INTO _search_paths;
-    IF NOT _search_paths @> ARRAY[schema_name] THEN
-        _search_paths := ARRAY_APPEND(_search_paths, schema_name);
-        PERFORM public.set_search_path(ARRAY_TO_STRING(_search_paths, ','));
+    SELECT STRING_TO_ARRAY(REPLACE(CURRENT_SETTING('search_path'), ' ', ''), ',') INTO _search_path;
+    IF NOT _search_path @> ARRAY[schema_name] THEN
+        _search_path := ARRAY_APPEND(_search_path, schema_name);
+        PERFORM public.set_search_path(ARRAY_TO_STRING(_search_path, ', '));
+        RETURN TRUE;
     END IF;
-    RETURN TRUE;
+    RETURN FALSE;
 END
 $func$ LANGUAGE plpgsql;
 
--- del
+-- delete
 SELECT public.drop_all_functions_if_exists('public', 'remove_from_search_path');
 CREATE OR REPLACE FUNCTION public.remove_from_search_path(
     schema_name TEXT
@@ -49,13 +50,14 @@ CREATE OR REPLACE FUNCTION public.remove_from_search_path(
 RETURNS BOOLEAN AS
 $func$
 DECLARE
-    _search_paths TEXT[];
+    _search_path TEXT[];
 BEGIN
-    SELECT STRING_TO_ARRAY(REPLACE(CURRENT_SETTING('search_path'), ' ', ''), ', ') INTO _search_paths;
-    IF _search_paths @> ARRAY[schema_name] THEN
-        _search_paths := ARRAY_REMOVE(_search_paths, schema_name);
-        PERFORM public.set_search_path(ARRAY_TO_STRING(search_path, ', '));
+    SELECT STRING_TO_ARRAY(REPLACE(CURRENT_SETTING('search_path'), ' ', ''), ',') INTO _search_path;
+    IF _search_path @> ARRAY[schema_name] THEN
+        _search_path := ARRAY_REMOVE(_search_path, schema_name);
+        PERFORM public.set_search_path(ARRAY_TO_STRING(_search_path, ', '));
+        RETURN TRUE;
     END IF;
-    RETURN TRUE;
+    RETURN FALSE;
 END
 $func$ LANGUAGE plpgsql;
