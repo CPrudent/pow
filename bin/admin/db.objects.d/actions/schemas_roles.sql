@@ -2,6 +2,38 @@
  * DB: add SCHEMAS/ROLES
  */
 
+-- drop old roles (inherited from BCAA)
+SELECT public.drop_all_functions_if_exists('public', 'drop_old_roles');
+CREATE OR REPLACE PROCEDURE public.drop_old_roles()
+AS
+$proc$
+DECLARE
+    _role VARCHAR;
+    _query TEXT;
+BEGIN
+    FOR _role IN SELECT UNNEST('{bal,divers,geopad,ign,insee,ran}'::VARCHAR[])
+    LOOP
+        --RAISE NOTICE 'role(%) exists : %', _role, role_exists(_role);
+        IF role_exists(_role) THEN
+            -- revoke privileges
+            _query := CONCAT(
+                FORMAT('REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM %s;', _role),
+                FORMAT('REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM %s;', _role),
+                FORMAT('REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA public FROM %s;', _role),
+                FORMAT('REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA fr FROM %s;', _role),
+                FORMAT('REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA fr FROM %s;', _role),
+                FORMAT('REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA fr FROM %s;', _role),
+                FORMAT('REVOKE USAGE ON SCHEMA public FROM %s;', _role)
+            );
+            EXECUTE _query;
+
+            --EXECUTE 'DROP ROLE $1' USING _role;
+            EXECUTE FORMAT('DROP ROLE %s', _role);
+        END IF;
+    END LOOP;
+END
+$proc$ LANGUAGE plpgsql;
+
 DO $SCHEMAS_ROLES$
 BEGIN
     /*

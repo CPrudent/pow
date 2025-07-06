@@ -169,4 +169,8 @@ for schema_name in ${schemas[@]}; do
     log_info "Fin de la restauration du schéma ${schema_name} avec succès"
 done
 
+execute_query \
+    --name 'DROP_OLD_ROLES' \
+    --query "CALL drop_old_roles()" || exit $ERROR_CODE
+
 exit $SUCCESS_CODE
