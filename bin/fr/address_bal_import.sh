@@ -824,12 +824,16 @@ bal_deal_obsolescence() {
                 # sample municipality 92063 w/ 7827 housenumbers to delete (16 chunks) !
                 #+ cause a shell error (/usr/bin/env: Argument list too long)
                 #+ need to part set in smaller chunks
+                # accept BAL codes w/ single quote! as 60057's 3 housenumbers
+                #+ don't work : list => '${_obsolete//\'/\\\'}'
+                #+ finally delete these 3 hn w/ pgAdmin4 by query
                 if [[ $_count -le $_MAX_ITEMS ]]; then
                     log_info "Liste ${_info} obsolètes: ${_obsolete}" &&
                     execute_query \
                         --name "BAL_${_label1}_OBSOLETE_${_label2}" \
                         --query "
-                            SELECT counters FROM fr.bal_delete_obsolete_addresses(
+                            SELECT counters
+                            FROM fr.bal_delete_obsolete_addresses(
                                 municipality => '${bal_vars[MUNICIPALITY_CODE]}',
                                 list => '$_obsolete'
                             )
@@ -862,7 +866,8 @@ bal_deal_obsolescence() {
                         execute_query \
                             --name "BAL_${_label1}_OBSOLETE_${_label2}_${_chunk}" \
                             --query "
-                                SELECT counters FROM fr.bal_delete_obsolete_addresses(
+                                SELECT counters
+                                FROM fr.bal_delete_obsolete_addresses(
                                     municipality => '${bal_vars[MUNICIPALITY_CODE]}',
                                     list => '$_obsolete'
                                 )
@@ -1654,6 +1659,7 @@ pow_argv \
         select_criteria:Sélection des Communes;
         select_order:Ordre de sélection des Communes;
         select_ndays:Délai (jour) accepté avant mise à jour (pour chaque commune);
+        skip:Exclure les x premières communes;
         limit:Limiter à n communes (0 sans limite);
         stop_time:Temps d arrêt du traitement (format: MM-jj-hh:mm:ss);
         force:Forcer le traitement (MUNICIPALITY, FIX) même si celui-ci a déjà été fait;
@@ -1691,6 +1697,7 @@ pow_argv \
         select_criteria:REVISION;
         select_order:DESC;
         select_ndays:7;
+        skip:0;
         force:no;
         force_summary:no;
         force_load:yes;
@@ -1706,7 +1713,7 @@ pow_argv \
     ' \
     --args_p '
         reset:no;
-        tag:summary_ndays@int,select_criteria@1N,select_order:1N,select_ndays@int,fix@0N,levels@1N,force@bool,force_summary@bool,force_load@bool,obsolete_municipality@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,parallel_jobs@int
+        tag:summary_ndays@int,select_criteria@1N,select_order:1N,select_ndays@int,skip@int,fix@0N,levels@1N,force@bool,force_summary@bool,force_load@bool,obsolete_municipality@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,parallel_jobs@int
     ' \
     --pow_argv bal_vars "$@" || exit $?
 
@@ -1778,7 +1785,7 @@ bal_vars[PROGRESS_SIZE]=${#bal_vars[PROGRESS_TOTAL]}
         [[ ${_debug_bps[codes]} -ne 0 ]] || read
     }
 } &&
-for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
+for ((bal_i=${bal_vars[SKIP]}; bal_i<${#bal_codes[@]}; bal_i++)); do
     bal_vars[PROGRESS_CURRENT]=$((bal_i +1))
     # check municipality code, prepare properties
     bal_set_municipality --code "${bal_codes[$bal_i]}" || {
