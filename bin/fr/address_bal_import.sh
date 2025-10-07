@@ -827,6 +827,7 @@ bal_deal_obsolescence() {
                 # accept BAL codes w/ single quote! as 60057's 3 housenumbers
                 #+ don't work : list => '${_obsolete//\'/\\\'}'
                 #+ finally delete these 3 hn w/ pgAdmin4 by query
+                #+ try E'${_obsolete//\'/\\\'}'
                 if [[ $_count -le $_MAX_ITEMS ]]; then
                     log_info "Liste ${_info} obsolètes: ${_obsolete}" &&
                     execute_query \
@@ -835,7 +836,7 @@ bal_deal_obsolescence() {
                             SELECT counters
                             FROM fr.bal_delete_obsolete_addresses(
                                 municipality => '${bal_vars[MUNICIPALITY_CODE]}',
-                                list => '$_obsolete'
+                                list => E'${_obsolete//\'/\\\'}'
                             )
                         " \
                         --return _counters
@@ -869,7 +870,7 @@ bal_deal_obsolescence() {
                                 SELECT counters
                                 FROM fr.bal_delete_obsolete_addresses(
                                     municipality => '${bal_vars[MUNICIPALITY_CODE]}',
-                                    list => '$_obsolete'
+                                    list => E'${_obsolete//\'/\\\'}'
                                 )
                             " \
                             --return _counters &&
