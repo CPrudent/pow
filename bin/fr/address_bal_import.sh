@@ -579,7 +579,7 @@ bal_load_addresses() {
                         # retry download (if enable)
                         _retry=$((_retry +1))
                         # waiting
-                        sleep $((_retry * 10))
+                        sleep $((_retry * ${bal_vars[RETRY_DELAY]}))
                         log_info "wget ${bal_vars[MUNICIPALITY_CODE]} (tentative=$_retry/$_retries)"
                         parallel \
                             --retry-failed \
@@ -1673,6 +1673,7 @@ pow_argv \
         progress:Afficher le ratio de progression;
         parallel:Obtenir les addresses en parallèle;
         parallel_jobs:Nombre de traitements en parallèle;
+        retry_delay:Délai avant reprise du transfert;
         clean:Effectuer la purge des fichiers temporaires;
         verbose:Ajouter des détails sur les traitements
     ' \
@@ -1709,12 +1710,13 @@ pow_argv \
         progress:no;
         parallel:yes;
         parallel_jobs:5;
+        retry_delay:60;
         clean:yes;
         verbose:no
     ' \
     --args_p '
         reset:no;
-        tag:summary_ndays@int,select_criteria@1N,select_order:1N,select_ndays@int,skip@int,fix@0N,levels@1N,force@bool,force_summary@bool,force_load@bool,obsolete_municipality@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,parallel_jobs@int
+        tag:summary_ndays@int,select_criteria@1N,select_order:1N,select_ndays@int,skip@int,fix@0N,levels@1N,force@bool,force_summary@bool,force_load@bool,obsolete_municipality@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,parallel_jobs@int,retry_delay@int
     ' \
     --pow_argv bal_vars "$@" || exit $?
 
