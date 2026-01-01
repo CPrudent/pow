@@ -415,7 +415,7 @@ bal_load_addresses() {
 
     local _name _query _info _mask _j _rc _field=${_opts[LEVEL]}S _code _len _url _file
     local _dir_common _retry _retries=3 _position _wget_error
-    local -a _addresses _deletes _positions
+    local -a _addresses _deletes _positions _array
 
     # DEBUG steps
     local -A _debug_steps _debug_bps
@@ -562,32 +562,37 @@ bal_load_addresses() {
                     # 3 File I/O error.
                     # 4 Network failure.
                     # 7 Protocol errors.
-                    parallel \
-                        --jobs ${bal_vars[PARALLEL_JOBS]} \
-                        --joblog $POW_DIR_ARCHIVE/parallel_${bal_vars[MUNICIPALITY_CODE]}_wget.log \
-                        wget --quiet --limit-rate=100k \
-                        --output-document="${_dir_common}/{=1 uq() =}.json" \
-                        ${bal_vars[URL]}/lookup/'{=2 uq() ; s/ /%20/g =}' \
-                        ::: "${_addresses[@]}" :::+ "${_addresses[@]}"
 
                     _retry=0
+                    # 1st call w/ all addresses
+                    _array=(${_addresses[@]})
                     while [[ $_retry -lt $_retries ]]; do
+                        # download JSON for each address
+                        _joblog=$POW_DIR_ARCHIVE/parallel_${bal_vars[MUNICIPALITY_CODE]}_wget_${_retry}.log
+                        parallel \
+                            --jobs ${bal_vars[PARALLEL_JOBS]} \
+                            --joblog $_joblog \
+                            wget --quiet --limit-rate=100k \
+                            --output-document="${_dir_common}/{=1 uq() =}.json" \
+                            ${bal_vars[URL]}/lookup/'{=2 uq() ; s/ /%20/g =}' \
+                            ::: "${_array[@]}" :::+ "${_array[@]}"
+
                         # search for error
-                        _wget_error=$(tail --lines +2 $POW_DIR_ARCHIVE/parallel_${bal_vars[MUNICIPALITY_CODE]}_wget.log | cut --field 7 | grep ^[1347])
+                        _wget_error=$(tail --lines +2 $_joblog | cut --field 7 | grep ^[1347])
                         # error detected ?
                         [ -z "$_wget_error" ] && break
+
                         # retry download (if enable)
                         _retry=$((_retry +1))
+                        log_info "téléchargement ${bal_vars[MUNICIPALITY_CODE]} (tentative=$_retry/$_retries)"
                         # waiting
-                        sleep $((_retry * ${bal_vars[RETRY_DELAY]}))
-                        log_info "wget ${bal_vars[MUNICIPALITY_CODE]} (tentative=$_retry/$_retries)"
-                        parallel \
-                            --retry-failed \
-                            --joblog $POW_DIR_ARCHIVE/parallel_${bal_vars[MUNICIPALITY_CODE]}_wget.log
+                        [ ${bal_vars[RETRY_DELAY]} -gt 0 ] && sleep $((_retry * ${bal_vars[RETRY_DELAY]}))
+                        # only addresses in error, field 9 contains wget command w/ requested URL
+                        readarray -t _array < <(tail --lines +2 $_joblog | cut --field 7,9 | grep '^[1347]' | cut --field 2 | awk '{print $NF}' | xargs -n 1 basename)
                     done
 
                     [[ $_retry -lt $_retries ]] || {
-                        log_error "wget ${bal_vars[MUNICIPALITY_CODE]}, veuillez consulter $POW_DIR_ARCHIVE/parallel_${bal_vars[MUNICIPALITY_CODE]}_wget.log"
+                        log_error "wget ${bal_vars[MUNICIPALITY_CODE]}, veuillez consulter $_joblog"
                         return $ERROR_CODE
                     }
 
@@ -1710,7 +1715,7 @@ pow_argv \
         progress:no;
         parallel:yes;
         parallel_jobs:5;
-        retry_delay:60;
+        retry_delay:5;
         clean:yes;
         verbose:no
     ' \
