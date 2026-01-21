@@ -159,8 +159,8 @@ io_get_property_online_available    \
         )
     else
         url_data_all=(
-            /files/Accueil/DESL/#DATE/epcisanscom${year}.xlsx
-            /files/Accueil/DESL/#DATE/epcicom${year}-2.xlsx
+            /files/files/Etudes-et-statistiques/Liste%20et%20composition%20des%20EPCI%20%C3%A0%20fiscalit%C3%A9%20propre/${year}/epcisanscom${year}.xlsx
+            /files/files/Etudes-et-statistiques/Liste%20et%20composition%20des%20EPCI%20%C3%A0%20fiscalit%C3%A9%20propre/${year}/epcicom${year}[^.]*.xlsx
         )
     fi
     [[ ${#url_data_all[@]} -gt 0 ]] || {

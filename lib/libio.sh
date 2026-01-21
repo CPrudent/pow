@@ -702,12 +702,13 @@ io_get_property_online_available() {
         _product=EPCI
         _extension=xlsx
         _url_base='https://www.collectivites-locales.gouv.fr'
-        _url_data=${_url_base}'/institutions/liste-et-composition-des-epci-fiscalite-propre'
-        _re1='^[ ]+[0-9]{4}[ ]*'
+        _url_data=${_url_base}'/etudes-et-statistiques/acces-par-thematique/perimetre-des-intercommunalites/liste-et-composition-des-epci-fiscalite-propre'
+        # search only 'epcicom' files to build available years
+        _re1='/files/files/Etudes-et-statistiques/Liste.*propre/[0-9]{4}/epcicom'
         _re2='[0-9]{4}'
         _items='epcicom|epcisanscom'
-        # NOTE /files/Accueil/DESL/2025/epcicom2025-2.xlsx (2nd version ?)
-        _re_search='/files/Accueil/DESL/#DATE/('$_items')#DATE[^.]*\.'${_extension}
+        # NOTE .../2025/epcicom2025-2.xlsx (2nd version ?)
+        _re_search='/files/files/Etudes-et-statistiques/Liste.*propre/#DATE/('$_items')#DATE[^.]*\.'${_extension}
         _re_file='('${_items}')[0-9]{4}[^.]*\.'${_extension}
         _re_item=#ITEM
         ;;
