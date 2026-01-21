@@ -82,7 +82,7 @@ get_env_debug \
     "$(basename $0 .sh)" \
     _debug_steps \
     _debug_bps \
-    'argv years year io_begin url shp create copy' &&
+    'argv years year io_begin url geom create copy' &&
 io_get_property_online_available    \
     --name ${io_vars[NAME]}         \
     --key REGEXP_SEARCH             \
@@ -212,22 +212,23 @@ esac &&
                 }
             done &&
             _first_file=yes &&
-            for _shp_full_path in $(find $POW_DIR_TMP/IRIS_GE-$year -type f -iname IRIS*.shp); do
-                _shp_file=$(basename $_shp_full_path) &&
+            for _geom_path in $(find $POW_DIR_TMP/IRIS_GE-$year -type f -iname IRIS*.gpkg); do
+                _geom_file=$(basename $_geom_path) &&
                 # NOTE on ne crée pas d'index géographique pour éviter de ralentir les imports successifs
                 #      de plus non exploité
                 # NOTE on importe dans un table temporaire, qu'on recopie dans la table commune, afin de
                 #      stocker les SRID d'origines
                 #      en mode overwrite + append on ne peut pas le faire
                 {
-                    [[ ${_debug_steps[shp]:-1} -ne 0 ]] || {
-                        echo "shp_file=($_shp_file)"
-                        [[ ${_debug_bps[shp]} -ne 0 ]] || read
+                    [[ ${_debug_steps[geom]:-1} -ne 0 ]] || {
+                        echo "geom_file=($_geom_file)"
+                        [[ ${_debug_bps[geom]} -ne 0 ]] || read
                     }
                 } &&
                 import_geo_file \
-                    --file_path "$_shp_full_path" \
+                    --file_path "$_geom_path" \
                     --table_name "tmp_${io_vars[TABLE_NAME]}" \
+                    --layers iris \
                     --password "${io_vars[PASSWD]}" \
                     --geometry_type PROMOTE_TO_MULTI \
                     --load_mode OVERWRITE_DATA \
@@ -263,7 +264,7 @@ esac &&
                         [[ ${_debug_bps[copy]} -ne 0 ]] || read
                     }
                 } || {
-                    log_error "abandon chargement IRIS_GE-$year ($_shp_file)"
+                    log_error "abandon chargement IRIS_GE-$year ($_geom_file)"
                     on_import_error --id ${io_vars[ID]}
                 }
             done &&
