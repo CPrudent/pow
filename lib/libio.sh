@@ -1059,7 +1059,8 @@ io_download_file() {
             user:compte HTTP;
             password:mot de passe HTTP;
             common_save:Copier sur le dépôt;
-            common_subdir:copie dans un sous-dossier du dépôt
+            common_subdir:copie dans un sous-dossier du dépôt;
+            tries:Nombre de tentatives du transfert
         ' \
         --args_m '
             url;output_directory
@@ -1072,10 +1073,11 @@ io_download_file() {
         --args_d '
             overwrite_mode:yes;
             overwrite_key:DATE;
-            common_save:yes
+            common_save:yes;
+            tries:3
         ' \
         --args_p '
-            tag:overwrite_mode@1N,overwrite_key@1N,common_save@bool
+            tag:overwrite_mode@1N,overwrite_key@1N,common_save@bool,tries@int
         ' \
         --pow_argv _opts "$@" || return $?
 
@@ -1194,28 +1196,53 @@ io_download_file() {
         [[ ${_debug_bps[context]} -eq 0 ]] && read
     }
 
-    wget \
-        ${_opts[URL]} \
-        --output-document "$_tmp_path" \
-        --no-check-certificate \
-        --progress=dot:mega \
-        --retry-on-http-error=429,503 \
-        --wait=10 \
-        --random-wait \
-        $_user \
-        $_password \
-        > "$_log_tmp_path" 2>&1 || {
-            archive_file "$_log_tmp_path" &&
-            log_error "Erreur lors du téléchargement de ${_opts[OUTPUT_NAME]}, veuillez consulter $_log_archive_path"
-            [ -f "$_tmp_path" ] && rm --force "$_tmp_path"
-            # use of previous file if present
-            [ -f "${_files[0]}" ] && {
-                log_info "Utilisation du fichier déjà présent pour contourner l'erreur de téléchargement"
-                return $POW_DOWNLOAD_BUT_AVAILABLE
-            }
+    local _retry=0 _rc
+    while [[ $_retry -lt ${_opts[TRIES]} ]]; do
+        wget \
+            ${_opts[URL]} \
+            --output-document "$_tmp_path" \
+            --no-check-certificate \
+            --progress=dot:mega \
+            --retry-on-http-error=429,503 \
+            --wait=10 \
+            --random-wait \
+            $_user \
+            $_password \
+            > "$_log_tmp_path" 2>&1
+        _rc=$?
+        # EXIT STATUS
+        # 1 Generic error code.
+        # 3 File I/O error.
+        # 4 Network failure.
+        # 7 Protocol errors.
+        case $_rc in
+        0)
+            break
+            ;;
+        4|7)
+            # retry download (if enable)
+            _retry=$((_retry +1))
+            [[ $_retry -lt ${_opts[TRIES]} ]] && sleep $((_retry * 5))
+            ;;
+        *)
+            # stop on error
+            _retry=${_opts[TRIES]}
+            ;;
+        esac
+    done
 
-            return $POW_DOWNLOAD_ERROR
+    [[ $_retry -lt ${_opts[TRIES]} ]] || {
+        archive_file "$_log_tmp_path" &&
+        log_error "Erreur lors du téléchargement de ${_opts[OUTPUT_NAME]}, veuillez consulter $_log_archive_path"
+        [ -f "$_tmp_path" ] && rm --force "$_tmp_path"
+        # use of previous file if present
+        [ -f "${_files[0]}" ] && {
+            log_info "Utilisation du fichier déjà présent pour contourner l'erreur de téléchargement"
+            return $POW_DOWNLOAD_BUT_AVAILABLE
         }
+
+        return $POW_DOWNLOAD_ERROR
+    }
 
     [[ ${_debug_steps[diff]:-1} -eq 0 ]] && {
         echo 'DIFF...' ; declare -p _opts
