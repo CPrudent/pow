@@ -1281,6 +1281,8 @@ io_download_file() {
         --output "$_tmp_path" \
         --verbose yes \
         --log "$_log_tmp_path" \
+        --user "${_opts[USER]}" \
+        --password "${_opts[PASSWORD]}" \
         --tries ${_opts[TRIES]} \
         --sleep ${_opts[SLEEP]} || {
         archive_file "$_log_tmp_path" &&
