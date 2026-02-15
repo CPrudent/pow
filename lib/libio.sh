@@ -1038,6 +1038,7 @@ io_purge_common() {
     return $_rc
 }
 
+
 # download ressource (wget)
 POW_DOWNLOAD_OK=0                       # no problems
 POW_DOWNLOAD_ALREADY_AVAILABLE=1        # file already available
@@ -1045,22 +1046,104 @@ POW_DOWNLOAD_BUT_AVAILABLE=2            # error (download), but present file can
 POW_DOWNLOAD_ERROR=3                    # error (download)
 POW_DOWNLOAD_ERROR_CONDITION=4          # error (missing condition)
 POW_DOWNLOAD_ERROR_PROVISION=5          # error (provision)
+
+io_wget() {
+    # TODO implements limit-rate option
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            url:URL à télécharger;
+            output:Nom du téléchargement;
+            verbose:Mode de journalisation;
+            log:Journal du transfert;
+            user:Compte HTTP;
+            password:Mot de passe HTTP;
+            tries:Nombre de tentatives du transfert;
+            sleep:Délai entre tentatives
+        ' \
+        --args_m '
+            url;output
+        ' \
+        --args_v '
+            verbose:no|yes
+        ' \
+        --args_d '
+            verbose:no;
+            log:NULL;
+            tries:10;
+            sleep:10
+        ' \
+        --args_p '
+            verbose@bool,tries@int;sleep@int
+        ' \
+        --pow_argv _opts "$@" || return $?
+
+    # log
+    local _log
+    [ ${_opts[VERBOSE]} = no ] && _log=--quiet || {
+        [ ${_opts[LOG]} = NULL ] && {
+            log_error "${FUNCNAME[0]}: manque fichier log (option --log)"
+            return $POW_DOWNLOAD_ERROR
+        }
+        _log=--progress=dot:mega
+    }
+    # build wget command (as array)
+    local -a _cmd=(wget ${_opts[URL]} $_log --output-document "${_opts[OUTPUT]}" --no-check-certificate --retry-on-http-error=429,503 --wait=10 --random-wait)
+    # w/ user/password ?
+    [ -n "${_opts[USER]}" ] && _cmd+=(--user ${_opts[USER]})
+    [ -n "${_opts[PASSWORD]}" ] && _cmd=(--password ${_opts[PASSWORD]})
+
+    local _retry=0 _rc
+    while [[ $_retry -lt ${_opts[TRIES]} ]]; do
+        # execute wget command
+        if [ ${_opts[VERBOSE]} = yes ]; then
+            "${_cmd[@]}" > ${_opts[LOG]} 2>&1
+        else
+            "${_cmd[@]}"
+        fi
+        # EXIT STATUS
+        # 1 Generic error code.
+        # 3 File I/O error.
+        # 4 Network failure.
+        # 7 Protocol errors.
+        _rc=$?
+        case $_rc in
+        0)
+            # ok
+            break
+            ;;
+        4|7)
+            # retry download (if enable)
+            _retry=$((_retry +1))
+            [[ $_retry -lt ${_opts[TRIES]} ]] && sleep $((_retry * ${_opts[SLEEP]}))
+            ;;
+        *)
+            # stop on error
+            _retry=${_opts[TRIES]}
+            ;;
+        esac
+    done
+
+    return $_rc
+}
+
 io_download_file() {
     local -A _opts &&
     pow_argv \
         --args_n '
             url:URL à télécharger;
-            output_name:nom du téléchargement;
-            output_directory:dossier de destination;
-            output_file:fichier de destination;
-            overwrite_mode:avec/sans téléchargement, si fichier déjà présent;
-            overwrite_key:condition de gestion du téléchargement;
-            overwrite_value:valeur test de la condition (au delà téléchargement forcé);
-            user:compte HTTP;
-            password:mot de passe HTTP;
+            output_name:Nom du téléchargement;
+            output_directory:Dossier de destination;
+            output_file:Fichier de destination;
+            overwrite_mode:Avec/sans téléchargement, si fichier déjà présent;
+            overwrite_key:Condition de gestion du téléchargement;
+            overwrite_value:Valeur test de la condition (au delà téléchargement forcé);
+            user:Compte HTTP;
+            password:Mot de passe HTTP;
             common_save:Copier sur le dépôt;
             common_subdir:copie dans un sous-dossier du dépôt;
-            tries:Nombre de tentatives du transfert
+            tries:Nombre de tentatives du transfert;
+            sleep:Délai entre tentatives
         ' \
         --args_m '
             url;output_directory
@@ -1074,10 +1157,11 @@ io_download_file() {
             overwrite_mode:yes;
             overwrite_key:DATE;
             common_save:yes;
-            tries:3
+            tries:10;
+            sleep:10
         ' \
         --args_p '
-            tag:overwrite_mode@1N,overwrite_key@1N,common_save@bool,tries@int
+            tag:overwrite_mode@1N,overwrite_key@1N,common_save@bool,tries@int,sleep@int
         ' \
         --pow_argv _opts "$@" || return $?
 
@@ -1184,10 +1268,6 @@ io_download_file() {
     log_info "Téléchargement de ${_opts[OUTPUT_NAME]}"
     local _log_tmp_path="$POW_DIR_TMP/${_opts[OUTPUT_FILE]}.log"
     local _log_archive_path="$POW_DIR_ARCHIVE/${_opts[OUTPUT_FILE]}.log"
-    # user/password
-    local _user _password
-    [ -n "${_opts[USER]}" ] && _user="--user ${_opts[USER]}"
-    [ -n "${_opts[PASSWORD]}" ] && _password="--password ${_opts[PASSWORD]}"
     # temporary downloaded file
     local _tmp_path
     get_tmp_file --tmpfile _tmp_path
@@ -1196,42 +1276,13 @@ io_download_file() {
         [[ ${_debug_bps[context]} -eq 0 ]] && read
     }
 
-    local _retry=0 _rc
-    while [[ $_retry -lt ${_opts[TRIES]} ]]; do
-        wget \
-            ${_opts[URL]} \
-            --output-document "$_tmp_path" \
-            --no-check-certificate \
-            --progress=dot:mega \
-            --retry-on-http-error=429,503 \
-            --wait=10 \
-            --random-wait \
-            $_user \
-            $_password \
-            > "$_log_tmp_path" 2>&1
-        _rc=$?
-        # EXIT STATUS
-        # 1 Generic error code.
-        # 3 File I/O error.
-        # 4 Network failure.
-        # 7 Protocol errors.
-        case $_rc in
-        0)
-            break
-            ;;
-        4|7)
-            # retry download (if enable)
-            _retry=$((_retry +1))
-            [[ $_retry -lt ${_opts[TRIES]} ]] && sleep $((_retry * 5))
-            ;;
-        *)
-            # stop on error
-            _retry=${_opts[TRIES]}
-            ;;
-        esac
-    done
-
-    [[ $_retry -lt ${_opts[TRIES]} ]] || {
+    io_wget \
+        --url ${_opts[URL]} \
+        --output "$_tmp_path" \
+        --verbose yes \
+        --log "$_log_tmp_path" \
+        --tries ${_opts[TRIES]} \
+        --sleep ${_opts[SLEEP]} || {
         archive_file "$_log_tmp_path" &&
         log_error "Erreur lors du téléchargement de ${_opts[OUTPUT_NAME]}, veuillez consulter $_log_archive_path"
         [ -f "$_tmp_path" ] && rm --force "$_tmp_path"

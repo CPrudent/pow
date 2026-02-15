@@ -414,7 +414,7 @@ bal_load_addresses() {
         --pow_argv _opts "$@" || return $?
 
     local _name _query _info _mask _j _rc _field=${_opts[LEVEL]}S _code _len _url _file
-    local _dir_common _retry _retries=3 _position _wget_error
+    local _dir_common _retry _position _wget_error
     local -a _addresses _deletes _positions _array
 
     # DEBUG steps
@@ -534,7 +534,8 @@ bal_load_addresses() {
                                 --common_subdir bal \
                                 --output_directory "$POW_DIR_IMPORT" \
                                 --output_file "${bal_vars[FILE_NAME]}" \
-                                --verbose ${bal_vars[VERBOSE]}
+                                --tries ${bal_vars[RETRY_TIMES]} \
+                                --sleep ${bal_vars[RETRY_DELAY]}
                             _rc=$?
                             [[ $_rc -lt $POW_DOWNLOAD_ERROR ]] && {
                                 # same data has to be loaded again ?
@@ -556,25 +557,22 @@ bal_load_addresses() {
                     # due to obsolescence, some code(s) locally alive
                     #+ but unknown on BAL server, so when request obsolete address (unknown code, HTTP404), wget output empty file
                     #+ and exitval=8 (Server issued an error response)
-                    #
-                    # EXIT STATUS
-                    # 1 Generic error code.
-                    # 3 File I/O error.
-                    # 4 Network failure.
-                    # 7 Protocol errors.
-
                     _retry=0
                     # 1st call w/ all addresses
                     _array=(${_addresses[@]})
-                    while [[ $_retry -lt $_retries ]]; do
+                    while [[ $_retry -lt ${bal_vars[RETRY_TIMES]} ]]; do
                         # download JSON for each address
                         _joblog=$POW_DIR_ARCHIVE/parallel_${bal_vars[MUNICIPALITY_CODE]}_wget_${_retry}.log
+                        # quiet mode requested (verbose no), w/ multiple parallel wget calls
                         parallel \
                             --jobs ${bal_vars[PARALLEL_JOBS]} \
                             --joblog $_joblog \
-                            wget --quiet --limit-rate=100k \
-                            --output-document="${_dir_common}/{=1 uq() =}.json" \
-                            ${bal_vars[URL]}/lookup/'{=2 uq() ; s/ /%20/g =}' \
+                            io_wget \
+                                --url ${bal_vars[URL]}/lookup/'{=2 uq() ; s/ /%20/g =}' \
+                                --output "${_dir_common}/{=1 uq() =}.json" \
+                                --verbose no \
+                                --tries 3 \
+                                --sleep 1 \
                             ::: "${_array[@]}" :::+ "${_array[@]}"
 
                         # search for error
@@ -584,14 +582,16 @@ bal_load_addresses() {
 
                         # retry download (if enable)
                         _retry=$((_retry +1))
-                        log_info "téléchargement ${bal_vars[MUNICIPALITY_CODE]} (tentative=$_retry/$_retries)"
+                        [[ $_retry -ge ${bal_vars[RETRY_TIMES]} ]] && break
+
+                        log_info "téléchargement ${bal_vars[MUNICIPALITY_CODE]} (tentative=$_retry/${bal_vars[RETRY_TIMES]})"
+                        # only addresses in error, field 9 contains io_wget command w/ requested URL (as 3rd argument)
+                        readarray -t _array < <(tail --lines +2 $_joblog | cut --field 7,9 | grep '^[1347]' | cut --field 2 | awk '{print $3}' | xargs -n 1 basename)
                         # waiting
                         [ ${bal_vars[RETRY_DELAY]} -gt 0 ] && sleep $((_retry * ${bal_vars[RETRY_DELAY]}))
-                        # only addresses in error, field 9 contains wget command w/ requested URL
-                        readarray -t _array < <(tail --lines +2 $_joblog | cut --field 7,9 | grep '^[1347]' | cut --field 2 | awk '{print $NF}' | xargs -n 1 basename)
                     done
 
-                    [[ $_retry -lt $_retries ]] || {
+                    [[ $_retry -lt ${bal_vars[RETRY_TIMES]} ]] || {
                         log_error "wget ${bal_vars[MUNICIPALITY_CODE]}, veuillez consulter $_joblog"
                         return $ERROR_CODE
                     }
@@ -1302,7 +1302,9 @@ bal_load() {
                         --overwrite_value ${_context[OVERWRITE_VALUE]} \
                         --common_subdir bal \
                         --output_directory "$POW_DIR_IMPORT" \
-                        --output_file "${bal_vars[FILE_NAME]}"
+                        --output_file "${bal_vars[FILE_NAME]}" \
+                        --tries ${bal_vars[RETRY_TIMES]} \
+                        --sleep ${bal_vars[RETRY_DELAY]}
                     _rc=$?
                     [[ $_rc -lt $POW_DOWNLOAD_ERROR ]] && {
                         # same data has to be loaded again ?
@@ -1678,6 +1680,7 @@ pow_argv \
         progress:Afficher le ratio de progression;
         parallel:Obtenir les addresses en parallèle;
         parallel_jobs:Nombre de traitements en parallèle;
+        retry_times:Nombre de tentatives avant échec du transfert;
         retry_delay:Délai avant reprise du transfert;
         clean:Effectuer la purge des fichiers temporaires;
         verbose:Ajouter des détails sur les traitements
@@ -1715,13 +1718,14 @@ pow_argv \
         progress:no;
         parallel:yes;
         parallel_jobs:5;
+        retry_times:10;
         retry_delay:5;
         clean:yes;
         verbose:no
     ' \
     --args_p '
         reset:no;
-        tag:summary_ndays@int,select_criteria@1N,select_order:1N,select_ndays@int,skip@int,fix@0N,levels@1N,force@bool,force_summary@bool,force_load@bool,obsolete_municipality@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,parallel_jobs@int,retry_delay@int
+        tag:summary_ndays@int,select_criteria@1N,select_order:1N,select_ndays@int,skip@int,fix@0N,levels@1N,force@bool,force_summary@bool,force_load@bool,obsolete_municipality@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,parallel_jobs@int,retry_delay@int,retry_times@int
     ' \
     --pow_argv bal_vars "$@" || exit $?
 
