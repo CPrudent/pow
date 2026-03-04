@@ -88,14 +88,10 @@ BEGIN
     CREATE SCHEMA IF NOT EXISTS divers AUTHORIZATION divers;
      */
 
-    /*
-     * DON'T forget to modify libenv.sh w/ password for the new schema
-     */
-
     -- FR-COUNTRY
     IF NOT role_exists('fr') THEN
         CREATE ROLE fr LOGIN
-            ENCRYPTED PASSWORD 'md5220680a960c20fcc5663a47dd49ccfd5'
+            PASSWORD 'luxor'
             NOSUPERUSER INHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;
     END IF;
     CREATE SCHEMA IF NOT EXISTS fr AUTHORIZATION fr;

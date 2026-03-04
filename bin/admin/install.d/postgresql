@@ -94,6 +94,8 @@ declare -A _params_postgresql=(
 _dir_tmp=/tmp/install-SGBD
 mkdir -p $_dir_tmp
 cp /etc/postgresql/${_PG_VERSION}/main/postgresql.conf $_dir_tmp/postgresql.conf
+# activate more secure SCRAM-SHA-256 password
+sed --in-place --expression 's/^#password_encryption/password_encryption/' $_dir_tmp/postgresql.conf
 set_params_conf_file \
     --conf_file "$_dir_tmp/postgresql.conf" \
     --param_codes "${!_params_postgresql[*]}" \
@@ -130,7 +132,7 @@ $_pg_bin_dir/psql -U postgres -d $_PG_DBNAME -p $_PG_PORT -c "SELECT 1" > /dev/n
     chmod go-rx $POW_DIR_DATA/postgresql &&
     $_pg_bin_dir/psql -U postgres -p $_PG_PORT -c "CREATE TABLESPACE ${_PG_DBNAME}_tablespace LOCATION '$POW_DIR_DATA/postgresql/data'" &&
     $_pg_bin_dir/psql -U postgres -p $_PG_PORT -c "CREATE DATABASE $_PG_DBNAME TABLESPACE ${_PG_DBNAME}_tablespace" &&
-    su --login postgres --command="$_pg_bin_dir/psql -p $_PG_PORT -c \"ALTER USER postgres WITH ENCRYPTED PASSWORD 'md5c375a6ae9835e94d95d46481b49b6e9a' VALID UNTIL 'infinity';\"" &&
+    su --login postgres --command="$_pg_bin_dir/psql -p $_PG_PORT -c \"ALTER USER postgres WITH PASSWORD 'pgpow+123' VALID UNTIL 'infinity';\"" &&
     su --login postgres --command="$_pg_bin_dir/psql -p $_PG_PORT -c 'GRANT ALL PRIVILEGES ON DATABASE \"${_PG_DBNAME}\" TO postgres;'" &&
     pg_ctlcluster $_PG_VERSION main restart &&
     _set_pg_passwd || exit $ERROR_CODE
