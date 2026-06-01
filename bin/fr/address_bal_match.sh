@@ -213,6 +213,8 @@ else
     bal_limit=$(( ${#bal_codes[@]} / bal_vars[PARALLEL_CHUNK] ))
     [[ $(( ${#bal_codes[@]} % bal_vars[PARALLEL_CHUNK] )) -eq 0 ]] || ((bal_limit++))
     bal_serie=0
+    # break indicator (to exit from loop)
+    _break=0
     for ((bal_j=0; bal_j<$bal_limit; bal_j++)); do
         [ "${bal_vars[STOP_TIME]}" != 0 ] && {
             # stop loop if allowed time is expired
@@ -281,6 +283,9 @@ else
                     --force ${bal_vars[FORCE]} \
                 ::: "${bal_codes2[@]}"
 
+            # break by user, as CTRL-C (rc=-1)
+            [ $? -eq 255 ] && _break=1
+
             # search for error (column 7: exit status)
             tail --lines +2 $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log | cut --fields 7 | grep --silent ^[^0]
             [ $? -eq 0 ] && {
@@ -291,19 +296,22 @@ else
                 }
             }
 
-            # update BAL history w/ match request
+            # update BAL history w/ match request for all successfull
             for ((bal_i=0; bal_i<${#bal_codes2[@]}; bal_i++)); do
                 bal_insee=${bal_codes2[$bal_i]%%:*}
                 bal_io_id=${bal_codes2[$bal_i]#*:}
                 bal_file="$bal_tmpdir/BAL_${bal_insee}.dat"
-
-                [ -s "$bal_file" ] && {
+                # ok match ?
+                _matched=$(grep BAL_${bal_insee} $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log | cut --fields 7)
+                [ "$_matched" = 0 ] && {
                     bal_req_id=$(sed --silent --expression '1p' < "$bal_file") &&
                     io_history_update \
                         --infos '{"usecases":[{"name":"match","id":'${bal_req_id}'}]}' \
                         --id ${bal_io_id}
                 }
             done
+
+            [ $_break -eq 1 ] && break
         }
         bal_vars[PROGRESS_CURRENT]=$((bal_vars[PROGRESS_CURRENT] + ${#bal_codes2[@]}))
         [ "${bal_vars[PROGRESS]}" = no ] ||
