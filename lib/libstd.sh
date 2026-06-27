@@ -857,7 +857,7 @@ pow_argv() {
         case "${_args_n_t[$_key]}" in
         INT)
             [ -z "${_argv[$_key]}" ] || {
-                [[ ${_argv[$_key]} =~ ^[0-9]+$ ]] || {
+                [[ ${_argv[$_key]} =~ ^[+-]?[0-9]+$ ]] || {
                     _error="$_key: La valeur (${_argv[$_key]}) n'est pas un nombre entier"
                     false
                 }

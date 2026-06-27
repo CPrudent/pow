@@ -128,7 +128,7 @@ BEGIN
                     last_update = s.composed_at::TIMESTAMP WITHOUT TIME ZONE
                 FROM
                 ',
-                tmp_table,
+                table_name,
                 '
                 s WHERE m.code = s.code_commune AND m.code = ANY($1)
                 '
@@ -347,7 +347,7 @@ BEGIN
                     last_update = $2
                 FROM
                 ',
-                tmp_table,
+                table_name,
                 '
                         CROSS JOIN JSON_ARRAY_ELEMENTS(data->''voies'') v
                 WHERE v->>''idVoie'' = s.code AND s.code = ANY($1)
@@ -607,7 +607,7 @@ BEGIN
                     last_update = $2
                 FROM
                 ',
-                tmp_table,
+                table_name,
                 '
                         CROSS JOIN JSON_ARRAY_ELEMENTS(data->''numeros'') n
                         JOIN fr.bal_street s ON s.code = data->>''idVoie''

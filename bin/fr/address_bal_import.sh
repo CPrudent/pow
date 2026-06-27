@@ -785,14 +785,14 @@ bal_integration() {
                 FROM fr.bal_upgrade_municipalities(
                     table_name => 'fr.${bal_vars[TABLE_NAME]}'
                 )
-            "
+            " \
             --return _results &&
         array_sql_to_bash \
             --array_sql "$_results" \
             --array_bash _counters &&
-        bal_vars[DELTA_M_ADD]=_counters[0] &&
-        bal_vars[DELTA_M_DEL]=_counters[1] &&
-        bal_vars[DELTA_M_UPD]=_counters[2]
+        bal_vars[DELTA_M_ADD]=${_counters[0]} &&
+        bal_vars[DELTA_M_DEL]=${_counters[1]} &&
+        bal_vars[DELTA_M_UPD]=${_counters[2]}
         ;;
     STREET)
         # apply change(s) on street(s) (from downloaded JSON)
@@ -805,14 +805,14 @@ bal_integration() {
                     code => '${bal_vars[MUNICIPALITY_CODE]}',
                     table_name => 'fr.${bal_vars[TABLE_NAME]}'
                 )
-            "
+            " \
             --return _results &&
         array_sql_to_bash \
             --array_sql "$_results" \
             --array_bash _counters &&
-        bal_vars[DELTA_S_ADD]=_counters[0] &&
-        bal_vars[DELTA_S_DEL]=_counters[1] &&
-        bal_vars[DELTA_S_UPD]=_counters[2] &&
+        bal_vars[DELTA_S_ADD]=${_counters[0]} &&
+        bal_vars[DELTA_S_DEL]=${_counters[1]} &&
+        bal_vars[DELTA_S_UPD]=${_counters[2]}
         {
             [ "${bal_vars[PROGRESS]}" = no ] || set_progress --start bal_vars[PROGRESS_START]
         } &&
@@ -828,14 +828,14 @@ bal_integration() {
                     code => '${bal_vars[MUNICIPALITY_CODE]}',
                     table_name => 'fr.${bal_vars[TABLE_NAME]}'
                 )
-            "
+            " \
             --return _results &&
         array_sql_to_bash \
             --array_sql "$_results" \
             --array_bash _counters &&
-        bal_vars[DELTA_N_ADD]=_counters[0] &&
-        bal_vars[DELTA_N_DEL]=_counters[1] &&
-        bal_vars[DELTA_N_UPD]=_counters[2] &&
+        bal_vars[DELTA_N_ADD]=${_counters[0]} &&
+        bal_vars[DELTA_N_DEL]=${_counters[1]} &&
+        bal_vars[DELTA_N_UPD]=${_counters[2]}
         # update street's geometry
         execute_query \
             --name "BAL_INTEGRATION_${bal_vars[MUNICIPALITY_CODE]}_STREETS_GEOM" \
@@ -1013,7 +1013,7 @@ bal_load() {
         {
             {
                 # ndays -1 avoid to try download summary (useful when server is down!)
-                if (([ "${_opts[LEVEL]}" = SUMMARY ] && [[ ${bal_vars[SUMMARY_NDAYS]} -gt -1 ]]) || (is_yes --var bal_vars[LEVEL_MUNICIPALITY])); then
+                if (([ "${_opts[LEVEL]}" = SUMMARY ] && [[ ${bal_vars[SUMMARY_NDAYS]} -eq -1 ]]) || (is_yes --var bal_vars[LEVEL_MUNICIPALITY])); then
                     io_download_file \
                         --url "${bal_vars[URL]}/${_context[URL_DATA]}" \
                         --overwrite_mode NEWER \
@@ -1378,6 +1378,7 @@ pow_argv \
         parallel_jobs:Nombre de traitements en parallèle;
         retry_times:Nombre de tentatives avant échec du transfert;
         retry_delay:Délai avant reprise du transfert;
+        print_only:Pas de traitement, mais affichage des prochaines communes à traiter;
         clean:Effectuer la purge des fichiers temporaires;
         verbose:Ajouter des détails sur les traitements
     ' \
@@ -1395,6 +1396,7 @@ pow_argv \
         levels:MSN|MS|N;
         progress:yes|no;
         parallel:yes|no;
+        print_only:yes|no;
         clean:yes|no;
         verbose:yes|no
     ' \
@@ -1416,12 +1418,13 @@ pow_argv \
         parallel_jobs:5;
         retry_times:10;
         retry_delay:5;
+        print_only:no;
         clean:yes;
         verbose:no
     ' \
     --args_p '
         reset:no;
-        tag:summary_ndays@int,select_criteria@1N,select_order:1N,select_ndays@int,skip@int,fix@0N,levels@1N,force@bool,force_summary@bool,force_load@bool,obsolete_municipality@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,parallel_jobs@int,retry_delay@int,retry_times@int
+        tag:summary_ndays@int,select_criteria@1N,select_order:1N,select_ndays@int,skip@int,fix@0N,levels@1N,force@bool,force_summary@bool,force_load@bool,obsolete_municipality@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,parallel_jobs@int,retry_delay@int,retry_times@int,print_only@bool
     ' \
     --pow_argv bal_vars "$@" || exit $?
 
@@ -1477,6 +1480,11 @@ set_env --schema_name fr &&
         ;;
     esac
 } || on_import_error
+
+[ "${bal_vars[PRINT_ONLY]}" = yes ] && {
+    echo "#${#bal_codes[@]} à traiter (${bal_codes[@]:0:5})"
+    exit $SUCCESS_CODE
+}
 
 bal_error=0
 bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
