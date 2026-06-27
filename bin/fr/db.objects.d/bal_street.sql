@@ -23,6 +23,11 @@ CREATE TABLE IF NOT EXISTS fr.bal_street (
     last_update TIMESTAMP WITHOUT TIME ZONE
 );
 
+-- manual VACUUM
+ALTER TABLE fr.bal_street SET (
+    AUTOVACUUM_ENABLED = FALSE
+);
+
 DO $$
 BEGIN
     IF NOT column_exists('fr', 'bal_street', 'geom') THEN

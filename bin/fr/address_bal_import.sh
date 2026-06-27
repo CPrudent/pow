@@ -92,17 +92,19 @@ bal_get_counters() {
     local -A _opts &&
     pow_argv \
         --args_n '
+            level:Niveau Adresses;
             usage:Cas usage;
             value:Résultat
         ' \
         --args_m '
-            usage;value
+            level;usage;value
         ' \
         --args_v '
-            usage:NROWS|ATTRIBUTES|PROGRESS
+            usage:NROWS|ATTRIBUTES|PROGRESS;
+            level:SUMMARY|MUNICIPALITY|STREET|HOUSENUMBER
         ' \
         --args_p '
-            tag:usage@1N
+            tag:level@1N,usage@1N
         ' \
         --pow_argv _opts "$@" || return $?
 
@@ -116,7 +118,14 @@ bal_get_counters() {
             --total _value_ref
         ;;
     ATTRIBUTES)
-        _value_ref='{"integration":{"areas":'${bal_vars[AREAS_OLD_MUNICIPALITY]}',"streets":'${bal_vars[STREETS]}',"housenumbers":'${bal_vars[HOUSENUMBERS]}',"levels":"'${bal_vars[LEVELS]}'"}}'
+        case "${_opts[LEVEL]}" in
+        SUMMARY)
+            _value_ref='{"integration":{"delta":{"municipality":{"add":'${bal_vars[DELTA_M_ADD]}',"del":'${bal_vars[DELTA_M_DEL]}',"upd":'${bal_vars[DELTA_M_UPD]}'}}}}'
+            ;;
+        *)
+            _value_ref='{"integration":{"areas":'${bal_vars[AREAS_OLD_MUNICIPALITY]}',"streets":'${bal_vars[STREETS]}',"housenumbers":'${bal_vars[HOUSENUMBERS]}',"levels":"'${bal_vars[LEVELS]}',"delta":{"street":{"add":'${bal_vars[DELTA_S_ADD]}',"del":'${bal_vars[DELTA_S_DEL]}',"upd":'${bal_vars[DELTA_S_UPD]}'},"housenumber":{"add":'${bal_vars[DELTA_N_ADD]}',"del":'${bal_vars[DELTA_N_DEL]}',"upd":'${bal_vars[DELTA_N_UPD]}'}}}}'
+            ;;
+        esac
         ;;
     PROGRESS)
         _value_ref="#${bal_vars[STREETS]} voies, #${bal_vars[HOUSENUMBERS]} numéros"
@@ -688,229 +697,6 @@ bal_load_addresses() {
     return $SUCCESS_CODE
 }
 
-# deal w/ obsolescence
-bal_deal_obsolescence() {
-    local -A _opts &&
-    pow_argv \
-        --args_n '
-            level:Niveau Adresses
-        ' \
-        --args_m '
-            level
-        ' \
-        --args_v '
-            level:MUNICIPALITY|STREET|HOUSENUMBER
-        ' \
-        --args_p '
-            tag:level@1N
-        ' \
-        --pow_argv _opts "$@" || return $?
-
-    local _label1=SELECT _label2 _query _info _obsolete _count _counters _i _error
-    local -ir _MAX_ITEMS=512
-    local _chunk _chunks
-    local -a _codes _codes2 _counters_chunk _counters_all=(0 0 0)
-
-    # DEBUG session
-    # export POW_DEBUG_JSON='{"codes":[{"name":"bal_deal_obsolescence","steps":["argv","query@break","count@break","chunk@break","counters@break"]}]}'
-
-    # DEBUG steps
-    local -A _debug_steps _debug_bps
-    get_env_debug \
-        ${FUNCNAME[0]} \
-        _debug_steps \
-        _debug_bps \
-        'func argv query count chunks counters'
-
-    [[ ${_debug_steps[func]:-1} -eq 0 ]] && {
-        echo ${FUNCNAME[0]}
-        [[ ${_debug_bps[func]} -eq 0 ]] && read
-    }
-    [[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
-        declare -p _opts
-        [[ ${_debug_bps[argv]} -eq 0 ]] && read
-    }
-
-    case "${_opts[LEVEL]}" in
-    MUNICIPALITY)
-        _label2=SUMMARY
-        _info=Communes
-        _query="
-            SELECT
-                ARRAY_AGG(m.code),
-                COUNT(1)
-            FROM
-                fr.bal_municipality m
-            WHERE
-                NOT EXISTS(
-                    SELECT 1
-                    FROM fr.${bal_vars[TABLE_NAME]} tm
-                    WHERE
-                        m.code = tm.code_commune
-                )
-        "
-        ;;
-    STREET)
-        _label2=${bal_vars[MUNICIPALITY_CODE]}_${_opts[LEVEL]}S
-        _info=Voies
-        _query="
-            SELECT
-                ARRAY_AGG(s.code),
-                COUNT(1)
-            FROM
-                fr.bal_street s
-                    JOIN fr.bal_municipality m ON m.id = s.id_municipality
-            WHERE
-                m.code = '${bal_vars[MUNICIPALITY_CODE]}'
-                AND
-                NOT EXISTS(
-                    SELECT 1
-                    FROM fr.${bal_vars[TABLE_NAME]}
-                        CROSS JOIN JSON_ARRAY_ELEMENTS(data->'voies') s2
-                    WHERE
-                        s.code = s2->>'idVoie'
-                )
-        "
-        ;;
-    HOUSENUMBER)
-        _label2=${bal_vars[MUNICIPALITY_CODE]}_${_opts[LEVEL]}S
-        _info=Numéros
-        _query="
-            SELECT
-                ARRAY_AGG(n.code),
-                COUNT(1)
-            FROM
-                fr.bal_housenumber n
-                    JOIN fr.bal_street s ON s.id = n.id_street
-                    JOIN fr.bal_municipality m ON m.id = s.id_municipality
-            WHERE
-                m.code = '${bal_vars[MUNICIPALITY_CODE]}'
-                AND
-                NOT EXISTS(
-                    SELECT 1
-                    FROM fr.${bal_vars[TABLE_NAME]}
-                        CROSS JOIN JSON_ARRAY_ELEMENTS(data->'numeros') n2
-                    WHERE
-                        n.code = n2->>'id'
-                )
-        "
-        ;;
-    esac &&
-    {
-        [[ ${_debug_steps[query]:-1} -ne 0 ]] || {
-            echo "query=[$_query]"
-            [[ ${_debug_bps[query]} -ne 0 ]] || read
-        }
-    } &&
-    bal_get_list \
-        --name "BAL_${_label1}_OBSOLETE_${_label2}" \
-        --query "$_query" \
-        --as_string _obsolete \
-        --count _count &&
-    {
-        [ -z "$_obsolete" ] || {
-            # active unmerge/merge municipalities ?
-            [ "${_opts[LEVEL]}" = MUNICIPALITY ] &&
-            [ "${bal_vars[OBSOLETE_MUNICIPALITY]}" = no ] && {
-                # no, only return list of codes
-                bal_vars[OBSOLETE_MUNICIPALITIES]=$_obsolete
-                return $SUCCESS_CODE
-            }
-
-            {
-                [[ ${_debug_steps[count]:-1} -ne 0 ]] || {
-                    echo "count=($_count)"
-                    echo "obsolete=($_obsolete)"
-                    [[ ${_debug_bps[count]} -ne 0 ]] || read
-                }
-            } &&
-            _label1=DELETE &&
-            {
-                # sample municipality 92063 w/ 7827 housenumbers to delete (16 chunks) !
-                #+ cause a shell error (/usr/bin/env: Argument list too long)
-                #+ need to part set in smaller chunks
-                # accept BAL codes w/ single quote! as 60057's 3 housenumbers
-                #+ don't work : list => '${_obsolete//\'/\\\'}'
-                #+ finally delete these 3 hn w/ pgAdmin4 by query
-                #+ try E'${_obsolete//\'/\\\'}'
-                if [[ $_count -le $_MAX_ITEMS ]]; then
-                    log_info "Liste ${_info} obsolètes: ${_obsolete}" &&
-                    execute_query \
-                        --name "BAL_${_label1}_OBSOLETE_${_label2}" \
-                        --query "
-                            SELECT counters
-                            FROM fr.bal_delete_obsolete_addresses(
-                                municipality => '${bal_vars[MUNICIPALITY_CODE]}',
-                                list => E'${_obsolete//\'/\\\'}'
-                            )
-                        " \
-                        --return _counters
-                else
-                    array_sql_to_bash \
-                        --array_sql "$_obsolete" \
-                        --count ${_count} \
-                        --array_bash _codes &&
-                    _chunks=$((${#_codes[@]} / _MAX_ITEMS)) &&
-                    {
-                        [[ $((${#_codes[@]} % _MAX_ITEMS)) -eq 0 ]] || {
-                            _chunks=$((_chunks +1))
-                        }
-                    } &&
-                    for ((_chunk=0; _chunk<$_chunks; _chunk++)); do
-                        log_info "Liste ${_info} obsolètes ${bal_vars[MUNICIPALITY_CODE]} $((_chunk +1))/${_chunks}" &&
-                        _codes2=( $(printf '%s ' ${_codes[@]:((_chunk*_MAX_ITEMS)):${_MAX_ITEMS}}) ) &&
-                        # https://stackoverflow.com/questions/52590446/bash-array-using-vs-difference-between-the-two
-                        _obsolete="{$(IFS=, ; echo "${_codes2[*]}")}" &&
-                        {
-                            [[ ${_debug_steps[chunk]:-1} -ne 0 ]] || {
-                                echo "chunk=($_chunk/$_chunks)"
-                                declare -p _codes2
-                                echo "obsolete=($_obsolete)"
-                                [[ ${_debug_bps[chunk]} -ne 0 ]] || read
-                            }
-                        } &&
-                        execute_query \
-                            --name "BAL_${_label1}_OBSOLETE_${_label2}_${_chunk}" \
-                            --query "
-                                SELECT counters
-                                FROM fr.bal_delete_obsolete_addresses(
-                                    municipality => '${bal_vars[MUNICIPALITY_CODE]}',
-                                    list => E'${_obsolete//\'/\\\'}'
-                                )
-                            " \
-                            --return _counters &&
-                        array_sql_to_bash \
-                            --array_sql "$_counters" \
-                            --array_bash _counters_chunk &&
-                        for ((_i=0; _i<3; _i++)); do
-                            _counters_all[$_i]=$((_counters_all[$_i] + _counters_chunk[$_i]))
-                        done &&
-                        {
-                            [[ ${_debug_steps[counters]:-1} -ne 0 ]] || {
-                                echo "counters=($_counters)"
-                                declare -p _counters_chunk _counters_all
-                                [[ ${_debug_bps[counters]} -ne 0 ]] || read
-                            }
-                        }
-                    done &&
-                    _counters="{$(IFS=, ; echo "${_counters_all[*]}")}" || {
-                        log_error "Effacement ${_info} obsolètes ${bal_vars[MUNICIPALITY_CODE]} ${_chunk}/${_chunks}"
-                        return $ERROR_CODE
-                    }
-                fi
-            } &&
-            {
-                _info='Effacement'
-                [ "${_opts[LEVEL]}" = MUNICIPALITY ] || _info+=" ${bal_vars[MUNICIPALITY_CODE]}"
-                _info+=" {Commune,Voie,Numéro}: ${_counters}"
-                log_info "$_info"
-            }
-        }
-    } || return $ERROR_CODE
-
-    return $SUCCESS_CODE
-}
-
 # context BAL data
 bal_context() {
     local -A _opts &&
@@ -987,150 +773,73 @@ bal_integration() {
         ' \
         --pow_argv _opts "$@" || return $?
 
+    local _results _counters
+
     case "${_opts[LEVEL]}" in
     MUNICIPALITY)
-        # manage municipality, deleting obsolete ones w/ {housenumbers, streets} dependences
+        # apply change(s) on municipalities (from downloaded CSV summary)
         execute_query \
             --name "BAL_INTEGRATION_SUMMARY" \
             --query "
-                INSERT INTO fr.bal_municipality(
-                    code,
-                    name,
-                    population,
-                    areas,
-                    streets,
-                    housenumbers,
-                    housenumbers_auth,
-                    last_update
+                SELECT counters
+                FROM fr.bal_upgrade_municipalities(
+                    table_name => 'fr.${bal_vars[TABLE_NAME]}'
                 )
-                SELECT
-                    code_commune,
-                    nom_commune,
-                    population::INT,
-                    nb_lieux_dits::INT,
-                    nb_voies::INT,
-                    nb_numeros::INT,
-                    nb_numeros_certifies::INT,
-                    composed_at::TIMESTAMP WITHOUT TIME ZONE
-                FROM
-                    fr.${bal_vars[TABLE_NAME]}
-                ON CONFLICT(code) DO UPDATE SET
-                    name = EXCLUDED.name,
-                    population = EXCLUDED.population,
-                    areas = EXCLUDED.areas,
-                    streets = EXCLUDED.streets,
-                    housenumbers = EXCLUDED.housenumbers,
-                    housenumbers_auth = EXCLUDED.housenumbers_auth,
-                    last_update = EXCLUDED.last_update
-            " &&
-        bal_deal_obsolescence --level MUNICIPALITY
+            "
+            --return _results &&
+        array_sql_to_bash \
+            --array_sql "$_results" \
+            --array_bash _counters &&
+        bal_vars[DELTA_M_ADD]=_counters[0] &&
+        bal_vars[DELTA_M_DEL]=_counters[1] &&
+        bal_vars[DELTA_M_UPD]=_counters[2]
         ;;
     STREET)
-        # insert/update streets, and delete old ones (obsolete)
+        # apply change(s) on street(s) (from downloaded JSON)
         #+ street name empty (municipality 77131)!
         execute_query \
             --name "BAL_INTEGRATION_${bal_vars[MUNICIPALITY_CODE]}_STREETS" \
             --query "
-                INSERT INTO fr.bal_street (
-                    id_municipality,
-                    code,
-                    name,
-                    kind,
-                    sources,
-                    housenumbers,
-                    housenumbers_auth,
-                    last_update
+                SELECT counters
+                FROM fr.bal_upgrade_streets(
+                    code => '${bal_vars[MUNICIPALITY_CODE]}',
+                    table_name => 'fr.${bal_vars[TABLE_NAME]}'
                 )
-                SELECT
-                    m.id,
-                    v->>'idVoie',
-                    v->>'nomVoie',
-                    v->>'type',
-                    CASE
-                        WHEN v->'sources' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(v->'sources'))::TEXT[]
-                        ELSE ARRAY[v->>'sources']::TEXT[]
-                    END,
-                    (v->>'nbNumeros')::INT,
-                    (v->>'nbNumerosCertifies')::INT,
-                    TIMEOFDAY()::TIMESTAMP WITHOUT TIME ZONE
-                FROM
-                    fr.${bal_vars[TABLE_NAME]}
-                        CROSS JOIN JSON_ARRAY_ELEMENTS(data->'voies') v
-                        JOIN fr.bal_municipality m ON m.code = data->>'codeCommune'
-                WHERE
-                    v->>'nomVoie' IS NOT NULL
-                ON CONFLICT(code) DO UPDATE SET
-                    id_municipality = EXCLUDED.id_municipality,
-                    name = EXCLUDED.name,
-                    kind = EXCLUDED.kind,
-                    sources = EXCLUDED.sources,
-                    housenumbers = EXCLUDED.housenumbers,
-                    housenumbers_auth = EXCLUDED.housenumbers_auth,
-                    last_update = EXCLUDED.last_update
-            " &&
-        {
-            [ -z "${bal_vars[IO_LAST_ID]}" ] || bal_deal_obsolescence --level STREET
-        } &&
+            "
+            --return _results &&
+        array_sql_to_bash \
+            --array_sql "$_results" \
+            --array_bash _counters &&
+        bal_vars[DELTA_S_ADD]=_counters[0] &&
+        bal_vars[DELTA_S_DEL]=_counters[1] &&
+        bal_vars[DELTA_S_UPD]=_counters[2] &&
         {
             [ "${bal_vars[PROGRESS]}" = no ] || set_progress --start bal_vars[PROGRESS_START]
         } &&
         bal_load --level STREET
         ;;
     HOUSENUMBER)
-        # insert/update housenumbers, and delete old ones (obsolete)
-        # update street's geometry
+        # apply change(s) on housenumber(s) (from downloaded JSON)
         execute_query \
             --name "BAL_INTEGRATION_${bal_vars[MUNICIPALITY_CODE]}_HOUSENUMBERS" \
             --query "
-                INSERT INTO fr.bal_housenumber (
-                    id_street,
-                    code,
-                    number,
-                    extension,
-                    sources,
-                    postcode,
-                    parcels,
-                    geom,
-                    location,
-                    last_update
+                SELECT counters
+                FROM fr.bal_upgrade_housenumbers(
+                    code => '${bal_vars[MUNICIPALITY_CODE]}',
+                    table_name => 'fr.${bal_vars[TABLE_NAME]}'
                 )
-                SELECT
-                    s.id,
-                    n->>'id',
-                    (n->>'numero')::INT,
-                    n->>'suffixe',
-                    CASE
-                        WHEN n->'sources' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(n->'sources'))::VARCHAR[]
-                        ELSE ARRAY[n->>'sources']::VARCHAR[]
-                    END,
-                    n->>'postcode',
-                    CASE
-                        WHEN n->'parcelles' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(n->'parcelles'))::VARCHAR[]
-                        ELSE ARRAY[n->>'parcelles']::VARCHAR[]
-                    END,
-                    CASE
-                        WHEN n->'position'->'coordinates' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(n->'position'->'coordinates'))::TEXT[]::FLOAT[]
-                        ELSE NULL::FLOAT[]
-                    END,
-                    n->>'positionType',
-                    TIMEOFDAY()::TIMESTAMP WITHOUT TIME ZONE
-                FROM
-                    fr.${bal_vars[TABLE_NAME]}
-                        CROSS JOIN JSON_ARRAY_ELEMENTS(data->'numeros') n
-                        JOIN fr.bal_street s ON s.code = data->>'idVoie'
-                WHERE
-                    UPPER(n->>'certifie') = 'TRUE'
-                ON CONFLICT(code) DO UPDATE SET
-                    id_street = EXCLUDED.id_street,
-                    number = EXCLUDED.number,
-                    extension = EXCLUDED.extension,
-                    sources = EXCLUDED.sources,
-                    postcode = EXCLUDED.postcode,
-                    parcels = EXCLUDED.parcels,
-                    geom = EXCLUDED.geom,
-                    location = EXCLUDED.location,
-                    last_update = EXCLUDED.last_update
-                ;
+            "
+            --return _results &&
+        array_sql_to_bash \
+            --array_sql "$_results" \
+            --array_bash _counters &&
+        bal_vars[DELTA_N_ADD]=_counters[0] &&
+        bal_vars[DELTA_N_DEL]=_counters[1] &&
+        bal_vars[DELTA_N_UPD]=_counters[2] &&
+        # update street's geometry
+        execute_query \
+            --name "BAL_INTEGRATION_${bal_vars[MUNICIPALITY_CODE]}_STREETS_GEOM" \
+            --query "
                 WITH
                 street_geometry AS (
                     SELECT
@@ -1148,11 +857,21 @@ bal_integration() {
                     FROM street_geometry g
                     WHERE
                         s.id = g.id
-                ;
+                        AND
+                        (
+                            (CARDINALITY(s.geom) IS DISTINCT FROM CARDINALITY(g.geom))
+                            OR
+                            (
+                                (CARDINALITY(s.geom) = CARDINALITY(g.geom))
+                                AND
+                                (
+                                    (s.geom[1] != g.geom[1])
+                                    OR
+                                    (s.geom[2] != g.geom[2])
+                                )
+                            )
+                        )
             " &&
-        {
-            [ -z "${bal_vars[IO_LAST_ID]}" ] || bal_deal_obsolescence --level HOUSENUMBER
-        } &&
         {
             [ "${bal_vars[PROGRESS]}" = no ] || set_progress --start bal_vars[PROGRESS_START]
         } &&
@@ -1328,8 +1047,11 @@ bal_load() {
                 {
                     [ "${bal_vars[PROGRESS]}" = no ] || set_progress --start bal_vars[PROGRESS_START]
                 } &&
+                bal_get_counters \
+                    --usage ATTRIBUTES --value bal_vars[ATTRIBUTES] --level ${_opts[LEVEL]} &&
                 io_history_end_ok \
                     --nrows_processed '(SELECT COUNT(*) FROM fr.bal_municipality)' \
+                    --infos "${bal_vars[ATTRIBUTES]}" \
                     --id ${bal_vars[IO_ID]}
                 ;;
             MUNICIPALITY)
@@ -1337,8 +1059,10 @@ bal_load() {
                 {
                     # case when counters aren't initialized (specially housenumbers)
                     bal_count_addresses &&
-                    bal_get_counters --usage NROWS --value bal_vars[NROWS_PROCESSED] &&
-                    bal_get_counters --usage ATTRIBUTES --value bal_vars[ATTRIBUTES]
+                    bal_get_counters \
+                        --usage NROWS --value bal_vars[NROWS_PROCESSED] --level ${_opts[LEVEL]} &&
+                    bal_get_counters \
+                        --usage ATTRIBUTES --value bal_vars[ATTRIBUTES] --level ${_opts[LEVEL]}
                 } &&
                 # total can be less than waited (only streets w/ certified housenumbers)
                 io_history_end_ok \

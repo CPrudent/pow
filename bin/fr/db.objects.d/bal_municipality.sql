@@ -23,6 +23,11 @@ CREATE TABLE IF NOT EXISTS fr.bal_municipality (
 )
 ;
 
+-- manual VACUUM
+ALTER TABLE fr.bal_municipality SET (
+    AUTOVACUUM_ENABLED = FALSE
+);
+
 SELECT drop_all_functions_if_exists('fr', 'set_bal_municipality_index');
 CREATE OR REPLACE PROCEDURE fr.set_bal_municipality_index()
 AS
@@ -34,128 +39,10 @@ BEGIN
 END
 $proc$ LANGUAGE plpgsql;
 
--- delete obsolete addresses, dealing w/ dependencies
+-- oldies: delete obsolete addresses, dealing w/ dependencies
 SELECT public.drop_all_functions_if_exists('fr', 'bal_delete_obsolete_addresses');
-CREATE OR REPLACE FUNCTION fr.bal_delete_obsolete_addresses(
-    municipality IN VARCHAR,
-    list IN VARCHAR,
-    simulation IN BOOLEAN DEFAULT FALSE,
-    counters OUT INT[]
-)
-AS
-$func$
-DECLARE
-    _queries        TEXT[];
-    _code           VARCHAR;
-    _level          VARCHAR;
-    _i              INT;
-    _nrows          INT;
-BEGIN
-    IF list IS NULL OR list = '{}' THEN
-        RAISE 'liste des codes vide!';
-    END IF;
-    _code := (list::VARCHAR[])[1];
-    _level := CASE
-        WHEN _code ~ '^[^_]{5}_[^_]*$' THEN 'STREET'
-        WHEN _code ~ '^[^_]{5}_[^_]*_' THEN 'HOUSENUMBER'
-        WHEN LENGTH(_code) = 5 THEN 'MUNICIPALITY'
-        ELSE 'UNKNOWN'
-        END
-        ;
-    IF _level = 'UNKNOWN' THEN
-        RAISE 'typologie des codes non reconnue (%)', _code;
-    END IF;
-    IF simulation THEN
-        RAISE NOTICE 'level=% municipality=%', _level, municipality;
-    END IF;
 
-    _queries := ARRAY_FILL(NULL::TEXT, ARRAY[3]);
-    IF _level = 'HOUSENUMBER' THEN
-        _queries[3] := '
-            DELETE FROM fr.bal_housenumber n
-            USING fr.bal_municipality m, fr.bal_street s
-            WHERE
-                s.id = n.id_street
-                AND
-                m.id = s.id_municipality
-                AND
-                m.code = $2
-                AND
-                n.code = ANY($1)
-        ';
-    ELSIF _level = 'STREET' THEN
-        _queries[3] := '
-            DELETE FROM fr.bal_housenumber n
-            USING fr.bal_municipality m, fr.bal_street s
-            WHERE
-                s.id = n.id_street
-                AND
-                m.id = s.id_municipality
-                AND
-                m.code = $2
-                AND
-                s.code = ANY($1)
-        ';
-        _queries[2] := '
-            DELETE FROM fr.bal_street s
-            USING fr.bal_municipality m
-            WHERE
-                m.id = s.id_municipality
-                AND
-                m.code = $2
-                AND
-                s.code = ANY($1)
-        ';
-    ELSE
-        _queries[3] := '
-            DELETE FROM fr.bal_housenumber n
-            USING fr.bal_municipality m, fr.bal_street s
-            WHERE
-                s.id = n.id_street
-                AND
-                m.id = s.id_municipality
-                AND
-                m.code = ANY($1)
-                AND
-                $2 IS NOT DISTINCT FROM $2
-        ';
-        _queries[2] := '
-            DELETE FROM fr.bal_street s
-            USING fr.bal_municipality m
-            WHERE
-                m.id = s.id_municipality
-                AND
-                m.code = ANY($1)
-                AND
-                $2 IS NOT DISTINCT FROM $2
-        ';
-        _queries[1] := '
-            DELETE FROM fr.bal_municipality m
-            WHERE
-                m.code = ANY($1)
-                AND
-                $2 IS NOT DISTINCT FROM $2
-        ';
-    END IF;
-
-    counters := ARRAY_FILL(0, ARRAY[3]);
-    FOR _i IN REVERSE 3 .. 1 LOOP
-        CONTINUE WHEN _queries[_i] IS NULL;
-
-        IF simulation THEN
-            RAISE NOTICE '%: query=%', _i, _queries[_i];
-        ELSE
-            EXECUTE _queries[_i]
-                USING list::VARCHAR[], municipality
-                ;
-            GET DIAGNOSTICS _nrows = ROW_COUNT;
-            counters[_i] := _nrows;
-        END IF;
-    END LOOP;
-END
-$func$ LANGUAGE plpgsql;
-
--- get query to select addresses of a municipality (option to limit for street only w/ certified housenumbers)
+-- get query to select addresses of a municipality (option to limit only street w/ certified housenumbers)
 SELECT public.drop_all_functions_if_exists('fr', 'bal_municipality_addresses');
 CREATE OR REPLACE FUNCTION fr.bal_municipality_addresses(
     code IN VARCHAR,
@@ -174,8 +61,17 @@ BEGIN
         ';
     END IF;
 
+    /*
+     * remember:
+     * only authed housenumber are stored, so no condition (only for street)
+     */
     q := CONCAT(
-        'SELECT
+        '
+        WITH
+        last_match(last_match) AS (
+            VALUES(fr.bal_get_last_match(''', bal_municipality_addresses.code, '''))
+        )
+        SELECT
             ROW_NUMBER() OVER (ORDER BY t.code) rowid,
             t.*
         FROM (
@@ -196,8 +92,11 @@ BEGIN
                 fr.bal_housenumber n
                     JOIN fr.bal_street s ON s.id = n.id_street
                     JOIN fr.bal_municipality m ON m.id = s.id_municipality
+                    CROSS JOIN last_match lm
             WHERE
                 m.code = ''', bal_municipality_addresses.code, '''
+                AND
+                n.last_update > lm.last_match
             UNION
             SELECT
                 s.code,
@@ -215,14 +114,105 @@ BEGIN
             FROM
                 fr.bal_street s
                     JOIN fr.bal_municipality m ON m.id = s.id_municipality
+                    CROSS JOIN last_match lm
             WHERE
                 m.code = ''', bal_municipality_addresses.code, '''
+                AND
+                s.last_update > lm.last_match
             ', _query_hn,
             '
-        ) t'
+        ) t
+        '
     );
 END
 $func$ LANGUAGE plpgsql;
+
+-- get last update (from BAL import)
+SELECT public.drop_all_functions_if_exists('fr', 'bal_get_last_update');
+CREATE OR REPLACE FUNCTION fr.bal_get_last_update(
+    code IN VARCHAR,
+    last_update OUT TIMESTAMP WITHOUT TIME ZONE
+)
+AS
+$func$
+BEGIN
+    SELECT
+        m.last_update
+    INTO
+        bal_get_last_update.last_update
+    FROM
+        fr.bal_municipality m
+    WHERE
+        m.code = bal_get_last_update.code
+    ;
+    IF NOT FOUND THEN
+        RAISE 'code Commune % non trouvé!', code;
+    END IF;
+END
+$func$ LANGUAGE plpgsql;
+
+/*
+ * tests
+ *
+
+SELECT * FROM fr.bal_get_last_update(code => '01024');  -- OK
+SELECT * FROM fr.bal_get_last_update(code => '00024');  -- KO
+
+ */
+
+SELECT public.drop_all_functions_if_exists('fr', 'bal_get_last_match');
+CREATE OR REPLACE FUNCTION fr.bal_get_last_match(
+    code IN VARCHAR,
+    last_match OUT TIMESTAMP WITHOUT TIME ZONE
+)
+AS
+$func$
+DECLARE
+    _last_match TIMESTAMP WITHOUT TIME ZONE;
+BEGIN
+    WITH
+    all_matched AS (
+        SELECT
+            ((((JSONB_PATH_QUERY(
+                io.attributes::JSONB,
+                '$ ? (@.usecases[*].name == "match")'
+            ))->'usecases'->> 0)::JSON)->>'id')::INT id_request
+        FROM
+            io_history io
+        WHERE
+            io.name ~ CONCAT('^FR-BAL-', code)
+            AND
+            io.attributes IS JSON OBJECT
+            AND
+            'match' IN (
+                SELECT (JSON_ARRAY_ELEMENTS((io.attributes::JSON)->'usecases'))->>'name'
+            )
+    )
+
+    SELECT
+        MAX(mrq.date_create)
+    INTO
+        _last_match
+    FROM
+        all_matched mm
+            JOIN fr.address_match_request mrq ON mm.id_request = mrq.id
+    ;
+
+    IF _last_match IS NULL THEN
+        _last_match := TO_TIMESTAMP('1970-01-01', 'YYYY-MM-DD');
+    END IF;
+    last_match := _last_match;
+END
+$func$ LANGUAGE plpgsql;
+
+/*
+ * tests
+ *
+
+SELECT * FROM fr.bal_get_last_match(code => '01024');  -- date
+SELECT * FROM fr.bal_get_last_match(code => '75001');  -- default (not matched yet!)
+
+ */
 
 DO $$
 BEGIN
@@ -230,3 +220,4 @@ BEGIN
     CALL fr.set_bal_municipality_index();
 END
 $$;
+

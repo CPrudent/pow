@@ -25,6 +25,11 @@ CREATE TABLE IF NOT EXISTS fr.bal_housenumber (
     last_update TIMESTAMP WITHOUT TIME ZONE
 );
 
+-- manual VACUUM
+ALTER TABLE fr.bal_housenumber SET (
+    AUTOVACUUM_ENABLED = FALSE
+);
+
 SELECT drop_all_functions_if_exists('fr', 'set_bal_housenumber_index');
 CREATE OR REPLACE PROCEDURE fr.set_bal_housenumber_index()
 AS
