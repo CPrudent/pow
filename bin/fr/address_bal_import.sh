@@ -932,7 +932,7 @@ bal_load() {
         ' \
         --pow_argv _opts "$@" || return $?
 
-    local _file _rc _option _force _vacuum_info
+    local _file _rc _option _force _vacuum_info _load_data=0
     local -A _context
 
     case "${_opts[LEVEL]}" in
@@ -1029,6 +1029,7 @@ bal_load() {
                         # same data has to be loaded again ?
                         ([ "${_opts[FORCE_LOAD]}" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
                             [ -n "${_context[IMPORT_OPTIONS]}" ] && _option="--option ${_context[IMPORT_OPTIONS]}"
+                            _load_data=1 &&
                             bal_import_file \
                                 --mode OVERWRITE_DATA \
                                 --source "$POW_DIR_IMPORT" \
@@ -1075,11 +1076,13 @@ bal_load() {
                 # vacuum only for last municipality (or summary)
                 ([ "${_opts[LEVEL]}" = MUNICIPALITY ] &&
                 [[ ${bal_vars[PROGRESS_CURRENT]} -lt ${bal_vars[PROGRESS_TOTAL]} ]]) || {
-                    echo 'VACUUM '$_vacuum_info
-                    vacuum \
-                        --schema_name fr \
-                        --table_name "${_context[VACUUM]}" \
-                        --mode ANALYZE
+                    [ $_load_data -eq 1 ] && {
+                        echo 'VACUUM '$_vacuum_info
+                        vacuum \
+                            --schema_name fr \
+                            --table_name "${_context[VACUUM]}" \
+                            --mode ANALYZE
+                    }
                 }
             }
         }
@@ -1321,37 +1324,6 @@ bal_fix_apply() {
                 } &&
                 bal_import_table --command DROP
                 ;;
-            DELETE_OBSOLETE_MUNICIPALITY)
-                local _joblog=$POW_DIR_ARCHIVE/${bal_vars[MUNICIPALITY_CODE]}.json.log
-
-                {
-                    io_download_file \
-                        --url "${bal_vars[URL]}/lookup/${bal_vars[MUNICIPALITY_CODE]}" \
-                        --common_save no \
-                        --overwrite_mode yes \
-                        --output_directory "$POW_DIR_IMPORT" \
-                        --output_file ${bal_vars[MUNICIPALITY_CODE]}.json
-                    ([ $? -eq $POW_DOWNLOAD_ERROR ] &&
-                    [ -n "$(grep 'ERROR 404' "$_joblog")" ]) || {
-                        log_info "code ${bal_vars[MUNICIPALITY_CODE]} non obsolète!"
-                        false
-                    }
-                } &&
-                execute_query \
-                    --name BAL_DELETE_${bal_vars[MUNICIPALITY_CODE]} \
-                    --query "
-                        SELECT counters FROM fr.bal_delete_obsolete_addresses(
-                            municipality => '${bal_vars[MUNICIPALITY_CODE]}',
-                            list => {'${bal_vars[MUNICIPALITY_CODE]}'}
-                        )
-                    " \
-                    --return _counters &&
-                {
-                    _info='Effacement '${bal_vars[MUNICIPALITY_CODE]}
-                    _info+=" {Commune,Voie,Numéro}: ${_counters}"
-                    log_info "$_info"
-                }
-                ;;
             esac
         }
     } || return $ERROR_CODE
@@ -1419,7 +1391,7 @@ pow_argv \
         force_summary:yes|no;
         force_load:yes|no;
         obsolete_municipality:yes|no;
-        fix:SPACE_IN_CODE|CONVERT_ATTRIBUTES|MORE_ATTRIBUTES|OBSOLESCENCE_STREET|OBSOLESCENCE_MUNICIPALITY|DELETE_OBSOLETE_MUNICIPALITY;
+        fix:SPACE_IN_CODE|CONVERT_ATTRIBUTES|MORE_ATTRIBUTES|OBSOLESCENCE_STREET|OBSOLESCENCE_MUNICIPALITY;
         levels:MSN|MS|N;
         progress:yes|no;
         parallel:yes|no;
@@ -1489,12 +1461,7 @@ set_env --schema_name fr &&
             log_error 'correctif pour 1 Commune précise!'
             exit $ERROR_CODE
         }
-        # to avoid automatic deletion (w/o calling the fix)
-        {
-            [ "${bal_vars[FIX]}" = DELETE_OBSOLETE_MUNICIPALITY ] || {
-                bal_load --level SUMMARY
-            }
-        } &&
+        bal_load --level SUMMARY &&
         bal_list_municipalities --list bal_codes &&
         {
             [ "${bal_vars[CLEAN]}" = no ] || {
