@@ -1013,7 +1013,7 @@ bal_load() {
         {
             {
                 # ndays -1 avoid to try download summary (useful when server is down!)
-                if (([ "${_opts[LEVEL]}" = SUMMARY ] && [[ ${bal_vars[SUMMARY_NDAYS]} -eq -1 ]]) || (is_yes --var bal_vars[LEVEL_MUNICIPALITY])); then
+                if (([ "${_opts[LEVEL]}" = SUMMARY ] && [[ "${bal_vars[SUMMARY_NDAYS]}" != '-1' ]]) || ([ "${_opts[LEVEL]}" = MUNICIPALITY ] && is_yes --var bal_vars[LEVEL_MUNICIPALITY])); then
                     io_download_file \
                         --url "${bal_vars[URL]}/${_context[URL_DATA]}" \
                         --overwrite_mode NEWER \
@@ -1038,6 +1038,8 @@ bal_load() {
                         }
                     }
                 else
+                    # no download, and SUMMARY : end!
+                    [ "${_opts[LEVEL]}" = SUMMARY ] ||
                     bal_load --level ${_context[NEXT_LEVEL]}
                 fi
             } &&
@@ -1076,13 +1078,13 @@ bal_load() {
                 # vacuum only for last municipality (or summary)
                 ([ "${_opts[LEVEL]}" = MUNICIPALITY ] &&
                 [[ ${bal_vars[PROGRESS_CURRENT]} -lt ${bal_vars[PROGRESS_TOTAL]} ]]) || {
-                    [ $_load_data -eq 1 ] && {
+                    if [ $_load_data -eq 1 ]; then
                         echo 'VACUUM '$_vacuum_info
                         vacuum \
                             --schema_name fr \
                             --table_name "${_context[VACUUM]}" \
                             --mode ANALYZE
-                    }
+                    fi
                 }
             }
         }
