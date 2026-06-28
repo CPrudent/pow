@@ -123,7 +123,7 @@ bal_get_counters() {
             _value_ref='{"integration":{"delta":{"municipality":{"add":'${bal_vars[DELTA_M_ADD]}',"del":'${bal_vars[DELTA_M_DEL]}',"upd":'${bal_vars[DELTA_M_UPD]}'}}}}'
             ;;
         *)
-            _value_ref='{"integration":{"areas":'${bal_vars[AREAS_OLD_MUNICIPALITY]}',"streets":'${bal_vars[STREETS]}',"housenumbers":'${bal_vars[HOUSENUMBERS]}',"levels":"'${bal_vars[LEVELS]}"',"delta":{"street":{"add":'${bal_vars[DELTA_S_ADD]}',"del":'${bal_vars[DELTA_S_DEL]}',"upd":'${bal_vars[DELTA_S_UPD]}'},"housenumber":{"add":'${bal_vars[DELTA_N_ADD]}',"del":'${bal_vars[DELTA_N_DEL]}',"upd":'${bal_vars[DELTA_N_UPD]}'}}}}'
+            _value_ref='{"integration":{"areas":'${bal_vars[AREAS_OLD_MUNICIPALITY]}',"streets":'${bal_vars[STREETS]}',"housenumbers":'${bal_vars[HOUSENUMBERS]}',"levels":"'${bal_vars[LEVELS]}'","delta":{"street":{"add":'${bal_vars[DELTA_S_ADD]}',"del":'${bal_vars[DELTA_S_DEL]}',"upd":'${bal_vars[DELTA_S_UPD]}'},"housenumber":{"add":'${bal_vars[DELTA_N_ADD]}',"del":'${bal_vars[DELTA_N_DEL]}',"upd":'${bal_vars[DELTA_N_UPD]}'}}}}'
             ;;
         esac
         ;;
