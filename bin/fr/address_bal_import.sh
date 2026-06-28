@@ -812,7 +812,7 @@ bal_integration() {
             --array_bash _counters &&
         bal_vars[DELTA_S_ADD]=${_counters[0]} &&
         bal_vars[DELTA_S_DEL]=${_counters[1]} &&
-        bal_vars[DELTA_S_UPD]=${_counters[2]}
+        bal_vars[DELTA_S_UPD]=${_counters[2]} &&
         {
             [ "${bal_vars[PROGRESS]}" = no ] || set_progress --start bal_vars[PROGRESS_START]
         } &&
@@ -835,7 +835,7 @@ bal_integration() {
             --array_bash _counters &&
         bal_vars[DELTA_N_ADD]=${_counters[0]} &&
         bal_vars[DELTA_N_DEL]=${_counters[1]} &&
-        bal_vars[DELTA_N_UPD]=${_counters[2]}
+        bal_vars[DELTA_N_UPD]=${_counters[2]} &&
         # update street's geometry
         execute_query \
             --name "BAL_INTEGRATION_${bal_vars[MUNICIPALITY_CODE]}_STREETS_GEOM" \

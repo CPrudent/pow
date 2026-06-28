@@ -537,6 +537,7 @@ BEGIN
                     END,
                     n->>''positionType'',
                     $2
+                FROM
                 ',
                 table_name,
                 '
@@ -595,23 +596,30 @@ BEGIN
         IF counters[3] > 0 THEN
             _q := CONCAT(
                 '
-                UPDATE fr.bal_housenumber SET
-                    name = v->>''nomVoie'',
-                    kind = v->>''type'',
+                UPDATE fr.bal_housenumber hn SET
+                    number = (n->>''numero'')::INT,
+                    extension = n->>''suffixe'',
                     sources = CASE
-                        WHEN v->''sources'' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(v->''sources''))::TEXT[]
-                        ELSE ARRAY[v->>''sources'']::TEXT[]
+                        WHEN n->''sources'' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(n->''sources''))::VARCHAR[]
+                        ELSE ARRAY[n->>''sources'']::VARCHAR[]
                     END,
-                    housenumbers = (v->>''nbNumeros'')::INT,
-                    housenumbers_auth = (v->>''nbNumerosCertifies'')::INT,
+                    postcode = n->>''postcode'',
+                    parcels = CASE
+                        WHEN n->''parcelles'' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(n->''parcelles''))::VARCHAR[]
+                        ELSE ARRAY[n->>''parcelles'']::VARCHAR[]
+                    END,
+                    geom = CASE
+                        WHEN n->''position''->''coordinates'' IS JSON ARRAY THEN ARRAY(SELECT JSON_ARRAY_ELEMENTS(n->''position''->''coordinates''))::TEXT[]::FLOAT[]
+                        ELSE NULL::FLOAT[]
+                    END,
+                    location = n->>''positionType'',
                     last_update = $2
                 FROM
                 ',
                 table_name,
                 '
-                        CROSS JOIN JSON_ARRAY_ELEMENTS(data->''numeros'') n
-                        JOIN fr.bal_street s ON s.code = data->>''idVoie''
-                WHERE code = n->>''id'' AND code = ANY($1)
+                    CROSS JOIN JSON_ARRAY_ELEMENTS(data->''numeros'') n
+                WHERE hn.code = n->>''id'' AND hn.code = ANY($1)
                 '
             );
             EXECUTE _q USING _items, _last;
