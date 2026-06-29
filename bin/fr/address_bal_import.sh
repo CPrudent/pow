@@ -120,7 +120,7 @@ bal_get_counters() {
     ATTRIBUTES)
         case "${_opts[LEVEL]}" in
         SUMMARY)
-            _value_ref='{"integration":{"delta":{"municipality":{"add":'${bal_vars[DELTA_M_ADD]}',"del":'${bal_vars[DELTA_M_DEL]}',"upd":'${bal_vars[DELTA_M_UPD]}'}}}}'
+            _value_ref='{"integration":{"delta":{"municipality":{"add":'${bal_vars[DELTA_M_ADD]:-0}',"del":'${bal_vars[DELTA_M_DEL]:-0}',"upd":'${bal_vars[DELTA_M_UPD]:-0}'}}}}'
             ;;
         *)
             _value_ref='{"integration":{"areas":'${bal_vars[AREAS_OLD_MUNICIPALITY]}',"streets":'${bal_vars[STREETS]}',"housenumbers":'${bal_vars[HOUSENUMBERS]}',"levels":"'${bal_vars[LEVELS]}'","delta":{"street":{"add":'${bal_vars[DELTA_S_ADD]}',"del":'${bal_vars[DELTA_S_DEL]}',"upd":'${bal_vars[DELTA_S_UPD]}'},"housenumber":{"add":'${bal_vars[DELTA_N_ADD]}',"del":'${bal_vars[DELTA_N_DEL]}',"upd":'${bal_vars[DELTA_N_UPD]}'}}}}'
@@ -932,12 +932,13 @@ bal_load() {
         ' \
         --pow_argv _opts "$@" || return $?
 
-    local _file _rc _option _force _vacuum_info _load_data=0
+    local _file _rc _option _force _force_load _vacuum_info _load_data=0
     local -A _context
 
     case "${_opts[LEVEL]}" in
     SUMMARY)
-        _force=${_opts[FORCE_SUMMARY]}
+        _force=${bal_vars[FORCE_SUMMARY]}
+        _force_load=no
         bal_vars[IO_NAME]=FR-BAL-SUMMARY
         [ "${bal_vars[STOP_TIME]}" = 0 ] || {
             log_info "Durée de traitement allouée jusqu'à ${bal_vars[STOP_TIME]}"
@@ -958,7 +959,9 @@ bal_load() {
         }
         ;;
     MUNICIPALITY)
-        _force=${_opts[FORCE]}
+        _force=${bal_vars[FORCE]}
+        # need to load JSON to do delta!
+        _force_load=${bal_vars[FORCE_LOAD]}
         bal_vars[IO_NAME]=FR-BAL-${bal_vars[MUNICIPALITY_CODE]}
         ;;
     esac
@@ -1027,7 +1030,7 @@ bal_load() {
                     _rc=$?
                     [[ $_rc -lt $POW_DOWNLOAD_ERROR ]] && {
                         # same data has to be loaded again ?
-                        ([ "${_opts[FORCE_LOAD]}" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
+                        ([ "$_force_load" = no ] && [[ $_rc -eq $POW_DOWNLOAD_ALREADY_AVAILABLE ]]) || {
                             [ -n "${_context[IMPORT_OPTIONS]}" ] && _option="--option ${_context[IMPORT_OPTIONS]}"
                             _load_data=1 &&
                             bal_import_file \
@@ -1078,13 +1081,13 @@ bal_load() {
                 # vacuum only for last municipality (or summary)
                 ([ "${_opts[LEVEL]}" = MUNICIPALITY ] &&
                 [[ ${bal_vars[PROGRESS_CURRENT]} -lt ${bal_vars[PROGRESS_TOTAL]} ]]) || {
-                    if [ $_load_data -eq 1 ]; then
+                    [ $_load_data -eq 0 ] || {
                         echo 'VACUUM '$_vacuum_info
                         vacuum \
                             --schema_name fr \
                             --table_name "${_context[VACUUM]}" \
                             --mode ANALYZE
-                    fi
+                    }
                 }
             }
         }
