@@ -42,7 +42,8 @@ bal_match_municipality() {
         --request_path $POW_DIR_TMP/BAL_${_opts[CODE]}.dat \
         --steps REQUEST,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT \
         --format "$POW_DIR_BATCH/bal/format.sql" \
-        --force ${bal_vars[FORCE]} &&
+        --force ${bal_vars[FORCE]} \
+        --request_new ${bal_vars[REQUEST_NEW]} &&
     _request_id=$(sed --silent --expression '1p' < $POW_DIR_TMP/BAL_${_opts[CODE]}.dat) &&
     # update history
     io_history_update \
@@ -178,6 +179,8 @@ set_env --schema_name fr &&
 bal_error=0
 bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
 [ "${bal_vars[FIX]}" = MATCH_AGAIN_ROWID ] && bal_vars[FORCE]=yes
+# needing to run again same request
+[ "${bal_vars[FORCE]}" = yes ] && bal_vars[REQUEST_NEW]=no
 
 [[ ${_debug_steps[init]:-1} -eq 0 ]] && {
     declare -p bal_vars bal_codes
@@ -281,6 +284,7 @@ else
                     --format "$POW_DIR_BATCH/bal/format.sql" \
                     --parallel \
                     --force ${bal_vars[FORCE]} \
+                    --request_new ${bal_vars[REQUEST_NEW]} \
                 ::: "${bal_codes2[@]}"
 
             # break by user, as CTRL-C (rc=-1)

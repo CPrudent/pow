@@ -63,13 +63,16 @@ BEGIN
 
     /*
      * remember:
-     * only authed housenumber are stored, so no condition (only for street)
+     * only authed housenumbers are stored, so no condition (only for street)
      */
     q := CONCAT(
         '
         WITH
-        last_match(last_match) AS (
-            VALUES(fr.bal_get_last_match(''', bal_municipality_addresses.code, '''))
+        already_matched(is_matched) AS (
+            VALUES(fr.bal_is_matched(''', bal_municipality_addresses.code, '''))
+        ),
+        last_update(last_update) AS (
+            VALUES(fr.bal_get_last_update(''', bal_municipality_addresses.code, '''))
         )
         SELECT
             ROW_NUMBER() OVER (ORDER BY t.code) rowid,
@@ -92,11 +95,16 @@ BEGIN
                 fr.bal_housenumber n
                     JOIN fr.bal_street s ON s.id = n.id_street
                     JOIN fr.bal_municipality m ON m.id = s.id_municipality
-                    CROSS JOIN last_match lm
+                    CROSS JOIN already_matched am
+                    CROSS JOIN last_update lu
             WHERE
                 m.code = ''', bal_municipality_addresses.code, '''
                 AND
-                n.last_update > lm.last_match
+                (
+                    (am.is_matched AND n.last_update = lu.last_update)
+                    OR
+                    NOT am.is_matched
+                )
             UNION
             SELECT
                 s.code,
@@ -114,11 +122,16 @@ BEGIN
             FROM
                 fr.bal_street s
                     JOIN fr.bal_municipality m ON m.id = s.id_municipality
-                    CROSS JOIN last_match lm
+                    CROSS JOIN already_matched am
+                    CROSS JOIN last_update lu
             WHERE
                 m.code = ''', bal_municipality_addresses.code, '''
                 AND
-                s.last_update > lm.last_match
+                (
+                    (am.is_matched AND s.last_update = lu.last_update)
+                    OR
+                    NOT am.is_matched
+                )
             ', _query_hn,
             '
         ) t
@@ -137,13 +150,15 @@ AS
 $func$
 BEGIN
     SELECT
-        m.last_update
+        MAX(date_data_end)
     INTO
-        bal_get_last_update.last_update
+        last_update
     FROM
-        fr.bal_municipality m
+        io_history
     WHERE
-        m.code = bal_get_last_update.code
+        name = CONCAT('FR-BAL-', code)
+        AND
+        status = 'SUCCES'
     ;
     IF NOT FOUND THEN
         RAISE 'code Commune % non trouvé!', code;
@@ -160,6 +175,45 @@ SELECT * FROM fr.bal_get_last_update(code => '00024');  -- KO
 
  */
 
+-- to known if municipality already matched
+SELECT public.drop_all_functions_if_exists('fr', 'bal_is_matched');
+CREATE OR REPLACE FUNCTION fr.bal_is_matched(
+    code IN VARCHAR,
+    is_matched OUT BOOLEAN
+)
+AS
+$func$
+BEGIN
+    SELECT EXISTS(
+        SELECT
+            name
+        FROM
+            io_history
+        WHERE
+            name ~ CONCAT('^FR-BAL-', code)
+            AND
+            attributes IS JSON OBJECT
+            AND
+            'match' IN (
+                SELECT (JSON_ARRAY_ELEMENTS((attributes::JSON)->'usecases'))->>'name'
+            )
+    )
+    INTO is_matched
+    ;
+END
+$func$ LANGUAGE plpgsql;
+
+/*
+ * tests
+ *
+
+SELECT * FROM fr.bal_is_matched(code => '01024');  -- true
+SELECT * FROM fr.bal_is_matched(code => '75001');  -- false (not yet)
+SELECT * FROM fr.bal_is_matched(code => '00024');  -- KO
+
+ */
+
+-- get last match (from BAL import)
 SELECT public.drop_all_functions_if_exists('fr', 'bal_get_last_match');
 CREATE OR REPLACE FUNCTION fr.bal_get_last_match(
     code IN VARCHAR,

@@ -515,6 +515,7 @@ pow_argv \
         request_import:Passer nom de la table du Rapprochement;
         request_kind:Passer type du Rapprochement;
         request_path:Exporter ID et nom de la table du Rapprochement;
+        request_new:Mode de création du Rapprochement;
         format:Définition du Format des Adresses (ou fichier du Format);
         parameters:Définition des Paramètres du Rapprochement (ou fichier des Paramètres);
         import_options:Options import (du fichier) spécifiques à son type;
@@ -537,6 +538,7 @@ pow_argv \
     ' \
     --args_v '
         source_kind:FILE|TABLE|QUERY;
+        request_new:yes|no;
         export_set:SOURCE|ONLY_SOURCE|COMMON|ONLY_LAPOSTE;
         export_rebuild:yes|no;
         force:yes|no;
@@ -551,6 +553,7 @@ pow_argv \
         force:no;
         request_import:NOT_DEFINED;
         request_kind:NOT_DEFINED;
+        request_new:no;
         export_srid:4326;
         parallel:no;
         argv_exit:no;
@@ -558,7 +561,7 @@ pow_argv \
     ' \
     --args_p '
         reset:no;
-        tag:source_kind@0N,export_set@XN,export_rebuild@bool,parallel@bool,argv_exit@bool,force@bool,verbose@bool
+        tag:source_kind@0N,export_set@XN,export_rebuild@bool,parallel@bool,argv_exit@bool,force@bool,verbose@bool,request_new@bool
     ' \
     --pow_argv match_vars "$@" || exit $?
 
@@ -741,7 +744,8 @@ set_env --schema_name fr &&
                 SELECT CONCAT_WS(' ', id, import_name)
                 FROM fr.set_match_request(
                     source_name => '${match_vars[SOURCE_NAME]}',
-                    source_kind => '${match_vars[SOURCE_KIND]}'
+                    source_kind => '${match_vars[SOURCE_KIND]}',
+                    request_new => ('${match_vars[REQUEST_NEW]}' = 'yes')
                     $([ -n "${match_vars[SOURCE_FILTER]}" ] && echo ", source_filter => '${match_vars[SOURCE_FILTER]//\'/\'\'}'")
                     $([ -n "${match_vars[SOURCE_QUERY]}" ] && echo ", source_query => '${match_vars[SOURCE_QUERY]//\'/\'\'}'")
                     $([ -n "${match_vars[PARAMETERS_SQL]}" ] && echo ", parameters => '${match_vars[PARAMETERS_SQL]}'::HSTORE")

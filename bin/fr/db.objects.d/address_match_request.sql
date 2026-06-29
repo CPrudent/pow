@@ -73,6 +73,7 @@ CREATE OR REPLACE FUNCTION fr.set_match_request(
     source_filter IN VARCHAR DEFAULT NULL,
     source_query IN VARCHAR DEFAULT NULL,
     parameters IN HSTORE DEFAULT NULL,
+    request_new IN BOOLEAN DEFAULT FALSE,
     id OUT INT,                                            -- ID request
     import_name OUT VARCHAR                                -- table name to import data (if needed)
 )
@@ -85,21 +86,24 @@ BEGIN
         RAISE 'type source ''%'' non géré! (%)', source_kind, source_name;
     END IF;
 
-    SELECT
-        mr.id,
-        mr.import_name
-    INTO
-        _id,
-        _import
-    FROM
-        fr.address_match_request mr
-    WHERE
-        mr.source_name = set_match_request.source_name
-        AND
-        mr.source_kind = set_match_request.source_kind
-        AND
-        mr.source_filter IS NOT DISTINCT FROM set_match_request.source_filter
-    ;
+    -- identify existing request (w/ properties), if not mandatory creation option
+    IF NOT request_new THEN
+        SELECT
+            mr.id,
+            mr.import_name
+        INTO
+            _id,
+            _import
+        FROM
+            fr.address_match_request mr
+        WHERE
+            mr.source_name = set_match_request.source_name
+            AND
+            mr.source_kind = set_match_request.source_kind
+            AND
+            mr.source_filter IS NOT DISTINCT FROM set_match_request.source_filter
+        ;
+    END IF;
 
     -- already exists?
     IF _id IS NOT NULL THEN
