@@ -175,40 +175,41 @@ END $$ LANGUAGE plpgsql;
 /* TEST
  */
 
--- get property from format (cross reference between client/ref)
-SELECT drop_all_functions_if_exists('fr', 'get_match_format_property');
-CREATE OR REPLACE FUNCTION fr.get_match_format_property(
-    id IN INTEGER,                                     -- ID request
-    property IN VARCHAR,                               -- propriété (key|value)
-    value IN VARCHAR,
-    kv OUT VARCHAR
+-- get key|value from format (cross reference between client/ref)
+SELECT drop_all_functions_if_exists('fr', 'get_match_format_value');
+CREATE OR REPLACE FUNCTION fr.get_match_format_value(
+    id IN INTEGER,                                -- ID request
+    key IN VARCHAR,                               -- clé recherchée
+    reverse IN BOOLEAN DEFAULT FALSE,             -- inverser la recherche
+    value OUT VARCHAR
 )
 AS $$
 DECLARE
     _q TEXT;
-    _field VARCHAR := CASE WHEN UPPER(property) = 'KEY' THEN 'value' ELSE 'key' END;
+    _f1 VARCHAR := CASE WHEN NOT reverse THEN 'value' ELSE 'key' END;
+    _f2 VARCHAR := CASE WHEN _f1 = 'key' THEN 'value' ELSE 'key' END;
 BEGIN
-    IF NOT UPPER(property) = ANY('{KEY,VALUE}') THEN
-        RAISE 'type propriété ''%'' non géré! (key|value attendue)', property;
-    END IF;
-
     _q := CONCAT(
         '
         SELECT
-        ', property,
+        ', _f1,
         '
         FROM (
             SELECT * FROM EACH((SELECT format FROM fr.address_match_request WHERE id = $1))
         )
         WHERE
-        ', _field,
+        ', _f2,
         '
         = $2
         '
     );
 
-    EXECUTE _q INTO kv USING id, value;
+    EXECUTE _q INTO value USING id, key;
 END $$ LANGUAGE plpgsql;
 
 /* TEST
+-- returns 'code'
+SELECT * FROM fr.get_match_format_value(id => 19946, key => 'id');
+-- returns 'id'
+SELECT * FROM fr.get_match_format_value(id => 19946, key => 'code', reverse => true);
  */
