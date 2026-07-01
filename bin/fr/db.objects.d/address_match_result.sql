@@ -120,7 +120,6 @@ not really obtain normalized name, by example, for street
 SELECT drop_all_functions_if_exists('fr', 'set_match_standardize');
 CREATE OR REPLACE PROCEDURE fr.set_match_standardize(
     id IN INTEGER,
-    mapping IN HSTORE,
     force IN BOOLEAN DEFAULT FALSE,
     raise_notice IN BOOLEAN DEFAULT FALSE,
     simulation IN BOOLEAN DEFAULT FALSE
@@ -134,14 +133,15 @@ DECLARE
     _source_filter VARCHAR;
     _source_query VARCHAR;
     _is_normalized BOOLEAN;
+    _mapping HSTORE;
     _matching HSTORE;
     _table VARCHAR;
     _query TEXT;
     _nrows INTEGER;
     _info VARCHAR;
 BEGIN
-    SELECT import_name, source_name, source_kind, source_filter, source_query, is_normalized, parameters
-    INTO _import, _source_name, _source_kind, _source_filter, _source_query, _is_normalized, _matching
+    SELECT import_name, source_name, source_kind, source_filter, source_query, is_normalized, parameters, format
+    INTO _import, _source_name, _source_kind, _source_filter, _source_query, _is_normalized, _matching, _mapping
     FROM fr.address_match_request mr
     WHERE mr.id = set_match_standardize.id
     ;
@@ -187,13 +187,11 @@ BEGIN
             '
             INSERT INTO fr.address_match_result(
                 id_request,
-                id_address,
                 standardized_address
             )
             (
                 SELECT
                     $1,
-                    d.rowid,
                     ROW(sa.*)::fr.standardized_address
                 FROM
                 '
@@ -224,7 +222,7 @@ BEGIN
         );
 
         IF raise_notice THEN
-            CALL public.log_info(FORMAT('ID(%s): mapping %s', id, mapping));
+            CALL public.log_info(FORMAT('ID(%s): mapping %s', id, _mapping));
             CALL public.log_info(FORMAT('ID(%s): query %s', id, _query));
             CALL public.log_info(FORMAT('ID(%s): matching %s', id, _matching));
         END IF;
@@ -234,7 +232,7 @@ BEGIN
             RETURN;
         END IF;
 
-        EXECUTE _query USING id, mapping, _matching, raise_notice;
+        EXECUTE _query USING id, _mapping, _matching, raise_notice;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
         CALL public.log_info(CONCAT(_info, ' : #', _nrows));
 

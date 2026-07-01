@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS fr.address_match_request (
     is_match_element BOOLEAN DEFAULT FALSE,
     is_match_address BOOLEAN DEFAULT FALSE,
     parameters HSTORE NULL,
+    format HSTORE NULL,
     import_name VARCHAR NULL,
     match_version VARCHAR NULL
 );
@@ -61,6 +62,25 @@ BEGIN
     IF NOT column_exists('fr', 'address_match_request', 'match_version') THEN
         ALTER TABLE fr.address_match_request ADD COLUMN match_version VARCHAR;
     END IF;
+
+    IF NOT column_exists('fr', 'address_match_request', 'format') THEN
+        ALTER TABLE fr.address_match_request ADD COLUMN format HSTORE;
+
+        UPDATE fr.address_match_request SET
+            format = '
+                id => code,
+                housenumber => number,
+                extension => extension,
+                street => street,
+                municipality_code => insee,
+                postcode => postcode,
+                municipality_name => municipality,
+                geo => geom,
+                geo_srid => 3857'::HSTORE
+            WHERE
+                source_name ~ '^BAL'
+            ;
+    END IF;
 END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS iux_address_match_request_id ON fr.address_match_request(id);
@@ -73,6 +93,7 @@ CREATE OR REPLACE FUNCTION fr.set_match_request(
     source_filter IN VARCHAR DEFAULT NULL,
     source_query IN VARCHAR DEFAULT NULL,
     parameters IN HSTORE DEFAULT NULL,
+    format IN HSTORE DEFAULT NULL,
     request_new IN BOOLEAN DEFAULT FALSE,
     id OUT INT,                                            -- ID request
     import_name OUT VARCHAR                                -- table name to import data (if needed)
@@ -84,6 +105,9 @@ DECLARE
 BEGIN
     IF NOT source_kind = ANY('{FILE,TABLE,QUERY}') THEN
         RAISE 'type source ''%'' non géré! (%)', source_kind, source_name;
+    END IF;
+    IF format IS NULL THEN
+        RAISE 'format des données non défini!';
     END IF;
 
     -- identify existing request (w/ properties), if not mandatory creation option
@@ -116,6 +140,7 @@ BEGIN
             source_filter,
             source_query,
             parameters,
+            format,
             date_create,
             import_name,
             match_version
@@ -126,6 +151,7 @@ BEGIN
             set_match_request.source_filter,
             set_match_request.source_query,
             set_match_request.parameters,
+            set_match_request.format,
             NOW(),
             CASE set_match_request.source_kind
                 WHEN 'FILE' THEN
@@ -144,6 +170,44 @@ BEGIN
             set_match_request.import_name
         ;
     END IF;
+END $$ LANGUAGE plpgsql;
+
+/* TEST
+ */
+
+-- get property from format (cross reference between client/ref)
+SELECT drop_all_functions_if_exists('fr', 'get_match_format_property');
+CREATE OR REPLACE FUNCTION fr.get_match_format_property(
+    id IN INTEGER,                                     -- ID request
+    property IN VARCHAR,                               -- propriété (key|value)
+    value IN VARCHAR,
+    kv OUT VARCHAR
+)
+AS $$
+DECLARE
+    _q TEXT;
+    _field VARCHAR := CASE WHEN UPPER(property) = 'KEY' THEN 'value' ELSE 'key' END;
+BEGIN
+    IF NOT UPPER(property) = ANY('{KEY,VALUE}') THEN
+        RAISE 'type propriété ''%'' non géré! (key|value attendue)', property;
+    END IF;
+
+    _q := CONCAT(
+        '
+        SELECT
+        ', property,
+        '
+        FROM (
+            SELECT * FROM EACH((SELECT format FROM fr.address_match_request WHERE id = $1))
+        )
+        WHERE
+        ', _field,
+        '
+        = $2
+        '
+    );
+
+    EXECUTE _q INTO kv USING id, value;
 END $$ LANGUAGE plpgsql;
 
 /* TEST

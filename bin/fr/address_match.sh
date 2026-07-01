@@ -34,7 +34,7 @@ match_info() {
     return $SUCCESS_CODE
 }
 
-# get defintion of property (format or parameters) w/ OS file
+# get definition of property (format or parameters) w/ OS file
 get_definition() {
     local -A _opts &&
     pow_argv \
@@ -71,6 +71,29 @@ get_definition() {
     }
 
     return $SUCCESS_CODE
+}
+
+# get value of property (key/value) from format
+get_format_property() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            id:ID de la requête de Rapprochement;
+            property:Clé/Valeur de la colonne;
+            value:Valeur de la propriété demandée
+        ' \
+        --args_m '
+            id;property
+        ' \
+        --args_v '
+            property:key|value
+        ' \
+        --args_p '
+            tag:id@int,property@1N
+        ' \
+        --pow_argv _opts "$@" || return $?
+
+
 }
 
 # eval requested columns (by set: IN|MORE)
@@ -630,7 +653,7 @@ declare -A match_more_columns=(
 _k=0
 declare -a match_columns_order=(
     # IN
-    [$((_k++))]=ROWID
+    [$((_k++))]=ID
     # ADDRESS
     [$((_k++))]=CODE_ADDRESS
     [$((_k++))]=COMPLEMENT
@@ -729,7 +752,13 @@ set_env --schema_name fr &&
         } &&
 
         get_definition --property parameters --vars match_vars &&
-
+        get_definition --property format --vars match_vars &&
+        {
+            [ -n "${match_vars[FORMAT_SQL]}" ] || {
+                log_error 'manque définition du format (option --format)'
+                false
+            }
+        } &&
         {
             [[ ${_debug_steps[request]:-1} -ne 0 ]] || {
                 echo parameters ; declare -p match_vars
@@ -749,6 +778,7 @@ set_env --schema_name fr &&
                     $([ -n "${match_vars[SOURCE_FILTER]}" ] && echo ", source_filter => '${match_vars[SOURCE_FILTER]//\'/\'\'}'")
                     $([ -n "${match_vars[SOURCE_QUERY]}" ] && echo ", source_query => '${match_vars[SOURCE_QUERY]//\'/\'\'}'")
                     $([ -n "${match_vars[PARAMETERS_SQL]}" ] && echo ", parameters => '${match_vars[PARAMETERS_SQL]}'::HSTORE")
+                    $([ -n "${match_vars[FORMAT_SQL]}" ] && echo ", format => '${match_vars[FORMAT_SQL]}'::HSTORE")
                 )
             " \
             --temporary ${match_vars[TEMPORARY]} \
@@ -814,13 +844,6 @@ set_env --schema_name fr &&
                 [[ ${_debug_bps[step]} -ne 0 ]] || read
             }
         } &&
-        get_definition --property format --vars match_vars &&
-        {
-            [ -n "${match_vars[FORMAT_SQL]}" ] || {
-                log_error 'manque définition du format (option --format)'
-                false
-            }
-        } &&
         {
             [[ ${_debug_steps[standardize]:-1} -ne 0 ]] || {
                 echo format ; declare -p match_vars
@@ -832,7 +855,6 @@ set_env --schema_name fr &&
             --name STANDARDIZE_REQUEST \
             --query "CALL fr.set_match_standardize(
                 id => ${match_request[MATCH_REQUEST_ID]},
-                mapping => '${match_vars[FORMAT_SQL]}'::HSTORE,
                 force => ('${match_vars[FORCE]}' = 'yes'),
                 raise_notice => ('${match_vars[VERBOSE]}' = 'yes')
             )" \
