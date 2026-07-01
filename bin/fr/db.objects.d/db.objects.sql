@@ -73,3 +73,5 @@
 \include_relative ./functions/address_match.sql
 \include_relative ./functions/polygons_contain_point.sql
 
+-- FIXES
+\include_relative ../../../fixes/fix_69_bal_match_id.sql
