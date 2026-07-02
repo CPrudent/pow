@@ -73,27 +73,45 @@ get_definition() {
     return $SUCCESS_CODE
 }
 
-# get value of property (key/value) from format
-get_format_property() {
+# get key from format
+get_format_key() {
     local -A _opts &&
     pow_argv \
         --args_n '
             id:ID de la requête de Rapprochement;
-            property:Clé/Valeur de la colonne;
-            value:Valeur de la propriété demandée
+            key:Clé de la colonne;
+            value:Valeur de la clé demandée;
+            reverse:Inverser la recherche;
+            vars:Entité des variables globales
         ' \
         --args_m '
-            id;property
+            id;key;value;vars
         ' \
         --args_v '
-            property:key|value
+            reverse:yes|no;
         ' \
         --args_p '
-            tag:id@int,property@1N
+            tag:id@int,reverse@bool
         ' \
         --pow_argv _opts "$@" || return $?
 
+    local -n _value_ref=${_opts[VALUE]}
+    local -n _vars_ref=${_opts[VARS]}
 
+    execute_query \
+        --name GET_BAL_ID_COLUMN \
+        --query "
+            SELECT value
+            FROM fr.get_match_format_value(
+                id => ${_opts[ID]},
+                key => '${_opts[KEY]}',
+                reverse => ('${_opts[REVERSE]}' = 'yes')
+            )
+        " \
+        --temporary ${_vars_ref[TEMPORARY]} \
+        --return _value_ref
+
+    return $?
 }
 
 # eval requested columns (by set: IN|MORE)
@@ -368,7 +386,7 @@ export_build() {
                                     ON (t.nivgeo, t.codgeo) = ('ZA', a.co_adr_za)
 
                                     JOIN ${_opts[TABLE_NAME]} i
-                                    ON mr.id_address = i.rowid
+                                    ON (mr.standardized_address).id = i.${_vars_ref[CLIENT_ID]}
                             WHERE
                                 mr.id_request = ${_request_ref[MATCH_REQUEST_ID]}
                                 AND
@@ -526,6 +544,7 @@ declare -A match_vars=(
     [COLUMNS_IN]=
     [COLUMNS_MORE]=
     [TEMPORARY]=USER
+    [CLIENT_ID]=
 ) &&
 pow_argv \
     --args_n '
@@ -810,6 +829,17 @@ set_env --schema_name fr &&
             false
         }
     fi
+} &&
+
+# update ID client column (from format)
+{
+    get_format_key \
+        --id ${match_vars[REQUEST_ID]} \
+        --key id \
+        --vars match_vars \
+        --value match_vars[CLIENT_ID] &&
+    match_columns_order[0]=${match_vars[CLIENT_ID]} &&
+    match_in_columns[ROWID]=i.${match_vars[CLIENT_ID]}
 } &&
 
 # import todo? only for FILE input

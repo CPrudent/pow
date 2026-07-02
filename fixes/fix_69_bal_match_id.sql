@@ -3,12 +3,22 @@
  * the mistakes come from:
  * - data change w/ BAL import (address can be deleted), so rowid is not constant!
  * - BAL codes aren't uniq for a same address (municipality, street, number, extension)
- *   BAL street can own multiple codes, as {01015_0691,01015_3f68sz} for (01015,CHEMIN DU MOULIN)
- *   BAL housenumber too, {01014_0028_00001_bis, 01014_0028_00001_bis__0} for (01014,IMPASSE DES COTEAUX,1,BIS)
- *       even more, REGEX (__0)+$ can find other cases, {01024_0002_00453} w/ 3 codes!
+ *   BAL street can own multiple codes
+ *     (01015,CHEMIN DU MOULIN) w/ 2 codes {01015_0691,01015_3f68sz}
+ *   BAL housenumber too,
+ *     by example, {01014_0028_00001_bis, 01014_0028_00001_bis__0}
+ *     REGEX (__0)+$ can find many other cases!
+ *     (62005,RUE DE COURCELLES,20,) w/ 5 codes
+ *     (01416,EN COURTIOUX ROUTE DE MALIX,0,) w/ 6 codes
+ *     (35161,RUE SAINT PATERN,22,) w/ 7 codes
+ *     (42150,CHEMIN DU CANAL,79,) w/ 12 codes
+ *     (35161,RUE SAINT PATERN,22,) w/ 28 codes
  *
  * solution is to put client code as ID (and no ROWID as previous)
  * this procedure tries to fix data already matched, without all running again (w/ this solution)
+ *
+ * NOTE it can happen that number of matched code(s) are inferior to total of code(s)
+ *      reason is some code(s) would be append AFTER the match...
  *
  */
 SELECT drop_all_functions_if_exists('fr', 'fix_69_bal_match_id');
@@ -30,11 +40,11 @@ DECLARE
 BEGIN
     -- needs to prepare fr.tmp_fix_bal_id
     IF NOT table_exists(schema_name => 'fr', table_name => 'tmp_fix_bal_id') THEN
-        RAISE 'table tmp_fix_bal_id non présente!'
+        RAISE 'table fr.tmp_fix_bal_id non présente!';
     END IF;
 
     -- uniq ID
-    RAISE NOTICE 'BAL matched addresses w/ uniq ID : (municipality, street, number, extension, 1)';
+    RAISE NOTICE 'adresses rapprochées BAL avec ID unique : (commune, voie, numéro, extension)..(code)';
 
     WITH
     uniq_bal_id AS (
@@ -73,10 +83,10 @@ BEGIN
     ;
 
     GET DIAGNOSTICS _nrows = ROW_COUNT;
-    RAISE NOTICE 'update: #%', _nrows;
+    RAISE NOTICE 'total maj: #%', _nrows;
 
     -- multiple ID
-    RAISE NOTICE 'BAL matched addresses w/ multiple ID : (municipality, street, number, extension, x)';
+    RAISE NOTICE 'adresses rapprochées BAL avec ID multiple : (commune, voie, numéro, extension)..(codes)';
 
     FOR _keys IN (
         SELECT
@@ -95,7 +105,7 @@ BEGIN
             COUNT(*) > 1
     )
     LOOP
-        RAISE NOTICE '(municipality, street, number, extension)=(%,%,%,%)',
+        RAISE NOTICE '(commune, voie, numéro, extension)=(%,%,%,%)',
             _keys.municipality, _keys.street, _keys.number, _keys.extension;
 
         SELECT
@@ -108,9 +118,10 @@ BEGIN
             (municipality, street, COALESCE(number, 0), COALESCE(UPPER(extension), '')) =
             (_keys.municipality, _keys.street, _keys.number, _keys.extension)
         ;
-        _ncodes := COALESCE(CARDINALITY(_codes), 0);
-        RAISE NOTICE '#% code(s)', _ncodes;
 
+        _naddrs := 0;
+        _ncodes := COALESCE(CARDINALITY(_codes), 0);
+        RAISE NOTICE ' #% code(s)', _ncodes;
         IF _ncodes > 0 THEN
             SELECT
                 ARRAY_AGG(mre.id_address ORDER BY 1)
@@ -131,13 +142,12 @@ BEGIN
                 (_keys.municipality, _keys.street, _keys.number, _keys.extension)
             ;
             _nids := COALESCE(CARDINALITY(_ids), 0);
-            RAISE NOTICE '#% matched(s)', nids;
+            RAISE NOTICE ' #% rapprochée(s)', _nids;
 
             IF _nids > 0 THEN
-                _naddrs := 0;
-                FOR _i IN 1..ARRAY_LENGTH(_ids, 1)
+                FOR _i IN 1.._nids
                 LOOP
-                    IF _i > ARRAY_LENGTH(_codes, 1) THEN
+                    IF _i > _ncodes THEN
                         EXIT;
                     END IF;
 
@@ -155,7 +165,7 @@ BEGIN
                     GET DIAGNOSTICS _nrows = ROW_COUNT;
                     _naddrs := _naddrs + _nrows;
                 END LOOP;
-                RAISE NOTICE 'update: #%/%', _naddrs,
+                RAISE NOTICE ' maj: %/%', _naddrs,
                     CASE
                     WHEN _nids > _ncodes THEN _ncodes
                     WHEN _ncodes > _nids THEN _nids
@@ -164,7 +174,15 @@ BEGIN
                     ;
             END IF;
         END IF;
+        _ntotal := _ntotal + _naddrs;
     END LOOP;
-    RAISE NOTICE 'update: #%', _ntotal;
+    RAISE NOTICE 'total maj: #%', _ntotal;
 END
 $proc$ LANGUAGE plpgsql;
+
+/* TEST
+adresses rapprochées BAL avec ID unique : (commune, voie, numéro, extension)..(code)
+total maj: #12245227
+adresses rapprochées BAL avec ID multiple : (commune, voie, numéro, extension)..(codes)
+
+ */

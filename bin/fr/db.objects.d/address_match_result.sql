@@ -323,6 +323,7 @@ DECLARE
     _source_kind VARCHAR;
     _source_query VARCHAR;
     _is_match_element BOOLEAN;
+    _client_id VARCHAR;
     _query TEXT;
     _nrows INTEGER;
 BEGIN
@@ -337,6 +338,12 @@ BEGIN
     IF NOT _is_match_element THEN
         RAISE 'demande de Rapprochement ID ''%'' non terminée (MATCH_ELEMENT manquant)', id;
     END IF;
+
+    -- retrieve key (as rowid) of source data
+    _client_id := fr.get_match_format_value(
+        id => id,
+        key => 'id'
+    );
 
     _query :=
         CASE _source_kind
@@ -382,7 +389,7 @@ BEGIN
             ),
             match_data AS (
                 SELECT
-                    mr.id_address code_source,
+                    (mr.standardized_address).id code_source,
                     (me.matched_element).codes_address[1] code_laposte
                 FROM
                     fr.address_match_result mr
@@ -407,7 +414,7 @@ BEGIN
                 p.*
             FROM
                 source_data s
-                    LEFT OUTER JOIN match_data m ON s.rowid = m.code_source
+                    LEFT OUTER JOIN match_data m ON s.', _client_id, ' = m.code_source
                     FULL OUTER JOIN laposte_data p ON p.ref_code_address = m.code_laposte
             ;
             '
