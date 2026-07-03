@@ -88,13 +88,24 @@ END $$;
 CREATE TABLE IF NOT EXISTS fr.address_match_result (
     id SERIAL NOT NULL,
     id_request INTEGER NOT NULL,
-    id_address INT NOT NULL,
     standardized_address fr.standardized_address,
     code_address CHAR(10)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS iux_address_match_normalize_id ON fr.address_match_result(id);
-CREATE UNIQUE INDEX IF NOT EXISTS ix_address_match_result_ids ON fr.address_match_result(id_request, id_address);
+DO $$
+BEGIN
+    IF column_exists('fr', 'address_match_result', 'id_address') THEN
+        ALTER TABLE fr.address_match_result DROP COLUMN id_address;
+    END IF;
+
+    IF index_exists('fr', 'iux_address_match_normalize_id') AND NOT index_exists('fr', 'iux_address_match_result_id') THEN
+        ALTER INDEX iux_address_match_normalize_id RENAME TO iux_address_match_result_id;
+    END IF;
+    DROP INDEX IF EXISTS ix_address_match_result_ids;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS iux_address_match_result_id ON fr.address_match_result(id);
+CREATE INDEX IF NOT EXISTS ix_address_match_result_id_request ON fr.address_match_result(id_request);
 
 -- get value from standardized_address record
 SELECT drop_all_functions_if_exists('fr', '_get_value_from_standardized_address');
@@ -325,6 +336,7 @@ DECLARE
     _is_match_element BOOLEAN;
     _client_id VARCHAR;
     _query TEXT;
+    _query_source TEXT;
     _nrows INTEGER;
 BEGIN
     SELECT import_name, source_name, source_kind, source_query, is_match_element
@@ -344,14 +356,15 @@ BEGIN
         id => id,
         key => 'id'
     );
-
-    _query :=
+    -- build query to request source data
+    _query_source :=
         CASE _source_kind
         WHEN 'FILE' THEN CONCAT('SELECT * FROM fr.', _import)
         WHEN 'TABLE' THEN CONCAT('SELECT * FROM fr.', _source_name)
         WHEN 'QUERY' THEN _source_query
         END
     ;
+    -- set table name as cross between source / reference
     table_name := COALESCE(table_name,
         CASE _source_kind
         WHEN 'FILE' THEN CONCAT(_import, '_crossref')
@@ -367,7 +380,7 @@ BEGIN
             '
             CREATE TABLE fr.', table_name,' AS
             WITH
-            source_data AS (', _query, '),
+            source_data AS (', _query_source, '),
             laposte_data AS (
                 SELECT
                     a.co_adr ref_code_address,

@@ -390,6 +390,12 @@ bal_list_municipalities() {
                     JOIN fr.bal_municipality m ON c.municipality = m.code
                     LEFT OUTER JOIN history h ON h.municipality = c.municipality
             WHERE
+                EXISTS(
+                    SELECT 1
+                    FROM fr.laposte_address_area za
+                    WHERE m.code = za.co_insee_commune AND za.fl_active
+                )
+                AND
     " &&
     {
         case "${bal_vars[USECASE]}" in

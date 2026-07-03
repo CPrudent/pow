@@ -100,6 +100,8 @@ BEGIN
             WHERE
                 m.code = ''', bal_municipality_addresses.code, '''
                 AND
+                n.number != ''0''
+                AND
                 (
                     (am.is_matched AND n.last_update = lu.last_update)
                     OR

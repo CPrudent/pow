@@ -73,6 +73,55 @@ get_definition() {
     return $SUCCESS_CODE
 }
 
+# get request informations
+get_request_infos() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            id:ID de la requête de Rapprochement;
+            request:Entité de la demande;
+            vars:Entité des variables globales;
+        ' \
+        --args_m '
+            id;request;vars
+        ' \
+        --args_p '
+            tag:id@int
+        ' \
+        --pow_argv _opts "$@" || return $?
+
+    local -n _request_ref=${_opts[REQUEST]}
+    local -n _vars_ref=${_opts[VARS]}
+    local _result _array
+
+    execute_query \
+        --name GET_REQUEST_INFOS \
+        --query "
+            SELECT
+                source_name,
+                source_kind,
+                import_name
+            FROM
+                fr.address_match_request
+            WHERE
+                id = ${_opts[ID]}
+        " \
+        --temporary ${_vars_ref[TEMPORARY]} \
+        --return _result &&
+    {
+        IFS='|' read -ra _array <<< "$_result"
+    } &&
+    {
+        _request_ref[MATCH_REQUEST_ID]=${_opts[ID]}
+        _request_ref[MATCH_REQUEST_IMPORT]=${_array[2]}
+
+        _vars_ref[SOURCE_NAME]=${_array[0]}
+        _vars_ref[SOURCE_KIND]=${_array[1]}
+    }
+
+    return $?
+}
+
 # get key from format
 get_format_key() {
     local -A _opts &&
@@ -88,7 +137,10 @@ get_format_key() {
             id;key;value;vars
         ' \
         --args_v '
-            reverse:yes|no;
+            reverse:yes|no
+        ' \
+        --args_d '
+            reverse:no
         ' \
         --args_p '
             tag:id@int,reverse@bool
@@ -99,7 +151,7 @@ get_format_key() {
     local -n _vars_ref=${_opts[VARS]}
 
     execute_query \
-        --name GET_BAL_ID_COLUMN \
+        --name GET_ID_COLUMN \
         --query "
             SELECT value
             FROM fr.get_match_format_value(
@@ -278,8 +330,15 @@ export_build() {
     local _sql_file _error _i _output _columns_list
 
     {
+        [[ ${_debug_steps[export]:-1} -ne 0 ]] || {
+            declare -p _export_set
+            [[ ${_debug_bps[export]} -ne 0 ]] || read
+        }
+    } &&
+    {
         ([[ ${#_export_set[@]} -eq 1 ]] &&
         [ "${_export_set[0]}" = SOURCE ]) || {
+            # not only SOURCE to export, need municipality_code !
             if [ -z "${_vars_ref[EXPORT_MUNICIPALITY]}" ]; then
                 _error="Code INSEE commune à renseigner, option --export_municipality"
                 false
@@ -636,7 +695,7 @@ declare -A match_steps_info=(
 # columns to report
 # w/ predefined aliases: i for input, a for address and t for territory
 declare -A match_in_columns=(
-    [ROWID]=i.rowid
+    [CODE_SOURCE]=i.rowid
 )
 declare -A match_more_columns=(
     # ADDRESS
@@ -672,7 +731,7 @@ declare -A match_more_columns=(
 _k=0
 declare -a match_columns_order=(
     # IN
-    [$((_k++))]=ID
+    [$((_k++))]=CODE_SOURCE
     # ADDRESS
     [$((_k++))]=CODE_ADDRESS
     [$((_k++))]=COMPLEMENT
@@ -818,12 +877,11 @@ set_env --schema_name fr &&
             }
         }
     else
-        [ -n "${match_vars[REQUEST_ID]}" ] &&
-        [ "${match_vars[REQUEST_IMPORT]}" != NOT_DEFINED ] &&
-        [ "${match_vars[REQUEST_KIND]}" != NOT_DEFINED ] && {
-            match_request[MATCH_REQUEST_ID]=${match_vars[REQUEST_ID]}
-            match_request[MATCH_REQUEST_IMPORT]=${match_vars[REQUEST_IMPORT]}
-            match_vars[SOURCE_KIND]=${match_vars[REQUEST_KIND]}
+        [ -n "${match_vars[REQUEST_ID]}" ] && {
+            get_request_infos \
+                --id ${match_vars[REQUEST_ID]} \
+                --request match_request \
+                --vars match_vars
         } || {
             log_error 'manque informations Rapprochement (options --request*)'
             false
@@ -834,36 +892,42 @@ set_env --schema_name fr &&
 # update ID client column (from format)
 {
     get_format_key \
-        --id ${match_vars[REQUEST_ID]} \
+        --id ${match_request[MATCH_REQUEST_ID]} \
         --key id \
         --vars match_vars \
         --value match_vars[CLIENT_ID] &&
-    match_columns_order[0]=${match_vars[CLIENT_ID]} &&
-    match_in_columns[ROWID]=i.${match_vars[CLIENT_ID]}
+    match_in_columns[CODE_SOURCE]=i.${match_vars[CLIENT_ID]}
 } &&
 
 # import todo? only for FILE input
 {
-    ([ "${match_vars[SOURCE_KIND]}" != FILE ] || \
-    (! in_array --array match_steps --item IMPORT)) || {
+    if in_array --array match_steps --item IMPORT; then
         {
             [[ ${_debug_steps[step]:-1} -ne 0 ]] || {
                 echo "step=(IMPORT)" ; declare -p match_steps
                 [[ ${_debug_bps[step]} -ne 0 ]] || read
             }
-        }
+        } &&
 
-        ([ ${match_vars[FORCE]} = no ] && table_exists --schema_name fr --table_name ${match_request[MATCH_REQUEST_IMPORT]}) || {
-            match_info --steps_info match_steps_info --step IMPORT &&
-            import_file \
-                --file_path "${match_vars[SOURCE_NAME]}" \
-                --schema_name fr \
-                --table_name "${match_request[MATCH_REQUEST_IMPORT]}" \
-                --load_mode OVERWRITE_TABLE \
-                --limit "${match_vars[IMPORT_LIMIT]}" \
-                --import_options "${match_vars[IMPORT_OPTIONS]}"
+        ([ -n "${match_vars[SOURCE_KIND]}" ] &&
+        [ "${match_vars[REQUEST_IMPORT]}" != NOT_DEFINED ]) && {
+            [ "${match_vars[SOURCE_KIND]}" != FILE ] || {
+                ([ ${match_vars[FORCE]} = no ] && table_exists --schema_name fr --table_name ${match_request[MATCH_REQUEST_IMPORT]}) || {
+                    match_info --steps_info match_steps_info --step IMPORT &&
+                    import_file \
+                        --file_path "${match_vars[SOURCE_NAME]}" \
+                        --schema_name fr \
+                        --table_name "${match_request[MATCH_REQUEST_IMPORT]}" \
+                        --load_mode OVERWRITE_TABLE \
+                        --limit "${match_vars[IMPORT_LIMIT]}" \
+                        --import_options "${match_vars[IMPORT_OPTIONS]}"
+                }
+            }
+        } || {
+            log_error 'manque informations Rapprochement (options --request*)'
+            false
         }
-    }
+    fi
 } &&
 
 {

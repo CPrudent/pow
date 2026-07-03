@@ -184,5 +184,31 @@ $proc$ LANGUAGE plpgsql;
 adresses rapprochées BAL avec ID unique : (commune, voie, numéro, extension)..(code)
 total maj: #12245227
 adresses rapprochées BAL avec ID multiple : (commune, voie, numéro, extension)..(codes)
+total update: #41961
+
+exec: ~ 6 hours
+
+check:
+SELECT
+    mrq.source_name,
+    mre.id_request,
+    mre.id_address
+FROM
+    fr.address_match_request mrq
+        JOIN fr.address_match_result mre ON mrq.id = mre.id_request
+WHERE
+    mrq.source_name ~ '^BAL'
+    AND
+    -- old rowid, not BAL code, as <MUNICIPALITY>_<ID STREET>[_<ID HOUSENUMBER>]
+    (mre.standardized_address).id ~ '^[0-9]+$'
+=> #7762
+
+studing usecases:
+    - merge municipality
+      => need to join LAPOSTE areas to validate INSEE code
+    - number 0 ? perhaps to store geometry of the street
+      => exclude number 0
+    - deleted addresses
+      => create a clean process to delete these addresses (from table address_match_result) ?
 
  */
