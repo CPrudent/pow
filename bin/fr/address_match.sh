@@ -482,7 +482,7 @@ export_build() {
                             WHERE
                                 ref_code_address IS NOT NULL
                                 AND
-                                rowid IS NOT NULL
+                                ${_vars_ref[CLIENT_ID]} IS NOT NULL
                         ) TO STDOUT WITH (DELIMITER E',', FORMAT CSV, HEADER TRUE, ENCODING UTF8)
                     " \
                     --temporary ${_vars_ref[TEMPORARY]} \
@@ -496,7 +496,7 @@ export_build() {
                         COPY (
                             SELECT $(IFS=, ; echo "${_columns_laposte[*]}")
                             FROM fr.${_vars_ref[EXPORT_TABLE]}
-                            WHERE rowid IS NULL
+                            WHERE ${_vars_ref[CLIENT_ID]} IS NULL
                         ) TO STDOUT WITH (DELIMITER E',', FORMAT CSV, HEADER TRUE, ENCODING UTF8)
                     " \
                     --temporary ${_vars_ref[TEMPORARY]} \
