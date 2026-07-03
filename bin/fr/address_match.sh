@@ -896,6 +896,12 @@ set_env --schema_name fr &&
         --key id \
         --vars match_vars \
         --value match_vars[CLIENT_ID] &&
+    {
+        [ -n "${match_vars[CLIENT_ID]}" ] || {
+            log_error 'manque clé Source (id) dans le format!'
+            false
+        }
+    } &&
     match_in_columns[CODE_SOURCE]=i.${match_vars[CLIENT_ID]}
 } &&
 
