@@ -361,15 +361,19 @@ BEGIN
         id => id,
         key => 'municipality_code'
     );
+    -- TODO can factorize: list of columns (w/ aliases)
     _query_ref_where := CASE
-            WHEN (_column_municipality_code IS NOT NULL) THEN
+            WHEN (_column_municipality_code IS NULL) THEN
             CONCAT(
                 '
                 (a.co_postal, a.lb_acheminement) IN (
                     SELECT DISTINCT
-                        (standardized_address).postcode, (standardized_address).municipality_name
+                        za.co_postal,
+                        za.lb_acheminement
                     FROM
-                        fr.address_match_result
+                        fr.address_match_result mre
+                            JOIN fr.laposte_address a ON mre.code_address = a.co_cea_determinant
+                            JOIN fr.laposte_address_area za ON za.co_cea = a.co_cea_za
                     WHERE
                         id_request = ', id,
                 '
@@ -379,10 +383,16 @@ BEGIN
         ELSE
             CONCAT(
                 '
-                a.co_insee_commune = ANY(SELECT DISTINCT
-                ', _column_municipality_code,
+                a.co_insee_commune = ANY(
+                    SELECT DISTINCT
+                        za.co_insee_commune
+                    FROM
+                        fr.address_match_result mre
+                            JOIN fr.laposte_address a ON mre.code_address = a.co_cea_determinant
+                            JOIN fr.laposte_address_area za ON za.co_cea = a.co_cea_za
+                    WHERE
+                        id_request = ', id,
                 '
-                FROM source_data
                 )
                 '
             )
@@ -435,25 +445,14 @@ BEGIN
             ),
             match_data AS (
                 SELECT
-                    (mr.standardized_address).id code_source,
-                    (me.matched_element).codes_address[1] code_laposte
+                    (standardized_address).id code_source,
+                    code_address
                 FROM
-                    fr.address_match_result mr
-                        JOIN fr.address_match_element me
-                        ON (
-                            ((mr.standardized_address).level = me.level)
-                            AND (
-                                ((mr.standardized_address).match_code_street = me.match_code)
-                                OR
-                                ((mr.standardized_address).match_code_housenumber = me.match_code)
-                                OR
-                                ((mr.standardized_address).match_code_complement = me.match_code)
-                            )
-                        )
+                    fr.address_match_result
                 WHERE
                     mr.id_request = $1
                     AND
-                    fr.is_match_element_ok(me.matched_element)
+                    code_address IS NOT NULL
             )
             SELECT
                 s.*,
@@ -461,7 +460,7 @@ BEGIN
             FROM
                 source_data s
                     LEFT OUTER JOIN match_data m ON s.', _column_id, ' = m.code_source
-                    FULL OUTER JOIN laposte_data p ON p.ref_code_address = m.code_laposte
+                    FULL OUTER JOIN laposte_data p ON p.ref_code_address = m.code_address
             ;
             '
         );

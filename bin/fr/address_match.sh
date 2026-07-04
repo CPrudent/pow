@@ -671,7 +671,7 @@ declare -a match_request
 match_vars[STEPS]=${match_vars[STEPS]// /}
 match_vars[COLUMNS_IN]=${match_vars[EXPORT_IN_COLUMNS]^^}
 match_vars[COLUMNS_MORE]=${match_vars[EXPORT_MORE_COLUMNS]^^}
-MATCH_STEPS=REQUEST,IMPORT,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT,EXPORT,REPORT
+MATCH_STEPS=REQUEST,IMPORT,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT,MATCH_ADDRESS,EXPORT,REPORT
 declare -a match_steps
 [ "${match_vars[STEPS]}" = ALL ] && match_vars[STEPS]=$MATCH_STEPS
 match_steps=( ${match_vars[STEPS]//,/ } )
@@ -682,6 +682,7 @@ declare -A match_steps_info=(
     [STANDARDIZE]=Standardisation
     [MATCH_CODE]='Calcul MATCH CODE'
     [MATCH_ELEMENT]='Rapprochement par Niveau'
+    [MATCH_ADDRESS]='Mise à jour code Adresse'
     [EXPORT]='Export des Adresses rapprochées'
     [REPORT]=Rapport
 )
@@ -914,19 +915,7 @@ set_env --schema_name fr &&
             false
         }
     } &&
-    match_in_columns[CODE_SOURCE]=i.${match_vars[COLUMN_CLIENT_ID]} &&
-
-    get_format_key \
-        --id ${match_request[MATCH_REQUEST_ID]} \
-        --key municipality_code \
-        --vars match_vars \
-        --value match_vars[COLUMN_MUNICIPALITY_CODE] &&
-    {
-        [ -n "${match_vars[COLUMN_MUNICIPALITY_CODE]}" ] || {
-            log_error 'manque colonne (code INSEE) dans le format!'
-            false
-        }
-    }
+    match_in_columns[CODE_SOURCE]=i.${match_vars[COLUMN_CLIENT_ID]}
 } &&
 
 # import todo? only for FILE input
@@ -1021,6 +1010,41 @@ set_env --schema_name fr &&
                 force => ('${match_vars[FORCE]}' = 'yes'),
                 raise_notice => ('${match_vars[VERBOSE]}' = 'yes')
             )" \
+            --temporary ${match_vars[TEMPORARY]}
+    }
+} &&
+
+{
+    (! in_array --array match_steps --item MATCH_ADDRESS) || {
+        {
+            [[ ${_debug_steps[step]:-1} -ne 0 ]] || {
+                echo "step=(MATCH_ADDRESS)" ; declare -p match_steps
+                [[ ${_debug_bps[step]} -ne 0 ]] || read
+            }
+        } &&
+        match_info --steps_info match_steps_info --step MATCH_ADDRESS &&
+        execute_query \
+            --name MATCH_ADDRESS_REQUEST \
+            --query "
+                UPDATE fr.address_match_result mr SET
+                    code_address = (me.matched_element).codes_address[1]
+                    FROM fr.address_match_element me
+                    WHERE
+                        mr.id_request = ${match_request[MATCH_REQUEST_ID]}
+                        AND
+                        (
+                            ((mr.standardized_address).level = me.level)
+                            AND (
+                                ((mr.standardized_address).match_code_street = me.match_code)
+                                OR
+                                ((mr.standardized_address).match_code_housenumber = me.match_code)
+                                OR
+                                ((mr.standardized_address).match_code_complement = me.match_code)
+                            )
+                        )
+                        AND
+                        fr.is_match_element_ok(me.matched_element)
+            " \
             --temporary ${match_vars[TEMPORARY]}
     }
 } &&

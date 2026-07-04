@@ -40,7 +40,7 @@ bal_match_municipality() {
         --source_name BAL_${_opts[CODE]} \
         --source_query "$_query" \
         --request_path $POW_DIR_TMP/BAL_${_opts[CODE]}.dat \
-        --steps REQUEST,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT \
+        --steps REQUEST,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT,MATCH_ADDRESS \
         --format "$POW_DIR_BATCH/bal/format.sql" \
         --force ${bal_vars[FORCE]} \
         --request_new ${bal_vars[REQUEST_NEW]} &&
@@ -280,7 +280,7 @@ else
                     --source_name "BAL_{..}" \
                     --source_query "$bal_tmpdir/BAL_{..}.sql" \
                     --request_path "$bal_tmpdir/BAL_{..}.dat" \
-                    --steps REQUEST,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT \
+                    --steps REQUEST,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT,MATCH_ADDRESS \
                     --format "$POW_DIR_BATCH/bal/format.sql" \
                     --parallel \
                     --force ${bal_vars[FORCE]} \
