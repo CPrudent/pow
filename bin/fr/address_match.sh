@@ -421,20 +421,8 @@ export_build() {
                             $(< $_sql_file)
                             FROM
                                 fr.address_match_result mr
-                                    JOIN fr.address_match_element me
-                                    ON (
-                                        ((mr.standardized_address).level = me.level)
-                                        AND (
-                                            ((mr.standardized_address).match_code_street = me.match_code)
-                                            OR
-                                            ((mr.standardized_address).match_code_housenumber = me.match_code)
-                                            OR
-                                            ((mr.standardized_address).match_code_complement = me.match_code)
-                                        )
-                                    )
-
                                     JOIN fr.address_view a
-                                    ON (me.matched_element).codes_address[1] = a.co_adr
+                                    ON mr.code_address = a.co_adr
 
                                     JOIN fr.territory t
                                     ON (t.nivgeo, t.codgeo) = ('ZA', a.co_adr_za)
@@ -443,8 +431,6 @@ export_build() {
                                     ON (mr.standardized_address).id = i.${_vars_ref[COLUMN_CLIENT_ID]}
                             WHERE
                                 mr.id_request = ${_request_ref[MATCH_REQUEST_ID]}
-                                AND
-                                fr.is_match_element_ok(me.matched_element)
                         ) TO STDOUT WITH (DELIMITER E',', FORMAT CSV, HEADER TRUE, ENCODING UTF8)
                     " \
                     --temporary ${_vars_ref[TEMPORARY]} \
