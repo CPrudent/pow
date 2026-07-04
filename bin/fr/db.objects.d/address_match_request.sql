@@ -85,18 +85,58 @@ END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS iux_address_match_request_id ON fr.address_match_request(id);
 
+-- get request (by properties)
+SELECT drop_all_functions_if_exists('fr', 'get_match_request');
+CREATE OR REPLACE FUNCTION fr.get_match_request(
+    source_name IN VARCHAR,                     -- request textual id
+    source_kind IN VARCHAR DEFAULT 'FILE',
+    source_filter IN VARCHAR DEFAULT NULL,      -- optional data filter
+
+    id OUT INT,                                 -- ID request
+    import_name OUT VARCHAR                     -- table name to import data (if needed)
+)
+AS $$
+BEGIN
+    -- get last request (from properties)
+    SELECT
+        t.id,
+        t.import_name
+    INTO
+        get_match_request.id,
+        get_match_request.import_name
+    FROM (
+        SELECT
+            mr.id,
+            mr.import_name
+        FROM
+            fr.address_match_request mr
+        WHERE
+            mr.source_name = get_match_request.source_name
+            AND
+            mr.source_kind = get_match_request.source_kind
+            AND
+            mr.source_filter IS NOT DISTINCT FROM get_match_request.source_filter
+        ORDER BY
+            date_create DESC
+        LIMIT
+            1
+    ) t
+    ;
+END $$ LANGUAGE plpgsql;
+
 -- set request (if not exists)
 SELECT drop_all_functions_if_exists('fr', 'set_match_request');
 CREATE OR REPLACE FUNCTION fr.set_match_request(
-    source_name IN VARCHAR,
+    source_name IN VARCHAR,                     -- request textual id
     source_kind IN VARCHAR DEFAULT 'FILE',
-    source_filter IN VARCHAR DEFAULT NULL,
-    source_query IN VARCHAR DEFAULT NULL,
-    parameters IN HSTORE DEFAULT NULL,
-    format IN HSTORE DEFAULT NULL,
-    request_new IN BOOLEAN DEFAULT FALSE,
-    id OUT INT,                                            -- ID request
-    import_name OUT VARCHAR                                -- table name to import data (if needed)
+    source_filter IN VARCHAR DEFAULT NULL,      -- optional data filter
+    source_query IN VARCHAR DEFAULT NULL,       -- optional query to select source data
+    parameters IN HSTORE DEFAULT NULL,          -- optional matching parameters
+    format IN HSTORE DEFAULT NULL,              -- mandatory format of source data
+    request_new IN BOOLEAN DEFAULT FALSE,       -- if true, always create new request
+
+    id OUT INT,                                 -- ID request
+    import_name OUT VARCHAR                     -- table name to import data (if needed)
 )
 AS $$
 DECLARE
@@ -109,23 +149,25 @@ BEGIN
     IF format IS NULL THEN
         RAISE 'format des données non défini!';
     END IF;
+    IF (format->'id' IS NULL) THEN
+        RAISE 'format non valide: (ID) manquant !';
+    END IF;
+    IF (format->'municipality_code' IS NULL)
+    OR (format->'postcode' IS NULL AND format->'municipality_name' IS NULL) THEN
+        RAISE 'format non valide: (code INSEE) et/ou (code postal + libellé commune) sont requis!';
+    END IF;
 
     -- identify existing request (w/ properties), if not mandatory creation option
     IF NOT request_new THEN
+        -- get last request (from properties)
         SELECT
-            mr.id,
-            mr.import_name
+            id,
+            import_name
         INTO
             _id,
             _import
         FROM
-            fr.address_match_request mr
-        WHERE
-            mr.source_name = set_match_request.source_name
-            AND
-            mr.source_kind = set_match_request.source_kind
-            AND
-            mr.source_filter IS NOT DISTINCT FROM set_match_request.source_filter
+            fr.get_match_request(source_name, source_kind, source_filter)
         ;
     END IF;
 

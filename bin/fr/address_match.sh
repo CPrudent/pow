@@ -30,7 +30,7 @@ match_info() {
 
     local -n _steps_ref=${_opts[STEPS_INFO]}
 
-    log_info "demande de Rapprochement (étape '${_steps_ref[${_opts[STEP]}]}')"
+    log_info "Demande de Rapprochement (étape '${_steps_ref[${_opts[STEP]}]}')"
     return $SUCCESS_CODE
 }
 
@@ -336,49 +336,44 @@ export_build() {
         }
     } &&
     {
+        # not only SOURCE: build cross reference first (needed by all cases)
         ([[ ${#_export_set[@]} -eq 1 ]] &&
         [ "${_export_set[0]}" = SOURCE ]) || {
-            # not only SOURCE to export, need municipality_code !
-            if [ -z "${_vars_ref[EXPORT_MUNICIPALITY]}" ]; then
-                _error="Code INSEE commune à renseigner, option --export_municipality"
-                false
-            else
-                execute_query \
-                    --name SET_CROSS_REFERENCE \
-                    --query "
-                        SELECT table_name
-                        FROM fr.set_match_cross_reference(
-                            id => ${_request_ref[MATCH_REQUEST_ID]},
-                            municipality_code => '${_vars_ref[EXPORT_MUNICIPALITY]}'
-                        )
-                    " \
-                    --temporary ${_vars_ref[TEMPORARY]} \
-                    --return _vars_ref[EXPORT_TABLE] &&
-                {
-                    ((! in_array --array _export_set --item ONLY_SOURCE) &&
-                    (! in_array --array _export_set --item ONLY_LAPOSTE)) || {
-                        execute_query \
-                            --name GET_CROSS_REFERENCE_COLUMNS \
-                            --query "
-                                SELECT get_table_columns(
-                                    schema_name => 'fr',
-                                    table_name => '${_vars_ref[EXPORT_TABLE]}'
-                                )
-                            " \
-                            --temporary ${_vars_ref[TEMPORARY]} \
-                            --return _columns_list &&
-                        array_sql_to_bash \
-                            --array_sql "$_columns_list" \
-                            --array_bash _columns_array &&
-                        for ((_i=0; _i<${#_columns_array[@]}; _i++)); do
-                            case "${_columns_array[$_i]}" in
-                            ref_*)  _columns_laposte+=(${_columns_array[$_i]})  ;;
-                            *)      _columns_source+=(${_columns_array[$_i]})   ;;
-                            esac
-                        done
-                    }
+            execute_query \
+                --name SET_CROSS_REFERENCE \
+                --query "
+                    SELECT table_name
+                    FROM fr.set_match_cross_reference(
+                        id => ${_request_ref[MATCH_REQUEST_ID]},
+                        rebuild => ('${match_vars[EXPORT_REBUILD]}' = 'yes')
+                    )
+                " \
+                --temporary ${_vars_ref[TEMPORARY]} \
+                --return _vars_ref[EXPORT_TABLE] &&
+            {
+                ((! in_array --array _export_set --item ONLY_SOURCE) &&
+                (! in_array --array _export_set --item ONLY_LAPOSTE)) || {
+                    execute_query \
+                        --name GET_CROSS_REFERENCE_COLUMNS \
+                        --query "
+                            SELECT get_table_columns(
+                                schema_name => 'fr',
+                                table_name => '${_vars_ref[EXPORT_TABLE]}'
+                            )
+                        " \
+                        --temporary ${_vars_ref[TEMPORARY]} \
+                        --return _columns_list &&
+                    array_sql_to_bash \
+                        --array_sql "$_columns_list" \
+                        --array_bash _columns_array &&
+                    for ((_i=0; _i<${#_columns_array[@]}; _i++)); do
+                        case "${_columns_array[$_i]}" in
+                        ref_*)  _columns_laposte+=(${_columns_array[$_i]})  ;;
+                        *)      _columns_source+=(${_columns_array[$_i]})   ;;
+                        esac
+                    done
                 }
-            fi
+            }
         }
     } &&
     {
@@ -445,7 +440,7 @@ export_build() {
                                     ON (t.nivgeo, t.codgeo) = ('ZA', a.co_adr_za)
 
                                     JOIN ${_opts[TABLE_NAME]} i
-                                    ON (mr.standardized_address).id = i.${_vars_ref[CLIENT_ID]}
+                                    ON (mr.standardized_address).id = i.${_vars_ref[COLUMN_CLIENT_ID]}
                             WHERE
                                 mr.id_request = ${_request_ref[MATCH_REQUEST_ID]}
                                 AND
@@ -482,7 +477,7 @@ export_build() {
                             WHERE
                                 ref_code_address IS NOT NULL
                                 AND
-                                ${_vars_ref[CLIENT_ID]} IS NOT NULL
+                                ${_vars_ref[COLUMN_CLIENT_ID]} IS NOT NULL
                         ) TO STDOUT WITH (DELIMITER E',', FORMAT CSV, HEADER TRUE, ENCODING UTF8)
                     " \
                     --temporary ${_vars_ref[TEMPORARY]} \
@@ -496,7 +491,7 @@ export_build() {
                         COPY (
                             SELECT $(IFS=, ; echo "${_columns_laposte[*]}")
                             FROM fr.${_vars_ref[EXPORT_TABLE]}
-                            WHERE ${_vars_ref[CLIENT_ID]} IS NULL
+                            WHERE ${_vars_ref[COLUMN_CLIENT_ID]} IS NULL
                         ) TO STDOUT WITH (DELIMITER E',', FORMAT CSV, HEADER TRUE, ENCODING UTF8)
                     " \
                     --temporary ${_vars_ref[TEMPORARY]} \
@@ -603,7 +598,7 @@ declare -A match_vars=(
     [COLUMNS_IN]=
     [COLUMNS_MORE]=
     [TEMPORARY]=USER
-    [CLIENT_ID]=
+    [COLUMN_CLIENT_ID]=
 ) &&
 pow_argv \
     --args_n '
@@ -624,7 +619,6 @@ pow_argv \
         export_set:Ensemble des données à exporter;
         export_table:Table des données à exporter;
         export_rebuild:Reconstituer la table des données (même si elle existe déjà);
-        export_municipality:Code INSEE commune;
         export_in_columns:Liste des données entrantes à inclure dans la sortie;
         export_more_columns:Liste des données supplémentaires à inclure dans la sortie;
         export_folder:Dossier de sortie;
@@ -877,7 +871,25 @@ set_env --schema_name fr &&
             }
         }
     else
-        [ -n "${match_vars[REQUEST_ID]}" ] && {
+        # get request ID
+        {
+            [ -n "${match_vars[REQUEST_ID]}" ] || {
+                execute_query \
+                    --name GET_MATCH_REQUEST \
+                    --query "
+                        SELECT id
+                        FROM fr.get_match_request(
+                            source_name => '${match_vars[SOURCE_NAME]}',
+                            source_kind => '${match_vars[SOURCE_KIND]}'
+                            $([ -n "${match_vars[SOURCE_FILTER]}" ] && echo ", source_filter => '${match_vars[SOURCE_FILTER]//\'/\'\'}'")
+                        )
+                    " \
+                    --temporary ${match_vars[TEMPORARY]} \
+                    --return match_vars[REQUEST_ID]
+            }
+        } &&
+
+        {
             get_request_infos \
                 --id ${match_vars[REQUEST_ID]} \
                 --request match_request \
@@ -895,14 +907,26 @@ set_env --schema_name fr &&
         --id ${match_request[MATCH_REQUEST_ID]} \
         --key id \
         --vars match_vars \
-        --value match_vars[CLIENT_ID] &&
+        --value match_vars[COLUMN_CLIENT_ID] &&
     {
-        [ -n "${match_vars[CLIENT_ID]}" ] || {
-            log_error 'manque clé Source (id) dans le format!'
+        [ -n "${match_vars[COLUMN_CLIENT_ID]}" ] || {
+            log_error 'manque colonne (ID) dans le format!'
             false
         }
     } &&
-    match_in_columns[CODE_SOURCE]=i.${match_vars[CLIENT_ID]}
+    match_in_columns[CODE_SOURCE]=i.${match_vars[COLUMN_CLIENT_ID]} &&
+
+    get_format_key \
+        --id ${match_request[MATCH_REQUEST_ID]} \
+        --key municipality_code \
+        --vars match_vars \
+        --value match_vars[COLUMN_MUNICIPALITY_CODE] &&
+    {
+        [ -n "${match_vars[COLUMN_MUNICIPALITY_CODE]}" ] || {
+            log_error 'manque colonne (code INSEE) dans le format!'
+            false
+        }
+    }
 } &&
 
 # import todo? only for FILE input

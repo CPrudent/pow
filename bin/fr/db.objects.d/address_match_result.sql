@@ -322,7 +322,6 @@ $func$ LANGUAGE plpgsql;
 SELECT drop_all_functions_if_exists('fr', 'set_match_cross_reference');
 CREATE OR REPLACE FUNCTION fr.set_match_cross_reference(
     id IN INTEGER,                          -- match request ID
-    municipality_code IN VARCHAR,
     rebuild IN BOOLEAN DEFAULT FALSE,       -- rebuild if already exists
     table_name INOUT VARCHAR DEFAULT NULL   -- result table
 )
@@ -334,9 +333,11 @@ DECLARE
     _source_kind VARCHAR;
     _source_query VARCHAR;
     _is_match_element BOOLEAN;
-    _client_id VARCHAR;
+    _column_id VARCHAR;
+    _column_municipality_code VARCHAR;
     _query TEXT;
     _query_source TEXT;
+    _query_ref_where TEXT;
     _nrows INTEGER;
 BEGIN
     SELECT import_name, source_name, source_kind, source_query, is_match_element
@@ -351,11 +352,42 @@ BEGIN
         RAISE 'demande de Rapprochement ID ''%'' non terminée (MATCH_ELEMENT manquant)', id;
     END IF;
 
-    -- retrieve key (as rowid) of source data
-    _client_id := fr.get_match_format_value(
+    -- retrieve keys of source data
+    _column_id := fr.get_match_format_value(
         id => id,
         key => 'id'
     );
+    _column_municipality_code := fr.get_match_format_value(
+        id => id,
+        key => 'municipality_code'
+    );
+    _query_ref_where := CASE
+            WHEN (_column_municipality_code IS NOT NULL) THEN
+            CONCAT(
+                '
+                (a.co_postal, a.lb_acheminement) IN (
+                    SELECT DISTINCT
+                        (standardized_address).postcode, (standardized_address).municipality_name
+                    FROM
+                        fr.address_match_result
+                    WHERE
+                        id_request = ', id,
+                '
+                )
+                '
+            )
+        ELSE
+            CONCAT(
+                '
+                a.co_insee_commune = ANY(SELECT DISTINCT
+                ', _column_municipality_code,
+                '
+                FROM source_data
+                )
+                '
+            )
+    END;
+
     -- build query to request source data
     _query_source :=
         CASE _source_kind
@@ -396,7 +428,8 @@ BEGIN
                 FROM
                     fr.address_view a
                 WHERE
-                    a.co_insee_commune = $2
+                    ', _query_ref_where,
+                    '
                     AND
                     a.co_niveau != ''ZA''
             ),
@@ -427,14 +460,12 @@ BEGIN
                 p.*
             FROM
                 source_data s
-                    LEFT OUTER JOIN match_data m ON s.', _client_id, ' = m.code_source
+                    LEFT OUTER JOIN match_data m ON s.', _column_id, ' = m.code_source
                     FULL OUTER JOIN laposte_data p ON p.ref_code_address = m.code_laposte
             ;
             '
         );
-        EXECUTE _query
-            USING set_match_cross_reference.id, set_match_cross_reference.municipality_code
-            ;
+        EXECUTE _query USING set_match_cross_reference.id;
         GET DIAGNOSTICS _nrows = ROW_COUNT;
         CALL public.log_info(
             FORMAT('CROSS REFERENCE (MATCH-REQUEST-ID=%s): NROWS=%s',
