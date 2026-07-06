@@ -334,7 +334,6 @@ DECLARE
     _source_query VARCHAR;
     _is_match_element BOOLEAN;
     _column_id VARCHAR;
-    _column_municipality_code VARCHAR;
     _query TEXT;
     _query_source TEXT;
     _query_ref_where TEXT;
@@ -352,51 +351,26 @@ BEGIN
         RAISE 'demande de Rapprochement ID ''%'' non terminée (MATCH_ELEMENT manquant)', id;
     END IF;
 
-    -- retrieve keys of source data
+    -- retrieve key (ID) of source data
     _column_id := fr.get_match_format_value(
         id => id,
         key => 'id'
     );
-    _column_municipality_code := fr.get_match_format_value(
-        id => id,
-        key => 'municipality_code'
+    _query_ref_where := CONCAT(
+        '
+        a.co_insee_commune = ANY(
+            SELECT DISTINCT
+                za.co_insee_commune
+            FROM
+                fr.address_match_result mre
+                    JOIN fr.laposte_address a ON mre.code_address = a.co_cea_determinant
+                    JOIN fr.laposte_address_area za ON za.co_cea = a.co_cea_za
+            WHERE
+                mre.id_request = ', id,
+        '
+        )
+        '
     );
-    -- TODO can factorize: list of columns (w/ aliases)
-    _query_ref_where := CASE
-            WHEN (_column_municipality_code IS NULL) THEN
-            CONCAT(
-                '
-                (a.co_postal, a.lb_acheminement) IN (
-                    SELECT DISTINCT
-                        za.co_postal,
-                        za.lb_acheminement
-                    FROM
-                        fr.address_match_result mre
-                            JOIN fr.laposte_address a ON mre.code_address = a.co_cea_determinant
-                            JOIN fr.laposte_address_area za ON za.co_cea = a.co_cea_za
-                    WHERE
-                        id_request = ', id,
-                '
-                )
-                '
-            )
-        ELSE
-            CONCAT(
-                '
-                a.co_insee_commune = ANY(
-                    SELECT DISTINCT
-                        za.co_insee_commune
-                    FROM
-                        fr.address_match_result mre
-                            JOIN fr.laposte_address a ON mre.code_address = a.co_cea_determinant
-                            JOIN fr.laposte_address_area za ON za.co_cea = a.co_cea_za
-                    WHERE
-                        id_request = ', id,
-                '
-                )
-                '
-            )
-    END;
 
     -- build query to request source data
     _query_source :=
