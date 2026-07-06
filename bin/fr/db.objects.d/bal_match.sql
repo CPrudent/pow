@@ -18,6 +18,7 @@ DECLARE
     _i              INT;
     _j              INT;
     _nrows          INT;
+    _query          TEXT;
 BEGIN
     counters := ARRAY_FILL(0, ARRAY[2]);
 
@@ -33,20 +34,26 @@ BEGIN
 
     _n := COALESCE(CARDINALITY(_requests), 0);
     CALL public.log_info(
-        FORMAT('Suppression BAL_%s (Rapprochement(s) %s)', code, _requests)
+        FORMAT('Suppression BAL_%s (Rapprochement(s): %s)', code, _requests)
     );
     FOR _i IN 1 .. _n
     LOOP
         -- clean old addresses
         IF todo & 1 = 1 THEN
-            IF NOT simulation THEN
-                DELETE FROM fr.address_match_result mr
+            _query := CONCAT(
+                CASE WHEN simulation THEN
+                    'SELECT *'
+                ELSE
+                    'DELETE'
+                END,
+                '
+                FROM fr.address_match_result mr
                 WHERE
-                    mr.id_request = _requests[_i]
+                    mr.id_request = $1
                     AND
                     (
                         (
-                            (mr.standardized_address).level = 'HOUSENUMBER'
+                            (mr.standardized_address).level = ''HOUSENUMBER''
                             AND
                             NOT EXISTS(
                                 SELECT 1
@@ -56,7 +63,7 @@ BEGIN
                         )
                         OR
                         (
-                            (mr.standardized_address).level = 'STREET'
+                            (mr.standardized_address).level = ''STREET''
                             AND
                             NOT EXISTS(
                                 SELECT 1
@@ -65,35 +72,9 @@ BEGIN
                             )
                         )
                     )
-                ;
-            ELSE
-                PERFORM * FROM fr.address_match_result mr
-                WHERE
-                    mr.id_request = _requests[_i]
-                    AND
-                    (
-                        (
-                            (mr.standardized_address).level = 'HOUSENUMBER'
-                            AND
-                            NOT EXISTS(
-                                SELECT 1
-                                FROM fr.bal_housenumber b
-                                WHERE b.code = (mr.standardized_address).id
-                            )
-                        )
-                        OR
-                        (
-                            (mr.standardized_address).level = 'STREET'
-                            AND
-                            NOT EXISTS(
-                                SELECT 1
-                                FROM fr.bal_street b
-                                WHERE b.code = (mr.standardized_address).id
-                            )
-                        )
-                    )
-                ;
-            END IF;
+                '
+            );
+            EXECUTE _query USING _requests[_i];
             GET DIAGNOSTICS _nrows = ROW_COUNT;
             counters[1] := counters[1] + _nrows;
             CALL public.log_info(
@@ -111,26 +92,27 @@ BEGIN
 
             FOR _j IN _i .. _n
             LOOP
-                IF NOT simulation THEN
-                    DELETE FROM fr.address_match_result mr2
-                    USING fr.address_match_result mr1
+                _query := CONCAT(
+                    CASE WHEN simulation THEN
+                        '
+                        SELECT * FROM fr.address_match_result mr2, fr.address_match_result mr1
+                        '
+                    ELSE
+                        '
+                        DELETE FROM fr.address_match_result mr2
+                        USING fr.address_match_result mr1
+                        '
+                    END,
+                    '
                     WHERE
-                        mr1.id_request = _requests[_i -1]
+                        mr1.id_request = $1
                         AND
-                        mr2.id_request = _requests[_j]
+                        mr2.id_request = $2
                         AND
                         (mr2.standardized_address).id = (mr1.standardized_address).id
-                    ;
-                ELSE
-                    PERFORM * FROM fr.address_match_result mr2, fr.address_match_result mr1
-                    WHERE
-                        mr1.id_request = _requests[_i -1]
-                        AND
-                        mr2.id_request = _requests[_j]
-                        AND
-                        (mr2.standardized_address).id = (mr1.standardized_address).id
-                    ;
-                END IF;
+                    '
+                );
+                EXECUTE _query USING _requests[_i -1], _requests[_j];
                 GET DIAGNOSTICS _nrows = ROW_COUNT;
                 counters[2] := counters[2] + _nrows;
                 CALL public.log_info(
