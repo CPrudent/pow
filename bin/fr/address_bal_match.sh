@@ -8,6 +8,9 @@
     # DEBUG session
     # export POW_DEBUG_JSON='{"codes":[{"name":"address_bal_match","steps":["argv","chunk","query@break","before@break"]}]}'
 
+    # can have many aliases
+    # parallel --rpl '#1 s/:[^:]*$//;' --rpl '#2 s/^[^:]*://;' echo '1=#1 2=#2' ::: A:1 BB:22 CCC:333
+
 source $POW_DIR_ROOT/lib/libbal.sh || exit $ERROR_CODE
 
 bal_match_municipality() {
@@ -27,11 +30,25 @@ bal_match_municipality() {
     # update request (query), if fix MATCH_AGAIN_ROWID
     {
         [ "${bal_vars[FIX]}" != MATCH_AGAIN_ROWID ] || {
+            # update query (request linked to last history)
+            # https://stackoverflow.com/questions/22736742/query-for-array-elements-inside-json-type
             execute_query \
                 --name REQUEST_UPDATE_${_opts[CODE]} \
-                --query "UPDATE fr.address_match_request SET
+                --query "
+                    WITH
+                    match_case AS (
+                        SELECT uc
+                        FROM   io_history io,
+                               json_array_elements((io.attributes::JSON)->'usecases') uc
+                        WHERE  io.id = ${_opts[IO_ID]}
+                               AND io.attributes IS JSON OBJECT
+                               AND uc->>'name' = 'match'
+                    )
+                    UPDATE fr.address_match_request SET
                     source_query = '$_query'
-                    WHERE source_name = CONCAT('BAL_', '${_opts[CODE]}')
+                    FROM match_case
+                    WHERE
+                        id = (uc->>'id')::INT
                 "
         }
     } &&
@@ -54,6 +71,21 @@ bal_match_municipality() {
     } || return $ERROR_CODE
 
     return $SUCCESS_CODE
+}
+
+bal_match_clean() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            code:Code Commune;
+            io_id:ID dernier historique
+        ' \
+        --args_m '
+            code;io_id
+        ' \
+        --pow_argv _opts "$@" || return $?
+
+
 }
 
 declare -A bal_vars=(

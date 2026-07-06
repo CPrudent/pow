@@ -16,6 +16,7 @@
 \include_relative bal_street.sql
 \include_relative bal_housenumber.sql
 \include_relative bal_import.sql
+\include_relative bal_match.sql
 
 -- INSEE
 
