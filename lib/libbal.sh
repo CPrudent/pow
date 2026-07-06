@@ -425,7 +425,7 @@ bal_list_municipalities() {
                 AND
                 h.attributes IS JSON OBJECT
                 AND
-                'match' $([ "${bal_vars[FIX]}" = MATCH_AGAIN_ROWID ] || echo NOT) IN (
+                'match' $([ -n "${bal_vars[FIX]}" ] || echo NOT) IN (
                     SELECT (JSON_ARRAY_ELEMENTS((h.attributes::JSON)->'usecases'))->>'name'
                 )
                 AND

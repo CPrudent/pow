@@ -11,7 +11,96 @@
     # can have many aliases
     # parallel --rpl '#1 s/:[^:]*$//;' --rpl '#2 s/^[^:]*://;' echo '1=#1 2=#2' ::: A:1 BB:22 CCC:333
 
+    # TEST
+    # MATCH + MATCH_CLEAN, new municipalities
+    # 1- no parallel w/ 1 municipality
+    # 2- parallel w/ 2 municipalities (--limit 2)
+    # fix MATCH_AGAIN_ROWID
+    # 3- no parallel w/ 1 municipality
+    # 4- parallel w/ 2 municipalities
+    # fix MATCH_CLEAN
+    # 5- no parallel w/ 1 municipality
+    # 6- parallel w/ 2 municipalities
+
 source $POW_DIR_ROOT/lib/libbal.sh || exit $ERROR_CODE
+
+bal_update_query() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            code:Code Commune;
+            io_id:ID dernier historique;
+            query:Requête extraction données BAL
+        ' \
+        --args_m '
+            code;io_id;query
+        ' \
+        --pow_argv _opts "$@" || return $?
+
+    # update query (request linked to last history)
+    # https://stackoverflow.com/questions/22736742/query-for-array-elements-inside-json-type
+    # protect single quotes (into query) by using $$ syntax, and \$ because shell!
+    execute_query \
+        --name REQUEST_UPDATE_${_opts[CODE]} \
+        --query "
+            WITH
+            match_case AS (
+                SELECT uc
+                FROM   io_history io,
+                        json_array_elements((io.attributes::JSON)->'usecases') uc
+                WHERE  io.id = ${_opts[IO_ID]}
+                        AND io.attributes IS JSON OBJECT
+                        AND uc->>'name' = 'match'
+            )
+            UPDATE fr.address_match_request SET
+            source_query = \$\$${_opts[QUERY]}\$\$
+            FROM match_case
+            WHERE
+                id = (uc->>'id')::INT
+        "
+
+    return $?
+}
+
+# clean BAL match(s) of given municipality
+bal_match_clean() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            code:Code Commune;
+            hash:Tableau associatif pour les résultats
+        ' \
+        --args_m '
+            code;hash
+        ' \
+        --pow_argv _opts "$@" || return $?
+
+    local -n _hash_ref=${_opts[HASH]}
+    local _result _counters
+
+    execute_query \
+        --name MATCH_CLEAN_${_opts[CODE]} \
+        --query "
+            SELECT
+                counters
+            FROM
+                fr.bal_match_clean(
+                    code => '${_opts[CODE]}',
+                    todo => 3
+                )
+        " \
+        --temporary ${_vars_ref[TEMPORARY]} \
+        --return _result &&
+    array_sql_to_bash \
+        --array_sql "$_result" \
+        --array_bash _counters &&
+    _hash_ref[${_opts[CODE]}_old]=${_counters[0]} &&
+    _hash_ref[${_opts[CODE]}_upd]=${_counters[1]}
+
+    return $?
+}
+# needed by parallel's function call
+export bal_match_clean
 
 bal_match_municipality() {
     local -A _opts &&
@@ -26,66 +115,56 @@ bal_match_municipality() {
         --pow_argv _opts "$@" || return $?
 
     local _query=${bal_vars[QUERY_ADDRESSES]//XXXXX/${_opts[CODE]}} _request_id
+    local _clean _infos
 
     # update request (query), if fix MATCH_AGAIN_ROWID
     {
         [ "${bal_vars[FIX]}" != MATCH_AGAIN_ROWID ] || {
-            # update query (request linked to last history)
-            # https://stackoverflow.com/questions/22736742/query-for-array-elements-inside-json-type
-            execute_query \
-                --name REQUEST_UPDATE_${_opts[CODE]} \
-                --query "
-                    WITH
-                    match_case AS (
-                        SELECT uc
-                        FROM   io_history io,
-                               json_array_elements((io.attributes::JSON)->'usecases') uc
-                        WHERE  io.id = ${_opts[IO_ID]}
-                               AND io.attributes IS JSON OBJECT
-                               AND uc->>'name' = 'match'
-                    )
-                    UPDATE fr.address_match_request SET
-                    source_query = '$_query'
-                    FROM match_case
-                    WHERE
-                        id = (uc->>'id')::INT
-                "
+            bal_update_query \
+                --code ${_opts[CODE]} \
+                --io_id ${_opts[IO_ID]} \
+                --query "$_query"
         }
     } &&
-    # match addresses
-    $POW_DIR_BATCH/address_match.sh \
-        --source_name BAL_${_opts[CODE]} \
-        --source_query "$_query" \
-        --request_path $POW_DIR_TMP/BAL_${_opts[CODE]}.dat \
-        --steps REQUEST,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT,MATCH_ADDRESS \
-        --format "$POW_DIR_BATCH/bal/format.sql" \
-        --force ${bal_vars[FORCE]} \
-        --request_new ${bal_vars[REQUEST_NEW]} &&
-    _request_id=$(sed --silent --expression '1p' < $POW_DIR_TMP/BAL_${_opts[CODE]}.dat) &&
-    # update history
-    io_history_update \
-        --infos '{"usecases":[{"name":"match","id":'${_request_id}'}]}' \
-        --id ${_opts[IO_ID]} &&
+    {
+        [ "${bal_vars[FIX]}" = MATCH_CLEAN ] || {
+            # match addresses
+            $POW_DIR_BATCH/address_match.sh \
+                --source_name BAL_${_opts[CODE]} \
+                --source_query "$_query" \
+                --request_path $POW_DIR_TMP/BAL_${_opts[CODE]}.dat \
+                --steps REQUEST,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT,MATCH_ADDRESS \
+                --format "$POW_DIR_BATCH/bal/format.sql" \
+                --force ${bal_vars[FORCE]} \
+                --request_new ${bal_vars[REQUEST_NEW]} &&
+            _request_id=$(sed --silent --expression '1p' < $POW_DIR_TMP/BAL_${_opts[CODE]}.dat)
+        }
+    } &&
+    {
+        bal_match_clean \
+            --code "${_opts[CODE]}" \
+            --hash bal_clean
+    } &&
+    {
+        # update history
+        case "${bal_vars[FIX]}" in
+        MATCH_CLEAN)
+            _infos='"name":"MATCH_CLEAN"'
+            ;;
+        *)
+            _infos='"name":"match","id":'${_request_id}
+            ;;
+        esac
+        _clean='"old":'${bal_clean[${_opts[CODE]}_old]}',"upd":'${bal_clean[${_opts[CODE]}_upd]}
+        io_history_update \
+            --infos '{"usecases":[{'$_infos',"clean":{'$_clean'}' \
+            --id ${_opts[IO_ID]}
+    } &&
     {
         [ "${bal_vars[CLEAN]}" = no ] || rm $POW_DIR_TMP/BAL_${_opts[CODE]}.dat
     } || return $ERROR_CODE
 
     return $SUCCESS_CODE
-}
-
-bal_match_clean() {
-    local -A _opts &&
-    pow_argv \
-        --args_n '
-            code:Code Commune;
-            io_id:ID dernier historique
-        ' \
-        --args_m '
-            code;io_id
-        ' \
-        --pow_argv _opts "$@" || return $?
-
-
 }
 
 declare -A bal_vars=(
@@ -137,7 +216,7 @@ pow_argv \
         select_criteria:REVISION|POPULATION|STREETS;
         select_order:ASC|DESC;
         force:yes|no;
-        fix:MATCH_AGAIN_ROWID;
+        fix:MATCH_AGAIN_ROWID|MATCH_CLEAN;
         dry_run:yes|no;
         progress:yes|no;
         parallel:yes|no;
@@ -183,6 +262,7 @@ declare -a bal_codes2
 declare -a bal_errors
 # reset LIMIT if STOP_TIME
 [ "${bal_vars[STOP_TIME]}" != 0 ] && [ ${bal_vars[LIMIT]} -gt 0 ] && bal_vars[LIMIT]=0
+declare -A bal_clean
 set_env --schema_name fr &&
 {
     [ "${bal_vars[PROGRESS]}" = no ] || set_log_echo no
@@ -272,6 +352,7 @@ else
             set -o noglob
             for bal_item in ${bal_codes2[@]}; do
                 bal_insee=${bal_item%%:*}
+                bal_io_id=${bal_item#*:}
                 bal_query=${bal_vars[QUERY_ADDRESSES]//XXXXX/${bal_insee}}
 
                 {
@@ -282,15 +363,14 @@ else
                     }
                 } &&
                 echo "$bal_query" > "$bal_tmpdir/BAL_${bal_insee}.sql" &&
-                # update request (query), if fix
+                # update request (query), if fix MATCH_AGAIN
                 {
                     [ "${bal_vars[FIX]}" != MATCH_AGAIN_ROWID ] || {
-                        execute_query \
-                            --name REQUEST_UPDATE_$bal_insee \
-                            --query "UPDATE fr.address_match_request SET
-                                source_query = \$\$$bal_query\$\$
-                                WHERE source_name = CONCAT('BAL_', '$bal_insee')
-                            "
+                        bal_update_query \
+                            --code $bal_insee \
+                            --io_id $bal_io_id \
+                            --query "$bal_query"
+
                     }
                 } || exit $ERROR_CODE
             done
@@ -302,52 +382,88 @@ else
             }
 
             bal_serie=$((bal_serie +1))
-            # item composed as INSEE:IO_ID (INSEE only wanted here)
-            #+ can use --tag to print each item
-            parallel \
-                --jobs ${bal_vars[PARALLEL_JOBS]} \
-                --joblog $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log \
-                --rpl '{..} s/:[^:]*$//;' \
-                $POW_DIR_BATCH/address_match.sh \
-                    --source_name "BAL_{..}" \
-                    --source_query "$bal_tmpdir/BAL_{..}.sql" \
-                    --request_path "$bal_tmpdir/BAL_{..}.dat" \
-                    --steps REQUEST,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT,MATCH_ADDRESS \
-                    --format "$POW_DIR_BATCH/bal/format.sql" \
-                    --parallel \
-                    --force ${bal_vars[FORCE]} \
-                    --request_new ${bal_vars[REQUEST_NEW]} \
-                ::: "${bal_codes2[@]}"
-
-            # break by user, as CTRL-C (rc=-1)
-            [ $? -eq 255 ] && _break=1
-
-            # search for error (column 7: exit status)
-            tail --lines +2 $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log | cut --fields 7 | grep --silent ^[^0]
-            [ $? -eq 0 ] && {
-                bal_errors+=($POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log)
-                [[ ${_debug_steps[error]:-1} -eq 0 ]] && {
-                    tail --lines +2 $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log | cut --fields 7,9
-                    [[ ${_debug_bps[error]} -eq 0 ]] && read
+            {
+                [ "${bal_vars[FIX]}" = MATCH_CLEAN ] || {
+                    # item composed as INSEE:IO_ID (INSEE only wanted here)
+                    #+ can use --tag to print each item
+                    parallel \
+                        --jobs ${bal_vars[PARALLEL_JOBS]} \
+                        --joblog $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log \
+                        --rpl '{..} s/:[^:]*$//;' \
+                        $POW_DIR_BATCH/address_match.sh \
+                            --source_name "BAL_{..}" \
+                            --source_query "$bal_tmpdir/BAL_{..}.sql" \
+                            --request_path "$bal_tmpdir/BAL_{..}.dat" \
+                            --steps REQUEST,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT,MATCH_ADDRESS \
+                            --format "$POW_DIR_BATCH/bal/format.sql" \
+                            --parallel \
+                            --force ${bal_vars[FORCE]} \
+                            --request_new ${bal_vars[REQUEST_NEW]} \
+                        ::: "${bal_codes2[@]}"
                 }
+            } &&
+
+            {
+                # break by user, as CTRL-C (rc=-1)
+                [ $? -eq 255 ] && _break=1 || {
+                    parallel \
+                        --jobs ${bal_vars[PARALLEL_JOBS]} \
+                        --joblog $POW_DIR_ARCHIVE/parallel_${bal_serie}_clean.log \
+                        --rpl '{..} s/:[^:]*$//;' \
+                        bal_match_clean \
+                            --code "{..}" \
+                            --hash bal_clean \
+                        ::: "${bal_codes2[@]}"
+                }
+            } &&
+
+            {
+                # break by user, as CTRL-C (rc=-1)
+                [ $_break -eq 0 ] || {
+                    [ $? -eq 255 ] && _break=1
+                }
+
+                # search for error (column 7: exit status)
+                tail --lines +2 $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log | cut --fields 7 | grep --silent ^[^0]
+                [ $? -ne 0 ] || {
+                    bal_errors+=($POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log)
+                    [[ ${_debug_steps[error]:-1} -eq 0 ]] && {
+                        tail --lines +2 $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log | cut --fields 7,9
+                        [[ ${_debug_bps[error]} -eq 0 ]] && read
+                    }
+                    bal_error=1
+                }
+            } &&
+
+            {
+                # update BAL history for all successfull
+                for ((bal_i=0; bal_i<${#bal_codes2[@]}; bal_i++)); do
+                    bal_insee=${bal_codes2[$bal_i]%%:*}
+                    bal_io_id=${bal_codes2[$bal_i]#*:}
+                    bal_file="$bal_tmpdir/BAL_${bal_insee}.dat"
+                    # ok match ?
+                    _matched=$(grep BAL_${bal_insee} $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log | cut --fields 7)
+                    [ "$_matched" = 0 ] && {
+                        case "${bal_vars[FIX]}" in
+                        MATCH_CLEAN)
+                            _infos='"name":"MATCH_CLEAN"'
+                            ;;
+                        *)
+                            bal_req_id=$(sed --silent --expression '1p' < "$bal_file") &&
+                            _infos='"name":"match","id":'${bal_req_id}
+                            ;;
+                        esac
+                        _clean='"old":'${bal_clean[${bal_insee}_old]}',"upd":'${bal_clean[${bal_insee}_upd]}
+                        io_history_update \
+                            --infos '{"usecases":[{'$_infos',"clean":{'$_clean'}' \
+                            --id ${bal_io_id}
+                    } || {
+                        bal_error=1
+                    }
+                done
             }
 
-            # update BAL history w/ match request for all successfull
-            for ((bal_i=0; bal_i<${#bal_codes2[@]}; bal_i++)); do
-                bal_insee=${bal_codes2[$bal_i]%%:*}
-                bal_io_id=${bal_codes2[$bal_i]#*:}
-                bal_file="$bal_tmpdir/BAL_${bal_insee}.dat"
-                # ok match ?
-                _matched=$(grep BAL_${bal_insee} $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log | cut --fields 7)
-                [ "$_matched" = 0 ] && {
-                    bal_req_id=$(sed --silent --expression '1p' < "$bal_file") &&
-                    io_history_update \
-                        --infos '{"usecases":[{"name":"match","id":'${bal_req_id}'}]}' \
-                        --id ${bal_io_id}
-                }
-            done
-
-            [ $_break -eq 1 ] && break
+            [[ $_break -eq 1 || $bal_error -gt 0 ]] && break
         }
         bal_vars[PROGRESS_CURRENT]=$((bal_vars[PROGRESS_CURRENT] + ${#bal_codes2[@]}))
         [ "${bal_vars[PROGRESS]}" = no ] ||
