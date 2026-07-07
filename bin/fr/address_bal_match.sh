@@ -8,6 +8,7 @@
     # DEBUG session
     # export POW_DEBUG_JSON='{"codes":[{"name":"address_bal_match","steps":["argv","chunk","query@break","before@break"]}]}'
 
+    # NOTE
     # can have many aliases
     # parallel --rpl '#1 s/:[^:]*$//;' --rpl '#2 s/^[^:]*://;' echo '1=#1 2=#2' ::: A:1 BB:22 CCC:333
 
@@ -29,11 +30,11 @@ bal_update_query() {
     pow_argv \
         --args_n '
             code:Code Commune;
-            io_id:ID dernier historique;
+            history_id:ID dernier historique;
             query:Requête extraction données BAL
         ' \
         --args_m '
-            code;io_id;query
+            code;history_id;query
         ' \
         --pow_argv _opts "$@" || return $?
 
@@ -48,7 +49,7 @@ bal_update_query() {
                 SELECT uc
                 FROM   io_history io,
                         json_array_elements((io.attributes::JSON)->'usecases') uc
-                WHERE  io.id = ${_opts[IO_ID]}
+                WHERE  io.id = ${_opts[HISTORY_ID]}
                         AND io.attributes IS JSON OBJECT
                         AND uc->>'name' = 'match'
             )
@@ -67,15 +68,13 @@ bal_match_clean() {
     local -A _opts &&
     pow_argv \
         --args_n '
-            code:Code Commune;
-            hash:Tableau associatif pour les résultats
+            code:Code Commune
         ' \
         --args_m '
-            code;hash
+            code
         ' \
         --pow_argv _opts "$@" || return $?
 
-    local -n _hash_ref=${_opts[HASH]}
     local _result _counters
 
     execute_query \
@@ -89,40 +88,70 @@ bal_match_clean() {
                     todo => 3
                 )
         " \
-        --temporary ${_vars_ref[TEMPORARY]} \
         --return _result &&
     array_sql_to_bash \
         --array_sql "$_result" \
         --array_bash _counters &&
-    _hash_ref[${_opts[CODE]}_old]=${_counters[0]} &&
-    _hash_ref[${_opts[CODE]}_upd]=${_counters[1]}
+    bal_clean["old_${_opts[CODE]}"]=${_counters[0]} &&
+    bal_clean["upd_${_opts[CODE]}"]=${_counters[1]}
 
     return $?
 }
-# needed by parallel's function call
-export bal_match_clean
+
+# set history of given municipality
+bal_match_history() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            code:Code Commune;
+            history_id:ID dernier historique;
+            request_id:ID traitement Rapprochement
+        ' \
+        --args_m '
+            code;history_id
+        ' \
+        --pow_argv _opts "$@" || return $?
+
+    local _clean _infos
+
+    # update history
+    case "${bal_vars[FIX]}" in
+    MATCH_CLEAN)
+        _infos='"name":"MATCH_CLEAN"'
+        ;;
+    *)
+        _infos='"name":"match","id":'${_opts[REQUEST_ID]}
+        ;;
+    esac
+    _clean='"old":'${bal_clean["old_${_opts[CODE]}"]}',"upd":'${bal_clean["upd_${_opts[CODE]}"]}
+    io_history_update \
+        --infos '{"usecases":[{'$_infos',"clean":{'$_clean'}}]}' \
+        --id ${_opts[HISTORY_ID]}
+
+    return $?
+}
 
 bal_match_municipality() {
     local -A _opts &&
     pow_argv \
         --args_n '
             code:Code Commune;
-            io_id:ID dernier historique
+            history_id:ID dernier historique
         ' \
         --args_m '
-            code;io_id
+            code;history_id
         ' \
         --pow_argv _opts "$@" || return $?
 
-    local _query=${bal_vars[QUERY_ADDRESSES]//XXXXX/${_opts[CODE]}} _request_id
-    local _clean _infos
+    local _query=${bal_vars[QUERY_ADDRESSES]//XXXXX/${_opts[CODE]}}
+    local _request_id=0
 
     # update request (query), if fix MATCH_AGAIN_ROWID
     {
         [ "${bal_vars[FIX]}" != MATCH_AGAIN_ROWID ] || {
             bal_update_query \
                 --code ${_opts[CODE]} \
-                --io_id ${_opts[IO_ID]} \
+                --history_id ${_opts[HISTORY_ID]} \
                 --query "$_query"
         }
     } &&
@@ -141,27 +170,16 @@ bal_match_municipality() {
         }
     } &&
     {
-        bal_match_clean \
-            --code "${_opts[CODE]}" \
-            --hash bal_clean
+        bal_match_clean --code ${_opts[CODE]}
     } &&
     {
-        # update history
-        case "${bal_vars[FIX]}" in
-        MATCH_CLEAN)
-            _infos='"name":"MATCH_CLEAN"'
-            ;;
-        *)
-            _infos='"name":"match","id":'${_request_id}
-            ;;
-        esac
-        _clean='"old":'${bal_clean[${_opts[CODE]}_old]}',"upd":'${bal_clean[${_opts[CODE]}_upd]}
-        io_history_update \
-            --infos '{"usecases":[{'$_infos',"clean":{'$_clean'}' \
-            --id ${_opts[IO_ID]}
+        bal_match_history \
+            --code ${_opts[CODE]} \
+            --request_id $_request_id \
+            --history_id ${_opts[HISTORY_ID]}
     } &&
     {
-        [ "${bal_vars[CLEAN]}" = no ] || rm $POW_DIR_TMP/BAL_${_opts[CODE]}.dat
+        [ "${bal_vars[CLEAN]}" = no ] || rm --force $POW_DIR_TMP/BAL_${_opts[CODE]}.dat
     } || return $ERROR_CODE
 
     return $SUCCESS_CODE
@@ -201,11 +219,12 @@ pow_argv \
         stop_time:Temps d arrêt du traitement (format: MM-jj-hh:mm:ss);
         force:Forcer le traitement même si celui-ci a déjà été fait;
         fix:Corriger une erreur;
-        dry_run:Simuler le traitement;
         progress:Afficher le ratio de progression;
         parallel:Effectuer les traitements en parallèle;
         parallel_chunk:Quantité de partage des données à traiter;
         parallel_jobs:Nombre de traitements en parallèle;
+        dry_run:Simuler le traitement;
+        print_only:Pas de traitement, mais affichage des prochaines communes à traiter;
         clean:Effectuer la purge des fichiers temporaires;
         verbose:Ajouter des détails sur les traitements
     ' \
@@ -217,9 +236,10 @@ pow_argv \
         select_order:ASC|DESC;
         force:yes|no;
         fix:MATCH_AGAIN_ROWID|MATCH_CLEAN;
-        dry_run:yes|no;
         progress:yes|no;
         parallel:yes|no;
+        dry_run:yes|no;
+        print_only:yes|no;
         clean:yes|no;
         verbose:yes|no
     ' \
@@ -227,19 +247,20 @@ pow_argv \
         select_criteria:REVISION;
         select_order:DESC;
         force:no;
-        dry_run:no;
         limit:3;
         stop_time:0;
         progress:no;
         parallel:no;
         parallel_chunk:5;
         parallel_jobs:5;
+        dry_run:no;
+        print_only:no;
         clean:yes;
         verbose:no
     ' \
     --args_p '
         reset:no;
-        tag:select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,dry_run@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,limit@int,parallel_chunk@int,parallel_jobs@int,fix@0N
+        tag:select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,dry_run@bool,print_only@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,limit@int,parallel_chunk@int,parallel_jobs@int,fix@0N
     ' \
     --pow_argv bal_vars "$@" || exit $?
 
@@ -262,6 +283,7 @@ declare -a bal_codes2
 declare -a bal_errors
 # reset LIMIT if STOP_TIME
 [ "${bal_vars[STOP_TIME]}" != 0 ] && [ ${bal_vars[LIMIT]} -gt 0 ] && bal_vars[LIMIT]=0
+# MATCH_CLEAN results
 declare -A bal_clean
 set_env --schema_name fr &&
 {
@@ -287,6 +309,26 @@ set_env --schema_name fr &&
         ;;
     esac
 } || exit $ERROR_CODE
+
+[ ${#bal_codes[@]} -eq 0 ] && {
+    log_info "Rapprochement BAL déjà à jour!"
+    exit $SUCCESS_CODE
+}
+
+[ "${bal_vars[PRINT_ONLY]}" = yes ] && {
+    case "${bal_vars[FIX]}" in
+    MATCH_AGAIN_ROWID)
+        # last codes
+        _from=$((${#bal_codes[@]} -5))
+        ;;
+    *)
+        # first codes
+        _from=0
+        ;;
+    esac
+    echo "#${#bal_codes[@]} à traiter (${bal_codes[@]:${_from}:5})"
+    exit $SUCCESS_CODE
+}
 
 bal_error=0
 bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
@@ -316,7 +358,7 @@ if [ "${bal_vars[PARALLEL]}" = no ]; then
         [ "${bal_vars[DRY_RUN]}" = yes ] || {
             bal_match_municipality \
                 --code ${bal_vars[MUNICIPALITY_CODE]} \
-                --io_id ${bal_vars[IO_LAST_ID]} || ((bal_error++))
+                --history_id ${bal_vars[IO_LAST_ID]} || ((bal_error++))
 
             [ "${bal_vars[PROGRESS]}" = no ] ||
                 set_progress --start bal_vars[PROGRESS_START]
@@ -368,7 +410,7 @@ else
                     [ "${bal_vars[FIX]}" != MATCH_AGAIN_ROWID ] || {
                         bal_update_query \
                             --code $bal_insee \
-                            --io_id $bal_io_id \
+                            --history_id $bal_io_id \
                             --query "$bal_query"
 
                     }
@@ -384,7 +426,7 @@ else
             bal_serie=$((bal_serie +1))
             {
                 [ "${bal_vars[FIX]}" = MATCH_CLEAN ] || {
-                    # item composed as INSEE:IO_ID (INSEE only wanted here)
+                    # item composed as INSEE:HISTORY_ID (INSEE only wanted here)
                     #+ can use --tag to print each item
                     parallel \
                         --jobs ${bal_vars[PARALLEL_JOBS]} \
@@ -403,25 +445,27 @@ else
                 }
             } &&
 
-            {
-                # break by user, as CTRL-C (rc=-1)
-                [ $? -eq 255 ] && _break=1 || {
-                    parallel \
-                        --jobs ${bal_vars[PARALLEL_JOBS]} \
-                        --joblog $POW_DIR_ARCHIVE/parallel_${bal_serie}_clean.log \
-                        --rpl '{..} s/:[^:]*$//;' \
-                        bal_match_clean \
-                            --code "{..}" \
-                            --hash bal_clean \
-                        ::: "${bal_codes2[@]}"
-                }
-            } &&
+# FIXME
+# bal_clean empty after!
+#             {
+#                 # break by user, as CTRL-C (rc=-1)
+#                 [ $? -eq 255 ] && _break=1 || {
+#                     parallel \
+#                         --jobs ${bal_vars[PARALLEL_JOBS]} \
+#                         --joblog $POW_DIR_ARCHIVE/parallel_${bal_serie}_clean.log \
+#                         --rpl '{..} s/:[^:]*$//;' \
+#                         bal_match_clean \
+#                             --code "{..}" \
+#                         ::: "${bal_codes2[@]}"
+#                 }
+#             } &&
 
             {
-                # break by user, as CTRL-C (rc=-1)
-                [ $_break -eq 0 ] || {
-                    [ $? -eq 255 ] && _break=1
-                }
+#                 # break by user, as CTRL-C (rc=-1)
+#                 _rc=$?
+#                 [ $_break -eq 0 ] || {
+#                     [ $_rc -eq 255 ] && _break=1
+#                 }
 
                 # search for error (column 7: exit status)
                 tail --lines +2 $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log | cut --fields 7 | grep --silent ^[^0]
@@ -436,27 +480,25 @@ else
             } &&
 
             {
-                # update BAL history for all successfull
+                # clean previous match(s) and update BAL history for all successfull
                 for ((bal_i=0; bal_i<${#bal_codes2[@]}; bal_i++)); do
                     bal_insee=${bal_codes2[$bal_i]%%:*}
                     bal_io_id=${bal_codes2[$bal_i]#*:}
+                    bal_req_id=0
                     bal_file="$bal_tmpdir/BAL_${bal_insee}.dat"
                     # ok match ?
                     _matched=$(grep BAL_${bal_insee} $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log | cut --fields 7)
                     [ "$_matched" = 0 ] && {
-                        case "${bal_vars[FIX]}" in
-                        MATCH_CLEAN)
-                            _infos='"name":"MATCH_CLEAN"'
-                            ;;
-                        *)
-                            bal_req_id=$(sed --silent --expression '1p' < "$bal_file") &&
-                            _infos='"name":"match","id":'${bal_req_id}
-                            ;;
-                        esac
-                        _clean='"old":'${bal_clean[${bal_insee}_old]}',"upd":'${bal_clean[${bal_insee}_upd]}
-                        io_history_update \
-                            --infos '{"usecases":[{'$_infos',"clean":{'$_clean'}' \
-                            --id ${bal_io_id}
+                        {
+                            [ "${bal_vars[FIX]}" = MATCH_CLEAN ] || {
+                                bal_req_id=$(sed --silent --expression '1p' < "$bal_file")
+                            }
+                        } &&
+                        bal_match_clean --code $bal_insee &&
+                        bal_match_history \
+                            --code $bal_insee \
+                            --request_id $bal_req_id \
+                            --history_id $bal_io_id
                     } || {
                         bal_error=1
                     }

@@ -1030,6 +1030,11 @@ set_env --schema_name fr &&
                         )
                         AND
                         fr.is_match_element_ok(me.matched_element)
+                ;
+                UPDATE fr.address_match_request SET
+                    is_match_address = true
+                    WHERE id = ${match_request[MATCH_REQUEST_ID]}
+                ;
             " \
             --temporary ${match_vars[TEMPORARY]}
     }

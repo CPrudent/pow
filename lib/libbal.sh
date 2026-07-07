@@ -189,6 +189,7 @@ bal_set_municipality() {
         [ "${bal_vars[PROGRESS]}" = no ] || set_progress --start bal_vars[PROGRESS_START]
     } || return $ERROR_CODE
 
+    #echo "${FUNCNAME[0]}: OK"
     return $SUCCESS_CODE
 }
 
@@ -213,7 +214,7 @@ bal_list_municipalities() {
         _column=c.municipality
     fi
     case "${bal_vars[FIX]:-${bal_vars[SELECT_CRITERIA]}}" in
-    POPULATION)
+    POPULATION|MATCH_CLEAN)
         _query="
             SELECT
                 codgeo municipality,
@@ -223,7 +224,7 @@ bal_list_municipalities() {
             WHERE
                 nivgeo = 'COM'
                 AND
-                population IS NOT NULL
+                COALESCE(population, 0) > 0
         "
         ;;
     STREETS)
@@ -431,6 +432,15 @@ bal_list_municipalities() {
                 AND
                 ((h.attributes::JSON)->'integration'->>'streets')::INT > 0
             "
+            # not already cleaned
+            case "${bal_vars[FIX]}" in
+            MATCH_CLEAN)
+                _query+="
+                    AND
+                    POSITION('${bal_vars[FIX]}' IN h.attributes) = 0
+                "
+                ;;
+            esac
             ;;
         esac
     } &&

@@ -161,13 +161,13 @@ BEGIN
     IF NOT request_new THEN
         -- get last request (from properties)
         SELECT
-            id,
-            import_name
+            lmr.id,
+            lmr.import_name
         INTO
             _id,
             _import
         FROM
-            fr.get_match_request(source_name, source_kind, source_filter)
+            fr.get_match_request(source_name, source_kind, source_filter) lmr
         ;
     END IF;
 
