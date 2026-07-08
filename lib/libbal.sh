@@ -430,7 +430,7 @@ bal_list_municipalities() {
                     SELECT (JSON_ARRAY_ELEMENTS((h.attributes::JSON)->'usecases'))->>'name'
                 )
                 AND
-                ((h.attributes::JSON)->'integration'->>'streets')::INT > 0
+                ((h.attributes::JSON)->'integration'->>'housenumbers')::INT > 0
             "
             # not already cleaned
             case "${bal_vars[FIX]}" in

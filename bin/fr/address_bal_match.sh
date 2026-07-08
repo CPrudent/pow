@@ -112,7 +112,7 @@ bal_match_history() {
         ' \
         --pow_argv _opts "$@" || return $?
 
-    local _clean _infos
+    local _infos
 
     # update history
     case "${bal_vars[FIX]}" in
@@ -123,9 +123,12 @@ bal_match_history() {
         _infos='"name":"match","id":'${_opts[REQUEST_ID]}
         ;;
     esac
-    _clean='"old":'${bal_clean["old_${_opts[CODE]}"]}',"upd":'${bal_clean["upd_${_opts[CODE]}"]}
+    # only if cleaned addresses
+    [[ ${bal_clean["old_${_opts[CODE]}"]} -gt 0 || ${bal_clean["upd_${_opts[CODE]}"]} -gt 0 ]] && {
+        _infos+=',"clean":{"old":'${bal_clean["old_${_opts[CODE]}"]}',"upd":'${bal_clean["upd_${_opts[CODE]}"]}'}'
+    }
     io_history_update \
-        --infos '{"usecases":[{'$_infos',"clean":{'$_clean'}}]}' \
+        --infos '{"usecases":[{'$_infos'}]}' \
         --id ${_opts[HISTORY_ID]}
 
     return $?
@@ -275,6 +278,14 @@ get_env_debug \
 [[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
     declare -p bal_vars
     [[ ${_debug_bps[argv]} -eq 0 ]] && read
+}
+
+# pas de mode parallèle
+[ "${bal_vars[PARALLEL]}" = yes ] &&
+[ "${bal_vars[FIX]}" = MATCH_CLEAN ] && {
+    echo 'Mode parallel désactivé pour ce correctif'
+    bal_vars[PARALLEL]=no
+    bal_vars[PROGRESS]=no
 }
 
 bal_vars[MUNICIPALITY_CODE]=${bal_vars[MUNICIPALITY]^^}

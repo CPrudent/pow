@@ -76,3 +76,4 @@
 
 -- FIXES
 \include_relative ../../../fixes/fix_69_bal_match_id.sql
+\include_relative ../../../fixes/fix_72_restore_io_attributes.sql
