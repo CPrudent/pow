@@ -42,20 +42,21 @@ $proc$ LANGUAGE plpgsql;
 -- oldies: delete obsolete addresses, dealing w/ dependencies
 SELECT public.drop_all_functions_if_exists('fr', 'bal_delete_obsolete_addresses');
 
--- get query to select addresses of a municipality (option to limit only street w/ certified housenumbers)
+-- get query to select addresses of a municipality (option to limit only certified ones)
 SELECT public.drop_all_functions_if_exists('fr', 'bal_municipality_addresses');
 CREATE OR REPLACE FUNCTION fr.bal_municipality_addresses(
     code IN VARCHAR,
-    only_certified_housenumbers IN BOOLEAN DEFAULT TRUE,
+    force IN BOOLEAN DEFAULT FALSE,         -- force to redo last request
+    auth_only IN BOOLEAN DEFAULT TRUE,      -- w/ authed addresses only
     q OUT TEXT
 )
 AS
 $func$
 DECLARE
-    _query_hn TEXT;
+    _query_auth TEXT;
 BEGIN
-    IF only_certified_housenumbers THEN
-        _query_hn := '
+    IF auth_only THEN
+        _query_auth := '
             AND
             s.housenumbers_auth > 0
         ';
@@ -63,7 +64,7 @@ BEGIN
 
     /*
      * remember:
-     * only authed housenumbers are stored, so no condition (only for street)
+     * only 'authed' housenumbers are stored, so no condition (only for street)
      */
     q := CONCAT(
         '
@@ -101,12 +102,18 @@ BEGIN
                 m.code = ''', bal_municipality_addresses.code, '''
                 AND
                 n.number != ''0''
+        ',
+        CASE WHEN NOT force THEN
+            '
                 AND
                 (
                     (am.is_matched AND n.last_update = lu.last_update)
                     OR
                     NOT am.is_matched
                 )
+            '
+        END,
+        '
             UNION
             SELECT
                 s.code,
@@ -128,14 +135,19 @@ BEGIN
                     CROSS JOIN last_update lu
             WHERE
                 m.code = ''', bal_municipality_addresses.code, '''
+        ',
+        CASE WHEN NOT force THEN
+            '
                 AND
                 (
                     (am.is_matched AND s.last_update = lu.last_update)
                     OR
                     NOT am.is_matched
                 )
-            ', _query_hn,
             '
+        END,
+        _query_auth,
+        '
         ) t
         '
     );

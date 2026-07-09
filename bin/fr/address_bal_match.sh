@@ -226,6 +226,7 @@ pow_argv \
         parallel:Effectuer les traitements en parallèle;
         parallel_chunk:Quantité de partage des données à traiter;
         parallel_jobs:Nombre de traitements en parallèle;
+        auth_only:Extraire seulement les adresses certifiées;
         dry_run:Simuler le traitement;
         print_only:Pas de traitement, mais affichage des prochaines communes à traiter;
         clean:Effectuer la purge des fichiers temporaires;
@@ -241,6 +242,7 @@ pow_argv \
         fix:MATCH_AGAIN_ROWID|MATCH_CLEAN;
         progress:yes|no;
         parallel:yes|no;
+        auth_only:yes|no;
         dry_run:yes|no;
         print_only:yes|no;
         clean:yes|no;
@@ -256,6 +258,7 @@ pow_argv \
         parallel:no;
         parallel_chunk:5;
         parallel_jobs:5;
+        auth_only:yes;
         dry_run:no;
         print_only:no;
         clean:yes;
@@ -263,7 +266,7 @@ pow_argv \
     ' \
     --args_p '
         reset:no;
-        tag:select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,dry_run@bool,print_only@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,limit@int,parallel_chunk@int,parallel_jobs@int,fix@0N
+        tag:select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,dry_run@bool,auth_only@bool,print_only@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,limit@int,parallel_chunk@int,parallel_jobs@int,fix@0N
     ' \
     --pow_argv bal_vars "$@" || exit $?
 
@@ -308,7 +311,13 @@ set_env --schema_name fr &&
 {
     execute_query \
         --name BAL_ADDRESSES \
-        --query "SELECT q FROM fr.bal_municipality_addresses(code => 'XXXXX')" \
+        --query "
+            SELECT q FROM fr.bal_municipality_addresses(
+                code => 'XXXXX',
+                force => ('${bal_vars[FORCE]}' = 'yes'),
+                auth_only => ('${bal_vars[AUTH_ONLY]}' = 'yes')
+            )
+        " \
         --return bal_vars[QUERY_ADDRESSES] &&
     case "${bal_vars[MUNICIPALITY_CODE]}" in
     ALL)

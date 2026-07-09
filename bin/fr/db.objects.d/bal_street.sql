@@ -43,6 +43,8 @@ BEGIN
     -- uniq ID, code
     CREATE UNIQUE INDEX IF NOT EXISTS iux_bal_street_id ON fr.bal_street (id);
     CREATE UNIQUE INDEX IF NOT EXISTS iux_bal_street_code ON fr.bal_street (code);
+    -- join w/ bal_municipality
+    CREATE INDEX IF NOT EXISTS ix_bal_street_id_municipality ON fr.bal_street (id_municipality);
 END
 $proc$ LANGUAGE plpgsql;
 
