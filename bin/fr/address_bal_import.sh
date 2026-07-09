@@ -109,7 +109,21 @@ bal_get_counters() {
         --pow_argv _opts "$@" || return $?
 
     local -n _value_ref=${_opts[VALUE]}
+    local _m _s _n
 
+    _sum_counters() {
+        local _level=$1
+        local -n _sum_ref=$2
+
+        _sum_ref=0
+        _sum_ref=$((_sum_ref + bal_vars[DELTA_${_level}_ADD]))
+        _sum_ref=$((_sum_ref + bal_vars[DELTA_${_level}_DEL]))
+        _sum_ref=$((_sum_ref + bal_vars[DELTA_${_level}_UPD]))
+
+        return $SUCCESS_CODE
+    }
+
+    _value_ref=''
     case "${_opts[USAGE]}" in
     NROWS)
         bal_set_rows \
@@ -120,10 +134,27 @@ bal_get_counters() {
     ATTRIBUTES)
         case "${_opts[LEVEL]}" in
         SUMMARY)
-            _value_ref='{"integration":{"delta":{"municipality":{"add":'${bal_vars[DELTA_M_ADD]:-0}',"del":'${bal_vars[DELTA_M_DEL]:-0}',"upd":'${bal_vars[DELTA_M_UPD]:-0}'}}}}'
+            _sum_counters M _m
+            [ $_m -gt 0 ] && {
+                _value_ref='{"integration":{"delta":{"municipality":{"add":'${bal_vars[DELTA_M_ADD]:-0}',"del":'${bal_vars[DELTA_M_DEL]:-0}',"upd":'${bal_vars[DELTA_M_UPD]:-0}'}}}}'
+            }
             ;;
         *)
-            _value_ref='{"integration":{"areas":'${bal_vars[AREAS_OLD_MUNICIPALITY]}',"streets":'${bal_vars[STREETS]}',"housenumbers":'${bal_vars[HOUSENUMBERS]}',"levels":"'${bal_vars[LEVELS]}'","delta":{"street":{"add":'${bal_vars[DELTA_S_ADD]}',"del":'${bal_vars[DELTA_S_DEL]}',"upd":'${bal_vars[DELTA_S_UPD]}'},"housenumber":{"add":'${bal_vars[DELTA_N_ADD]}',"del":'${bal_vars[DELTA_N_DEL]}',"upd":'${bal_vars[DELTA_N_UPD]}'}}}}'
+            _sum_counters S _s
+            _sum_counters N _n
+            _value_ref='{"integration":{"areas":'${bal_vars[AREAS_OLD_MUNICIPALITY]}',"streets":'${bal_vars[STREETS]}',"housenumbers":'${bal_vars[HOUSENUMBERS]}',"levels":"'${bal_vars[LEVELS]}'"'
+            [[ $_s -gt 0 || $_n -gt 0 ]] && {
+                _value_ref+=',"delta":{'
+                [ $_s -gt 0 ] && {
+                    _value_ref+='"street":{"add":'${bal_vars[DELTA_S_ADD]}',"del":'${bal_vars[DELTA_S_DEL]}',"upd":'${bal_vars[DELTA_S_UPD]}'}'
+                }
+                [ $_n -gt 0 ] && {
+                    [ $_s -gt 0 ] && _value_ref+=','
+                    _value_ref+='"housenumber":{"add":'${bal_vars[DELTA_N_ADD]}',"del":'${bal_vars[DELTA_N_DEL]}',"upd":'${bal_vars[DELTA_N_UPD]}'}'
+                }
+                _value_ref+='}'
+            }
+            _value_ref+='}}'
             ;;
         esac
         ;;
