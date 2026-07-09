@@ -151,7 +151,7 @@ bal_match_municipality() {
 
     # update request (query), if fix MATCH_AGAIN_ROWID
     {
-        [ "${bal_vars[FIX]}" != MATCH_AGAIN_ROWID ] || {
+        [[ "${bal_vars[FIX]}" != MATCH_AGAIN_ROWID && "${bal_vars[FORCE]}" = no ]] || {
             bal_update_query \
                 --code ${_opts[CODE]} \
                 --history_id ${_opts[HISTORY_ID]} \
@@ -427,7 +427,7 @@ else
                 echo "$bal_query" > "$bal_tmpdir/BAL_${bal_insee}.sql" &&
                 # update request (query), if fix MATCH_AGAIN
                 {
-                    [ "${bal_vars[FIX]}" != MATCH_AGAIN_ROWID ] || {
+                    [[ "${bal_vars[FIX]}" != MATCH_AGAIN_ROWID && "${bal_vars[FORCE]}" = no ]] || {
                         bal_update_query \
                             --code $bal_insee \
                             --history_id $bal_io_id \

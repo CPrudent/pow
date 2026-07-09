@@ -418,20 +418,27 @@ bal_list_municipalities() {
             "
             }
             ;;
-        # only already downloaded, but not matched yet (w/ at least 1 street)
-        #+ if fix (already matched) do it again
+        # only already downloaded, but not matched yet (for this new download)
+        #+ if [ fix OR force ] do it again (already matched)
         MATCH)
             _query+="
                 h.date_data_end IS NOT NULL
                 AND
                 h.attributes IS JSON OBJECT
                 AND
-                'match' $([ -n "${bal_vars[FIX]}" ] || echo NOT) IN (
+                'match' $([[ -n "${bal_vars[FIX]}" || "${bal_vars[FORCE]}" = yes ]] || echo NOT) IN (
                     SELECT (JSON_ARRAY_ELEMENTS((h.attributes::JSON)->'usecases'))->>'name'
                 )
-                AND
-                ((h.attributes::JSON)->'integration'->>'housenumbers')::INT > 0
-            "
+            " &&
+            {
+                [ "${bal_vars[AUTH_ONLY]}" = no ] || {
+                    # only w/ authed addresses
+                    _query+="
+                        AND
+                        ((h.attributes::JSON)->'integration'->>'housenumbers')::INT > 0
+                    "
+                }
+            } &&
             # not already cleaned
             case "${bal_vars[FIX]}" in
             MATCH_CLEAN)
