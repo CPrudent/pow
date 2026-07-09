@@ -15,20 +15,26 @@ BEGIN
     FOR _list IN (
         WITH
         io AS (
-            SELECT name, id FROM io_list l WHERE EXISTS(
+            SELECT name, id,
+                -- root IO as FR-<IO-NAME>
+                CASE WHEN CARDINALITY(STRING_TO_ARRAY(l.name, '-')) = 2 THEN true ELSE false END root
+            FROM io_list l
+            WHERE EXISTS(
                 SELECT 1 FROM io_relation r WHERE r.id = l.id
             )
         ),
         relation AS (
             SELECT
                 io.name,
-                l2.name depends
+                l2.name depends,
+                io.root
             FROM
                 io
                     JOIN io_relation r ON io.id = r.id
                     JOIN io_list l2 ON r.id_child = l2.id
         )
-        SELECT name, ARRAY_AGG(depends) depends FROM relation GROUP BY name ORDER BY 1
+        SELECT name, ARRAY_AGG(depends) depends, FIRST(root) root FROM relation
+        GROUP BY name ORDER BY 1
     )
     LOOP
         -- to do?
@@ -51,14 +57,20 @@ BEGIN
             END IF;
         END LOOP;
 
-        -- w/ _attributes ?
+        -- w/ attributes ?
         IF _attributes IS NULL THEN CONTINUE; END IF;
 
         -- apply on db ?
         IF NOT simulation THEN
             IF reset THEN
                 -- reset all
-                UPDATE io_history SET attributes = NULL WHERE name = _list.name;
+                IF _list.root THEN
+                    UPDATE io_history SET attributes = NULL
+                    WHERE name ~ CONCAT('^', _list.name)
+                    ;
+                ELSE
+                    UPDATE io_history SET attributes = NULL WHERE name = _list.name;
+                END IF;
             END IF;
             -- update last one
             UPDATE io_history SET
