@@ -39,14 +39,10 @@ BEGIN
 END
 $proc$ LANGUAGE plpgsql;
 
--- oldies: delete obsolete addresses, dealing w/ dependencies
-SELECT public.drop_all_functions_if_exists('fr', 'bal_delete_obsolete_addresses');
-
 -- get query to select addresses of a municipality (option to limit only certified ones)
 SELECT public.drop_all_functions_if_exists('fr', 'bal_municipality_addresses');
 CREATE OR REPLACE FUNCTION fr.bal_municipality_addresses(
-    code IN VARCHAR,
-    force IN BOOLEAN DEFAULT FALSE,         -- force to redo last request
+    history_id IN INT DEFAULT 0,            -- last BAL IO for the municipality
     auth_only IN BOOLEAN DEFAULT TRUE,      -- w/ authed addresses only
     q OUT TEXT
 )
@@ -69,11 +65,16 @@ BEGIN
     q := CONCAT(
         '
         WITH
-        already_matched(is_matched) AS (
-            VALUES(fr.bal_is_matched(''', bal_municipality_addresses.code, '''))
-        ),
-        last_update(last_update) AS (
-            VALUES(fr.bal_get_last_update(''', bal_municipality_addresses.code, '''))
+        parameters(code, date_begin, date_end) AS (
+            SELECT
+                get_municipality_from_io_name(name),
+                date_data_begin,
+                date_data_end
+            FROM
+                io_history
+            WHERE
+                id = ', history_id,
+        '
         )
         SELECT
             ROW_NUMBER() OVER (ORDER BY t.code) rowid,
@@ -96,24 +97,13 @@ BEGIN
                 fr.bal_housenumber n
                     JOIN fr.bal_street s ON s.id = n.id_street
                     JOIN fr.bal_municipality m ON m.id = s.id_municipality
-                    CROSS JOIN already_matched am
-                    CROSS JOIN last_update lu
+                    CROSS JOIN parameters p
             WHERE
-                m.code = ''', bal_municipality_addresses.code, '''
+                m.code = p.code
                 AND
                 n.number != ''0''
-        ',
-        CASE WHEN NOT force THEN
-            '
                 AND
-                (
-                    (am.is_matched AND n.last_update = lu.last_update)
-                    OR
-                    NOT am.is_matched
-                )
-            '
-        END,
-        '
+                n.last_update BETWEEN p.date_begin AND p.date_end
             UNION
             SELECT
                 s.code,
@@ -131,22 +121,12 @@ BEGIN
             FROM
                 fr.bal_street s
                     JOIN fr.bal_municipality m ON m.id = s.id_municipality
-                    CROSS JOIN already_matched am
-                    CROSS JOIN last_update lu
+                    CROSS JOIN parameters p
             WHERE
-                m.code = ''', bal_municipality_addresses.code, '''
-        ',
-        CASE WHEN NOT force THEN
-            '
+                m.code = p.code
                 AND
-                (
-                    (am.is_matched AND s.last_update = lu.last_update)
-                    OR
-                    NOT am.is_matched
-                )
-            '
-        END,
-        _query_auth,
+                s.last_update BETWEEN p.date_begin AND p.date_end
+        ', _query_auth,
         '
         ) t
         '

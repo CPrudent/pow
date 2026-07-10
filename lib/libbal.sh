@@ -206,15 +206,24 @@ bal_list_municipalities() {
         --pow_argv _opts "$@" || return $?
 
     local -n _list_ref=${_opts[LIST]}
-    local _query _list _date_before_fix _column
+    local _query _list _date_before_fix _column _criteria
 
     if ([ "${bal_vars[USECASE]}" = MATCH ] && [ "${bal_vars[PARALLEL]}" = yes ]); then
         _column="CONCAT_WS(':', c.municipality, h.id)"
     else
         _column=c.municipality
     fi
-    case "${bal_vars[FIX]:-${bal_vars[SELECT_CRITERIA]}}" in
-    POPULATION|MATCH_CLEAN)
+    case "${bal_vars[FIX]}" in
+    MATCH_CLEAN)
+        _criteria=''
+        _date_before_fix='2026-07-01'
+        ;;
+    *)
+        _criteria=${bal_vars[FIX]}
+        ;;
+    esac
+    case "${_criteria:-${bal_vars[SELECT_CRITERIA]}}" in
+    POPULATION)
         _query="
             SELECT
                 codgeo municipality,
@@ -445,6 +454,16 @@ bal_list_municipalities() {
                 _query+="
                     AND
                     POSITION('${bal_vars[FIX]}' IN h.attributes) = 0
+                    AND
+                    NOT EXISTS(
+                        SELECT 1
+                        FROM
+                            fr.address_match_request mr
+                        WHERE
+                            mr.source_name = CONCAT('BAL_', h.municipality)
+                            AND
+                            mr.date_create > '$_date_before_fix'::DATE
+                    )
                 "
                 ;;
             esac

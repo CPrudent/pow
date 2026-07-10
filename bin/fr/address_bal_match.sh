@@ -146,7 +146,7 @@ bal_match_municipality() {
         ' \
         --pow_argv _opts "$@" || return $?
 
-    local _query=${bal_vars[QUERY_ADDRESSES]//XXXXX/${_opts[CODE]}}
+    local _query=${bal_vars[QUERY_ADDRESSES]/id = 0/id = ${_opts[HISTORY_ID]}}
     local _request_id=0
 
     # update request (query), if fix MATCH_AGAIN_ROWID
@@ -309,12 +309,11 @@ set_env --schema_name fr &&
     }
 } &&
 {
+    # extract generic query (w/ id = 0, as history_id)
     execute_query \
         --name BAL_ADDRESSES \
         --query "
             SELECT q FROM fr.bal_municipality_addresses(
-                code => 'XXXXX',
-                force => ('${bal_vars[FORCE]}' = 'yes'),
                 auth_only => ('${bal_vars[AUTH_ONLY]}' = 'yes')
             )
         " \
@@ -415,8 +414,8 @@ else
             for bal_item in ${bal_codes2[@]}; do
                 bal_insee=${bal_item%%:*}
                 bal_io_id=${bal_item#*:}
-                bal_query=${bal_vars[QUERY_ADDRESSES]//XXXXX/${bal_insee}}
-
+                # update query w/ current history ID
+                bal_query=${bal_vars[QUERY_ADDRESSES]/id = 0/id = ${bal_io_id}}
                 {
                     [[ ${_debug_steps[query]:-1} -ne 0 ]] || {
                         echo "tmpdir=($bal_tmpdir)"
