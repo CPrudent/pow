@@ -109,16 +109,27 @@ bal_get_counters() {
         --pow_argv _opts "$@" || return $?
 
     local -n _value_ref=${_opts[VALUE]}
-    local _m _s _n
+    local _m_sum _s_sum _n_sum _m_json _s_json _n_json
 
-    _sum_counters() {
+    # build JSON changes (+, -, !) w/ count for each, and sum of all
+    _build_json() {
         local _level=$1
         local -n _sum_ref=$2
+        local -n _json_ref=$3
+        local _c
 
         _sum_ref=0
-        _sum_ref=$((_sum_ref + bal_vars[DELTA_${_level}_ADD]))
-        _sum_ref=$((_sum_ref + bal_vars[DELTA_${_level}_DEL]))
-        _sum_ref=$((_sum_ref + bal_vars[DELTA_${_level}_UPD]))
+        _json_ref=''
+        for _c in ADD DEL UPD; do
+            # sum all
+            _sum_ref=$((_sum_ref + bal_vars[DELTA_${_level}_${_c}]))
+            # put only > 0 in JSON
+            [ ${bal_vars[DELTA_${_level}_${_c}]} -gt 0 ] && {
+                [ ${#_json_ref} -gt 0 ] && _json_ref+=','
+                _json_ref+='"'${_c,,}'"':${bal_vars[DELTA_${_level}_${_c}]}
+            }
+        done
+        [ ${#_json_ref} -gt 0 ] && _json_ref='{'${_json_ref}'}'
 
         return $SUCCESS_CODE
     }
@@ -134,23 +145,23 @@ bal_get_counters() {
     ATTRIBUTES)
         case "${_opts[LEVEL]}" in
         SUMMARY)
-            _sum_counters M _m
-            [ $_m -gt 0 ] && {
-                _value_ref='{"integration":{"delta":{"municipality":{"add":'${bal_vars[DELTA_M_ADD]:-0}',"del":'${bal_vars[DELTA_M_DEL]:-0}',"upd":'${bal_vars[DELTA_M_UPD]:-0}'}}}}'
+            _build_json M _m_sum _m_json
+            [ $_m_sum -gt 0 ] && {
+                _value_ref='{"integration":{"delta":{"municipality":'${_m_json}'}}}'
             }
             ;;
         *)
-            _sum_counters S _s
-            _sum_counters N _n
+            _build_json S _s_sum _s_json
+            _build_json N _n_sum _n_json
             _value_ref='{"integration":{"areas":'${bal_vars[AREAS_OLD_MUNICIPALITY]}',"streets":'${bal_vars[STREETS]}',"housenumbers":'${bal_vars[HOUSENUMBERS]}',"levels":"'${bal_vars[LEVELS]}'"'
-            [[ $_s -gt 0 || $_n -gt 0 ]] && {
+            [[ ${_s_sum} -gt 0 || ${_n_sum} -gt 0 ]] && {
                 _value_ref+=',"delta":{'
-                [ $_s -gt 0 ] && {
-                    _value_ref+='"street":{"add":'${bal_vars[DELTA_S_ADD]}',"del":'${bal_vars[DELTA_S_DEL]}',"upd":'${bal_vars[DELTA_S_UPD]}'}'
+                [ ${_s_sum} -gt 0 ] && {
+                    _value_ref+='"street":'$_s_json
                 }
-                [ $_n -gt 0 ] && {
-                    [ $_s -gt 0 ] && _value_ref+=','
-                    _value_ref+='"housenumber":{"add":'${bal_vars[DELTA_N_ADD]}',"del":'${bal_vars[DELTA_N_DEL]}',"upd":'${bal_vars[DELTA_N_UPD]}'}'
+                [ ${_n_sum} -gt 0 ] && {
+                    [ ${_s_sum} -gt 0 ] && _value_ref+=','
+                    _value_ref+='"housenumber":'$_n_json
                 }
                 _value_ref+='}'
             }
