@@ -124,6 +124,7 @@ bal_get_counters() {
             # sum all
             _sum_ref=$((_sum_ref + bal_vars[DELTA_${_level}_${_c}]))
             # put only > 0 in JSON
+            [ -v bal_vars[DELTA_${_level}_${_c}] ] &&
             [ ${bal_vars[DELTA_${_level}_${_c}]} -gt 0 ] && {
                 [ ${#_json_ref} -gt 0 ] && _json_ref+=','
                 _json_ref+='"'${_c,,}'"':${bal_vars[DELTA_${_level}_${_c}]}
