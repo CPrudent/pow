@@ -76,11 +76,10 @@ bal_set_rows() {
     local -n _total_ref=${_opts[TOTAL]}
 
     _total_ref=0
-    (is_yes --var bal_vars[LEVEL_STREET]) && {
+    (is_yes --var bal_vars[LEVEL_MUNICIPALITY]) && {
         _total_ref=$((_total_ref + _opts[STREETS]))
     }
-    (is_yes --var bal_vars[LEVEL_HOUSENUMBER]) &&
-    [[ ${bal_vars[AREAS_OLD_MUNICIPALITY]} -gt 0 ]] && {
+    is_yes --var bal_vars[LEVEL_STREET] && {
         _total_ref=$((_total_ref + _opts[HOUSENUMBERS]))
     }
 
@@ -397,17 +396,19 @@ bal_import_file() {
         ' \
         --pow_argv _opts "$@" || return $?
 
-    local _try _ext _rc _file="${_opts[SOURCE]}/${bal_vars[FILE_NAME]}" _tmpfile _sz
+    local _try _ext _rc _file _tmpfile _sz
 
-    for ((_try=0; _try<2; _try++)); do
+    # some fix(es) before try to load JSON
+    for ((_try=0; _try<9; _try++)); do
+        _file="${_opts[SOURCE]}/${bal_vars[FILE_NAME]}"
         case $_try in
         0)
-            # normal case (no error yet)
+            # normal case, try to load w/o fix (no error yet)
             # null command, to fill this case
             :
             ;;
         1)
-            # error: double quote inside value ?
+            # check file
             _ext=$(get_file_extension --file_path "$_file")
             [ "$_ext" != json ] && return $ERROR_CODE
             # empty file ?
@@ -417,14 +418,27 @@ bal_import_file() {
                 return $ERROR_CODE
             }
             get_tmp_file --tmpfile _tmpfile --tmpext json
+            continue
+            ;;
+        2)
+            # error: double quote inside value ?
             grep --perl-regexp ':"[^"]*"[^"]+"[^"]*",?' $_file > /dev/null
-            # no : other error (not catched yet)
-            [[ $? -eq 0 ]] || return $ERROR_CODE
+            # no : other error
+            [[ $? -eq 0 ]] || continue
             # need to protect \"
             # https://stackoverflow.com/questions/15637429/how-to-escape-double-quotes-in-json
             sed --expression 's/\\"/\\\\\\"/g' < $_file > $_tmpfile
             _file=$_tmpfile
             log_info "Chargement (${bal_vars[FILE_NAME]}) : double apostrophe"
+            ;;
+        3)
+            # error: \n inside string!
+            grep --perl-regexp '\\n' $_file > /dev/null
+            # no : other error
+            [[ $? -eq 0 ]] || continue
+            sed --expression 's/\\n/ /g' < $_file > $_tmpfile
+            _file=$_tmpfile
+            log_info "Chargement (${bal_vars[FILE_NAME]}) : sans \n"
             ;;
         *)
             # error: other, not catched
