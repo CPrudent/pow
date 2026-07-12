@@ -664,7 +664,7 @@ bal_load_addresses() {
                                 declare -p _addresses _deletes
                                 [[ ${_debug_bps[del]} -eq 0 ]] && read
                             }
-                            log_info "Liste Adresse(s) obsolètes (${_deletes[@]})" &&
+                            log_info "Purge Adresse(s) obsolètes (${#_deletes[@]})" &&
                             # NOTE choice is to memorize all positions first...
                             for _code in "${_deletes[@]}"; do
                                 {
@@ -1125,11 +1125,13 @@ bal_load() {
                 ([ "${_opts[LEVEL]}" = MUNICIPALITY ] &&
                 [[ ${bal_vars[PROGRESS_CURRENT]} -lt ${bal_vars[PROGRESS_TOTAL]} ]]) || {
                     [ $_load_data -eq 0 ] || {
-                        echo 'VACUUM '$_vacuum_info
-                        vacuum \
-                            --schema_name fr \
-                            --table_name "${_context[VACUUM]}" \
-                            --mode ANALYZE
+                        [ ${bal_vars[PROGRESS_CURRENT]} -lt 100 ] || {
+                            echo 'VACUUM '$_vacuum_info
+                            vacuum \
+                                --schema_name fr \
+                                --table_name "${_context[VACUUM]}" \
+                                --mode ANALYZE
+                        }
                     }
                 }
             }
@@ -1591,15 +1593,19 @@ done
 
 [ "${bal_vars[STOP_TIME]}" != 0 ] && {
     [[ ${bal_vars[PROGRESS_CURRENT]} -eq ${bal_vars[PROGRESS_TOTAL]} ]] || {
-        echo 'VACUUM Adresses'
-        vacuum \
-            --schema_name fr \
-            --table_name 'bal_street,bal_housenumber' \
-            --mode ANALYZE
+        [ -n "${bal_vars[PROGRESS_CURRENT]}" ] &&
+        [ ${bal_vars[PROGRESS_CURRENT]} -gt 100 ] && {
+            echo 'VACUUM Adresses'
+            vacuum \
+                --schema_name fr \
+                --table_name 'bal_street,bal_housenumber' \
+                --mode ANALYZE
+        }
     }
 }
 
-[ "${bal_vars[PROGRESS_CURRENT]}" -gt 100 ] && {
+[ -n "${bal_vars[PROGRESS_CURRENT]}" ] &&
+[ ${bal_vars[PROGRESS_CURRENT]} -gt 100 ] && {
     set_env --schema_name public &&
     echo 'VACUUM Historique'
     vacuum \
