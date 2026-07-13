@@ -396,14 +396,14 @@ bal_import_file() {
         ' \
         --pow_argv _opts "$@" || return $?
 
-    local _try _ext _rc _file _tmpfile _sz
+    local _try _ext _rc _file="${_opts[SOURCE]}/${bal_vars[FILE_NAME]}" _tmpfile _sz
+    local -a _tmpfiles
 
-    # some fix(es) before try to load JSON
+    # some cumulative fix(es) before tries to load JSON, first try w/o any
     for ((_try=0; _try<9; _try++)); do
-        _file="${_opts[SOURCE]}/${bal_vars[FILE_NAME]}"
         case $_try in
         0)
-            # normal case, try to load w/o fix (no error yet)
+            # try to load w/o fix (no error yet)
             # null command, to fill this case
             :
             ;;
@@ -417,32 +417,36 @@ bal_import_file() {
                 log_info "Fichier ${bal_vars[FILE_NAME]} vide!"
                 return $ERROR_CODE
             }
-            get_tmp_file --tmpfile _tmpfile --tmpext json
             continue
             ;;
         2)
             # error: double quote inside value ?
-            grep --perl-regexp ':"[^"]*"[^"]+"[^"]*",?' $_file > /dev/null
+            grep --silent --perl-regexp ':"[^"]*"[^"]+"[^"]*",?' $_file
             # no : other error
             [[ $? -eq 0 ]] || continue
+            get_tmp_file --tmpfile _tmpfile --tmpext json
+            _tmpfiles+=($_tmpfile)
             # need to protect \"
             # https://stackoverflow.com/questions/15637429/how-to-escape-double-quotes-in-json
-            sed --expression 's/\\"/\\\\\\"/g' < $_file > $_tmpfile
-            _file=$_tmpfile
+            sed --expression 's/\\"/\\\\\\"/g' < $_file > ${_tmpfiles[-1]}
+            _file=${_tmpfiles[-1]}
             log_info "Chargement (${bal_vars[FILE_NAME]}) : double apostrophe"
             ;;
         3)
             # error: \n inside string!
-            grep --perl-regexp '\\n' $_file > /dev/null
+            grep --silent --perl-regexp '\\n' $_file
             # no : other error
             [[ $? -eq 0 ]] || continue
-            sed --expression 's/\\n/ /g' < $_file > $_tmpfile
-            _file=$_tmpfile
+            get_tmp_file --tmpfile _tmpfile --tmpext json
+            _tmpfiles+=($_tmpfile)
+            # replace by space
+            sed --expression 's/\\n/ /g' < $_file > ${_tmpfiles[-1]}
+            _file=${_tmpfiles[-1]}
             log_info "Chargement (${bal_vars[FILE_NAME]}) : sans \n"
             ;;
         *)
             # error: other, not catched
-            [ -n "$_tmpfile" ] && rm $_tmpfile
+            [[ ${#_tmpfiles[@]} -gt 0 ]] && rm "${_tmpfiles[*]}"
             log_error "Chargement (${bal_vars[FILE_NAME]}) : erreur non gérée!"
             return $ERROR_CODE
             ;;
@@ -456,7 +460,7 @@ bal_import_file() {
             --load_mode ${_opts[MODE]}
         [[ $? -eq 0 ]] && break
     done
-    [ -n "$_tmpfile" ] && rm $_tmpfile
+    [[ ${#_tmpfiles[@]} -gt 0 ]] && rm "${_tmpfiles[*]}"
 
     return $SUCCESS_CODE
 }
