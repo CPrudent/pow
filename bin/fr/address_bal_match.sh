@@ -212,6 +212,7 @@ declare -A bal_vars=(
     [PROGRESS_TOTAL]=1
     [PROGRESS_SIZE]=5
     [QUERY_ADDRESSES]=
+    [REQUEST_NEW]=yes
 ) &&
 pow_argv \
     --args_n '
@@ -309,6 +310,7 @@ set_env --schema_name fr &&
     }
 } &&
 {
+    _all=0
     # extract generic query (w/ id = 0, as history_id)
     execute_query \
         --name BAL_ADDRESSES \
@@ -320,15 +322,22 @@ set_env --schema_name fr &&
         --return bal_vars[QUERY_ADDRESSES] &&
     case "${bal_vars[MUNICIPALITY_CODE]}" in
     ALL)
+        _all=1
         bal_list_municipalities --list bal_codes
         ;;
     *)
-        bal_check_municipality --code "${bal_vars[MUNICIPALITY_CODE]}" &&
-        bal_codes[0]=${bal_vars[MUNICIPALITY_CODE]}
+        # from file ?
+        [ -s "${bal_vars[MUNICIPALITY]}" ] && {
+            readarray -t bal_codes < "${bal_vars[MUNICIPALITY]}"
+        } || {
+            bal_check_municipality --code "${bal_vars[MUNICIPALITY_CODE]}" &&
+            bal_codes[0]=${bal_vars[MUNICIPALITY_CODE]}
+        }
         ;;
     esac
 } || exit $ERROR_CODE
 
+[ $_all -eq 1 ] &&
 [ ${#bal_codes[@]} -eq 0 ] && {
     log_info "Rapprochement BAL déjà à jour!"
     exit $SUCCESS_CODE
