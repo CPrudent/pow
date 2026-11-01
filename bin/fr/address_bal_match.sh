@@ -25,6 +25,54 @@
 
 source $POW_DIR_ROOT/lib/libbal.sh || exit $ERROR_CODE
 
+bal_get_history() {
+    local -A _opts &&
+    pow_argv \
+        --args_n '
+            code:Code Commune;
+            history:Historique de la commune;
+            count:Taille historique
+        ' \
+        --args_m '
+            code;history;count
+        ' \
+        --pow_argv _opts "$@" || return $?
+
+    local -n _history_ref=${_opts[HISTORY]}
+    local -n _count_ref=${_opts[COUNT]}
+    local _tmpfile _line
+    local -i _i=0 _j=0
+    local -a _array
+
+    get_tmp_file --tmpfile _tmpfile --tmpext sql &&
+    {
+        set -o noglob &&
+        execute_query \
+            --name "HISTORY_${_opts[CODE]}" \
+            --query "
+                SELECT * FROM fr.bal_municipality_history_match('${_opts[CODE]}')
+            " \
+            --output "$_tmpfile" &&
+        set +o noglob
+    } &&
+    {
+        while IFS= read -r _line; do
+            IFS='|' read -ra _array <<< "$_line"
+            # get id_history, dates (begin, end), and optionaly id_match
+            for ((_j=0; _j<4; _j++)); do
+                _history_ref[$_i,$_j]=${_array[$_j]}
+            done
+            ((_i++))
+        done < $_tmpfile
+        _count_ref=$_i
+    } &&
+    {
+        rm --force $_tmpfile
+    }
+
+    return $?
+}
+
 bal_update_query() {
     local -A _opts &&
     pow_argv \
@@ -99,7 +147,7 @@ bal_match_clean() {
 }
 
 # set history of given municipality
-bal_match_history() {
+bal_match_update_history() {
     local -A _opts &&
     pow_argv \
         --args_n '
@@ -176,7 +224,7 @@ bal_match_municipality() {
         bal_match_clean --code ${_opts[CODE]}
     } &&
     {
-        bal_match_history \
+        bal_match_update_history \
             --code ${_opts[CODE]} \
             --request_id $_request_id \
             --history_id ${_opts[HISTORY_ID]}
@@ -211,6 +259,7 @@ declare -A bal_vars=(
     [PROGRESS_CURRENT]=1
     [PROGRESS_TOTAL]=1
     [PROGRESS_SIZE]=5
+    [PROGRESS_EOL]='\r'
     [QUERY_ADDRESSES]=
     [REQUEST_NEW]=yes
 ) &&
@@ -228,8 +277,7 @@ pow_argv \
         parallel_chunk:Quantité de partage des données à traiter;
         parallel_jobs:Nombre de traitements en parallèle;
         auth_only:Extraire seulement les adresses certifiées;
-        dry_run:Simuler le traitement;
-        print_only:Pas de traitement, mais affichage des prochaines communes à traiter;
+        print:Affichage des communes à traiter;
         clean:Effectuer la purge des fichiers temporaires;
         verbose:Ajouter des détails sur les traitements
     ' \
@@ -244,8 +292,7 @@ pow_argv \
         progress:yes|no;
         parallel:yes|no;
         auth_only:yes|no;
-        dry_run:yes|no;
-        print_only:yes|no;
+        print:COUNT|ECHO|MATCH;
         clean:yes|no;
         verbose:yes|no
     ' \
@@ -260,14 +307,12 @@ pow_argv \
         parallel_chunk:5;
         parallel_jobs:5;
         auth_only:yes;
-        dry_run:no;
-        print_only:no;
         clean:yes;
         verbose:no
     ' \
     --args_p '
         reset:no;
-        tag:select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,dry_run@bool,auth_only@bool,print_only@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,limit@int,parallel_chunk@int,parallel_jobs@int,fix@0N
+        tag:select_criteria@1N,select_order:1N,fix@0N,levels@1N,force@bool,auth_only@bool,progress@bool,parallel@bool,clean@bool,verbose@bool,limit@int,parallel_chunk@int,parallel_jobs@int,fix@0N,print@0N
     ' \
     --pow_argv bal_vars "$@" || exit $?
 
@@ -284,12 +329,15 @@ get_env_debug \
     [[ ${_debug_bps[argv]} -eq 0 ]] && read
 }
 
-# pas de mode parallèle
+# no parallel mode
 [ "${bal_vars[PARALLEL]}" = yes ] &&
-[ "${bal_vars[FIX]}" = MATCH_CLEAN ] && {
-    echo 'Mode parallel désactivé pour ce correctif'
+([ "${bal_vars[FIX]}" = MATCH_CLEAN ] || [ -n "${bal_vars[PRINT]}" ]) && {
+    echo 'Mode parallèle désactivé'
     bal_vars[PARALLEL]=no
-    bal_vars[PROGRESS]=no
+    #bal_vars[PROGRESS]=no
+
+    # no elaps time
+    [ -n "${bal_vars[PRINT]}" ] && bal_vars[PROGRESS_EOL]='\n'
 }
 
 bal_vars[MUNICIPALITY_CODE]=${bal_vars[MUNICIPALITY]^^}
@@ -300,6 +348,7 @@ declare -a bal_errors
 [ "${bal_vars[STOP_TIME]}" != 0 ] && [ ${bal_vars[LIMIT]} -gt 0 ] && bal_vars[LIMIT]=0
 # MATCH_CLEAN results
 declare -A bal_clean
+declare -A bal_history
 set_env --schema_name fr &&
 {
     [ "${bal_vars[PROGRESS]}" = no ] || set_log_echo no
@@ -326,9 +375,9 @@ set_env --schema_name fr &&
         bal_list_municipalities --list bal_codes
         ;;
     *)
-        # from file ?
+        # from file (code contains a filename) ?
         [ -s "${bal_vars[MUNICIPALITY]}" ] && {
-            readarray -t bal_codes < "${bal_vars[MUNICIPALITY]}"
+            readarray -t -n ${bal_vars[LIMIT]} bal_codes < "${bal_vars[MUNICIPALITY]}"
         } || {
             bal_check_municipality --code "${bal_vars[MUNICIPALITY_CODE]}" &&
             bal_codes[0]=${bal_vars[MUNICIPALITY_CODE]}
@@ -343,7 +392,8 @@ set_env --schema_name fr &&
     exit $SUCCESS_CODE
 }
 
-[ "${bal_vars[PRINT_ONLY]}" = yes ] && {
+# only print work to do, and exit
+[ "${bal_vars[PRINT]}" = COUNT ] && {
     case "${bal_vars[FIX]}" in
     MATCH_AGAIN_ROWID)
         # last codes
@@ -360,6 +410,7 @@ set_env --schema_name fr &&
 
 bal_error=0
 bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
+bal_vars[PROGRESS_SIZE]=${#bal_vars[PROGRESS_TOTAL]}
 [ "${bal_vars[FIX]}" = MATCH_AGAIN_ROWID ] && bal_vars[FORCE]=yes
 # needing to run again same request
 [ "${bal_vars[FORCE]}" = yes ] && bal_vars[REQUEST_NEW]=no
@@ -383,14 +434,47 @@ if [ "${bal_vars[PARALLEL]}" = no ]; then
         }
         bal_vars[MUNICIPALITY_CODE]=${bal_codes[$bal_i]}
 
-        [ "${bal_vars[DRY_RUN]}" = yes ] || {
+        [ "${bal_vars[PROGRESS]}" = no ] || {
+            print_progress \
+                BEGIN \
+                "INSEE ${bal_vars[MUNICIPALITY_CODE]}" \
+                ${bal_vars[PROGRESS_GROUPS]} \
+                ${bal_vars[PROGRESS_SIZE]} \
+                ${bal_vars[PROGRESS_CURRENT]} \
+                ${bal_vars[PROGRESS_TOTAL]} \
+                ${bal_vars[PROGRESS_EOL]}
+        }
+
+        case "${bal_vars[PRINT]}" in
+        ECHO)
+            :
+            ;;
+        MATCH)
+            bal_history=()
+            bal_get_history \
+                --code ${bal_vars[MUNICIPALITY_CODE]} \
+                --history bal_history \
+                --count _count &&
+            #declare -p bal_history
+            for ((bal_j=0; bal_j<${_count}; bal_j++)); do
+                printf "\t\t%8s\t%s\t%s\t%8s\n" \
+                    "${bal_history[${bal_j},0]}" \
+                    "${bal_history[${bal_j},1]}" \
+                    "${bal_history[${bal_j},2]}" \
+                    "${bal_history[${bal_j},3]}"
+            done
+            ;;
+        *)
+            echo 'OOH, unwanted yet!'; read
+
             bal_match_municipality \
                 --code ${bal_vars[MUNICIPALITY_CODE]} \
                 --history_id ${bal_vars[IO_LAST_ID]} || ((bal_error++))
 
             [ "${bal_vars[PROGRESS]}" = no ] ||
                 set_progress --start bal_vars[PROGRESS_START]
-        }
+            ;;
+        esac
     done
 else
     bal_tmpdir="$POW_DIR_TMP/$$"
@@ -418,7 +502,7 @@ else
             echo "INSEE ${bal_codes2[@]}"
         }
 
-        [ "${bal_vars[DRY_RUN]}" = yes ] || {
+        [ -n "${bal_vars[PRINT]}" ] || {
             set -o noglob
             for bal_item in ${bal_codes2[@]}; do
                 bal_insee=${bal_item%%:*}
@@ -523,7 +607,7 @@ else
                             }
                         } &&
                         bal_match_clean --code $bal_insee &&
-                        bal_match_history \
+                        bal_match_update_history \
                             --code $bal_insee \
                             --request_id $bal_req_id \
                             --history_id $bal_io_id
@@ -539,14 +623,14 @@ else
         [ "${bal_vars[PROGRESS]}" = no ] ||
             set_progress --start bal_vars[PROGRESS_START]
     done
-    [ "${bal_vars[DRY_RUN]}" = yes ] || {
+    [ -n "${bal_vars[PRINT]}" ] || {
         [[ $bal_error -ne 0 ]] || {
             [ "${bal_vars[CLEAN]}" = no ] || rm -rf "$bal_tmpdir"
         }
     }
 fi
 
-[ "${bal_vars[DRY_RUN]}" = no ] &&
+[ -z "${bal_vars[PRINT]}" ] &&
 [ "${bal_vars[PROGRESS_CURRENT]}" -gt 3 ] && {
     echo 'VACUUM Match'
     vacuum \

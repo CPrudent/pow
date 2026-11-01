@@ -142,3 +142,70 @@ NOTICE:  14:53:02.962 Suppression BAL_55093 (Rapprochement 25513/8697): #3 addre
 NOTICE:  14:53:02.964 Suppression BAL_55093 (Rapprochement 8697): #1 addresse(s) effacée(s)
 NOTICE:  14:53:02.964 Suppression BAL_55093 (Rapprochement 25509/8697): #0 addresse(s) modifiée(s)
  */
+
+-- retrieve history of municipality (w/ match if exists)
+SELECT public.drop_all_functions_if_exists('fr', 'bal_municipality_history_match');
+CREATE OR REPLACE FUNCTION bal_municipality_history_match(
+    code IN VARCHAR                 -- municipality
+)
+RETURNS TABLE(
+    id_history INTEGER,
+    date_data_begin TIMESTAMP,
+    date_data_end TIMESTAMP,
+    id_request INTEGER
+)
+AS
+$func$
+BEGIN
+    -- Returns all rows from the query as the result set
+    RETURN QUERY
+    WITH
+    municipality_history(id_history, date_data_begin, date_data_end) AS (
+        SELECT
+            id,
+            io.date_data_begin,
+            io.date_data_end
+        FROM
+            io_history io
+        WHERE
+            name = 'FR-BAL-' || bal_municipality_history_match.code
+            AND
+            status = 'SUCCES'
+    )
+    , municipality_w_match(id_history, id_request) AS (
+        SELECT
+            id,
+            ((((JSONB_PATH_QUERY(
+                attributes::JSONB,
+                '$ ? (@.usecases[*].name == "match")'
+            ))->'usecases'->> 0)::JSON)->>'id')::INT
+        FROM
+            io_history
+        WHERE
+            name = 'FR-BAL-' || bal_municipality_history_match.code
+            AND
+            status = 'SUCCES'
+            AND
+            attributes IS JSON OBJECT
+            AND
+            'match' IN (
+                SELECT (JSON_ARRAY_ELEMENTS((attributes::JSON)->'usecases'))->>'name'
+            )
+    )
+    SELECT
+        h.id_history,
+        h.date_data_begin,
+        h.date_data_end,
+        m.id_request
+    FROM
+        municipality_history h
+            LEFT OUTER JOIN municipality_w_match m ON h.id_history = m.id_history
+    ORDER BY
+        2, 3
+    ;
+END;
+$func$ LANGUAGE plpgsql;
+
+/* TEST
+SELECT * FROM fr.bal_municipality_history_match('09197');
+ */
