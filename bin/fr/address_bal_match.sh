@@ -259,7 +259,6 @@ declare -A bal_vars=(
     [PROGRESS_CURRENT]=1
     [PROGRESS_TOTAL]=1
     [PROGRESS_SIZE]=5
-    [PROGRESS_EOL]='\r'
     [QUERY_ADDRESSES]=
     [REQUEST_NEW]=yes
 ) &&
@@ -335,9 +334,6 @@ get_env_debug \
     echo 'Mode parallèle désactivé'
     bal_vars[PARALLEL]=no
     #bal_vars[PROGRESS]=no
-
-    # no elaps time
-    [ -n "${bal_vars[PRINT]}" ] && bal_vars[PROGRESS_EOL]='\n'
 }
 
 bal_vars[MUNICIPALITY_CODE]=${bal_vars[MUNICIPALITY]^^}
@@ -421,6 +417,13 @@ bal_vars[PROGRESS_SIZE]=${#bal_vars[PROGRESS_TOTAL]}
 }
 
 if [ "${bal_vars[PARALLEL]}" = no ]; then
+    [ "${bal_vars[PRINT]}" = MATCH ] &&
+        printf "\t\t%s\t%25s\t%24s\t%s\n" \
+            'ID Historique' \
+            'Date début Données' \
+            'Date fin Données' \
+            'ID Rapprochement'
+
     for ((bal_i=0; bal_i<${#bal_codes[@]}; bal_i++)); do
         [ "${bal_vars[STOP_TIME]}" != 0 ] && {
             # stop loop if allowed time is expired
@@ -434,17 +437,6 @@ if [ "${bal_vars[PARALLEL]}" = no ]; then
         }
         bal_vars[MUNICIPALITY_CODE]=${bal_codes[$bal_i]}
 
-        [ "${bal_vars[PROGRESS]}" = no ] || {
-            print_progress \
-                BEGIN \
-                "INSEE ${bal_vars[MUNICIPALITY_CODE]}" \
-                ${bal_vars[PROGRESS_GROUPS]} \
-                ${bal_vars[PROGRESS_SIZE]} \
-                ${bal_vars[PROGRESS_CURRENT]} \
-                ${bal_vars[PROGRESS_TOTAL]} \
-                ${bal_vars[PROGRESS_EOL]}
-        }
-
         case "${bal_vars[PRINT]}" in
         ECHO)
             :
@@ -457,7 +449,7 @@ if [ "${bal_vars[PARALLEL]}" = no ]; then
                 --count _count &&
             #declare -p bal_history
             for ((bal_j=0; bal_j<${_count}; bal_j++)); do
-                printf "\t\t%8s\t%s\t%s\t%8s\n" \
+                printf "\t\t%13s\t%s\t%s\t%16s\n" \
                     "${bal_history[${bal_j},0]}" \
                     "${bal_history[${bal_j},1]}" \
                     "${bal_history[${bal_j},2]}" \
