@@ -134,10 +134,11 @@ BEGIN
 END
 $func$ LANGUAGE plpgsql;
 
--- get last update (from BAL import)
+-- get last update (from BAL import), optionaly w/ match flag
 SELECT public.drop_all_functions_if_exists('fr', 'bal_get_last_update');
 CREATE OR REPLACE FUNCTION fr.bal_get_last_update(
     code IN VARCHAR,
+    with_match IN BOOLEAN DEFAULT FALSE,
     last_update OUT TIMESTAMP WITHOUT TIME ZONE
 )
 AS
@@ -153,10 +154,29 @@ BEGIN
         name = CONCAT('FR-BAL-', code)
         AND
         status = 'SUCCES'
+        AND (
+                (
+                    bal_get_last_update.with_match
+                    AND
+                    attributes IS JSON OBJECT
+                    AND
+                    'match' IN (
+                        SELECT (JSON_ARRAY_ELEMENTS((attributes::JSON)->'usecases'))->>'name'
+                    )
+                )
+                OR
+                (
+                    NOT bal_get_last_update.with_match
+                )
+        )
     ;
     IF NOT FOUND THEN
         RAISE 'code Commune % non trouvé!', code;
     END IF;
+    IF last_update IS NULL THEN
+        last_update := TO_TIMESTAMP('1970-01-01', 'YYYY-MM-DD');
+    END IF;
+
 END
 $func$ LANGUAGE plpgsql;
 

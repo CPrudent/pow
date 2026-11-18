@@ -131,7 +131,7 @@ bal_set_municipality() {
         }
     } &&
     {
-        ([ "${bal_vars[USECASE]}" = MATCH ] && [ "${bal_vars[PARALLEL]}" = yes ]) || {
+        [[ "${bal_vars[USECASE]}" = MATCH ]] || {
             execute_query \
                 --name "BAL_MUNICIPALITY_${_opts[CODE]}_LAST_IO" \
                 --query "
@@ -186,7 +186,13 @@ bal_set_municipality() {
         }
     }
     {
-        [ "${bal_vars[PROGRESS]}" = no ] || set_progress --start bal_vars[PROGRESS_START]
+        [[ -n "${bal_vars[PRINT]}" ]] && {
+            # no elaps time, only new line
+            echo
+        } || {
+            [ "${bal_vars[PROGRESS]}" = no ] ||
+            set_progress --start bal_vars[PROGRESS_START]
+        }
     } || return $ERROR_CODE
 
     #echo "${FUNCNAME[0]}: OK"
@@ -206,9 +212,11 @@ bal_list_municipalities() {
         --pow_argv _opts "$@" || return $?
 
     local -n _list_ref=${_opts[LIST]}
-    local _query _list _date_before_fix _column _criteria
+    local _query _query_criteria _list _date_before_fix _column _criteria
 
-    if ([ "${bal_vars[USECASE]}" = MATCH ] && [ "${bal_vars[PARALLEL]}" = yes ]); then
+    if [[ "${bal_vars[USECASE]}" = MATCH ]]; then
+        [[ "${bal_vars[FIX]}" = MATCH_AGAIN_OUT_DATE ]] &&
+        _column="CONCAT_WS(':', c.municipality, c.criteria)" ||
         _column="CONCAT_WS(':', c.municipality, h.id)"
     else
         _column=c.municipality
@@ -224,10 +232,15 @@ bal_list_municipalities() {
     esac
     case "${_criteria:-${bal_vars[SELECT_CRITERIA]}}" in
     POPULATION)
-        _query="
+        _query_criteria="
             SELECT
                 codgeo municipality,
                 population criteria
+                $([[ "${bal_vars[USECASE]}" = IMPORT ]] ||
+                echo " , fr.bal_get_last_update(
+                    code => codgeo,
+                    with_match => true
+                ) last_match")
             FROM
                 fr.territory
             WHERE
@@ -237,10 +250,15 @@ bal_list_municipalities() {
         "
         ;;
     STREETS)
-        _query="
+        _query_criteria="
             SELECT
                 co_insee_commune municipality,
                 COUNT(DISTINCT co_voie) criteria
+                $([[ "${bal_vars[USECASE]}" = IMPORT ]] ||
+                echo " , fr.bal_get_last_update(
+                    code => co_insee_commune,
+                    with_match => true
+                ) last_match")
             FROM
                 fr.laposte_address_street
             WHERE
@@ -250,17 +268,22 @@ bal_list_municipalities() {
         "
         ;;
     REVISION)
-        _query="
+        _query_criteria="
             SELECT
                 code municipality,
                 last_update criteria
+                $([[ "${bal_vars[USECASE]}" = IMPORT ]] ||
+                echo " , fr.bal_get_last_update(
+                    code => code,
+                    with_match => true
+                ) last_match")
             FROM
                 fr.bal_municipality
         "
         ;;
     SPACE_IN_CODE)
         _date_before_fix='2025-01-01'
-        _query="
+        _query_criteria="
             SELECT
                 m.code municipality,
                 m.code criteria
@@ -281,7 +304,7 @@ bal_list_municipalities() {
         ;;
     CONVERT_ATTRIBUTES)
         _date_before_fix='2025-01-01'
-        _query="
+        _query_criteria="
             SELECT
                 SUBSTR(l.name, 5) municipality,
                 SUBSTR(l.name, 5) criteria
@@ -296,7 +319,7 @@ bal_list_municipalities() {
         ;;
     MORE_ATTRIBUTES)
         _date_before_fix='2025-02-08'
-        _query="
+        _query_criteria="
             SELECT
                 SUBSTR(l.name, 5) municipality,
                 SUBSTR(l.name, 5) criteria
@@ -313,7 +336,7 @@ bal_list_municipalities() {
         ;;
     OBSOLESCENCE_STREET)
         _date_before_fix='2025-04-18'
-        _query="
+        _query_criteria="
             SELECT
                 code municipality,
                 code criteria
@@ -335,7 +358,7 @@ bal_list_municipalities() {
         ;;
     MATCH_AGAIN_ROWID)
         _date_before_fix='2025-05-27'
-        _query="
+        _query_criteria="
             SELECT
                 code municipality,
                 last_update criteria
@@ -355,7 +378,7 @@ bal_list_municipalities() {
         ;;
     DELETE_OBSOLETE_MUNICIPALITY)
         _date_before_fix='2025-07-01'
-        _query="
+        _query_criteria="
             WITH
             insee_events AS (
                 SELECT DISTINCT com_av
@@ -374,23 +397,84 @@ bal_list_municipalities() {
                     JOIN insee_events ie ON m.code = ie.com_av
         "
         ;;
+    MATCH_AGAIN_OUT_DATE)
+        # exists addresses out of downloaded IO (so from other IO)
+        _query_criteria="
+            SELECT
+                municipality,
+                id criteria
+            FROM
+                history h
+            WHERE
+                attributes IS JSON OBJECT
+                AND
+                'match' IN (
+                    SELECT (JSON_ARRAY_ELEMENTS((attributes::JSON)->'usecases'))->>'name'
+                )
+                AND
+                EXISTS(
+                    WITH
+                    addresses AS (
+                        SELECT
+                            s.last_update
+                        FROM
+                            fr.address_match_result amr
+                                JOIN fr.bal_street s ON (amr.standardized_address).id = s.code
+                        WHERE
+                            amr.id_request = h.id_request
+                            AND
+                            (amr.standardized_address).level = 'STREET'
+                        UNION
+                        SELECT
+                            n.last_update
+                        FROM
+                            fr.address_match_result amr
+                                JOIN fr.bal_housenumber n ON (amr.standardized_address).id = n.code
+                        WHERE
+                            amr.id_request = h.id_request
+                            AND
+                            (amr.standardized_address).level = 'HOUSENUMBER'
+                    )
+                    SELECT 1
+                    FROM
+                        addresses
+                    WHERE
+                        last_update NOT BETWEEN h.date_data_begin AND h.date_data_end
+                )
+        "
+        ;;
     esac &&
     _query="
         WITH
         history AS (
             SELECT
-                get_municipality_from_io_name(name => l.name) municipality,
-                l.date_data_end,
-                l.attributes,
-                l.id
+                get_municipality_from_io_name(name => io.name) municipality,
+                io.date_data_end,
+                io.attributes,
+                io.id
+                $([[ "${bal_vars[FIX]}" != MATCH_AGAIN_OUT_DATE ]] ||
+                echo ", io.date_data_begin , ((((JSONB_PATH_QUERY(
+                    io.attributes::JSONB,
+                    '$ ? (@.usecases[*].name == "'"'"match"'"'")'
+                ))->'usecases'->> 0)::JSON)->>'id')::INT id_request")
             FROM
                 io_history io
-                    JOIN get_last_io(io.name) l ON io.id = l.id
+                    $([[ "${bal_vars[USECASE]}" != IMPORT ]] ||
+                    echo 'JOIN get_last_io(io.name) l ON io.id = l.id')
             WHERE
                 io.name ~ '^FR-BAL-[0-9]'
+    " &&
+    {
+        case "${bal_vars[USECASE]}" in
+        MATCH)
+            _query+=" AND io.status = 'SUCCES'"
+            ;;
+        esac
+    } &&
+    _query+="
         )
         , criteria AS (
-            $_query
+            $_query_criteria
         )
         SELECT ARRAY(
             SELECT
@@ -398,20 +482,21 @@ bal_list_municipalities() {
             FROM
                 criteria c
                     JOIN fr.bal_municipality m ON c.municipality = m.code
-                    LEFT OUTER JOIN history h ON h.municipality = c.municipality
+                    $([[ "${bal_vars[FIX]}" = MATCH_AGAIN_OUT_DATE ]] ||
+                    echo 'LEFT OUTER JOIN history h ON h.municipality = c.municipality')
             WHERE
                 EXISTS(
                     SELECT 1
                     FROM fr.laposte_address_area za
                     WHERE m.code = za.co_insee_commune AND za.fl_active
                 )
-                AND
     " &&
     {
         case "${bal_vars[USECASE]}" in
         IMPORT)
             [ -n "${bal_vars[FIX]}" ] && {
                 _query+="
+                    AND
                     h.date_data_end IS NOT NULL
                     AND
                     h.date_data_end < '$_date_before_fix'::DATE
@@ -421,31 +506,41 @@ bal_list_municipalities() {
             } || {
             # only not already downloaded or newer import available (greater than ndays)
             _query+="
+                AND (
                 h.date_data_end IS NULL
                 OR
-                EXTRACT(DAY FROM m.last_update - h.date_data_end) > ${bal_vars[SELECT_NDAYS]}
+                EXTRACT(DAY FROM m.last_update - h.date_data_end) > ${bal_vars[SELECT_NDAYS]} )
             "
             }
             ;;
         # only already downloaded, but not matched yet (for this new download)
         #+ if [ fix OR force ] do it again (already matched)
         MATCH)
-            _query+="
-                h.date_data_end IS NOT NULL
-                AND
-                h.attributes IS JSON OBJECT
-                AND
-                'match' $([[ -n "${bal_vars[FIX]}" || "${bal_vars[FORCE]}" = yes ]] || echo NOT) IN (
-                    SELECT (JSON_ARRAY_ELEMENTS((h.attributes::JSON)->'usecases'))->>'name'
-                )
-            " &&
             {
-                [ "${bal_vars[AUTH_ONLY]}" = no ] || {
-                    # only w/ authed addresses
+                [ "${bal_vars[FIX]}" = MATCH_AGAIN_OUT_DATE ] || {
                     _query+="
                         AND
-                        ((h.attributes::JSON)->'integration'->>'housenumbers')::INT > 0
+                        h.date_data_end IS NOT NULL
+                        AND
+                        h.attributes IS JSON OBJECT
+                        AND
+                        'match' $([[ -n "${bal_vars[FIX]}" || "${bal_vars[FORCE]}" = yes ]] || echo NOT) IN (
+                            SELECT (JSON_ARRAY_ELEMENTS((h.attributes::JSON)->'usecases'))->>'name'
+                        )
+                        AND
+                        h.date_data_end > c.last_match
                     "
+                }
+            } &&
+            {
+                [ "${bal_vars[FIX]}" = MATCH_AGAIN_OUT_DATE ] || {
+                    [ "${bal_vars[AUTH_ONLY]}" = no ] || {
+                        # only w/ authed addresses
+                        _query+="
+                            AND
+                            ((h.attributes::JSON)->'integration'->>'housenumbers')::INT > 0
+                        "
+                    }
                 }
             } &&
             # not already cleaned
@@ -482,7 +577,14 @@ bal_list_municipalities() {
             "
         }
     } &&
-    _query+=")" &&
+    _query+=")" && {
+        [[ ${_debug_steps[query]:-1} -ne 0 ]] || {
+            echo "query=
+            $_query
+            "
+            [[ ${_debug_bps[query]} -ne 0 ]] || read
+        }
+    } &&
     execute_query \
         --name BAL_MUNICIPALITIES \
         --query "$_query" \

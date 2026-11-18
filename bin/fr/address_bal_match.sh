@@ -287,7 +287,7 @@ pow_argv \
         select_criteria:REVISION|POPULATION|STREETS;
         select_order:ASC|DESC;
         force:yes|no;
-        fix:MATCH_AGAIN_ROWID|MATCH_CLEAN;
+        fix:MATCH_AGAIN_ROWID|MATCH_CLEAN|MATCH_AGAIN_OUT_DATE;
         progress:yes|no;
         parallel:yes|no;
         auth_only:yes|no;
@@ -342,6 +342,9 @@ declare -a bal_codes2
 declare -a bal_errors
 # reset LIMIT if STOP_TIME
 [ "${bal_vars[STOP_TIME]}" != 0 ] && [ ${bal_vars[LIMIT]} -gt 0 ] && bal_vars[LIMIT]=0
+# force mode
+[ "${bal_vars[FORCE]}" = no ] &&
+[[ "${bal_vars[FIX]}" =~ MATCH_AGAIN_ROWID|MATCH_AGAIN_OUT_DATE ]] && bal_vars[FORCE]=yes
 # MATCH_CLEAN results
 declare -A bal_clean
 declare -A bal_history
@@ -375,7 +378,6 @@ set_env --schema_name fr &&
         [ -s "${bal_vars[MUNICIPALITY]}" ] && {
             readarray -t -n ${bal_vars[LIMIT]} bal_codes < "${bal_vars[MUNICIPALITY]}"
         } || {
-            bal_check_municipality --code "${bal_vars[MUNICIPALITY_CODE]}" &&
             bal_codes[0]=${bal_vars[MUNICIPALITY_CODE]}
         }
         ;;
@@ -407,7 +409,6 @@ set_env --schema_name fr &&
 bal_error=0
 bal_vars[PROGRESS_TOTAL]=${#bal_codes[@]}
 bal_vars[PROGRESS_SIZE]=${#bal_vars[PROGRESS_TOTAL]}
-[ "${bal_vars[FIX]}" = MATCH_AGAIN_ROWID ] && bal_vars[FORCE]=yes
 # needing to run again same request
 [ "${bal_vars[FORCE]}" = yes ] && bal_vars[REQUEST_NEW]=no
 
@@ -431,11 +432,22 @@ if [ "${bal_vars[PARALLEL]}" = no ]; then
         }
 
         bal_vars[PROGRESS_CURRENT]=$((bal_i +1))
-        bal_set_municipality --code "${bal_codes[$bal_i]}" || {
+        bal_vars[MUNICIPALITY_CODE]=${bal_codes[$bal_i]%%:*}
+        bal_vars[IO_ID]=${bal_codes[$bal_i]#*:}
+        [[ -z "${bal_vars[PRINT]}" ]] &&
+        [[ -z "${bal_vars[IO_ID]}" ]] && {
+            # TODO get last IO w/ match (bal_get_last_update)
+            # from io_history where date_date_end = fr.bal_get_last_update()
+            log_error "manque ID historique (INSEE ${bal_vars[MUNICIPALITY_CODE]})"
             bal_error=1
             continue
         }
-        bal_vars[MUNICIPALITY_CODE]=${bal_codes[$bal_i]}
+
+        bal_check_municipality --code "${bal_vars[MUNICIPALITY_CODE]}" &&
+        bal_set_municipality --code "${bal_vars[MUNICIPALITY_CODE]}" || {
+            bal_error=1
+            continue
+        }
 
         case "${bal_vars[PRINT]}" in
         ECHO)
@@ -447,7 +459,6 @@ if [ "${bal_vars[PARALLEL]}" = no ]; then
                 --code ${bal_vars[MUNICIPALITY_CODE]} \
                 --history bal_history \
                 --count _count &&
-            #declare -p bal_history
             for ((bal_j=0; bal_j<${_count}; bal_j++)); do
                 printf "\t\t%13s\t%s\t%s\t%16s\n" \
                     "${bal_history[${bal_j},0]}" \
@@ -457,11 +468,9 @@ if [ "${bal_vars[PARALLEL]}" = no ]; then
             done
             ;;
         *)
-            echo 'OOH, unwanted yet!'; read
-
             bal_match_municipality \
                 --code ${bal_vars[MUNICIPALITY_CODE]} \
-                --history_id ${bal_vars[IO_LAST_ID]} || ((bal_error++))
+                --history_id ${bal_vars[IO_ID]} || ((bal_error++))
 
             [ "${bal_vars[PROGRESS]}" = no ] ||
                 set_progress --start bal_vars[PROGRESS_START]
