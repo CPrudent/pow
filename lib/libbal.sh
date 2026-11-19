@@ -212,12 +212,23 @@ bal_list_municipalities() {
         --pow_argv _opts "$@" || return $?
 
     local -n _list_ref=${_opts[LIST]}
-    local _query _query_criteria _list _date_before_fix _column _criteria
+    local _io_name="'^FR-BAL-[0-9]*'" _query _query_criteria _list _date_before_fix _column _criteria
 
     if [[ "${bal_vars[USECASE]}" = MATCH ]]; then
         [[ "${bal_vars[FIX]}" = MATCH_AGAIN_OUT_DATE ]] &&
         _column="CONCAT_WS(':', c.municipality, c.criteria)" ||
         _column="CONCAT_WS(':', c.municipality, h.id)"
+        case "${bal_vars[TODO]}" in
+        LIST)
+            # join items separated by a pipe
+            _tmp=$(printf "FR-BAL-%s|" ${_list_ref[@]})
+            # remove last pipe, and quote whole string
+            _io_name="'${_tmp%|}'"
+            ;;
+        ONE)
+            _io_name="'FR-BAL-${_list_ref[0]}'"
+            ;;
+        esac
     else
         _column=c.municipality
     fi
@@ -462,7 +473,7 @@ bal_list_municipalities() {
                     $([[ "${bal_vars[USECASE]}" != IMPORT ]] ||
                     echo 'JOIN get_last_io(io.name) l ON io.id = l.id')
             WHERE
-                io.name ~ '^FR-BAL-[0-9]'
+                io.name ~ $_io_name
     " &&
     {
         case "${bal_vars[USECASE]}" in
@@ -518,6 +529,7 @@ bal_list_municipalities() {
         MATCH)
             {
                 [ "${bal_vars[FIX]}" = MATCH_AGAIN_OUT_DATE ] || {
+                    # match all IO since last one
                     _query+="
                         AND
                         h.date_data_end IS NOT NULL
@@ -530,10 +542,6 @@ bal_list_municipalities() {
                         AND
                         h.date_data_end > c.last_match
                     "
-                }
-            } &&
-            {
-                [ "${bal_vars[FIX]}" = MATCH_AGAIN_OUT_DATE ] || {
                     [ "${bal_vars[AUTH_ONLY]}" = no ] || {
                         # only w/ authed addresses
                         _query+="

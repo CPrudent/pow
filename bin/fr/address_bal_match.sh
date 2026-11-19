@@ -261,6 +261,7 @@ declare -A bal_vars=(
     [PROGRESS_SIZE]=5
     [QUERY_ADDRESSES]=
     [REQUEST_NEW]=yes
+    [TODO]=
 ) &&
 pow_argv \
     --args_n '
@@ -342,7 +343,7 @@ declare -a bal_codes2
 declare -a bal_errors
 # reset LIMIT if STOP_TIME
 [ "${bal_vars[STOP_TIME]}" != 0 ] && [ ${bal_vars[LIMIT]} -gt 0 ] && bal_vars[LIMIT]=0
-# force mode
+# force mode (for out of date ?)
 [ "${bal_vars[FORCE]}" = no ] &&
 [[ "${bal_vars[FIX]}" =~ MATCH_AGAIN_ROWID|MATCH_AGAIN_OUT_DATE ]] && bal_vars[FORCE]=yes
 # MATCH_CLEAN results
@@ -358,7 +359,6 @@ set_env --schema_name fr &&
     }
 } &&
 {
-    _all=0
     # extract generic query (w/ id = 0, as history_id)
     execute_query \
         --name BAL_ADDRESSES \
@@ -370,21 +370,23 @@ set_env --schema_name fr &&
         --return bal_vars[QUERY_ADDRESSES] &&
     case "${bal_vars[MUNICIPALITY_CODE]}" in
     ALL)
-        _all=1
-        bal_list_municipalities --list bal_codes
+        bal_vars[TODO]=ALL
         ;;
     *)
         # from file (code contains a filename) ?
         [ -s "${bal_vars[MUNICIPALITY]}" ] && {
+            bal_vars[TODO]=LIST
             readarray -t -n ${bal_vars[LIMIT]} bal_codes < "${bal_vars[MUNICIPALITY]}"
         } || {
+            bal_vars[TODO]=ONE
             bal_codes[0]=${bal_vars[MUNICIPALITY_CODE]}
         }
         ;;
-    esac
+    esac &&
+    bal_list_municipalities --list bal_codes
 } || exit $ERROR_CODE
 
-[ $_all -eq 1 ] &&
+# something to do?
 [ ${#bal_codes[@]} -eq 0 ] && {
     log_info "Rapprochement BAL déjà à jour!"
     exit $SUCCESS_CODE
@@ -451,6 +453,7 @@ if [ "${bal_vars[PARALLEL]}" = no ]; then
 
         case "${bal_vars[PRINT]}" in
         ECHO)
+            # already done in bal_set_municipality
             :
             ;;
         MATCH)
