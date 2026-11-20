@@ -212,7 +212,8 @@ bal_list_municipalities() {
         --pow_argv _opts "$@" || return $?
 
     local -n _list_ref=${_opts[LIST]}
-    local _io_name="'^FR-BAL-[0-9]*'" _query _query_criteria _list _date_before_fix _column _criteria
+    local _io_name="'^FR-BAL-[0-9]*'" _query _query_criteria _list
+    local _date_before_fix _column _criteria _compare
 
     if [[ "${bal_vars[USECASE]}" = MATCH ]]; then
         [[ "${bal_vars[FIX]}" = MATCH_AGAIN_OUT_DATE ]] &&
@@ -236,6 +237,9 @@ bal_list_municipalities() {
     MATCH_CLEAN)
         _criteria=''
         _date_before_fix='2026-07-01'
+        ;;
+    MATCH_FORGOTTEN)
+        _criteria=''
         ;;
     *)
         _criteria=${bal_vars[FIX]}
@@ -454,6 +458,10 @@ bal_list_municipalities() {
                 )
         "
         ;;
+    *)
+        log_error 'manque critère de sélection!'
+        false
+        ;;
     esac &&
     _query="
         WITH
@@ -536,12 +544,20 @@ bal_list_municipalities() {
                         AND
                         h.attributes IS JSON OBJECT
                         AND
-                        'match' $([[ -n "${bal_vars[FIX]}" || "${bal_vars[FORCE]}" = yes ]] || echo NOT) IN (
+                        'match' $([[ ( -n "${bal_vars[FIX]}" && "${bal_vars[FIX]}" != MATCH_FORGOTTEN ) || "${bal_vars[FORCE]}" = yes ]] || echo NOT) IN (
                             SELECT (JSON_ARRAY_ELEMENTS((h.attributes::JSON)->'usecases'))->>'name'
                         )
-                        AND
-                        h.date_data_end > c.last_match
                     "
+                    # no fix or fix MATCH_FORGOTTEN or force
+                    [[ -n "${bal_vars[FIX]}" && "${bal_vars[FIX]}" != MATCH_FORGOTTEN ]] || {
+                        _compare='>'
+                        [[ "${bal_vars[FIX]}" != MATCH_FORGOTTEN ]] || _compare='<'
+                        [[ -n "${bal_vars[FIX]}" || "${bal_vars[FORCE]}" = no ]] || _compare='='
+                        _query+="
+                            AND
+                            h.date_data_end $_compare c.last_match
+                        "
+                    }
                     [ "${bal_vars[AUTH_ONLY]}" = no ] || {
                         # only w/ authed addresses
                         _query+="

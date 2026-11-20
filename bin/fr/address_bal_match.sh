@@ -288,7 +288,7 @@ pow_argv \
         select_criteria:REVISION|POPULATION|STREETS;
         select_order:ASC|DESC;
         force:yes|no;
-        fix:MATCH_AGAIN_ROWID|MATCH_CLEAN|MATCH_AGAIN_OUT_DATE;
+        fix:MATCH_AGAIN_ROWID|MATCH_CLEAN|MATCH_AGAIN_OUT_DATE|MATCH_FORGOTTEN;
         progress:yes|no;
         parallel:yes|no;
         auth_only:yes|no;
@@ -343,7 +343,7 @@ declare -a bal_codes2
 declare -a bal_errors
 # reset LIMIT if STOP_TIME
 [ "${bal_vars[STOP_TIME]}" != 0 ] && [ ${bal_vars[LIMIT]} -gt 0 ] && bal_vars[LIMIT]=0
-# force mode (for out of date ?)
+# force mode (TODO even out of date ?)
 [ "${bal_vars[FORCE]}" = no ] &&
 [[ "${bal_vars[FIX]}" =~ MATCH_AGAIN_ROWID|MATCH_AGAIN_OUT_DATE ]] && bal_vars[FORCE]=yes
 # MATCH_CLEAN results
