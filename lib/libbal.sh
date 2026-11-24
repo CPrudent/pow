@@ -212,7 +212,7 @@ bal_list_municipalities() {
         --pow_argv _opts "$@" || return $?
 
     local -n _list_ref=${_opts[LIST]}
-    local _io_name="'^FR-BAL-[0-9]*'" _query _query_criteria _list
+    local _io_name _query _query_criteria _list
     local _date_before_fix _column _criteria _compare
 
     if [[ "${bal_vars[USECASE]}" = MATCH ]]; then
@@ -228,6 +228,10 @@ bal_list_municipalities() {
             ;;
         ONE)
             _io_name="'FR-BAL-${_list_ref[0]}'"
+            ;;
+        *)
+            # all
+            _io_name="'^FR-BAL-[0-9]+'"
             ;;
         esac
     else
