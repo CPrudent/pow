@@ -66,7 +66,8 @@ execute_query() {
         case "${_opts[TEMPORARY]}" in
         UNIQ)
             # accepting concurrent mode (parallelism)
-            get_tmp_file --tmpfile _log_tmp_path --tmpext $_log_tmp_ext --create --suffix "-${_opts[NAME]}" &&
+            # be careful: suffix "-NAME" run error (-N as option of mktemp !)
+            get_tmp_file --tmpfile _log_tmp_path --tmpext $_log_tmp_ext --create --suffix "_${_opts[NAME]}" &&
             _log_tmp_dir="${_log_tmp_path%/*}" &&
             _log_tmp_file="${_log_tmp_path##*/}" &&
             _log_tmp_wo_ext="${_log_tmp_file%.*}"
@@ -212,13 +213,21 @@ table_exists() {
     pow_argv \
         --args_n '
             schema_name:schéma PG;
-            table_name:nom de la table
+            table_name:nom de la table;
+            temporary:gestion du fichier temporaire
         ' \
         --args_m '
             table_name
         ' \
+        --args_v '
+            temporary:USER|UNIQ
+        ' \
         --args_d '
-            schema_name:public
+            schema_name:public;
+            temporary:USER
+        ' \
+        --args_p '
+            temporary@1N
         ' \
         --pow_argv _opts "$@" || return $?
 
@@ -227,6 +236,7 @@ table_exists() {
     execute_query \
         --name "TABLE_EXISTS_${_opts[SCHEMA_NAME]}_${_opts[TABLE_NAME]}" \
         --query "SELECT table_exists('${_opts[SCHEMA_NAME]}', '${_opts[TABLE_NAME]}')" \
+        --temporary ${_opts[TEMPORARY]} \
         --return _exists &&
     is_yes --var _exists && _rc=$SUCCESS_CODE
 

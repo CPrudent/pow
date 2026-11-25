@@ -288,7 +288,7 @@ pow_argv \
         select_criteria:REVISION|POPULATION|STREETS;
         select_order:ASC|DESC;
         force:yes|no;
-        fix:MATCH_AGAIN_ROWID|MATCH_CLEAN|MATCH_AGAIN_OUT_DATE|MATCH_FORGOTTEN;
+        fix:MATCH_AGAIN_ROWID|MATCH_CLEAN|MATCH_FORGOTTEN;
         progress:yes|no;
         parallel:yes|no;
         auth_only:yes|no;
@@ -322,7 +322,7 @@ get_env_debug \
     "$(basename $0 .sh)" \
     _debug_steps \
     _debug_bps \
-    'argv init chunk query before error'
+    'argv init chunk query before error done vacuum'
 
 [[ ${_debug_steps[argv]:-1} -eq 0 ]] && {
     declare -p bal_vars
@@ -345,7 +345,7 @@ declare -a bal_errors
 [ "${bal_vars[STOP_TIME]}" != 0 ] && [ ${bal_vars[LIMIT]} -gt 0 ] && bal_vars[LIMIT]=0
 # force mode (TODO even out of date ?)
 [ "${bal_vars[FORCE]}" = no ] &&
-[[ "${bal_vars[FIX]}" =~ MATCH_AGAIN_ROWID|MATCH_AGAIN_OUT_DATE ]] && bal_vars[FORCE]=yes
+[[ "${bal_vars[FIX]}" =~ MATCH_AGAIN_ROWID ]] && bal_vars[FORCE]=yes
 # MATCH_CLEAN results
 declare -A bal_clean
 declare -A bal_history
@@ -486,8 +486,6 @@ else
     bal_limit=$(( ${#bal_codes[@]} / bal_vars[PARALLEL_CHUNK] ))
     [[ $(( ${#bal_codes[@]} % bal_vars[PARALLEL_CHUNK] )) -eq 0 ]] || ((bal_limit++))
     bal_serie=0
-    # break indicator (to exit from loop)
-    _break=0
     for ((bal_j=0; bal_j<$bal_limit; bal_j++)); do
         [ "${bal_vars[STOP_TIME]}" != 0 ] && {
             # stop loop if allowed time is expired
@@ -520,7 +518,8 @@ else
                         [[ ${_debug_bps[query]} -ne 0 ]] || read
                     }
                 } &&
-                echo "$bal_query" > "$bal_tmpdir/BAL_${bal_insee}.sql" &&
+                bal_file="$bal_tmpdir/BAL_${bal_insee}_${bal_io_id}.sql" &&
+                echo "$bal_query" > "$bal_file" &&
                 # update request (query), if fix MATCH_AGAIN
                 {
                     [[ "${bal_vars[FIX]}" != MATCH_AGAIN_ROWID && "${bal_vars[FORCE]}" = no ]] || {
@@ -540,18 +539,19 @@ else
             }
 
             bal_serie=$((bal_serie +1))
+            bal_joblog="$POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log"
             {
                 [ "${bal_vars[FIX]}" = MATCH_CLEAN ] || {
-                    # item composed as INSEE:HISTORY_ID (INSEE only wanted here)
+                    # item composed as INSEE:HISTORY_ID (#1:#2)
                     #+ can use --tag to print each item
                     parallel \
                         --jobs ${bal_vars[PARALLEL_JOBS]} \
-                        --joblog $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log \
-                        --rpl '{..} s/:[^:]*$//;' \
+                        --joblog "${bal_joblog}" \
+                        --rpl '#1 s/:[^:]*$//;' --rpl '#2 s/^[^:]*://;' \
                         $POW_DIR_BATCH/address_match.sh \
-                            --source_name "BAL_{..}" \
-                            --source_query "$bal_tmpdir/BAL_{..}.sql" \
-                            --request_path "$bal_tmpdir/BAL_{..}.dat" \
+                            --source_name "BAL_#1" \
+                            --source_query "${bal_tmpdir}/BAL_#1_#2.sql" \
+                            --request_path "${bal_tmpdir}/BAL_#1_#2.dat" \
                             --steps REQUEST,STANDARDIZE,MATCH_CODE,MATCH_ELEMENT,MATCH_ADDRESS \
                             --format "$POW_DIR_BATCH/bal/format.sql" \
                             --parallel \
@@ -559,39 +559,30 @@ else
                             --request_new ${bal_vars[REQUEST_NEW]} \
                         ::: "${bal_codes2[@]}"
                 }
-            } &&
-
-# FIXME
-# bal_clean empty after!
-#             {
-#                 # break by user, as CTRL-C (rc=-1)
-#                 [ $? -eq 255 ] && _break=1 || {
-#                     parallel \
-#                         --jobs ${bal_vars[PARALLEL_JOBS]} \
-#                         --joblog $POW_DIR_ARCHIVE/parallel_${bal_serie}_clean.log \
-#                         --rpl '{..} s/:[^:]*$//;' \
-#                         bal_match_clean \
-#                             --code "{..}" \
-#                         ::: "${bal_codes2[@]}"
-#                 }
-#             } &&
+            }
 
             {
-#                 # break by user, as CTRL-C (rc=-1)
-#                 _rc=$?
-#                 [ $_break -eq 0 ] || {
-#                     [ $_rc -eq 255 ] && _break=1
-#                 }
-
                 # search for error (column 7: exit status)
-                tail --lines +2 $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log | cut --fields 7 | grep --silent ^[^0]
+                tail --lines +2 $bal_joblog | cut --fields 7 | grep --silent ^[^0]
                 [ $? -ne 0 ] || {
-                    bal_errors+=($POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log)
+                    bal_errors+=($bal_joblog)
                     [[ ${_debug_steps[error]:-1} -eq 0 ]] && {
-                        tail --lines +2 $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log | cut --fields 7,9
+                        echo -e '\nTraitement(s) en erreur'
+                        tail --lines +2 $bal_joblog | cut --fields 7,9
                         [[ ${_debug_bps[error]} -eq 0 ]] && read
                     }
                     bal_error=1
+                }
+            } &&
+
+            {
+                [[ ${_debug_steps[error]:-1} -ne 0 ]] || {
+                    echo "error=($bal_error)"; declare -p bal_errors
+                    [[ ${_debug_bps[error]} -ne 0 ]] || read
+                }
+                [[ ${_debug_steps[done]:-1} -ne 0 ]] || {
+                    echo "log=($bal_joblog)"
+                    [[ ${_debug_bps[done]} -ne 0 ]] || read
                 }
             } &&
 
@@ -601,27 +592,46 @@ else
                     bal_insee=${bal_codes2[$bal_i]%%:*}
                     bal_io_id=${bal_codes2[$bal_i]#*:}
                     bal_req_id=0
-                    bal_file="$bal_tmpdir/BAL_${bal_insee}.dat"
+                    bal_file="${bal_tmpdir}/BAL_${bal_insee}_${bal_io_id}.dat"
+                    _matched=$(grep "BAL_${bal_file}" ${bal_joblog} | cut --fields 7)
+                    [[ ${_debug_steps[done]:-1} -ne 0 ]] || {
+                        echo "match $bal_file : ($_matched)"
+                        [[ ${_debug_bps[done]} -ne 0 ]] || read
+                    }
                     # ok match ?
-                    _matched=$(grep BAL_${bal_insee} $POW_DIR_ARCHIVE/parallel_${bal_serie}_match.log | cut --fields 7)
-                    [ "$_matched" = 0 ] && {
+                    [ "${_matched}" = 0 ] && {
                         {
                             [ "${bal_vars[FIX]}" = MATCH_CLEAN ] || {
-                                bal_req_id=$(sed --silent --expression '1p' < "$bal_file")
+                                # exists output request file (request_id in 1st line) ?
+                                [ -s "$bal_file" ] && {
+                                    bal_req_id=$(sed --silent --expression '1p' < "$bal_file")
+                                }
+                            }
+                        } &&
+                        {
+                            [[ ${_debug_steps[done]:-1} -ne 0 ]] || {
+                                echo "request_id ($bal_req_id)"
+                                [[ ${_debug_bps[done]} -ne 0 ]] || read
                             }
                         } &&
                         bal_match_clean --code $bal_insee &&
                         bal_match_update_history \
                             --code $bal_insee \
                             --request_id $bal_req_id \
-                            --history_id $bal_io_id
+                            --history_id $bal_io_id &&
+                        {
+                            [[ ${_debug_steps[done]:-1} -ne 0 ]] || {
+                                echo 'clean & history'
+                                [[ ${_debug_bps[done]} -ne 0 ]] || read
+                            }
+                        }
                     } || {
                         bal_error=1
                     }
                 done
             }
 
-            [[ $_break -eq 1 || $bal_error -gt 0 ]] && break
+            [[ $bal_error -gt 0 ]] && break
         }
         bal_vars[PROGRESS_CURRENT]=$((bal_vars[PROGRESS_CURRENT] + ${#bal_codes2[@]}))
         [ "${bal_vars[PROGRESS]}" = no ] ||
@@ -634,6 +644,7 @@ else
     }
 fi
 
+[ $bal_error -eq 0 ] &&
 [ -z "${bal_vars[PRINT]}" ] &&
 [ "${bal_vars[PROGRESS_CURRENT]}" -gt 3 ] && {
     echo 'VACUUM Match'

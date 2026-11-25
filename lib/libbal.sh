@@ -184,14 +184,15 @@ bal_set_municipality() {
                     --total bal_vars[IO_ROWS]
             }
         }
-    }
+    } &&
     {
-        [[ -n "${bal_vars[PRINT]}" ]] && {
-            # no elaps time, only new line
-            echo
-        } || {
-            [ "${bal_vars[PROGRESS]}" = no ] ||
-            set_progress --start bal_vars[PROGRESS_START]
+        [ "${bal_vars[PROGRESS]}" = no ] || {
+            [[ -n "${bal_vars[PRINT]}" ]] && {
+                # no elaps time, add history ID
+                print_progress END "IO_ID=${bal_vars[IO_ID]}"
+            } || {
+                set_progress --start bal_vars[PROGRESS_START]
+            }
         }
     } || return $ERROR_CODE
 
@@ -216,8 +217,6 @@ bal_list_municipalities() {
     local _date_before_fix _column _criteria _compare
 
     if [[ "${bal_vars[USECASE]}" = MATCH ]]; then
-        [[ "${bal_vars[FIX]}" = MATCH_AGAIN_OUT_DATE ]] &&
-        _column="CONCAT_WS(':', c.municipality, c.criteria)" ||
         _column="CONCAT_WS(':', c.municipality, h.id)"
         case "${bal_vars[TODO]}" in
         LIST)
@@ -416,52 +415,6 @@ bal_list_municipalities() {
                     JOIN insee_events ie ON m.code = ie.com_av
         "
         ;;
-    MATCH_AGAIN_OUT_DATE)
-        # exists addresses out of downloaded IO (so from other IO)
-        _query_criteria="
-            SELECT
-                municipality,
-                id criteria
-            FROM
-                history h
-            WHERE
-                attributes IS JSON OBJECT
-                AND
-                'match' IN (
-                    SELECT (JSON_ARRAY_ELEMENTS((attributes::JSON)->'usecases'))->>'name'
-                )
-                AND
-                EXISTS(
-                    WITH
-                    addresses AS (
-                        SELECT
-                            s.last_update
-                        FROM
-                            fr.address_match_result amr
-                                JOIN fr.bal_street s ON (amr.standardized_address).id = s.code
-                        WHERE
-                            amr.id_request = h.id_request
-                            AND
-                            (amr.standardized_address).level = 'STREET'
-                        UNION
-                        SELECT
-                            n.last_update
-                        FROM
-                            fr.address_match_result amr
-                                JOIN fr.bal_housenumber n ON (amr.standardized_address).id = n.code
-                        WHERE
-                            amr.id_request = h.id_request
-                            AND
-                            (amr.standardized_address).level = 'HOUSENUMBER'
-                    )
-                    SELECT 1
-                    FROM
-                        addresses
-                    WHERE
-                        last_update NOT BETWEEN h.date_data_begin AND h.date_data_end
-                )
-        "
-        ;;
     *)
         log_error 'manque critère de sélection!'
         false
@@ -475,11 +428,6 @@ bal_list_municipalities() {
                 io.date_data_end,
                 io.attributes,
                 io.id
-                $([[ "${bal_vars[FIX]}" != MATCH_AGAIN_OUT_DATE ]] ||
-                echo ", io.date_data_begin , ((((JSONB_PATH_QUERY(
-                    io.attributes::JSONB,
-                    '$ ? (@.usecases[*].name == "'"'"match"'"'")'
-                ))->'usecases'->> 0)::JSON)->>'id')::INT id_request")
             FROM
                 io_history io
                     $([[ "${bal_vars[USECASE]}" != IMPORT ]] ||
@@ -505,8 +453,7 @@ bal_list_municipalities() {
             FROM
                 criteria c
                     JOIN fr.bal_municipality m ON c.municipality = m.code
-                    $([[ "${bal_vars[FIX]}" = MATCH_AGAIN_OUT_DATE ]] ||
-                    echo 'LEFT OUTER JOIN history h ON h.municipality = c.municipality')
+                    LEFT OUTER JOIN history h ON h.municipality = c.municipality
             WHERE
                 EXISTS(
                     SELECT 1
@@ -540,35 +487,33 @@ bal_list_municipalities() {
         #+ if [ fix OR force ] do it again (already matched)
         MATCH)
             {
-                [ "${bal_vars[FIX]}" = MATCH_AGAIN_OUT_DATE ] || {
-                    # match all IO since last one
+                # match all IO since last one
+                _query+="
+                    AND
+                    h.date_data_end IS NOT NULL
+                    AND
+                    h.attributes IS JSON OBJECT
+                    AND
+                    'match' $([[ ( -n "${bal_vars[FIX]}" && "${bal_vars[FIX]}" != MATCH_FORGOTTEN ) || "${bal_vars[FORCE]}" = yes ]] || echo NOT) IN (
+                        SELECT (JSON_ARRAY_ELEMENTS((h.attributes::JSON)->'usecases'))->>'name'
+                    )
+                "
+                # no fix or fix MATCH_FORGOTTEN or force
+                [[ -n "${bal_vars[FIX]}" && "${bal_vars[FIX]}" != MATCH_FORGOTTEN ]] || {
+                    _compare='>'
+                    [[ "${bal_vars[FIX]}" != MATCH_FORGOTTEN ]] || _compare='<'
+                    [[ -n "${bal_vars[FIX]}" || "${bal_vars[FORCE]}" = no ]] || _compare='='
                     _query+="
                         AND
-                        h.date_data_end IS NOT NULL
-                        AND
-                        h.attributes IS JSON OBJECT
-                        AND
-                        'match' $([[ ( -n "${bal_vars[FIX]}" && "${bal_vars[FIX]}" != MATCH_FORGOTTEN ) || "${bal_vars[FORCE]}" = yes ]] || echo NOT) IN (
-                            SELECT (JSON_ARRAY_ELEMENTS((h.attributes::JSON)->'usecases'))->>'name'
-                        )
+                        h.date_data_end $_compare c.last_match
                     "
-                    # no fix or fix MATCH_FORGOTTEN or force
-                    [[ -n "${bal_vars[FIX]}" && "${bal_vars[FIX]}" != MATCH_FORGOTTEN ]] || {
-                        _compare='>'
-                        [[ "${bal_vars[FIX]}" != MATCH_FORGOTTEN ]] || _compare='<'
-                        [[ -n "${bal_vars[FIX]}" || "${bal_vars[FORCE]}" = no ]] || _compare='='
-                        _query+="
-                            AND
-                            h.date_data_end $_compare c.last_match
-                        "
-                    }
-                    [ "${bal_vars[AUTH_ONLY]}" = no ] || {
-                        # only w/ authed addresses
-                        _query+="
-                            AND
-                            ((h.attributes::JSON)->'integration'->>'housenumbers')::INT > 0
-                        "
-                    }
+                }
+                [ "${bal_vars[AUTH_ONLY]}" = no ] || {
+                    # only w/ authed addresses
+                    _query+="
+                        AND
+                        ((h.attributes::JSON)->'integration'->>'housenumbers')::INT > 0
+                    "
                 }
             } &&
             # not already cleaned
@@ -593,9 +538,11 @@ bal_list_municipalities() {
             ;;
         esac
     } &&
+    # need to run same municipality (w/ many IO_ID) in ascending order
+    #+ to clean correctly previous match(s)
     _query+="
         ORDER BY
-            c.criteria ${bal_vars[SELECT_ORDER]}
+            c.criteria ${bal_vars[SELECT_ORDER]}, h.date_data_end ASC
     " &&
     {
         [[ ${bal_vars[LIMIT]} -eq 0 ]] || {

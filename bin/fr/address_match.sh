@@ -793,7 +793,7 @@ set_env --schema_name fr &&
                 [ -f "${match_vars[SOURCE_NAME]}" ] && {
                     match_vars[SOURCE_KIND]=FILE
                 } || {
-                    table_exists --schema_name fr --table_name "${match_vars[SOURCE_NAME]}" && match_vars[SOURCE_KIND]=TABLE || {
+                    table_exists --schema_name fr --table_name "${match_vars[SOURCE_NAME]}" --temporary ${match_vars[TEMPORARY]} && match_vars[SOURCE_KIND]=TABLE || {
                         [ -n "${match_vars[SOURCE_QUERY]}" ] && match_vars[SOURCE_KIND]=QUERY || {
                             log_error 'type source non déterminé!'
                             false
