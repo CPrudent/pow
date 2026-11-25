@@ -562,7 +562,7 @@ else
             }
 
             {
-                # search for error (column 7: exit status)
+                # search for error (column 7: exit status, 9: command)
                 tail --lines +2 $bal_joblog | cut --fields 7 | grep --silent ^[^0]
                 [ $? -ne 0 ] || {
                     bal_errors+=($bal_joblog)
@@ -593,11 +593,7 @@ else
                     bal_io_id=${bal_codes2[$bal_i]#*:}
                     bal_req_id=0
                     bal_file="${bal_tmpdir}/BAL_${bal_insee}_${bal_io_id}.dat"
-                    # be careful: tab is replaced by space (pipe)!
-                    #+ Shell Interpretation: If you use shell=True, the underlying shell #+ (like Bash or CMD) may interpret the tab character. For example, #+ in interactive shells, pressing Tab triggers auto-completion, but #+ if a literal tab character is passed via a pipe, some shells or
-                    #+ readline libraries may convert it to spaces for display or processing.
-                    _row=$(grep "BAL_${bal_file}" ${bal_joblog})
-                    _matched=$(echo $_row | cut --delimiter ' ' --fields 7)
+                    _matched=$(awk -v pattern="${bal_file}" '$0 ~ pattern {print $7}' ${bal_joblog})
                     [[ ${_debug_steps[done]:-1} -ne 0 ]] || {
                         echo "match $bal_file : ($_matched)"
                         [[ ${_debug_bps[done]} -ne 0 ]] || read
