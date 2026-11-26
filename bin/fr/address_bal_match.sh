@@ -278,6 +278,7 @@ pow_argv \
         parallel_jobs:Nombre de traitements en parallèle;
         auth_only:Extraire seulement les adresses certifiées;
         print:Affichage des communes à traiter;
+        vacuum:Réaliser la maintenance des Tables du Rapprochement;
         clean:Effectuer la purge des fichiers temporaires;
         verbose:Ajouter des détails sur les traitements
     ' \
@@ -293,6 +294,7 @@ pow_argv \
         parallel:yes|no;
         auth_only:yes|no;
         print:COUNT|ECHO|MATCH;
+        vacuum:yes|no;
         clean:yes|no;
         verbose:yes|no
     ' \
@@ -307,6 +309,7 @@ pow_argv \
         parallel_chunk:5;
         parallel_jobs:5;
         auth_only:yes;
+        vacuum:yes;
         clean:yes;
         verbose:no
     ' \
@@ -646,7 +649,7 @@ fi
 
 [ $bal_error -eq 0 ] &&
 [ -z "${bal_vars[PRINT]}" ] &&
-[ "${bal_vars[PROGRESS_CURRENT]}" -gt 3 ] && {
+[ "${bal_vars[VACUUM]}" = yes ] && {
     echo 'VACUUM Match'
     vacuum \
         --schema_name fr \
